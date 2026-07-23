@@ -1,5 +1,6 @@
 import { ChangeEvent, DragEvent, PointerEvent, useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
+import { isDriveConfigured, pickPdfFromDrive } from "./googleDrive";
 import {
   AirVent,
   Box,
@@ -10,6 +11,7 @@ import {
   Fan,
   FileText,
   FolderOpen,
+  HardDrive,
   Grid3X3,
   MousePointer2,
   PanelLeftClose,
@@ -113,6 +115,34 @@ export function App() {
       setError("This PDF could not be opened. Try another file.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function openPdfBytes(name: string, bytes: Uint8Array) {
+    setLoading(true);
+    setError("");
+    try {
+      const document = await pdfjsLib.getDocument({ data: bytes }).promise;
+      setPdf(document);
+      setFileName(name.replace(/\.pdf$/i, ""));
+      setPageNumber(1);
+      setZoom(1);
+      setDrawings([]);
+      setUndoStack([]);
+      setRedoStack([]);
+    } catch {
+      setError("This Drive PDF could not be opened.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function openFromDrive() {
+    try {
+      const selected = await pickPdfFromDrive();
+      await openPdfBytes(selected.name, selected.bytes);
+    } catch (driveError) {
+      setError(driveError instanceof Error ? driveError.message : "Google Drive could not be opened.");
     }
   }
 
@@ -368,6 +398,7 @@ export function App() {
           <button aria-label="Delete selected object" disabled={!selectedId} onClick={deleteSelected}><Trash2 size={17} /></button>
           <span className="divider" />
           <button className="save-button"><Save size={16} /> Save</button>
+          <button className="drive-button" onClick={() => void openFromDrive()}><HardDrive size={16} /> Open Drive</button>
           <button className="primary-button">Export plan</button>
           <button aria-label="Settings"><Settings size={18} /></button>
         </nav>
@@ -467,8 +498,12 @@ export function App() {
               <div className="upload-icon"><CloudUpload size={30} /></div>
               <h1>{loading ? "Opening your plan…" : "Start your HVAC plan"}</h1>
               <p>{error || "Upload a construction PDF to begin a field-ready layout."}</p>
-              <button className="primary-button" disabled={loading} onClick={() => inputRef.current?.click()}><FolderOpen size={17} /> Choose PDF plan</button>
+              <div className="upload-actions">
+                <button className="primary-button" disabled={loading} onClick={() => inputRef.current?.click()}><FolderOpen size={17} /> Choose PDF plan</button>
+                <button className="drive-upload-button" disabled={loading} onClick={() => void openFromDrive()}><HardDrive size={17} /> Open from Drive</button>
+              </div>
               <span>or drag and drop a file here</span>
+              {!isDriveConfigured() && <div className="drive-setup-note">Drive button ready · Google app credentials still need to be added</div>}
               <div className="file-note"><CircleDot size={13} /> PDF up to 100 MB · Set drawing scale after upload</div>
             </div>}
           </div>
