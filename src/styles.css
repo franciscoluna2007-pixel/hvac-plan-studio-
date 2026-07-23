@@ -65,7 +65,17 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .canvas.has-plan { display: block; overflow: auto; padding: 55px; }
 .file-input { display: none; }
 .pdf-stage { width: max-content; min-width: 100%; min-height: 100%; display: grid; place-items: start center; }
-.pdf-stage canvas { display: block; background: white; box-shadow: 0 14px 48px #000b, 0 0 0 1px #304155; }
+.plan-sheet { position: relative; background: white; box-shadow: 0 14px 48px #000b, 0 0 0 1px #304155; }
+.pdf-stage canvas { display: block; background: white; }
+.drawing-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
+.drawing-layer:not(.tool-select) { cursor: crosshair; }
+.drawing-layer.tool-select { cursor: default; }
+.duct-line, .draft-drawing polyline { fill: none; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.draft-drawing polyline { stroke-width: 4; stroke-dasharray: 8 5; }
+.hit-line { fill: none; stroke: transparent; stroke-width: 18; vector-effect: non-scaling-stroke; cursor: pointer; }
+.drawing-layer text { fill: #05080d; paint-order: stroke; stroke: white; stroke-width: 4px; stroke-linejoin: round; font: 700 13px Inter, sans-serif; pointer-events: none; }
+.selected-drawing .duct-line { filter: drop-shadow(0 0 4px #fff); stroke-width: 7; }
+.selected-drawing circle { stroke: white; stroke-width: 2; }
 .canvas::before { content: ""; position: absolute; width: 700px; height: 500px; border-radius: 50%; background: #159fc70c; filter: blur(50px); }
 .upload-card { position: relative; width: 450px; padding: 42px 45px 35px; text-align: center; border: 1px solid #23384e; border-radius: 12px; background: linear-gradient(145deg, #0e1b2bcc, #09131fcc); box-shadow: 0 22px 60px #0008; backdrop-filter: blur(8px); }
 .upload-icon { width: 60px; height: 60px; margin: auto; display: grid; place-items: center; color: var(--cyan); border: 1px solid #1e6680; border-radius: 14px; background: #0b2a3a; box-shadow: 0 0 35px #1cc7ee17; }
