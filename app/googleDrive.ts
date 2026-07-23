@@ -23,6 +23,7 @@ declare global {
           addView(view: unknown): unknown;
           setOAuthToken(token: string): unknown;
           setDeveloperKey(key: string): unknown;
+          setAppId(appId: string): unknown;
           setCallback(callback: (data: PickerResult) => void): unknown;
           setTitle(title: string): unknown;
           enableFeature(feature: string): unknown;
@@ -39,10 +40,24 @@ declare global {
 
 type PickerDocument = { id: string; name: string; mimeType: string };
 type PickerResult = { action: string; docs?: PickerDocument[] };
+type GoogleDriveConfig = { clientId: string; apiKey: string; appId: string };
 
-const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
-const apiKey = import.meta.env.VITE_GOOGLE_API_KEY as string | undefined;
 let accessToken = "";
+let configuration: GoogleDriveConfig | null = null;
+
+async function getConfiguration() {
+  if (configuration) return configuration;
+  const response = await fetch("/api/google-config", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Google Drive setup is incomplete. Contact the HVAC Plan Studio administrator.");
+  }
+  const value = await response.json() as Partial<GoogleDriveConfig>;
+  if (!value.clientId || !value.apiKey || !value.appId) {
+    throw new Error("Google Drive setup is incomplete. Contact the HVAC Plan Studio administrator.");
+  }
+  configuration = value as GoogleDriveConfig;
+  return configuration;
+}
 
 function loadScript(src: string) {
   return new Promise<void>((resolve, reject) => {
@@ -62,22 +77,21 @@ function loadScript(src: string) {
 }
 
 async function loadGoogleApis() {
-  if (!clientId || !apiKey) {
-    throw new Error("Google Drive setup is incomplete. Add the Client ID and API key to the app environment.");
-  }
+  const config = await getConfiguration();
   await Promise.all([
     loadScript("https://accounts.google.com/gsi/client"),
     loadScript("https://apis.google.com/js/api.js"),
   ]);
   await new Promise<void>((resolve) => window.gapi!.load("picker", resolve));
+  return config;
 }
 
 async function authorize() {
-  await loadGoogleApis();
-  if (accessToken) return accessToken;
-  return new Promise<string>((resolve, reject) => {
+  const config = await loadGoogleApis();
+  if (accessToken) return { token: accessToken, config };
+  const token = await new Promise<string>((resolve, reject) => {
     const client = window.google!.accounts.oauth2.initTokenClient({
-      client_id: clientId!,
+      client_id: config.clientId,
       scope: "https://www.googleapis.com/auth/drive.file",
       callback: (response) => {
         if (!response.access_token) return reject(new Error(response.error || "Google Drive access was not approved."));
@@ -87,17 +101,19 @@ async function authorize() {
     });
     client.requestAccessToken();
   });
+  return { token, config };
 }
 
 export async function pickPdfFromDrive() {
-  const token = await authorize();
+  const { token, config } = await authorize();
   return new Promise<{ name: string; bytes: Uint8Array }>((resolve, reject) => {
     const view = new window.google!.picker.DocsView(window.google!.picker.ViewId.DOCS);
     view.setMimeTypes("application/pdf");
     const picker = new window.google!.picker.PickerBuilder()
       .addView(view)
       .setOAuthToken(token)
-      .setDeveloperKey(apiKey!)
+      .setDeveloperKey(config.apiKey)
+      .setAppId(config.appId)
       .setTitle("Choose a construction PDF")
       .setCallback(async (data) => {
         if (data.action !== window.google!.picker.Action.PICKED || !data.docs?.[0]) return;
@@ -118,5 +134,5 @@ export async function pickPdfFromDrive() {
 }
 
 export function isDriveConfigured() {
-  return Boolean(clientId && apiKey);
+  return true;
 }
