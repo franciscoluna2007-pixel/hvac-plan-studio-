@@ -410,6 +410,39 @@ export default function Home() {
     return area > 0 ? Math.round(cfm / area) : 0;
   }
 
+  function flexFrictionRate(size: string, cfm = 0) {
+    const diameter = Number(size);
+    if (!diameter || !cfm) return 0;
+    // Round-duct equal-friction estimate with a 1.5× installed-flex allowance.
+    return 0.109136 * Math.pow(cfm, 1.9) / Math.pow(diameter, 5.02) * 1.5;
+  }
+
+  function runPressure(drawing: Drawing) {
+    const bends = Math.max(0, drawing.points.length - 2);
+    const equivalentLength = drawingLengthFeet(drawing) + bends * 8;
+    const frictionRate = flexFrictionRate(drawing.size, runAirflow(drawing));
+    return {
+      bends,
+      equivalentLength,
+      frictionRate,
+      pressureDrop: frictionRate * equivalentLength / 100,
+    };
+  }
+
+  function pressureSummary() {
+    const runs = drawings
+      .filter((drawing) => ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting && drawingSystem(drawing) === activeSystem)
+      .map((drawing) => ({ drawing, ...runPressure(drawing) }))
+      .sort((a, b) => b.pressureDrop - a.pressureDrop);
+    const highest = runs[0];
+    return {
+      runs,
+      highestDrop: highest?.pressureDrop || 0,
+      highestRun: highest?.drawing,
+      averageFriction: runs.length ? runs.reduce((total, run) => total + run.frictionRate, 0) / runs.length : 0,
+    };
+  }
+
   function pointToDrawingDistance(point: Point, drawing: Drawing) {
     let minimum = Infinity;
     for (let index = 0; index < drawing.points.length - 1; index += 1) {
@@ -633,6 +666,19 @@ export default function Home() {
         severity: velocity > highLimit * 1.2 ? "critical" : "warning",
         title: `${drawing.type === "supply" ? "Supply" : drawing.type === "return" ? "Return" : "Fresh-air"} velocity high`,
         detail: `${drawing.size}" run is ${velocity} FPM; target ${lowLimit}–${highLimit} FPM.`,
+        drawingId: drawing.id,
+      });
+      const pressure = runPressure(drawing);
+      if (pressure.frictionRate > .12) issues.push({
+        severity: pressure.frictionRate > .2 ? "critical" : "warning",
+        title: "Flex friction rate high",
+        detail: `${drawing.size}" at ${cfm} CFM is approximately ${pressure.frictionRate.toFixed(2)} in. w.g./100 ft. Review size, compression, and routing.`,
+        drawingId: drawing.id,
+      });
+      if (pressure.pressureDrop > .15) issues.push({
+        severity: pressure.pressureDrop > .25 ? "critical" : "warning",
+        title: "Run pressure loss high",
+        detail: `${pressure.equivalentLength.toFixed(0)} equivalent ft produces approximately ${pressure.pressureDrop.toFixed(2)} in. w.g. loss.`,
         drawingId: drawing.id,
       });
       if (!airflowNetwork().calculated.get(drawing.id) && !drawing.cfm) issues.push({ severity: "info", title: "Run uses estimated CFM", detail: `${drawing.size}" ${drawing.type} run defaults to ${cfm} CFM. Connect a terminal or enter design airflow.`, drawingId: drawing.id });
@@ -1463,6 +1509,8 @@ export default function Home() {
                   <div><span>Connected airflow</span><strong>{runAirflow(drawings.find((drawing) => drawing.id === selectedId)!)} CFM</strong></div>
                   <div><span>Velocity</span><strong>{velocityFpm(drawings.find((drawing) => drawing.id === selectedId)?.size || "0", runAirflow(drawings.find((drawing) => drawing.id === selectedId)!))} FPM</strong></div>
                   <div><span>Source</span><strong>{airflowNetwork().calculated.get(selectedId) ? "AUTO" : "MANUAL"}</strong></div>
+                  <div><span>Friction rate</span><strong>{runPressure(drawings.find((drawing) => drawing.id === selectedId)!).frictionRate.toFixed(2)} /100 FT</strong></div>
+                  <div><span>Pressure loss</span><strong>{runPressure(drawings.find((drawing) => drawing.id === selectedId)!).pressureDrop.toFixed(2)} IN. W.G.</strong></div>
                 </div>
               </div>}
             </>}
@@ -1799,6 +1847,19 @@ export default function Home() {
               <strong>RESIDENTIAL DESIGN GUIDE</strong>
               <span>Supply main 700–900 FPM</span>
               <span>Return main 500–700 FPM</span>
+              <span>Flex friction target ≤0.10 in. w.g./100 ft</span>
+            </div>
+            <div className={`pressure-card ${pressureSummary().highestDrop > .15 ? "attention" : "good"}`}>
+              <div><Gauge size={16} /><span><strong>PRESSURE-LOSS ESTIMATE</strong><small>Installed flex · bends include 8 equivalent ft each</small></span></div>
+              <dl>
+                <div><dt>Average friction</dt><dd>{pressureSummary().averageFriction.toFixed(2)} in. w.g./100 ft</dd></div>
+                <div><dt>Highest run loss</dt><dd>{pressureSummary().highestDrop.toFixed(2)} in. w.g.</dd></div>
+                <div><dt>Runs reviewed</dt><dd>{pressureSummary().runs.length}</dd></div>
+              </dl>
+              {pressureSummary().highestRun && <button onClick={() => { setSelectedId(pressureSummary().highestRun!.id); setActiveTool("select"); }}>
+                Select highest-loss run
+              </button>}
+              <p>Planning estimate only. Final available static pressure requires equipment data, filters, coils, grilles, fittings, and field measurements.</p>
             </div>
             <div className="issue-list">
               {validationIssues().length ? validationIssues().map((issue, index) => (
