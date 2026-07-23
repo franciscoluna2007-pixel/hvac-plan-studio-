@@ -62,6 +62,9 @@ type Drawing = {
   size: string;
   page: number;
 };
+type DragState =
+  | { kind: "point"; drawingId: string; pointIndex: number; before: Drawing[] }
+  | { kind: "line"; drawingId: string; start: Point; original: Point[]; before: Drawing[] };
 
 const drawingColors: Record<DrawType, string> = {
   supply: "#2b83ff",
@@ -82,10 +85,14 @@ export function App() {
   const [activeTool, setActiveTool] = useState("select");
   const [ductSize, setDuctSize] = useState("14");
   const [drawings, setDrawings] = useState<Drawing[]>([]);
+  const [undoStack, setUndoStack] = useState<Drawing[][]>([]);
   const [redoStack, setRedoStack] = useState<Drawing[][]>([]);
   const [draft, setDraft] = useState<Point[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [renderSize, setRenderSize] = useState({ width: 0, height: 0 });
+  const [hoverPoint, setHoverPoint] = useState<Point | null>(null);
+  const [snapMarker, setSnapMarker] = useState<Point | null>(null);
+  const dragRef = useRef<DragState | null>(null);
 
   async function openPdf(file?: File) {
     if (!file) return;
@@ -125,7 +132,7 @@ export function App() {
     const render = async () => {
       const page = await pdf.getPage(pageNumber);
       if (cancelled || !canvasRef.current) return;
-      const viewport = page.getViewport({ scale: zoom * 1.35 });
+      const viewport = page.getViewport({ scale: 1.35 });
       const canvas = canvasRef.current;
       const ratio = window.devicePixelRatio || 1;
       canvas.width = Math.floor(viewport.width * ratio);
@@ -140,16 +147,74 @@ export function App() {
     };
     void render();
     return () => { cancelled = true; };
-  }, [pdf, pageNumber, zoom]);
+  }, [pdf, pageNumber]);
 
   const zoomOut = () => setZoom((value) => Math.max(.35, +(value - .15).toFixed(2)));
   const zoomIn = () => setZoom((value) => Math.min(3, +(value + .15).toFixed(2)));
 
   function setHistory(next: Drawing[]) {
     setDrawings((current) => {
+      setUndoStack((stack) => [...stack, current]);
       setRedoStack([]);
-      return next === current ? current : next;
+      return next;
     });
+  }
+
+  function nearestSegment(point: Point, ignoredId?: string) {
+    let best: { point: Point; drawingId: string; segmentIndex: number; distance: number } | null = null;
+    for (const drawing of drawings) {
+      if (drawing.page !== pageNumber || drawing.id === ignoredId) continue;
+      for (let index = 0; index < drawing.points.length - 1; index++) {
+        const a = drawing.points[index];
+        const b = drawing.points[index + 1];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const lengthSquared = dx * dx + dy * dy;
+        const amount = lengthSquared ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared)) : 0;
+        const projected = { x: a.x + amount * dx, y: a.y + amount * dy };
+        const distance = Math.hypot(point.x - projected.x, point.y - projected.y);
+        if (!best || distance < best.distance) best = { point: projected, drawingId: drawing.id, segmentIndex: index, distance };
+      }
+    }
+    return best;
+  }
+
+  function snapPoint(point: Point, ignoredId?: string) {
+    const nearest = nearestSegment(point, ignoredId);
+    return nearest && nearest.distance <= 14 / zoom ? nearest.point : point;
+  }
+
+  function addJunctionPoints(current: Drawing[], endpoints: Point[]) {
+    let next = current;
+    for (const endpoint of endpoints) {
+      let match: { drawingId: string; segmentIndex: number; point: Point } | null = null;
+      for (const drawing of next) {
+        if (drawing.page !== pageNumber) continue;
+        for (let index = 0; index < drawing.points.length - 1; index++) {
+          const a = drawing.points[index];
+          const b = drawing.points[index + 1];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const lengthSquared = dx * dx + dy * dy;
+          const amount = lengthSquared ? Math.max(0, Math.min(1, ((endpoint.x - a.x) * dx + (endpoint.y - a.y) * dy) / lengthSquared)) : 0;
+          const projected = { x: a.x + amount * dx, y: a.y + amount * dy };
+          if (Math.hypot(endpoint.x - projected.x, endpoint.y - projected.y) < .75) {
+            match = { drawingId: drawing.id, segmentIndex: index, point: projected };
+            break;
+          }
+        }
+        if (match) break;
+      }
+      if (!match) continue;
+      next = next.map((drawing) => {
+        if (drawing.id !== match!.drawingId) return drawing;
+        if (drawing.points.some((point) => Math.hypot(point.x - match!.point.x, point.y - match!.point.y) < .75)) return drawing;
+        const points = [...drawing.points];
+        points.splice(match!.segmentIndex + 1, 0, match!.point);
+        return { ...drawing, points };
+      });
+    }
+    return next;
   }
 
   function finishDrawing() {
@@ -161,13 +226,18 @@ export function App() {
         size: ductSize,
         page: pageNumber,
       };
-      setHistory([...drawings, drawing]);
+      const connected = addJunctionPoints(drawings, [draft[0], draft[draft.length - 1]]);
+      setHistory([...connected, drawing]);
     }
     setDraft([]);
+    setHoverPoint(null);
+    setSnapMarker(null);
   }
 
   function canvasPoint(event: PointerEvent<SVGSVGElement>): Point {
-    const bounds = event.currentTarget.getBoundingClientRect();
+    const target = event.currentTarget as unknown as SVGSVGElement | SVGGraphicsElement;
+    const svg = target instanceof SVGSVGElement ? target : target.ownerSVGElement;
+    const bounds = (svg || target).getBoundingClientRect();
     return {
       x: ((event.clientX - bounds.left) / bounds.width) * renderSize.width,
       y: ((event.clientY - bounds.top) / bounds.height) * renderSize.height,
@@ -180,7 +250,7 @@ export function App() {
       return;
     }
     if (!["supply", "branch", "return", "fresh"].includes(activeTool)) return;
-    const point = canvasPoint(event);
+    const point = snapPoint(canvasPoint(event));
     setDraft((points) => [...points, point]);
   }
 
@@ -189,17 +259,18 @@ export function App() {
       setDraft((points) => points.slice(0, -1));
       return;
     }
-    if (!drawings.length) return;
-    setDrawings((current) => {
-      setRedoStack((redo) => [...redo, current]);
-      return current.slice(0, -1);
-    });
+    const previous = undoStack.at(-1);
+    if (!previous) return;
+    setRedoStack((redo) => [...redo, drawings]);
+    setDrawings(previous);
+    setUndoStack((stack) => stack.slice(0, -1));
     setSelectedId(null);
   }
 
   function redo() {
     const next = redoStack.at(-1);
     if (!next) return;
+    setUndoStack((stack) => [...stack, drawings]);
     setDrawings(next);
     setRedoStack((stack) => stack.slice(0, -1));
   }
@@ -208,6 +279,57 @@ export function App() {
     if (!selectedId) return;
     setHistory(drawings.filter((drawing) => drawing.id !== selectedId));
     setSelectedId(null);
+  }
+
+  function startPointDrag(event: PointerEvent<SVGCircleElement>, drawingId: string, pointIndex: number) {
+    if (activeTool !== "select") return;
+    event.stopPropagation();
+    event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
+    dragRef.current = { kind: "point", drawingId, pointIndex, before: drawings };
+    setSelectedId(drawingId);
+  }
+
+  function startLineDrag(event: PointerEvent<SVGPathElement>, drawing: Drawing) {
+    if (activeTool !== "select") return;
+    event.stopPropagation();
+    event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
+    dragRef.current = { kind: "line", drawingId: drawing.id, start: canvasPoint(event as unknown as PointerEvent<SVGSVGElement>), original: drawing.points, before: drawings };
+    setSelectedId(drawing.id);
+  }
+
+  function handlePointerMove(event: PointerEvent<SVGSVGElement>) {
+    const raw = canvasPoint(event);
+    const drag = dragRef.current;
+    if (drag) {
+      if (drag.kind === "point") {
+        const point = snapPoint(raw, drag.drawingId);
+        setSnapMarker(point.x !== raw.x || point.y !== raw.y ? point : null);
+        setDrawings((current) => current.map((drawing) => drawing.id === drag.drawingId
+          ? { ...drawing, points: drawing.points.map((oldPoint, index) => index === drag.pointIndex ? point : oldPoint) }
+          : drawing));
+      } else {
+        const dx = raw.x - drag.start.x;
+        const dy = raw.y - drag.start.y;
+        setDrawings((current) => current.map((drawing) => drawing.id === drag.drawingId
+          ? { ...drawing, points: drag.original.map((point) => ({ x: point.x + dx, y: point.y + dy })) }
+          : drawing));
+      }
+      return;
+    }
+    if (["supply", "branch", "return", "fresh"].includes(activeTool)) {
+      const point = snapPoint(raw);
+      setHoverPoint(point);
+      setSnapMarker(point.x !== raw.x || point.y !== raw.y ? point : null);
+    }
+  }
+
+  function endDrag() {
+    const drag = dragRef.current;
+    if (!drag) return;
+    setUndoStack((stack) => [...stack, drag.before]);
+    setRedoStack([]);
+    dragRef.current = null;
+    setSnapMarker(null);
   }
 
   useEffect(() => {
@@ -299,12 +421,16 @@ export function App() {
             <input ref={inputRef} className="file-input" type="file" accept="application/pdf,.pdf" onChange={onFileChange} />
             {pdf ? (
               <div className="pdf-stage">
-                <div className="plan-sheet" style={{ width: renderSize.width, height: renderSize.height }}>
+                <div className="plan-sheet" style={{ width: renderSize.width * zoom, height: renderSize.height * zoom }}>
                   <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} />
                   <svg
                     className={`drawing-layer tool-${activeTool}`}
                     viewBox={`0 0 ${renderSize.width || 1} ${renderSize.height || 1}`}
                     onPointerDown={handleDrawingClick}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={endDrag}
+                    onPointerCancel={endDrag}
+                    onPointerLeave={() => { if (!dragRef.current) { setHoverPoint(null); setSnapMarker(null); } }}
                     onContextMenu={(event) => { event.preventDefault(); finishDrawing(); }}
                   >
                     {drawings.filter((drawing) => drawing.page === pageNumber).map((drawing) => {
@@ -315,16 +441,25 @@ export function App() {
                         event.stopPropagation();
                         setSelectedId(drawing.id);
                       }}>
-                        <path className="hit-line" d={path} />
+                        <path className="hit-line" d={path} onPointerDown={(event) => startLineDrag(event, drawing)} />
                         <path className="duct-line" d={path} stroke={drawingColors[drawing.type]} />
-                        {drawing.points.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="3.5" fill={drawingColors[drawing.type]} />)}
+                        {drawing.points.map((point, index) => <circle
+                          className={selectedId === drawing.id ? "edit-handle" : ""}
+                          key={index}
+                          cx={point.x}
+                          cy={point.y}
+                          r={selectedId === drawing.id ? 6 : 3.5}
+                          fill={drawingColors[drawing.type]}
+                          onPointerDown={(event) => startPointDrag(event, drawing.id, index)}
+                        />)}
                         <text x={middle.x + 8} y={middle.y - 8}>{drawing.size}"</text>
                       </g>;
                     })}
                     {draft.length > 0 && <g className="draft-drawing">
-                      <polyline points={draft.map((point) => `${point.x},${point.y}`).join(" ")} stroke={drawingColors[activeTool as DrawType]} />
+                      <polyline points={[...draft, ...(hoverPoint ? [hoverPoint] : [])].map((point) => `${point.x},${point.y}`).join(" ")} stroke={drawingColors[activeTool as DrawType]} />
                       {draft.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="4" fill={drawingColors[activeTool as DrawType]} />)}
                     </g>}
+                    {snapMarker && <g className="snap-marker"><circle cx={snapMarker.x} cy={snapMarker.y} r="9" /><path d={`M ${snapMarker.x - 5} ${snapMarker.y} L ${snapMarker.x + 5} ${snapMarker.y} M ${snapMarker.x} ${snapMarker.y - 5} L ${snapMarker.x} ${snapMarker.y + 5}`} /></g>}
                   </svg>
                 </div>
               </div>

@@ -66,7 +66,7 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .file-input { display: none; }
 .pdf-stage { width: max-content; min-width: 100%; min-height: 100%; display: grid; place-items: start center; }
 .plan-sheet { position: relative; background: white; box-shadow: 0 14px 48px #000b, 0 0 0 1px #304155; }
-.pdf-stage canvas { display: block; background: white; }
+.pdf-stage canvas { display: block; width: 100% !important; height: 100% !important; background: white; }
 .drawing-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
 .drawing-layer:not(.tool-select) { cursor: crosshair; }
 .drawing-layer.tool-select { cursor: default; }
@@ -76,6 +76,11 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .drawing-layer text { fill: #05080d; paint-order: stroke; stroke: white; stroke-width: 4px; stroke-linejoin: round; font: 700 13px Inter, sans-serif; pointer-events: none; }
 .selected-drawing .duct-line { filter: drop-shadow(0 0 4px #fff); stroke-width: 7; }
 .selected-drawing circle { stroke: white; stroke-width: 2; }
+.edit-handle { cursor: grab; vector-effect: non-scaling-stroke; }
+.edit-handle:active { cursor: grabbing; }
+.snap-marker { pointer-events: none; }
+.snap-marker circle { fill: #27c2ea22; stroke: #27c2ea; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.snap-marker path { fill: none; stroke: #27c2ea; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .canvas::before { content: ""; position: absolute; width: 700px; height: 500px; border-radius: 50%; background: #159fc70c; filter: blur(50px); }
 .upload-card { position: relative; width: 450px; padding: 42px 45px 35px; text-align: center; border: 1px solid #23384e; border-radius: 12px; background: linear-gradient(145deg, #0e1b2bcc, #09131fcc); box-shadow: 0 22px 60px #0008; backdrop-filter: blur(8px); }
 .upload-icon { width: 60px; height: 60px; margin: auto; display: grid; place-items: center; color: var(--cyan); border: 1px solid #1e6680; border-radius: 14px; background: #0b2a3a; box-shadow: 0 0 35px #1cc7ee17; }
