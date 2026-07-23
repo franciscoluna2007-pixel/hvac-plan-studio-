@@ -108,6 +108,7 @@ type Drawing = {
   systemId?: string;
   roomName?: string;
   roomType?: "general" | "bedroom" | "bathroom" | "closet";
+  elevation?: string;
 };
 type DragState =
   | { kind: "point"; drawingId: string; pointIndex: number; before: Drawing[] }
@@ -692,6 +693,13 @@ export default function Home() {
     }
     const activeRuns = drawings.filter((drawing) => drawingSystem(drawing) === activeSystem && ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting);
     const otherRuns = drawings.filter((drawing) => drawingSystem(drawing) !== activeSystem && ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting);
+    const runsWithoutElevation = activeRuns.filter((drawing) => !drawing.elevation?.trim());
+    if (runsWithoutElevation.length) issues.push({
+      severity: "warning",
+      title: "Duct elevations need coordination",
+      detail: `${runsWithoutElevation.length} ${runsWithoutElevation.length === 1 ? "run has" : "runs have"} no installation height. Set AFF, above-ceiling, or field-verify elevation before release.`,
+      drawingId: runsWithoutElevation[0].id,
+    });
     for (const run of activeRuns) {
       const touchesOtherSystem = run.points.some((point) => otherRuns.some((other) => other.points.some((otherPoint) => Math.hypot(point.x - otherPoint.x, point.y - otherPoint.y) < 2)));
       if (touchesOtherSystem) issues.push({ severity: "critical", title: "Systems touch at a connection", detail: `${systemLabel(activeSystem)} contacts another system. Keep zones separated.`, drawingId: run.id });
@@ -821,6 +829,7 @@ export default function Home() {
       cfm: defaultCfm(branchSize),
       page: pageNumber,
       systemId: drawingSystem(target.drawing),
+      elevation: target.drawing.elevation,
     };
     const fitting: Drawing = {
       id: fittingId,
@@ -829,6 +838,7 @@ export default function Home() {
       size: `${target.drawing.size}×${downstreamSize}×${branchSize}`,
       page: pageNumber,
       systemId: drawingSystem(target.drawing),
+      elevation: target.drawing.elevation,
       fitting: {
         kind: "ty",
         angle: target.angle,
@@ -876,6 +886,13 @@ export default function Home() {
       page: pageNumber,
       systemId: activeSystem,
       cfm: defaults[kind].cfm,
+      elevation: ["diffuser", "returnGrille", "fan"].includes(kind)
+        ? "CEILING"
+        : kind === "thermostat"
+          ? "48 IN AFF"
+          : kind === "smoke"
+            ? "ABOVE CEILING"
+            : "",
       symbol: {
         kind,
         label: defaults[kind].label,
@@ -949,6 +966,7 @@ export default function Home() {
         page: pageNumber,
         cfm: defaultCfm(ductSize),
         systemId: activeSystem,
+        elevation: "",
       };
       const connected = addJunctionPoints(drawings, [draft[0], draft[draft.length - 1]]);
       setHistory([...connected, drawing]);
@@ -1144,6 +1162,13 @@ export default function Home() {
     setHistory(drawings.map((drawing) => drawing.id === selectedId ? { ...drawing, ...changes } : drawing));
   }
 
+  function updateSelectedElevation(elevation: string) {
+    if (!selectedId) return;
+    const selected = drawings.find((drawing) => drawing.id === selectedId);
+    const affected = new Set([selectedId, ...(selected?.fitting?.connectedIds || [])]);
+    setHistory(drawings.map((drawing) => affected.has(drawing.id) ? { ...drawing, elevation } : drawing));
+  }
+
   function updateSelectedSymbol(changes: Partial<SymbolMeta>) {
     if (!selectedId) return;
     setHistory(drawings.map((drawing) =>
@@ -1336,6 +1361,7 @@ export default function Home() {
         <path d="M -7 -5 L 7 -5 M -7 0 L 7 0 M -7 5 L 3 5" />
       </>}
       <text className="symbol-label" x="0" y={kind === "equipment" ? -18 : kind === "airflow" ? -10 : -16} textAnchor="middle">{label}</text>
+      {drawing.elevation && <text className="symbol-elevation" x="0" y={kind === "equipment" ? 25 : 21} textAnchor="middle">EL {drawing.elevation}</text>}
       {selected && <circle className="rotation-ring" cx="0" cy="0" r="23" />}
     </g>;
   }
@@ -1531,6 +1557,14 @@ export default function Home() {
               />
             </label>
             {selectedId && <>
+              <label>Install height / elevation
+                <input
+                  className="property-input"
+                  placeholder={'Example: 8\'-0" AFF'}
+                  value={drawings.find((drawing) => drawing.id === selectedId)?.elevation || ""}
+                  onChange={(event) => updateSelectedElevation(event.target.value)}
+                />
+              </label>
               <label>Room / area
                 <input
                   className="property-input"
@@ -1638,7 +1672,7 @@ export default function Home() {
                           <path d={`M ${inlet.x} ${inlet.y} L ${center.x} ${center.y} L ${outlet.x} ${outlet.y} M ${center.x} ${center.y} L ${branchPort.x} ${branchPort.y}`} />
                           {[inlet, outlet, branchPort].map((port, index) => <circle className="fitting-port" key={index} cx={port.x} cy={port.y} r="3.4" />)}
                           <circle className="fitting-core" cx={center.x} cy={center.y} r="4.5" />
-                          <text x={branchPort.x + 7} y={branchPort.y - 6}>{drawing.size}</text>
+                          <text x={branchPort.x + 7} y={branchPort.y - 6}>{drawing.size}{drawing.elevation ? ` · EL ${drawing.elevation}` : ""}</text>
                         </g>;
                       }
                       const path = drawing.points.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
@@ -1660,7 +1694,7 @@ export default function Home() {
                           onPointerDown={(event) => startPointDrag(event, drawing.id, index)}
                         />)}
                         <text x={middle.x + 8} y={middle.y - 8}>
-                          S{drawingSystem(drawing).split("-")[1]} · {drawing.size}" · {drawingLengthFeet(drawing).toFixed(1)} LF · {runAirflow(drawing)} CFM {airflowNetwork().calculated.get(drawing.id) ? "AUTO" : ""}
+                          S{drawingSystem(drawing).split("-")[1]} · {drawing.size}" · {drawingLengthFeet(drawing).toFixed(1)} LF · {runAirflow(drawing)} CFM{drawing.elevation ? ` · EL ${drawing.elevation}` : " · EL VERIFY"} {airflowNetwork().calculated.get(drawing.id) ? "AUTO" : ""}
                         </text>
                       </g>;
                     })}
@@ -1897,6 +1931,7 @@ export default function Home() {
           <span>Keep flex straight, fully supported, and free of kinks or sags.</span>
           <span>Install balancing dampers at branch takeoffs—not at diffusers.</span>
           <span>Verify structure, lighting, plumbing, ceiling height, and access before installation.</span>
+          <span>Elevation labels marked EL VERIFY must be coordinated before duct installation.</span>
           <span>Final duct sizes, routing, fabricated dimensions, and airflow must be field verified.</span>
         </div>
         <div className="print-checks">
@@ -1905,6 +1940,7 @@ export default function Home() {
             <span>Design airflow: {designAirflow().targetCfm} CFM</span>
             <span>Assigned diffusers: {designAirflow().supplyCfm} CFM ({designAirflow().percent}%)</span>
             <span>Assigned return: {designAirflow().returnCfm} CFM</span>
+            <span>Duct elevations assigned: {drawings.filter((drawing) => drawingSystem(drawing) === activeSystem && ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting && drawing.elevation?.trim()).length} of {drawings.filter((drawing) => drawingSystem(drawing) === activeSystem && ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting).length}</span>
           </div>
           {validationIssues().filter((issue) => issue.severity !== "info").map((issue, index) => <span key={`${issue.title}-print-${index}`}>• {issue.title}: {issue.detail}</span>)}
           {!validationIssues().filter((issue) => issue.severity !== "info").length && <span>✓ No critical airflow or velocity issues detected.</span>}

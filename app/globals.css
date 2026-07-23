@@ -125,6 +125,7 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .symbol-smoke circle { fill: #f2994a; stroke: #8c3d0d; }.symbol-smoke path, .symbol-note path { stroke: #9b480f; }
 .symbol-airflow .airflow-arrow { fill: none; stroke: #f2994a; stroke-width: 3; }
 .hvac-symbol .symbol-label { fill: #080b0f; stroke: white; stroke-width: 3.5px; font-size: 10px; font-weight: 800; letter-spacing: .15px; }
+.hvac-symbol .symbol-elevation { fill: #8a4b12; stroke: white; stroke-width: 2.7px; font-size: 7px; font-weight: 800; letter-spacing: .2px; }
 .hvac-symbol .rotation-ring { fill: none; stroke: #20bfe9; stroke-width: 1.5; stroke-dasharray: 4 3; }
 .selected-symbol { filter: drop-shadow(0 0 4px #27c2ea); }
 .symbol-preview { pointer-events: none; opacity: .65; }
