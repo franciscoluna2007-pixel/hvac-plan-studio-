@@ -229,7 +229,7 @@ export default function ProjectHome({
         <div className="project-home-content">
           <section className="project-home-hero">
             <div className="project-home-hero-copy">
-              <span className="home-eyebrow"><Sparkles size={13} /> PROJECT INTELLIGENCE · V101</span>
+              <span className="home-eyebrow"><Sparkles size={13} /> FIELD PRODUCTION · V104</span>
               <h1>From source plan to field release, in one controlled workspace.</h1>
               <p>
                 Draw complete HVAC systems, coordinate revisions, review problems, and prepare field-ready packages without surrendering control of the geometry.
@@ -451,7 +451,7 @@ export default function ProjectHome({
         </div>
 
         <footer className="project-home-footer">
-          <span><Wind size={14} /> HVAC Plan Studio v101</span>
+              <span><Wind size={14} /> HVAC Plan Studio v104</span>
           <p>Engineering before geometry · local-first by design · cloud control when your team needs it</p>
           <button onClick={onOpenCommand}><Command size={14} /> Command palette</button>
         </footer>

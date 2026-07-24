@@ -132,6 +132,21 @@ export type CloudFieldRelease = {
   created_at: string;
 };
 
+export type CloudTakeoffPackage = {
+  id: string;
+  project_id: string;
+  revision_id: string;
+  system_id: string;
+  name: string;
+  package_revision: string;
+  drawing_signature: string;
+  package_payload: Record<string, unknown>;
+  drive_file_id: string | null;
+  drive_url: string | null;
+  created_by: string;
+  created_at: string;
+};
+
 export type ProjectHomeCard = CloudProject & {
   latest_revision_id: string | null;
   latest_revision_number: number;
@@ -369,6 +384,40 @@ export async function issueCloudFieldRelease(input: {
   const release = Array.isArray(data) ? data[0] : data;
   if (!release) throw new Error("The verified field release was not returned.");
   return release as CloudFieldRelease;
+}
+
+export async function saveCloudTakeoffPackage(input: {
+  projectId: string;
+  revisionId: string;
+  systemId: string;
+  name: string;
+  packageRevision: string;
+  drawingSignature: string;
+  packagePayload: Record<string, unknown>;
+  driveFileId: string | null;
+  driveUrl: string | null;
+}) {
+  const client = await getCloudClient();
+  const { data: auth, error: authError } = await client.auth.getUser();
+  if (authError || !auth.user) throw authError || new Error("Sign in to save a cloud takeoff package.");
+  const { data, error } = await client
+    .from("project_takeoff_packages")
+    .insert({
+      project_id: input.projectId,
+      revision_id: input.revisionId,
+      system_id: input.systemId,
+      name: input.name,
+      package_revision: input.packageRevision,
+      drawing_signature: input.drawingSignature,
+      package_payload: input.packagePayload,
+      drive_file_id: input.driveFileId,
+      drive_url: input.driveUrl,
+      created_by: auth.user.id,
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as CloudTakeoffPackage;
 }
 
 export async function listCloudRevisions(projectId: string) {
