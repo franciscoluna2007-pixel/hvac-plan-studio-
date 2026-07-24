@@ -33,6 +33,29 @@ test("renders development preview metadata", async () => {
   assert.match(await response.text(), developmentPreviewMeta);
 });
 
+test("adds secure cloud projects, revisions, collaborators, and Drive packages", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const panel = await readFile(new URL("../app/CloudProjectsPanel.tsx", import.meta.url), "utf8");
+  const cloud = await readFile(new URL("../app/cloudProjects.ts", import.meta.url), "utf8");
+  const drive = await readFile(new URL("../app/googleDrive.ts", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(page, /Cloud Projects/);
+  assert.match(page, /buildProjectSnapshot/);
+  assert.match(page, /restoreCloudRevision/);
+  assert.match(panel, /Save current plan as project/);
+  assert.match(panel, /Save a cloud revision/);
+  assert.match(panel, /Invite a collaborator/);
+  assert.match(panel, /Create Drive package/);
+  assert.match(cloud, /from\("project_revisions"\)/);
+  assert.match(cloud, /from\("project_members"\)/);
+  assert.match(cloud, /claim_project_invitations/);
+  assert.match(drive, /saveProjectPackageToDrive/);
+  assert.match(drive, /application\/json/);
+  assert.match(styles, /\.cloud-projects-drawer/);
+  assert.match(styles, /\.cloud-revision-list/);
+});
+
 test("reserves plan panning for a stable right-click drag", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
@@ -55,6 +78,52 @@ test("provides a searchable HVAC catalog and wheel rotation before placement", a
   assert.match(source, /setPlacementRotation\(\(current\) => \(current \+ direction \* step \+ 360\) % 360\)/);
   assert.match(source, /rotation: placementRotation/);
   assert.match(source, /Shift\+wheel 45°/);
+});
+
+test("makes run size primary, supports one-inch size choices, and directly resizes icons", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(source, /const runSizeOptions = \["4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"\]/);
+  assert.match(source, /className={`run-size-default \$\{selectedRun \? "editing" : ""\}`}/);
+  assert.match(source, /NEW RUN DEFAULT/);
+  assert.match(source, /scaleX\?: number/);
+  assert.match(source, /scaleY\?: number/);
+  assert.match(source, /kind: "symbol-resize"/);
+  assert.match(source, /function startSymbolResize/);
+  assert.match(source, /className="symbol-resize-handle"/);
+  assert.match(source, /hold Shift to keep its proportions/);
+  assert.match(source, /Reset size/);
+  assert.doesNotMatch(source, /className="fitting-core"/);
+  assert.match(styles, /\.run-size-default/);
+  assert.match(styles, /\.hvac-symbol \.symbol-resize-handle/);
+});
+
+test("controls fitting text, connects equipment at plenums, and repositions plan labels", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(source, /const \[showFittingLabels, setShowFittingLabels\] = useState\(true\)/);
+  assert.match(source, /Show or hide T\/Y fitting names and three-size labels/);
+  assert.match(source, /<DraftingCompass size=\{14\} \/> T\/Y Text/);
+  assert.match(source, /\{showFittingLabels && <text/);
+  assert.match(source, /function equipmentPlenumPorts\(selected: Drawing\)/);
+  assert.match(source, /returnRunId\?: string/);
+  assert.match(source, /LIVE \{ductType\.toUpperCase\(\)\} PLENUM CONNECTION/);
+  assert.match(source, /Attach \{ductType\}/);
+  assert.match(source, /SUPPLY PLENUM/);
+  assert.match(source, /RETURN PLENUM/);
+  assert.match(source, /linkRunToMatchingEquipmentPlenum/);
+  assert.match(source, /kind: "label"/);
+  assert.match(source, /function startRunLabelDrag/);
+  assert.match(source, /labelOffset\?: Point/);
+  assert.match(source, /className={`run-label \$\{drawing\.labelOffset \? "custom-position" : ""\}`}/);
+  assert.match(source, /Reset position/);
+  assert.match(source, /usesCatalogLabel/);
+  assert.match(source, /Rename any placed symbol—including linear supplies and returns/);
+  assert.doesNotMatch(source, /className="symbol-elevation"/);
+  assert.match(styles, /\.drawing-layer text\.run-label/);
+  assert.match(styles, /\.hvac-symbol \.equipment-plenum-port/);
 });
 
 test("places T/Y fittings anywhere on a trunk and supports a second-click branch attachment", async () => {
@@ -87,6 +156,22 @@ test("guides T/Y placement with numbered ports, endpoint previews, and recovery 
   assert.match(styles, /\.branch-fitting \.disconnected-port \.fitting-port/);
 });
 
+test("keeps completed T/Y fittings readable and reveals numbered ports only while connecting", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(source, /const fittingFullyConnected = portStates\.every\(\(state\) => state\.connected\)/);
+  assert.match(source, /const showPortGuides = pendingBranchFittingId === drawing\.id/);
+  assert.match(source, /\{showPortGuides && \[inlet, outlet, branchPort\]\.map/);
+  assert.match(source, /const showRunNodeHandles = runSelected \|\| Boolean\(branchCandidateClass\)/);
+  assert.match(source, /\{showRunNodeHandles && drawing\.points\.map/);
+  assert.match(source, /className={`branch-fitting \$\{fittingFullyConnected \? "complete-fitting" : "open-fitting"\}/);
+  assert.match(source, /textAnchor="middle"/);
+  assert.match(styles, /\.branch-fitting \.fitting-label \{/);
+  assert.match(styles, /paint-order: stroke/);
+  assert.match(styles, /\.branch-fitting\.showing-port-guides \.fitting-label/);
+});
+
 test("supports a continuous branch pass with manual junction suggestions", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
@@ -102,6 +187,75 @@ test("supports a continuous branch pass with manual junction suggestions", async
   assert.match(source, /Branch pass continues/);
   assert.match(styles, /\.branch-pass-summary/);
   assert.match(styles, /\.branch-opportunity-marker circle/);
+});
+
+test("supports the field run-first T/Y workflow", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(source, /const \[branchWorkflow, setBranchWorkflow\] = useState<"run-first" \| "place-first">\("run-first"\)/);
+  assert.match(source, /const \[queuedBranchRunId, setQueuedBranchRunId\]/);
+  assert.match(source, /function armRunFirstBranch\(point: Point\)/);
+  assert.match(source, /function queuedBranchRoute\(center: Point, mainId: string, mainAngle: number\)/);
+  assert.match(source, /if \(branchWorkflow === "run-first" && !queuedBranchRunId\)/);
+  assert.match(source, /Branch run armed · click this trunk location to split, rotate, size and connect the T\/Y/);
+  assert.match(source, /PORT 3 RUN ARMED/);
+  assert.match(source, /Run first/);
+  assert.match(source, /Place first/);
+  assert.match(source, /Pick next diffuser run/);
+  assert.match(source, /The closest end of this run will move to Port 3/);
+  assert.match(styles, /\.branch-mode-toggle/);
+  assert.match(styles, /\.branch-run-armed-card/);
+  assert.match(styles, /\.branch-run-armed \.duct-line/);
+  assert.match(styles, /\.branch-run-pick \.duct-line/);
+});
+
+test("deletes runs and icons without leaving the page or broken drawing references", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /function removeDeletedDrawingReferences\(current: Drawing\[\], idsToDelete: string\[\]\)/);
+  assert.match(source, /deleted\.has\(drawing\.symbol\.connectedRunId\)/);
+  assert.match(source, /deleted\.has\(id\) \? "" : id/);
+  assert.match(source, /function clearDeletedDrawingState\(idsToDelete: string\[\]\)/);
+  assert.match(source, /setSelectionBox\(null\)/);
+  assert.match(source, /if \(event\.key === "Delete" \|\| event\.key === "Backspace"\) \{\s*event\.preventDefault\(\);\s*deleteSelected\(\);/);
+  assert.match(source, /Icon deleted · connected ductwork kept · Undo restores it/);
+  assert.match(source, /Run deleted · connected icons and fitting ports safely detached · Undo restores it/);
+});
+
+test("deletes complete or incomplete T/Y fittings without leaving a stale selection", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /if \(selectedId && !drawings\.some\(\(drawing\) => drawing\.id === selectedId\)\)/);
+  assert.match(source, /if \(!upstream \|\| !downstream \|\| upstream\.points\.length < 2 \|\| downstream\.points\.length < 2\)/);
+  assert.match(source, /clearDeletedDrawingState\(\[fitting\.id\]\)/);
+  assert.match(source, /T\/Y fitting deleted · incomplete routes kept in place · Undo restores it/);
+  assert.match(source, /T\/Y fitting deleted · main run healed · branch route kept · Undo restores it/);
+  assert.doesNotMatch(source, /setSelectedId\(branchId\)/);
+  assert.match(source, /selectedDrawing\?\.fitting \? <div className="fitting-properties">/);
+  assert.match(source, /\{selectedRun && <div className="engineering-properties">/);
+});
+
+test("keeps the workspace recoverable and matches T/Y legs to run line weights", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(source, /class WorkspaceErrorBoundary extends Component/);
+  assert.match(source, /Your plan is still saved/);
+  assert.match(source, /Reload saved plan/);
+  assert.match(source, /setUndoStack\(\(stack\) => \[\.\.\.stack, drawings\]\)/);
+  assert.doesNotMatch(source, /setDrawings\(\(current\) => \{\s*setUndoStack/);
+  assert.match(source, /lineWeight\?: number/);
+  assert.match(source, /const \[runLineWeight, setRunLineWeight\] = useState\(0\.2\)/);
+  assert.match(source, /0\.10 mm · Fine/);
+  assert.match(source, /0\.20 mm · Standard/);
+  assert.match(source, /function fittingPortVisual\(fitting: Drawing, port: 0 \| 1 \| 2\)/);
+  assert.match(source, /strokeWidth: portVisuals\[0\]\.strokeWidth/);
+  assert.match(source, /portSizes\.join\("×"\)/);
+  assert.match(source, /connected T\/Y leg matched automatically/);
+  assert.match(source, /lineWeight: normalizedRunLineWeight\(drawing\.lineWeight\)/);
+  assert.match(styles, /\.line-weight-control/);
+  assert.match(styles, /\.workspace-recovery-screen/);
 });
 
 test("includes distinct vertical equipment symbols with supply and return plenums", async () => {
