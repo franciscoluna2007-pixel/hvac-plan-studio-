@@ -56,6 +56,26 @@ test("adds secure cloud projects, revisions, collaborators, and Drive packages",
   assert.match(styles, /\.cloud-revision-list/);
 });
 
+test("implements the Figma cloud dock, safe restore flow, and distinct terminal can icons", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const panel = await readFile(new URL("../app/CloudProjectsPanel.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(page, /supply-can-square/);
+  assert.match(page, /return-can-rect/);
+  assert.match(page, /variant === "supply-can"/);
+  assert.match(page, /variant === "return-can"/);
+  assert.match(page, /cloud-open/);
+  assert.match(panel, /Search cloud projects/);
+  assert.match(panel, /Review restore/);
+  assert.match(panel, /Open as working copy/);
+  assert.match(panel, /The latest cloud revision is never overwritten/);
+  assert.match(styles, /\.app-shell\.cloud-open \.workspace/);
+  assert.match(styles, /\.cloud-restore-confirm/);
+  assert.match(styles, /\.hvac-symbol \.supply-can-body/);
+  assert.match(styles, /\.hvac-symbol \.return-can-body/);
+});
+
 test("reserves plan panning for a stable right-click drag", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
