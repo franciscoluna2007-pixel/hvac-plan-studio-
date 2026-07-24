@@ -19,7 +19,7 @@ declare global {
           initTokenClient(config: {
             client_id: string;
             scope: string;
-            callback: (response: { access_token?: string; error?: string }) => void;
+            callback: (response: { access_token?: string; expires_in?: number; error?: string }) => void;
           }): { requestAccessToken(): void };
         };
       };
@@ -47,19 +47,24 @@ export type DrivePdf = { id: string; name: string; bytes: Uint8Array; webViewLin
 export type DriveProjectPackage = { id: string; name: string; webViewLink: string; updated: boolean };
 
 let accessToken = "";
+let accessTokenExpiresAt = 0;
 let configuration: GoogleDriveConfig | null = null;
+let configurationStatus: "unknown" | "ready" | "error" = "unknown";
 
 async function getConfiguration() {
   if (configuration) return configuration;
   const response = await fetch("/api/google-config", { cache: "no-store" });
   if (!response.ok) {
+    configurationStatus = "error";
     throw new Error("Google Drive setup is incomplete. Contact the HVAC Plan Studio administrator.");
   }
   const value = await response.json() as Partial<GoogleDriveConfig>;
   if (!value.clientId || !value.apiKey || !value.appId) {
+    configurationStatus = "error";
     throw new Error("Google Drive setup is incomplete. Contact the HVAC Plan Studio administrator.");
   }
   configuration = value as GoogleDriveConfig;
+  configurationStatus = "ready";
   return configuration;
 }
 
@@ -92,7 +97,8 @@ async function loadGoogleApis() {
 
 async function authorize() {
   const config = await loadGoogleApis();
-  if (accessToken) return { token: accessToken, config };
+  if (accessToken && Date.now() < accessTokenExpiresAt - 60_000) return { token: accessToken, config };
+  accessToken = "";
   const token = await new Promise<string>((resolve, reject) => {
     const client = window.google!.accounts.oauth2.initTokenClient({
       client_id: config.clientId,
@@ -100,12 +106,31 @@ async function authorize() {
       callback: (response) => {
         if (!response.access_token) return reject(new Error(response.error || "Google Drive access was not approved."));
         accessToken = response.access_token;
+        accessTokenExpiresAt = Date.now() + Math.max(300, response.expires_in || 3600) * 1000;
         resolve(accessToken);
       },
     });
     client.requestAccessToken();
   });
   return { token, config };
+}
+
+async function authorizedFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  let { token } = await authorize();
+  const request = () => fetch(input, {
+    ...init,
+    headers: {
+      ...init.headers,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  let response = await request();
+  if (response.status !== 401) return response;
+  accessToken = "";
+  accessTokenExpiresAt = 0;
+  token = (await authorize()).token;
+  response = await request();
+  return response;
 }
 
 export async function pickPdfFromDrive() {
@@ -120,12 +145,13 @@ export async function pickPdfFromDrive() {
       .setAppId(config.appId)
       .setTitle("Choose a construction PDF")
       .setCallback(async (data) => {
-        if (data.action !== window.google!.picker.Action.PICKED || !data.docs?.[0]) return;
+        if (data.action !== window.google!.picker.Action.PICKED || !data.docs?.[0]) {
+          reject(new Error("Google Drive picker closed without selecting a PDF."));
+          return;
+        }
         try {
           const document = data.docs[0];
-          const response = await fetch(`https://www.googleapis.com/drive/v3/files/${document.id}?alt=media`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const response = await authorizedFetch(`https://www.googleapis.com/drive/v3/files/${document.id}?alt=media`);
           if (!response.ok) throw new Error("The selected PDF could not be downloaded.");
           resolve({
             id: document.id,
@@ -143,10 +169,7 @@ export async function pickPdfFromDrive() {
 }
 
 export async function loadPdfFromDriveId(fileId: string, name = "Cloud project source.pdf") {
-  const { token } = await authorize();
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await authorizedFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`);
   if (!response.ok) throw new Error("The linked source PDF could not be downloaded from Google Drive.");
   return {
     id: fileId,
@@ -161,7 +184,6 @@ function safeDriveFileName(name: string) {
 }
 
 export async function saveProjectPackageToDrive(payload: Record<string, unknown>, existingFileId?: string | null) {
-  const { token } = await authorize();
   const body = JSON.stringify(payload, null, 2);
   const projectName = typeof payload.projectName === "string" ? payload.projectName : "HVAC Plan Studio";
   const metadata = {
@@ -172,10 +194,9 @@ export async function saveProjectPackageToDrive(payload: Record<string, unknown>
 
   let response: Response;
   if (existingFileId) {
-    response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(existingFileId)}?uploadType=media&fields=id,name,webViewLink`, {
+    response = await authorizedFetch(`https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(existingFileId)}?uploadType=media&fields=id,name,webViewLink`, {
       method: "PATCH",
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
       body,
@@ -187,10 +208,9 @@ export async function saveProjectPackageToDrive(payload: Record<string, unknown>
       `--${boundary}\r\nContent-Type: application/json\r\n\r\n${body}\r\n`,
       `--${boundary}--`,
     ].join("");
-    response = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink", {
+    response = await authorizedFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": `multipart/related; boundary=${boundary}`,
       },
       body: multipart,
@@ -208,5 +228,14 @@ export async function saveProjectPackageToDrive(payload: Record<string, unknown>
 }
 
 export function isDriveConfigured() {
-  return true;
+  return configurationStatus !== "error";
+}
+
+export async function checkDriveConfiguration() {
+  try {
+    await getConfiguration();
+    return true;
+  } catch {
+    return false;
+  }
 }
