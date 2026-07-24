@@ -13,8 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Starter Project",
-  description: "A clean starting point for building your site.",
+  title: {
+    default: "HVAC Plan Studio",
+    template: "%s · HVAC Plan Studio",
+  },
+  description: "A field-first HVAC design, review, collaboration, and installation delivery workspace.",
+  applicationName: "HVAC Plan Studio",
+  keywords: ["HVAC design", "duct plan", "field drawing", "HVAC takeoff", "plan review"],
   other: {
     "codex-preview": "development",
   },

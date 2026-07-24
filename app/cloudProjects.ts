@@ -132,6 +132,19 @@ export type CloudFieldRelease = {
   created_at: string;
 };
 
+export type ProjectHomeCard = CloudProject & {
+  latest_revision_id: string | null;
+  latest_revision_number: number;
+  open_work: number;
+  critical_work: number;
+  blocked_work: number;
+  pending_approvals: number;
+  changes_requested: number;
+  active_members: number;
+  file_count: number;
+  release_count: number;
+};
+
 let clientPromise: Promise<SupabaseClient> | null = null;
 
 async function getConfiguration(): Promise<CloudConfig> {
@@ -208,6 +221,40 @@ export async function listCloudProjects() {
     .order("updated_at", { ascending: false });
   if (error) throw error;
   return (data || []) as CloudProject[];
+}
+
+export async function listProjectHomeCards() {
+  const client = await getCloudClient();
+  const { data, error } = await client.rpc("list_project_home_cards");
+  if (error) {
+    // Keep Project Home useful during a staged rollout or local-only setup.
+    const projects = await listCloudProjects();
+    return projects.map((project) => ({
+      ...project,
+      latest_revision_id: null,
+      latest_revision_number: 0,
+      open_work: 0,
+      critical_work: 0,
+      blocked_work: 0,
+      pending_approvals: 0,
+      changes_requested: 0,
+      active_members: 1,
+      file_count: project.source_file_name ? 1 : 0,
+      release_count: 0,
+    })) satisfies ProjectHomeCard[];
+  }
+  return (data || []).map((project: ProjectHomeCard) => ({
+    ...project,
+    latest_revision_number: Number(project.latest_revision_number || 0),
+    open_work: Number(project.open_work || 0),
+    critical_work: Number(project.critical_work || 0),
+    blocked_work: Number(project.blocked_work || 0),
+    pending_approvals: Number(project.pending_approvals || 0),
+    changes_requested: Number(project.changes_requested || 0),
+    active_members: Number(project.active_members || 0),
+    file_count: Number(project.file_count || 0),
+    release_count: Number(project.release_count || 0),
+  })) as ProjectHomeCard[];
 }
 
 export async function createCloudProject(input: {
