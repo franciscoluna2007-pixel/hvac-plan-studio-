@@ -5,6 +5,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import { isDriveConfigured, loadPdfFromDriveId, pickPdfFromDrive } from "./googleDrive";
 import CloudProjectsPanel from "./CloudProjectsPanel";
 import type { CloudProject, CloudRevision } from "./cloudProjects";
+import { buildSystemWorkflow, type WorkflowStageId, type WorkflowSummary } from "./workflowEngine";
 import {
   AirVent,
   AlertTriangle,
@@ -171,7 +172,8 @@ const symbolPresets: SymbolPreset[] = [
   { id: "equipment-furnace", category: "Equipment", kind: "equipment", label: "SYSTEM 1 · 3 TON FURNACE", size: "3 TON", cfm: 1200, variant: "furnace" },
   { id: "equipment-package", category: "Equipment", kind: "equipment", label: "SYSTEM 1 · 3 TON PACKAGE UNIT", size: "3 TON", cfm: 1200, variant: "package" },
   { id: "equipment-fancoil", category: "Equipment", kind: "equipment", label: "SYSTEM 1 · 3 TON FAN COIL", size: "3 TON", cfm: 1200, variant: "fan-coil" },
-  { id: "equipment-heatpump", category: "Equipment", kind: "equipment", label: "SYSTEM 1 · 3 TON HEAT PUMP", size: "3 TON", cfm: 1200, variant: "heat-pump" },
+  { id: "equipment-heatpump-airhandler", category: "Equipment", kind: "equipment", label: "SYSTEM 1 · 3 TON HEAT-PUMP AHU", size: "3 TON", cfm: 1200, variant: "heat-pump-air-handler" },
+  { id: "equipment-heatpump", category: "Equipment", kind: "equipment", label: "OUTDOOR HEAT PUMP · 3 TON", size: "3 TON", cfm: 0, variant: "heat-pump" },
   { id: "equipment-erv", category: "Equipment", kind: "equipment", label: "ERV-1", size: "ERV", cfm: 150, variant: "erv" },
   { id: "equipment-hrv", category: "Equipment", kind: "equipment", label: "HRV-1", size: "HRV", cfm: 150, variant: "hrv" },
   { id: "equipment-condenser", category: "Equipment", kind: "equipment", label: "CONDENSER · SYSTEM 1", size: "3 TON", cfm: 0, variant: "condenser" },
@@ -181,6 +183,8 @@ const symbolPresets: SymbolPreset[] = [
   { id: "equipment-humidifier", category: "Equipment", kind: "equipment", label: "HUMIDIFIER", size: "HUM-1", cfm: 0, variant: "humidifier" },
   { id: "equipment-dehumidifier", category: "Equipment", kind: "equipment", label: "DEHUMIDIFIER", size: "DH-1", cfm: 200, variant: "dehumidifier" },
   { id: "equipment-boiler", category: "Equipment", kind: "equipment", label: "BOILER", size: "B-1", cfm: 0, variant: "boiler" },
+  { id: "equipment-supply-plenum", category: "Equipment", kind: "equipment", label: "SUPPLY PLENUM BOX", size: "PLENUM", cfm: 0, variant: "supply-plenum-box" },
+  { id: "equipment-return-plenum", category: "Equipment", kind: "equipment", label: "RETURN PLENUM BOX", size: "PLENUM", cfm: 0, variant: "return-plenum-box" },
   { id: "device-exhaust", category: "Air devices", kind: "fan", label: "EF-1", size: "EF-1", cfm: 80, variant: "exhaust", elevation: "CEILING" },
   { id: "device-inline", category: "Air devices", kind: "fan", label: "INLINE FAN", size: "IF-1", cfm: 150, variant: "inline", elevation: "ABOVE CEILING" },
   { id: "device-roof-fan", category: "Air devices", kind: "fan", label: "ROOF EXHAUST FAN", size: "REF-1", cfm: 600, variant: "roof", elevation: "ROOF" },
@@ -226,8 +230,11 @@ function symbolFamily(preset: SymbolPreset) {
 function symbolDimensions(size: string) {
   const parts = size.replace(/"/g, "").split(/[x×]/i).map(Number).filter(Number.isFinite);
   const ratio = parts.length > 1 ? Math.max(.35, Math.min(2.85, parts[0] / parts[1])) : 1;
-  const width = ratio >= 1 ? 24 * Math.sqrt(ratio) : 24;
-  const height = ratio >= 1 ? 24 / Math.sqrt(ratio) : 24 / ratio;
+  const nominalScale = parts.length > 1
+    ? Math.max(.78, Math.min(1.25, Math.sqrt((parts[0] * parts[1]) / 144)))
+    : 1;
+  const width = (ratio >= 1 ? 24 * Math.sqrt(ratio) : 24) * nominalScale;
+  const height = (ratio >= 1 ? 24 / Math.sqrt(ratio) : 24 / ratio) * nominalScale;
   return {
     width: Math.max(16, Math.min(42, width)),
     height: Math.max(11, Math.min(34, height)),
@@ -490,20 +497,21 @@ function SymbolArtwork({ kind, variant = "", width = 24, height = 24 }: { kind: 
       <text className="equipment-code vertical-unit-code" x="0" y="1" textAnchor="middle">{code}</text>
     </>;
     if (variant === "air-handler") return horizontalUnit("AHU", "coil");
+    if (variant === "heat-pump-air-handler") return horizontalUnit("HPAH", "coil");
     if (variant === "vertical-air-handler") return verticalUnit("VAH", false);
     if (variant === "vertical-furnace") return verticalUnit("VUF", true);
     if (variant === "fan-coil") return horizontalUnit("FCU", "fan");
     if (variant === "package") return horizontalUnit("PKG", "split");
-    if (variant === "furnace") return <>
-      <path className="supply-plenum" d="M -9 -36 L 9 -36 L 12 -16 L -12 -16 Z" />
-      <rect className="equipment-body" x="-14" y="-16" width="28" height="32" rx="2" />
-      <path className="return-plenum" d="M -12 16 L 12 16 L 9 36 L -9 36 Z" />
-      <path className="supply-flow" d="M 0 -18 L 0 -31 M -4 -27 L 0 -31 L 4 -27" />
-      <path className="return-flow" d="M 0 31 L 0 18 M -4 22 L 0 18 L 4 22" />
-      <path className="unit-detail flame" d="M -7 9 C -12 2 -4 -6 0 -10 C 1 -4 9 -1 7 8 C 4 13 -4 13 -7 9 Z" />
-      <text className="plenum-code supply-code" x="0" y="-23" textAnchor="middle">S</text>
-      <text className="plenum-code return-code" x="0" y="28" textAnchor="middle">R</text>
-      <text className="equipment-code" x="0" y="5" textAnchor="middle">FUR</text>
+    if (variant === "furnace") return horizontalUnit("FUR", "flame");
+    if (variant === "supply-plenum-box") return <>
+      <path className="supply-plenum standalone-plenum" d="M -24 -13 L 19 -10 L 27 -6 L 27 6 L 19 10 L -24 13 Z" />
+      <path className="supply-flow" d="M -14 0 L 18 0 M 13 -5 L 19 0 L 13 5" />
+      <text className="plenum-code supply-code" x="-7" y="3" textAnchor="middle">SUPPLY</text>
+    </>;
+    if (variant === "return-plenum-box") return <>
+      <path className="return-plenum standalone-plenum" d="M -27 -6 L -19 -10 L 24 -13 L 24 13 L -19 10 L -27 6 Z" />
+      <path className="return-flow" d="M 18 0 L -18 0 M -13 -5 L -19 0 L -13 5" />
+      <text className="plenum-code return-code" x="6" y="3" textAnchor="middle">RETURN</text>
     </>;
     if (variant === "rtu") return <>
       <rect className="roof-curb" x="-25" y="-17" width="50" height="34" rx="2" />
@@ -736,6 +744,7 @@ type TerminalCfmProposal = {
 };
 const primaryAirflowEquipmentVariants = new Set([
   "air-handler",
+  "heat-pump-air-handler",
   "vertical-air-handler",
   "vertical-furnace",
   "furnace",
@@ -751,6 +760,22 @@ function isPrimaryAirflowEquipment(drawing?: Drawing) {
     drawing?.symbol?.kind === "equipment" &&
     primaryAirflowEquipmentVariants.has(drawing.symbol.variant || "")
   );
+}
+
+function equipmentTypeName(variant = "") {
+  const names: Record<string, string> = {
+    "air-handler": "AHU",
+    "heat-pump-air-handler": "HEAT-PUMP AHU",
+    "vertical-air-handler": "VERTICAL AHU",
+    "vertical-furnace": "VERTICAL FURNACE",
+    furnace: "FURNACE",
+    package: "PACKAGE UNIT",
+    "fan-coil": "FAN COIL",
+    "heat-pump": "OUTDOOR HEAT PUMP",
+    condenser: "CONDENSER",
+    rtu: "RTU",
+  };
+  return names[variant] || "";
 }
 
 export default function Home() {
@@ -849,6 +874,7 @@ type SavedProject = {
   roomAirflowTargets?: Record<string, Record<string, RoomAirflowTarget>>;
   reviewDecisionsBySystem?: Record<string, Record<string, ReviewDecision>>;
   releaseRecords?: SystemReleaseRecord[];
+  workflowSummary?: WorkflowSummary;
 };
 
 type CommissioningRecord = {
@@ -1123,9 +1149,9 @@ function HVACPlanStudioApp() {
   const [fieldMode, setFieldMode] = useState(false);
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
-  const [showCfmLabels, setShowCfmLabels] = useState(true);
-  const [showLengthLabels, setShowLengthLabels] = useState(true);
-  const [showFittingLabels, setShowFittingLabels] = useState(true);
+  const [showCfmLabels, setShowCfmLabels] = useState(false);
+  const [showLengthLabels, setShowLengthLabels] = useState(false);
+  const [showFittingLabels, setShowFittingLabels] = useState(false);
   const [visibleLayers, setVisibleLayers] = useState<Record<LayerId, boolean>>(defaultVisibleLayers);
   const [backgroundOpacity, setBackgroundOpacity] = useState(100);
   const [showGrid, setShowGrid] = useState(true);
@@ -1173,8 +1199,8 @@ function HVACPlanStudioApp() {
     [activeFieldPackage, activeSystem, activeValidationDashboard, drawings, residentialFlexMax, returnVelocityLimit, supplyVelocityLimit],
   );
   const projectCommandSnapshot = useMemo(
-    () => rightTab === "field" ? projectCommandSummary() : null,
-    [activeFieldPackage, activeSystem, commissioningBySystem, drawings, fieldChecklistBySystem, punchItems, releaseRecords, reviewDecisionsBySystem, rfiItems, rightTab, scaleVerified],
+    () => projectCommandSummary(),
+    [activeFieldPackage, activeSystem, commissioningBySystem, drawings, fieldChecklistBySystem, punchItems, releaseRecords, reviewDecisionsBySystem, rfiItems, scaleVerified],
   );
   const filteredProjectRowsSnapshot = useMemo(
     () => {
@@ -1319,9 +1345,9 @@ function HVACPlanStudioApp() {
     setScaleVerified(false);
     setSystemNames(defaultSystemNames);
     setActiveSystem("system-1");
-    setShowCfmLabels(true);
-    setShowLengthLabels(true);
-    setShowFittingLabels(true);
+    setShowCfmLabels(false);
+    setShowLengthLabels(false);
+    setShowFittingLabels(false);
     setVisibleLayers(defaultVisibleLayers);
     setBackgroundOpacity(100);
     setShowGrid(true);
@@ -1360,9 +1386,9 @@ function HVACPlanStudioApp() {
       setBranchMessage("A revised PDF was detected. Existing markups were restored, but every prior field release is now stale");
     }
     setSystemNames({ ...defaultSystemNames, ...(project.systemNames || {}) });
-    setShowCfmLabels(project.showCfmLabels ?? true);
-    setShowLengthLabels(project.showLengthLabels ?? true);
-    setShowFittingLabels(project.showFittingLabels ?? true);
+    setShowCfmLabels(project.showCfmLabels ?? false);
+    setShowLengthLabels(project.showLengthLabels ?? false);
+    setShowFittingLabels(project.showFittingLabels ?? false);
     setVisibleLayers({ ...defaultVisibleLayers, ...(project.visibleLayers || {}) });
     setBackgroundOpacity(project.backgroundOpacity ?? 100);
     setShowGrid(project.showGrid ?? true);
@@ -1707,6 +1733,21 @@ function HVACPlanStudioApp() {
   }
 
   const buildProjectSnapshot = useCallback((): SavedProject => {
+    const workflow = buildSystemWorkflow({
+      runs: activeBuilderSummary.runs.length,
+      fittings: activeBuilderSummary.fittings.length,
+      devices: activeBuilderSummary.devices.length,
+      openConnections: activeBuilderSummary.unconnectedDevices,
+      brokenPorts: activeBuilderSummary.brokenPorts,
+      hasPrimaryUnit: activeBuilderSummary.devices.some((drawing) => isPrimaryAirflowEquipment(drawing)),
+      airflowBalanced: systemStats(activeSystem).balanced,
+      sizingReviews: activeBuilderSummary.sizing.length,
+      criticalIssues: activeBuilderSummary.audit.counts.critical,
+      warningIssues: activeBuilderSummary.audit.counts.warning,
+      releaseReady: activeFieldPackage.gatesClear,
+      released: activeFieldPackage.released,
+      releaseStale: activeFieldPackage.stale,
+    });
     return {
       version: 3,
       fileName,
@@ -1737,8 +1778,24 @@ function HVACPlanStudioApp() {
       roomAirflowTargets,
       reviewDecisionsBySystem,
       releaseRecords,
+      workflowSummary: {
+        version: 1,
+        activeSystemId: activeSystem,
+        stage: workflow.activeStage,
+        progress: projectCommandSnapshot.rows.length ? projectCommandSnapshot.progress : workflow.progress,
+        nextAction: workflow.nextAction,
+        updatedAt: new Date().toISOString(),
+        systems: projectCommandSnapshot.rows.map((row) => ({
+          id: row.id,
+          name: systemLabel(row.id),
+          stage: row.closeoutReady ? "Closeout complete" : row.fieldReady ? "Field ready" : row.designReady ? "Design ready" : "In progress",
+          progress: row.progress,
+          blockers: row.blockers.length,
+          fieldReady: row.fieldReady,
+        })),
+      },
     };
-  }, [backgroundOpacity, commissioningBySystem, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, visibleLayers]);
+  }, [activeBuilderSummary, activeFieldPackage, activeSystem, backgroundOpacity, commissioningBySystem, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, visibleLayers]);
 
   const saveProject = useCallback(() => {
     if (!pdf) return;
@@ -4790,6 +4847,38 @@ function HVACPlanStudioApp() {
     setRightTab("field");
   }
 
+  function continueSystemWorkflow(stage: WorkflowStageId) {
+    setRightPanelOpen(true);
+    if (stage === "runs") {
+      setRightTab("builder");
+      setActiveTool("supply");
+      setBranchMessage("Continue drawing supply, return, or fresh-air runs. Left-click draws; right-click pans");
+      return;
+    }
+    if (stage === "branches") {
+      setRightTab("builder");
+      setActiveTool("branch");
+      setBranchMessage("T/Y placement ready · split finished runs, then attach Port 3 to an existing branch run");
+      return;
+    }
+    if (stage === "connections") {
+      setRightTab("builder");
+      setActiveTool("select");
+      setBranchMessage("Review open devices and saved T/Y ports below. Nothing reconnects until you press its action");
+      return;
+    }
+    if (stage === "airflow") {
+      openSystemBalanceWorkspace("system");
+      return;
+    }
+    if (stage === "review") {
+      openSystemAuditWorkflow();
+      return;
+    }
+    setFieldView("release");
+    setRightTab("field");
+  }
+
   function openReleaseGate(gateId: string) {
     if (["critical", "warning", "connections", "rooms"].includes(gateId)) {
       setReviewQueueFilter("open");
@@ -5378,7 +5467,7 @@ function HVACPlanStudioApp() {
     const defaults: Record<SymbolKind, { label: string; size: string; cfm: number }> = {
       diffuser: { label: "12×12 SUPPLY", size: "12×12", cfm: 225 },
       returnGrille: { label: "14×14 RETURN", size: "14×14", cfm: 1200 },
-      equipment: { label: "SYSTEM 1 · 3 TON", size: "3 TON", cfm: 1200 },
+      equipment: { label: "3 TON AHU", size: "3 TON", cfm: 1200 },
       fan: { label: "EF-1", size: "EF-1", cfm: 80 },
       damper: { label: "VD · ACCESSIBLE", size: "VD", cfm: 0 },
       motorDamper: { label: "MOTORIZED OA DAMPER · 24V NC", size: "OA", cfm: 0 },
@@ -5390,6 +5479,10 @@ function HVACPlanStudioApp() {
     };
     const preset = symbolPresets.find((item) => item.id === activePresetId && item.kind === kind);
     const selectedDefaults = preset || defaults[kind];
+    const equipmentType = kind === "equipment" ? equipmentTypeName(preset?.variant || "air-handler") : "";
+    const placedLabel = kind === "equipment" && equipmentType
+      ? `${systemLabel(activeSystem).toUpperCase()} · ${selectedDefaults.size} ${equipmentType}`
+      : selectedDefaults.label;
     const snapped = snapPoint(point);
     const symbol: Drawing = {
       id: crypto.randomUUID(),
@@ -5408,7 +5501,7 @@ function HVACPlanStudioApp() {
             : ""),
       symbol: {
         kind,
-        label: selectedDefaults.label,
+        label: placedLabel,
         rotation: placementRotation,
         variant: preset?.variant,
         neckSize: ["diffuser", "returnGrille"].includes(kind) ? (kind === "returnGrille" ? "12" : "8") : undefined,
@@ -6150,7 +6243,7 @@ function HVACPlanStudioApp() {
         cfm: isPrimaryAirflowEquipment(drawing) ? Math.round(tons * 400) : drawing.cfm,
         symbol: {
           ...drawing.symbol,
-          label: `${systemLabel(drawingSystem(drawing)).toUpperCase()} · ${tons} TON`,
+          label: `${systemLabel(drawingSystem(drawing)).toUpperCase()} · ${tons} TON ${equipmentTypeName(drawing.symbol.variant) || "EQUIPMENT"}`,
         },
       };
     }));
@@ -6174,7 +6267,7 @@ function HVACPlanStudioApp() {
         cfm: targetCfm,
         symbol: {
           ...drawing.symbol,
-          label: `${systemLabel(activeSystem).toUpperCase()} · ${tons} TON`,
+          label: `${systemLabel(activeSystem).toUpperCase()} · ${tons} TON ${equipmentTypeName(drawing.symbol.variant) || "EQUIPMENT"}`,
         },
       };
     }));
@@ -6274,9 +6367,7 @@ function HVACPlanStudioApp() {
       ? { supply: { x: 10.5, y: 23 }, return: { x: -10.5, y: 23 } }
       : ["vertical-air-handler", "vertical-furnace"].includes(variant)
         ? { supply: { x: 0, y: -40 }, return: { x: 0, y: 40 } }
-        : variant === "furnace"
-          ? { supply: { x: 0, y: -36 }, return: { x: 0, y: 36 } }
-          : { supply: { x: 37, y: 0 }, return: { x: -37, y: 0 } };
+        : { supply: { x: 37, y: 0 }, return: { x: -37, y: 0 } };
     const radians = (selected.symbol?.rotation || 0) * Math.PI / 180;
     const scaleX = normalizedSymbolScale(selected.symbol?.scaleX);
     const scaleY = normalizedSymbolScale(selected.symbol?.scaleY);
@@ -6964,12 +7055,7 @@ function HVACPlanStudioApp() {
       ? usesCatalogLabel ? defaultTerminalLabel : label.trim() || defaultTerminalLabel
       : label;
     const selected = isSelected(drawing.id);
-    const sizeParts = drawing.size.replace(/"/g, "").split(/[x×]/i).map(Number).filter(Number.isFinite);
-    const canRatio = sizeParts.length > 1 ? Math.max(.35, Math.min(2.85, sizeParts[0] / sizeParts[1])) : 1;
-    const canWidth = canRatio >= 1 ? 24 * Math.sqrt(canRatio) : 24;
-    const canHeight = canRatio >= 1 ? 24 / Math.sqrt(canRatio) : 24 / canRatio;
-    const symbolWidth = Math.max(16, Math.min(42, canWidth));
-    const symbolHeight = Math.max(11, Math.min(34, canHeight));
+    const { width: symbolWidth, height: symbolHeight } = symbolDimensions(drawing.size);
     const grilleLines = Array.from({ length: Math.max(3, Math.min(8, Math.round(symbolWidth / 5))) }, (_, index) =>
       -symbolWidth / 2 + ((index + 1) * symbolWidth) / (Math.max(3, Math.min(8, Math.round(symbolWidth / 5))) + 1));
     const artworkClass = `hvac-symbol symbol-${kind} variant-${variant || "standard"} ${drawing.symbol.connectedRunId ? "terminal-linked" : ""} ${activeTraceSymbolIds.has(drawing.id) ? "traced-symbol" : ""} ${preview ? "symbol-preview" : ""} ${selected ? "selected-symbol" : ""}`;
@@ -7301,6 +7387,21 @@ function HVACPlanStudioApp() {
     openRfis: 0,
     progress: 0,
   };
+  const activeWorkflow = buildSystemWorkflow({
+    runs: activeBuilderSummary.runs.length,
+    fittings: activeBuilderSummary.fittings.length,
+    devices: activeBuilderSummary.devices.length,
+    openConnections: activeBuilderSummary.unconnectedDevices,
+    brokenPorts: activeBuilderSummary.brokenPorts,
+    hasPrimaryUnit: Boolean(activeAirflowSetup.primaryUnit),
+    airflowBalanced: activeAirflowSetup.supplyBalanced && activeAirflowSetup.returnBalanced,
+    sizingReviews: activeBuilderSummary.sizing.length,
+    criticalIssues: activeBuilderSummary.audit.counts.critical,
+    warningIssues: activeBuilderSummary.audit.counts.warning,
+    releaseReady: activeFieldPackage.gatesClear,
+    released: activeFieldPackage.released,
+    releaseStale: activeFieldPackage.stale,
+  });
   const activeFieldRuns = activeFieldPackage.runs;
 
   return (
@@ -7330,7 +7431,7 @@ function HVACPlanStudioApp() {
           <span className="divider" />
           <button className="save-button" onClick={saveProject}><Save size={16} /> {saveState === "saving" ? "Saving…" : "Saved"}</button>
           <button className={`cloud-button ${showCloudProjects ? "active" : ""}`} aria-pressed={showCloudProjects} onClick={() => setShowCloudProjects(true)}>
-            <Cloud size={16} /> Cloud Projects <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V96"}</span>
+            <Cloud size={16} /> Cloud Projects <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V98"}</span>
           </button>
           <button className="drive-button" onClick={() => void openFromDrive()}><HardDrive size={16} /> Open Drive</button>
           <button
@@ -7345,6 +7446,18 @@ function HVACPlanStudioApp() {
           <button aria-label="Settings"><Settings size={18} /></button>
         </nav>
       </header>
+
+      <div className="field-workflow-hud" aria-label="Field workflow controls">
+        <div>
+          <span>FIELD WORKFLOW · {systemLabel(activeSystem)}</span>
+          <strong>{activeWorkflow.nextAction}</strong>
+        </div>
+        <b>{activeWorkflow.progress}%</b>
+        <button className={showCfmLabels ? "active" : ""} onClick={() => setShowCfmLabels((visible) => !visible)}>CFM</button>
+        <button className={showLengthLabels ? "active" : ""} onClick={() => setShowLengthLabels((visible) => !visible)}>Distance</button>
+        <button className={showFittingLabels ? "active" : ""} onClick={() => setShowFittingLabels((visible) => !visible)}>T/Y text</button>
+        <button onClick={() => { setFieldMode(false); continueSystemWorkflow(activeWorkflow.activeStage); }}>Open task</button>
+      </div>
 
       <section className="print-header">
         <div>
@@ -8460,24 +8573,35 @@ function HVACPlanStudioApp() {
                         </text>
                       </g>;
                     })()}
-                    {symbolPreview && renderSymbol({
-                      id: "symbol-preview",
-                      type: "symbol",
-                      points: [symbolPreview.point],
-                      size: "",
-                      page: pageNumber,
-                      symbol: {
-                        kind: symbolPreview.kind,
-                        rotation: placementRotation,
-                        variant: symbolPresets.find((preset) => preset.id === activePresetId && preset.kind === symbolPreview.kind)?.variant,
-                        label: symbolPresets.find((preset) => preset.id === activePresetId && preset.kind === symbolPreview.kind)?.label || {
-                          diffuser: "12×12 SUPPLY",
-                          returnGrille: "14×14 RETURN",
-                          equipment: "SYSTEM 1 · 3 TON",
-                          fan: "EF-1",
-                        }[symbolPreview.kind],
-                      },
-                    }, true)}
+                    {symbolPreview && (() => {
+                      const preset = symbolPresets.find((item) => item.id === activePresetId && item.kind === symbolPreview.kind);
+                      const fallback = {
+                        diffuser: { label: "12×12 SUPPLY", size: "12×12", cfm: 225, elevation: "CEILING" },
+                        returnGrille: { label: "14×14 RETURN", size: "14×14", cfm: 1200, elevation: "CEILING" },
+                        equipment: { label: `${systemLabel(activeSystem).toUpperCase()} · 3 TON AHU`, size: "3 TON", cfm: 1200, elevation: "" },
+                        fan: { label: "EF-1", size: "EF-1", cfm: 80, elevation: "CEILING" },
+                      }[symbolPreview.kind];
+                      const selected = preset || fallback;
+                      const equipmentType = symbolPreview.kind === "equipment" ? equipmentTypeName(preset?.variant || "air-handler") : "";
+                      return renderSymbol({
+                        id: "symbol-preview",
+                        type: "symbol",
+                        points: [symbolPreview.point],
+                        size: selected.size,
+                        page: pageNumber,
+                        cfm: selected.cfm,
+                        elevation: selected.elevation,
+                        systemId: activeSystem,
+                        symbol: {
+                          kind: symbolPreview.kind,
+                          rotation: placementRotation,
+                          variant: preset?.variant,
+                          label: equipmentType
+                            ? `${systemLabel(activeSystem).toUpperCase()} · ${selected.size} ${equipmentType}`
+                            : selected.label,
+                        },
+                      }, true);
+                    })()}
                     {snapMarker && <g className={`snap-marker snap-${snapInfo?.kind.replace(" ", "-") || "point"}`}>
                       <circle cx={snapMarker.x} cy={snapMarker.y} r="9" />
                       <path d={`M ${snapMarker.x - 5} ${snapMarker.y} L ${snapMarker.x + 5} ${snapMarker.y} M ${snapMarker.x} ${snapMarker.y - 5} L ${snapMarker.x} ${snapMarker.y + 5}`} />
@@ -8516,15 +8640,29 @@ function HVACPlanStudioApp() {
               <div className="builder-hero-heading">
                 <span><Sparkles size={17} /></span>
                 <div><strong>SMART SYSTEM BUILDER</strong><small>{systemLabel(activeSystem)} · lines first, fittings second, cans last</small></div>
-                <b>{activeBuilderSummary.progress}%</b>
+                <b>{activeWorkflow.progress}%</b>
               </div>
-              <div className="builder-progress"><i style={{ width: `${activeBuilderSummary.progress}%` }} /></div>
+              <div className="builder-progress"><i style={{ width: `${activeWorkflow.progress}%` }} /></div>
               <div className="builder-stage-strip">
-                <span className={activeBuilderSummary.runs.length ? "complete" : "active"}><b>1</b> Runs</span>
-                <span className={activeBuilderSummary.fittings.length ? "complete" : activeBuilderSummary.runs.length ? "active" : ""}><b>2</b> T/Y</span>
-                <span className={activeBuilderSummary.devices.length ? "complete" : activeBuilderSummary.fittings.length ? "active" : ""}><b>3</b> Cans</span>
-                <span className={activeBuilderSummary.audit.counts.critical === 0 && activeBuilderSummary.runs.length ? "complete" : activeBuilderSummary.devices.length ? "active" : ""}><b>4</b> Review</span>
+                {activeWorkflow.stages.map((stage) => <button
+                  className={stage.status}
+                  key={stage.id}
+                  onClick={() => continueSystemWorkflow(stage.id)}
+                  title={stage.detail}
+                >
+                  <b>{stage.status === "complete" ? <CheckCircle2 size={9} /> : stage.number}</b>
+                  {stage.shortLabel}
+                </button>)}
               </div>
+            </div>
+
+            <div className="workflow-next-action">
+              <div>
+                <span>NEXT SAFE ACTION</span>
+                <strong>{activeWorkflow.nextAction}</strong>
+                <small>{activeWorkflow.stages.find((stage) => stage.status === "active")?.detail}</small>
+              </div>
+              <button onClick={() => continueSystemWorkflow(activeWorkflow.activeStage)}>Continue system <ArrowRight size={13} /></button>
             </div>
 
             <div className="builder-metrics">
@@ -9574,7 +9712,7 @@ function HVACPlanStudioApp() {
         <span><i className="online" /> Ready</span>
         <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor"}</span>
         <span><Ruler size={11} /> {scaleLabel}</span>
-        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · Stable Right-Click Navigation v3.1</span>
+        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · System Completion Mode v98</span>
       </footer>
       <CloudProjectsPanel
         open={showCloudProjects}
