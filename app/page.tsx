@@ -2,9 +2,17 @@
 
 import { ChangeEvent, Component, DragEvent, ErrorInfo, PointerEvent, ReactNode, WheelEvent as ReactWheelEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
-import { isDriveConfigured, loadPdfFromDriveId, pickPdfFromDrive } from "./googleDrive";
-import CloudProjectsPanel from "./CloudProjectsPanel";
-import type { CloudProject, CloudRevision } from "./cloudProjects";
+import { checkDriveConfiguration, loadPdfFromDriveId, pickPdfFromDrive } from "./googleDrive";
+import CloudProjectsPanel, { type CloudProjectRisk } from "./CloudProjectsPanel";
+import ProjectCommandPalette, { type ProjectCommand } from "./ProjectCommandPalette";
+import {
+  listCloudApprovals,
+  listCloudRevisions,
+  listCloudWorkItems,
+  issueCloudFieldRelease,
+  type CloudProject,
+  type CloudRevision,
+} from "./cloudProjects";
 import { buildSystemWorkflow, type WorkflowStageId, type WorkflowSummary } from "./workflowEngine";
 import {
   AirVent,
@@ -875,6 +883,9 @@ type SavedProject = {
   reviewDecisionsBySystem?: Record<string, Record<string, ReviewDecision>>;
   releaseRecords?: SystemReleaseRecord[];
   workflowSummary?: WorkflowSummary;
+  cloudProjectId?: string;
+  cloudRevisionId?: string;
+  cloudReleaseFingerprint?: string;
 };
 
 type CommissioningRecord = {
@@ -1056,6 +1067,10 @@ function HVACPlanStudioApp() {
   const [pdfFingerprint, setPdfFingerprint] = useState("");
   const [sourceDriveFileId, setSourceDriveFileId] = useState<string | null>(null);
   const [fileName, setFileName] = useState("Untitled HVAC Plan");
+  const [workingCloudProjectId, setWorkingCloudProjectId] = useState<string | null>(null);
+  const [workingCloudRevisionId, setWorkingCloudRevisionId] = useState<string | null>(null);
+  const [workingCloudRevisionFingerprint, setWorkingCloudRevisionFingerprint] = useState<string | null>(null);
+  const [cloudProjectRisk, setCloudProjectRisk] = useState<CloudProjectRisk | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [camera, setCamera] = useState({ x: 0, y: 0 });
@@ -1104,6 +1119,8 @@ function HVACPlanStudioApp() {
   const [balanceView, setBalanceView] = useState<"system" | "rooms" | "runs">("system");
   const [saveState, setSaveState] = useState<"saved" | "saving">("saved");
   const [showCloudProjects, setShowCloudProjects] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [driveConfigured, setDriveConfigured] = useState<boolean | null>(null);
   const [showSizingReview, setShowSizingReview] = useState(false);
   const [selectedSizingIds, setSelectedSizingIds] = useState<string[]>([]);
   const [supplyVelocityLimit, setSupplyVelocityLimit] = useState(900);
@@ -1120,6 +1137,58 @@ function HVACPlanStudioApp() {
   const [activeReviewIssueId, setActiveReviewIssueId] = useState<string | null>(null);
   const [reviewerName, setReviewerName] = useState("");
   const [reviewDecisionNote, setReviewDecisionNote] = useState("");
+
+  useEffect(() => {
+    setCloudProjectRisk((current) =>
+      current?.projectId === workingCloudProjectId ? current : null);
+  }, [workingCloudProjectId]);
+
+  const refreshWorkingCloudRisk = useCallback(async () => {
+    if (!workingCloudProjectId) {
+      setCloudProjectRisk(null);
+      return null;
+    }
+    try {
+      const [cloudRevisions, cloudWorkItems, cloudApprovals] = await Promise.all([
+        listCloudRevisions(workingCloudProjectId),
+        listCloudWorkItems(workingCloudProjectId),
+        listCloudApprovals(workingCloudProjectId),
+      ]);
+      const latestRevisionId = cloudRevisions[0]?.id || null;
+      const risk: CloudProjectRisk = {
+        projectId: workingCloudProjectId,
+        verification: "verified",
+        latestRevisionId,
+        latestRevisionNumber: cloudRevisions[0]?.revision_number || 0,
+        latestReleaseFingerprint: cloudRevisions[0]?.release_fingerprint || null,
+        openCriticalWork: cloudWorkItems.filter((item) =>
+          item.priority === "critical" && !["resolved", "closed"].includes(item.status)).length,
+        pendingApprovals: cloudApprovals.filter((approval) =>
+          approval.revision_id === latestRevisionId && approval.status === "requested").length,
+        changesRequested: cloudApprovals.filter((approval) =>
+          approval.revision_id === latestRevisionId && approval.status === "changes_requested").length,
+        approvedApprovals: cloudApprovals.filter((approval) =>
+          approval.revision_id === latestRevisionId && approval.status === "approved").length,
+      };
+      setCloudProjectRisk(risk);
+      return risk;
+    } catch {
+      const risk: CloudProjectRisk = {
+        projectId: workingCloudProjectId,
+        verification: "unverified",
+        latestRevisionId: null,
+        latestRevisionNumber: 0,
+        latestReleaseFingerprint: null,
+        openCriticalWork: 0,
+        pendingApprovals: 0,
+        changesRequested: 0,
+        approvedApprovals: 0,
+      };
+      setCloudProjectRisk(risk);
+      return risk;
+    }
+  }, [workingCloudProjectId]);
+
   const [reviewDecisionsBySystem, setReviewDecisionsBySystem] = useState<Record<string, Record<string, ReviewDecision>>>({});
   const [fieldView, setFieldView] = useState<"release" | "installer" | "coordination" | "startup">("release");
   const [fieldChecklistBySystem, setFieldChecklistBySystem] = useState<Record<string, Record<string, boolean>>>({});
@@ -1162,6 +1231,32 @@ function HVACPlanStudioApp() {
   const [systemNames, setSystemNames] = useState<Record<string, string>>(defaultSystemNames);
   const [roomAirflowTargets, setRoomAirflowTargets] = useState<Record<string, Record<string, RoomAirflowTarget>>>({});
   const [selectedCfmProposalIds, setSelectedCfmProposalIds] = useState<string[]>([]);
+
+  const currentCloudReleaseFingerprint = useMemo(() => cloudReleaseFingerprintFromProject({
+    drawings,
+    pdfFingerprint,
+    scaleFeetPerUnit,
+    scaleLabel,
+    scaleVerified,
+    systemNames,
+    supplyVelocityLimit,
+    returnVelocityLimit,
+    freshVelocityLimit,
+    residentialFlexMax,
+    fieldChecklistBySystem,
+    punchItems,
+    rfiItems,
+    roomAirflowTargets,
+    reviewDecisionsBySystem,
+  }), [drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, supplyVelocityLimit, systemNames]);
+
+  useEffect(() => {
+    if (!workingCloudProjectId || rightTab !== "field" || fieldView !== "release") return;
+    void refreshWorkingCloudRisk();
+    const timer = window.setInterval(() => void refreshWorkingCloudRisk(), 60_000);
+    return () => window.clearInterval(timer);
+  }, [fieldView, refreshWorkingCloudRisk, rightTab, workingCloudProjectId]);
+
   const dragRef = useRef<DragState | null>(null);
   const panRef = useRef<PanState | null>(null);
   const pendingFocusRef = useRef<{ page: number; point: Point } | null>(null);
@@ -1192,7 +1287,7 @@ function HVACPlanStudioApp() {
   );
   const activeFieldPackage = useMemo(
     () => fieldPackageSummary(activeReviewSummary, activeFieldConnections),
-    [activeFieldConnections, activeReviewSummary, activeSystem, drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, supplyVelocityLimit],
+    [activeFieldConnections, activeReviewSummary, activeSystem, cloudProjectRisk, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, supplyVelocityLimit, workingCloudProjectId, workingCloudRevisionFingerprint, workingCloudRevisionId],
   );
   const activeBuilderSummary = useMemo(
     () => systemBuilderSummary(activeValidationDashboard, activeFieldPackage),
@@ -1218,6 +1313,14 @@ function HVACPlanStudioApp() {
       return current.includes(selectedId) ? current : [selectedId];
     });
   }, [selectedId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void checkDriveConfiguration().then((configured) => {
+      if (!cancelled) setDriveConfigured(configured);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (selectedId && !drawings.some((drawing) => drawing.id === selectedId)) {
@@ -1406,6 +1509,12 @@ function HVACPlanStudioApp() {
     setRoomAirflowTargets(project.roomAirflowTargets || {});
     setReviewDecisionsBySystem(project.reviewDecisionsBySystem || {});
     setReleaseRecords(project.releaseRecords || []);
+    setWorkingCloudProjectId(project.cloudProjectId || null);
+    setWorkingCloudRevisionId(project.cloudRevisionId || null);
+    setWorkingCloudRevisionFingerprint(
+      project.cloudReleaseFingerprint ||
+      (project.cloudProjectId ? cloudReleaseFingerprintFromProject(project) : null),
+    );
     setSelectedCfmProposalIds([]);
     setActiveReviewIssueId(null);
     setUndoStack([]);
@@ -1417,6 +1526,9 @@ function HVACPlanStudioApp() {
       const stored = localStorage.getItem(`${STORAGE_PREFIX}${name.toLowerCase()}`);
       if (!stored) {
         setDrawings([]);
+        setWorkingCloudProjectId(null);
+        setWorkingCloudRevisionId(null);
+        setWorkingCloudRevisionFingerprint(null);
         resetProjectWorkflowState();
         setUndoStack([]);
         setRedoStack([]);
@@ -1425,6 +1537,9 @@ function HVACPlanStudioApp() {
       applyProjectSnapshot(JSON.parse(stored) as SavedProject, sourceFingerprint);
     } catch {
       setDrawings([]);
+      setWorkingCloudProjectId(null);
+      setWorkingCloudRevisionId(null);
+      setWorkingCloudRevisionFingerprint(null);
       resetProjectWorkflowState();
       setUndoStack([]);
       setRedoStack([]);
@@ -1447,6 +1562,9 @@ function HVACPlanStudioApp() {
       setPdf(document);
       setPdfFingerprint(sourceFingerprint);
       setSourceDriveFileId(null);
+      setWorkingCloudProjectId(null);
+      setWorkingCloudRevisionId(null);
+      setWorkingCloudRevisionFingerprint(null);
       setFileName(projectName);
       setPageNumber(1);
       setZoom(1);
@@ -1468,6 +1586,9 @@ function HVACPlanStudioApp() {
       setPdf(document);
       setPdfFingerprint(sourceFingerprint);
       setSourceDriveFileId(driveFileId || null);
+      setWorkingCloudProjectId(null);
+      setWorkingCloudRevisionId(null);
+      setWorkingCloudRevisionFingerprint(null);
       setFileName(projectName);
       setPageNumber(1);
       setZoom(1);
@@ -1515,6 +1636,13 @@ function HVACPlanStudioApp() {
       }
       setFileName(savedProject.fileName || project.name);
       applyProjectSnapshot(savedProject, sourceFingerprint);
+      setWorkingCloudProjectId(project.id);
+      setWorkingCloudRevisionId(revision.id);
+      setWorkingCloudRevisionFingerprint(
+        revision.release_fingerprint ||
+        savedProject.cloudReleaseFingerprint ||
+        cloudReleaseFingerprintFromProject(savedProject),
+      );
       setBranchMessage(`Cloud revision R${revision.revision_number} restored · local autosave is active`);
       setShowCloudProjects(false);
     } catch (cloudError) {
@@ -1778,6 +1906,9 @@ function HVACPlanStudioApp() {
       roomAirflowTargets,
       reviewDecisionsBySystem,
       releaseRecords,
+      cloudProjectId: workingCloudProjectId || undefined,
+      cloudRevisionId: workingCloudRevisionId || undefined,
+      cloudReleaseFingerprint: currentCloudReleaseFingerprint,
       workflowSummary: {
         version: 1,
         activeSystemId: activeSystem,
@@ -1795,7 +1926,7 @@ function HVACPlanStudioApp() {
         })),
       },
     };
-  }, [activeBuilderSummary, activeFieldPackage, activeSystem, backgroundOpacity, commissioningBySystem, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, visibleLayers]);
+  }, [activeBuilderSummary, activeFieldPackage, activeSystem, backgroundOpacity, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
 
   const saveProject = useCallback(() => {
     if (!pdf) return;
@@ -3653,6 +3784,39 @@ function HVACPlanStudioApp() {
     return (hash >>> 0).toString(36);
   }
 
+  function canonicalReleaseValue(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(canonicalReleaseValue);
+    if (!value || typeof value !== "object") return value;
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalReleaseValue(entry)]),
+    );
+  }
+
+  function cloudReleaseFingerprintFromProject(project: Partial<SavedProject>) {
+    const releaseState = {
+      drawings: [...(project.drawings || [])].sort((left, right) => left.id.localeCompare(right.id)),
+      pdfFingerprint: project.pdfFingerprint || "",
+      scaleFeetPerUnit: project.scaleFeetPerUnit || 0,
+      scaleLabel: project.scaleLabel || "",
+      scaleVerified: Boolean(project.scaleVerified),
+      systemNames: project.systemNames || {},
+      velocityRules: {
+        supply: project.supplyVelocityLimit || 0,
+        return: project.returnVelocityLimit || 0,
+        fresh: project.freshVelocityLimit || 0,
+        residentialFlexMax: project.residentialFlexMax || "",
+      },
+      fieldChecklistBySystem: project.fieldChecklistBySystem || {},
+      punchItems: project.punchItems || [],
+      rfiItems: project.rfiItems || [],
+      roomAirflowTargets: project.roomAirflowTargets || {},
+      reviewDecisionsBySystem: project.reviewDecisionsBySystem || {},
+    };
+    return stableTextHash(JSON.stringify(canonicalReleaseValue(releaseState)));
+  }
+
   function stableByteHash(value: Uint8Array) {
     let hash = 2166136261;
     for (let index = 0; index < value.length; index += 1) {
@@ -4130,6 +4294,20 @@ function HVACPlanStudioApp() {
       reviewDecisions,
       rfiState,
       punchState,
+      cloudReview: cloudProjectRisk?.projectId === workingCloudProjectId ? {
+        projectId: cloudProjectRisk.projectId,
+        verification: cloudProjectRisk.verification,
+        latestRevisionId: cloudProjectRisk.latestRevisionId,
+        latestRevisionNumber: cloudProjectRisk.latestRevisionNumber,
+        latestReleaseFingerprint: cloudProjectRisk.latestReleaseFingerprint,
+        openCriticalWork: cloudProjectRisk.openCriticalWork,
+        pendingApprovals: cloudProjectRisk.pendingApprovals,
+        changesRequested: cloudProjectRisk.changesRequested,
+        approvedApprovals: cloudProjectRisk.approvedApprovals,
+        workingRevisionId: workingCloudRevisionId,
+        workingRevisionFingerprint: workingCloudRevisionFingerprint,
+        currentReleaseFingerprint: currentCloudReleaseFingerprint,
+      } : null,
     }));
   }
 
@@ -4543,6 +4721,27 @@ function HVACPlanStudioApp() {
     const openRfis = activeRfiItems().filter((item) => !["approved", "closed"].includes(item.status)).length;
     const openPunches = activePunchItems().filter((item) => item.status === "open").length;
     const criticalPunches = activePunchItems().filter((item) => item.status === "open" && item.priority === "critical").length;
+    const activeCloudRisk = cloudProjectRisk?.projectId === workingCloudProjectId ? cloudProjectRisk : null;
+    const cloudReviewHolds = activeCloudRisk
+      ? activeCloudRisk.openCriticalWork + activeCloudRisk.pendingApprovals + activeCloudRisk.changesRequested
+      : 0;
+    const cloudRevisionCurrent = Boolean(
+      activeCloudRisk?.verification === "verified" &&
+      activeCloudRisk.latestRevisionId &&
+      activeCloudRisk.latestRevisionId === workingCloudRevisionId &&
+      activeCloudRisk.latestReleaseFingerprint &&
+      activeCloudRisk.latestReleaseFingerprint === workingCloudRevisionFingerprint &&
+      workingCloudRevisionFingerprint === currentCloudReleaseFingerprint,
+    );
+    let cloudGateDetail = "Cloud status not verified";
+    if (activeCloudRisk?.verification === "verified") {
+      if (!activeCloudRisk.latestRevisionId) cloudGateDetail = "Save a named cloud revision";
+      else if (activeCloudRisk.latestRevisionId !== workingCloudRevisionId) cloudGateDetail = `Open latest revision R${activeCloudRisk.latestRevisionNumber}`;
+      else if (!cloudRevisionCurrent) cloudGateDetail = "Working drawing changed · save a new revision";
+      else if (activeCloudRisk.approvedApprovals < 1) cloudGateDetail = `Revision R${activeCloudRisk.latestRevisionNumber} needs approval`;
+      else if (cloudReviewHolds) cloudGateDetail = `${activeCloudRisk.openCriticalWork} critical · ${activeCloudRisk.pendingApprovals} pending · ${activeCloudRisk.changesRequested} changes requested`;
+      else cloudGateDetail = `Revision R${activeCloudRisk.latestRevisionNumber} approved`;
+    }
     const gates = [
       { id: "runs", label: "Duct runs drawn", clear: Boolean(runs.length), detail: runs.length ? `${runs.length} runs` : "No duct runs" },
       { id: "critical", label: "Critical review issues fixed", clear: critical === 0, detail: critical ? `${critical} critical` : "Clear" },
@@ -4554,6 +4753,12 @@ function HVACPlanStudioApp() {
       { id: "checklist", label: "Field checklist complete", clear: checklistComplete === fieldChecklistItems.length, detail: `${checklistComplete}/${fieldChecklistItems.length}` },
       { id: "rfi", label: "RFIs approved or closed", clear: openRfis === 0, detail: openRfis ? `${openRfis} open` : "Clear" },
       { id: "punch", label: "Critical punch items closed", clear: criticalPunches === 0, detail: criticalPunches ? `${criticalPunches} critical` : "Clear" },
+      ...(workingCloudProjectId ? [{
+        id: "cloud",
+        label: "Latest cloud revision approved and current",
+        clear: cloudRevisionCurrent && cloudReviewHolds === 0 && (activeCloudRisk?.approvedApprovals || 0) > 0,
+        detail: cloudGateDetail,
+      }] : []),
     ];
     const gatesClear = gates.every((gate) => gate.clear);
     const latestRelease = latestSystemRelease();
@@ -4589,7 +4794,51 @@ function HVACPlanStudioApp() {
     };
   }
 
-  function issueSystemRelease() {
+  async function issueSystemRelease() {
+    let verifiedCloudRisk: CloudProjectRisk | null = null;
+    if (workingCloudProjectId) {
+      const previousRisk = cloudProjectRisk?.projectId === workingCloudProjectId ? cloudProjectRisk : null;
+      const verifiedRisk = await refreshWorkingCloudRisk();
+      verifiedCloudRisk = verifiedRisk;
+      if (!verifiedRisk || verifiedRisk.verification !== "verified") {
+        setBranchMessage("Field release is blocked until cloud work and reviews can be verified");
+        return;
+      }
+      const riskChanged = !previousRisk ||
+        previousRisk.latestRevisionId !== verifiedRisk.latestRevisionId ||
+        previousRisk.openCriticalWork !== verifiedRisk.openCriticalWork ||
+        previousRisk.pendingApprovals !== verifiedRisk.pendingApprovals ||
+        previousRisk.changesRequested !== verifiedRisk.changesRequested ||
+        previousRisk.approvedApprovals !== verifiedRisk.approvedApprovals ||
+        previousRisk.latestReleaseFingerprint !== verifiedRisk.latestReleaseFingerprint ||
+        previousRisk.verification !== verifiedRisk.verification;
+      if (riskChanged) {
+        setBranchMessage("Cloud review status refreshed. Review the updated release gate, then issue again");
+        return;
+      }
+      if (verifiedRisk.openCriticalWork + verifiedRisk.pendingApprovals + verifiedRisk.changesRequested > 0) {
+        setBranchMessage("Field release is blocked by cloud reviews or critical project work");
+        setShowCloudProjects(true);
+        return;
+      }
+      if (!verifiedRisk.latestRevisionId || verifiedRisk.latestRevisionId !== workingCloudRevisionId) {
+        setBranchMessage("Open the latest cloud revision before issuing it for field use");
+        setShowCloudProjects(true);
+        return;
+      }
+      if (!verifiedRisk.latestReleaseFingerprint ||
+        verifiedRisk.latestReleaseFingerprint !== workingCloudRevisionFingerprint ||
+        workingCloudRevisionFingerprint !== currentCloudReleaseFingerprint) {
+        setBranchMessage("The working drawing changed. Save and approve a new named revision before field release");
+        setShowCloudProjects(true);
+        return;
+      }
+      if (verifiedRisk.approvedApprovals < 1) {
+        setBranchMessage(`Cloud revision R${verifiedRisk.latestRevisionNumber} needs an approval before field release`);
+        setShowCloudProjects(true);
+        return;
+      }
+    }
     const summary = activeFieldPackage;
     if (!summary.gatesClear) {
       setBranchMessage("Release is blocked. Clear every release gate first");
@@ -4603,7 +4852,7 @@ function HVACPlanStudioApp() {
       setBranchMessage(`Revision ${summary.latestRelease.revision} is already the current field release`);
       return;
     }
-    const record: SystemReleaseRecord = {
+    const draftRecord: SystemReleaseRecord = {
       id: crypto.randomUUID(),
       systemId: activeSystem,
       revision: releaseRevision.trim(),
@@ -4630,6 +4879,29 @@ function HVACPlanStudioApp() {
       })),
       rulesSnapshot: { scaleLabel, scaleFeetPerUnit, supplyVelocityLimit, returnVelocityLimit, freshVelocityLimit, residentialFlexMax },
     };
+    let record = draftRecord;
+    if (workingCloudProjectId && verifiedCloudRisk?.latestRevisionId) {
+      try {
+        const cloudRelease = await issueCloudFieldRelease({
+          projectId: workingCloudProjectId,
+          revisionId: verifiedCloudRisk.latestRevisionId,
+          releaseFingerprint: currentCloudReleaseFingerprint,
+          systemId: activeSystem,
+          releaseRevision: draftRecord.revision,
+          releasedByName: draftRecord.releasedBy,
+          drawingSignature: draftRecord.drawingSignature,
+          releaseSignature: draftRecord.releaseSignature,
+          releasePayload: draftRecord as unknown as Record<string, unknown>,
+        });
+        record = { ...draftRecord, id: cloudRelease.id, releasedAt: cloudRelease.created_at };
+      } catch (cloudError) {
+        setBranchMessage(cloudError instanceof Error
+          ? cloudError.message
+          : "The cloud release check changed. Review the project and try again.");
+        void refreshWorkingCloudRisk();
+        return;
+      }
+    }
     setReleaseRecords((current) => [...current, record]);
     setBranchMessage(`${systemLabel(activeSystem)} revision ${record.revision} released for field use`);
     setReleaseNote("");
@@ -4880,6 +5152,10 @@ function HVACPlanStudioApp() {
   }
 
   function openReleaseGate(gateId: string) {
+    if (gateId === "cloud") {
+      setShowCloudProjects(true);
+      return;
+    }
     if (["critical", "warning", "connections", "rooms"].includes(gateId)) {
       setReviewQueueFilter("open");
       setReviewView("issues");
@@ -7239,9 +7515,29 @@ function HVACPlanStudioApp() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.matches("input, select, textarea")) return;
       const key = event.key.toLowerCase();
+      if (showCommandPalette) {
+        if (event.key === "Escape" || ((event.ctrlKey || event.metaKey) && key === "k")) {
+          event.preventDefault();
+          setShowCommandPalette(false);
+        }
+        return;
+      }
+      if (showCloudProjects) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setShowCloudProjects(false);
+        }
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && key === "k") {
+        event.preventDefault();
+        setShowCommandPalette((visible) => !visible);
+        return;
+      }
+      if (target?.matches("input, select, textarea")) return;
       if (event.key === "Escape") {
+        setShowCommandPalette(false);
         setDraft([]);
         setContinuingRunId(null);
         setPendingBranchFittingId(null);
@@ -7403,6 +7699,93 @@ function HVACPlanStudioApp() {
     releaseStale: activeFieldPackage.stale,
   });
   const activeFieldRuns = activeFieldPackage.runs;
+  const projectCommands: ProjectCommand[] = [
+    {
+      id: "project-hub",
+      label: "Open Project Intelligence Hub",
+      detail: "Readiness, work, approvals, files, people, and immutable revisions",
+      group: "Project",
+      shortcut: "P",
+      keywords: "cloud command center dashboard collaboration",
+      run: () => setShowCloudProjects(true),
+    },
+    {
+      id: "continue-work",
+      label: activeWorkflow.nextAction,
+      detail: `${systemLabel(activeSystem)} · continue the next safe system step`,
+      group: "Project",
+      shortcut: "↵",
+      run: () => continueSystemWorkflow(activeWorkflow.activeStage),
+    },
+    {
+      id: "supply-run",
+      label: "Start a supply run",
+      detail: `Draw a ${ductSize}" supply route on the active sheet`,
+      group: "Draw",
+      shortcut: "S",
+      run: () => { finishDrawing(); setActiveTool("supply"); },
+    },
+    {
+      id: "return-run",
+      label: "Start a return run",
+      detail: `Draw a ${ductSize}" return route on the active sheet`,
+      group: "Draw",
+      shortcut: "R",
+      run: () => { finishDrawing(); setActiveTool("return"); },
+    },
+    {
+      id: "branch-pass",
+      label: "Start the run-first T/Y branch pass",
+      detail: "Draw routes first, then split and attach each reviewed fitting",
+      group: "Draw",
+      shortcut: "B",
+      run: () => { finishDrawing(); setBranchWorkflow("run-first"); setActiveTool("branch"); },
+    },
+    {
+      id: "airflow",
+      label: "Open system airflow and balancing",
+      detail: "Review tonnage, scheduled CFM, returns, and proposed sizes",
+      group: "Systems",
+      run: () => openSystemBalanceWorkspace("system"),
+    },
+    {
+      id: "plan-review",
+      label: "Run the HVAC plan review",
+      detail: "Prioritized, explainable findings with hard field-release gates",
+      group: "Review",
+      run: openSystemAuditWorkflow,
+    },
+    {
+      id: "field-release",
+      label: "Open Field Release Center",
+      detail: "Installation package, RFI, punch, startup, and named approval",
+      group: "Field",
+      run: () => { setRightPanelOpen(true); setRightTab("field"); setFieldView("release"); },
+    },
+    {
+      id: "sheets",
+      label: "Open sheet navigator",
+      detail: pdf ? `Jump across ${pdf.numPages} construction sheet${pdf.numPages === 1 ? "" : "s"}` : "Import a PDF to activate sheets",
+      group: "Navigate",
+      disabled: !pdf,
+      run: () => setShowSheetNavigator(true),
+    },
+    {
+      id: "drive",
+      label: "Open a source plan from Google Drive",
+      detail: "Choose an authorized PDF using the connected Google app",
+      group: "Project",
+      run: () => void openFromDrive(),
+    },
+    ...systems.filter((system) => systemStats(system.id).objects > 0).map((system): ProjectCommand => ({
+      id: `system-${system.id}`,
+      label: `Go to ${systemLabel(system.id)}`,
+      detail: `${systemStats(system.id).designCfm} design CFM · ${systemStats(system.id).balanced ? "balanced" : "review airflow"}`,
+      group: "Systems",
+      keywords: system.id,
+      run: () => { setActiveSystem(system.id); setSelectedId(null); },
+    })),
+  ];
 
   return (
     <main className={`app-shell ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${["rooms", "checks", "field"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""}`}>
@@ -7411,7 +7794,7 @@ function HVACPlanStudioApp() {
           <div className="brand-mark"><Wind size={23} strokeWidth={2.4} /></div>
           <div>
             <strong>HVAC Plan Studio</strong>
-            <span>Professional Drafting Workspace</span>
+            <span>HVAC Delivery Operating System</span>
           </div>
         </div>
 
@@ -7430,8 +7813,11 @@ function HVACPlanStudioApp() {
           <button aria-label={`Duplicate ${selectedIds.length || ""} selected object${selectedIds.length === 1 ? "" : "s"}`} disabled={!selectedId} onClick={duplicateSelected}><Copy size={16} /></button>
           <span className="divider" />
           <button className="save-button" onClick={saveProject}><Save size={16} /> {saveState === "saving" ? "Saving…" : "Saved"}</button>
+          <button className="command-button" onClick={() => setShowCommandPalette(true)} title="Open command palette · Ctrl/⌘ K">
+            <Search size={16} /> <span>Command</span><kbd>⌘K</kbd>
+          </button>
           <button className={`cloud-button ${showCloudProjects ? "active" : ""}`} aria-pressed={showCloudProjects} onClick={() => setShowCloudProjects(true)}>
-            <Cloud size={16} /> Cloud Projects <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V98"}</span>
+            <Cloud size={16} /> Project Hub <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V100"}</span>
           </button>
           <button className="drive-button" onClick={() => void openFromDrive()}><HardDrive size={16} /> Open Drive</button>
           <button
@@ -8619,7 +9005,8 @@ function HVACPlanStudioApp() {
                 <button className="drive-upload-button" disabled={loading} onClick={() => void openFromDrive()}><HardDrive size={17} /> Open from Drive</button>
               </div>
               <span>or drag and drop a file here</span>
-              {!isDriveConfigured() && <div className="drive-setup-note">Drive button ready · Google app credentials still need to be added</div>}
+              {driveConfigured === null && <div className="drive-setup-note">Checking Google Drive connection…</div>}
+              {driveConfigured === false && <div className="drive-setup-note">Google Drive needs administrator configuration before it can open plans.</div>}
               <div className="file-note"><CircleDot size={13} /> PDF up to 100 MB · Set drawing scale after upload</div>
             </div>}
           </div>
@@ -9712,16 +10099,39 @@ function HVACPlanStudioApp() {
         <span><i className="online" /> Ready</span>
         <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor"}</span>
         <span><Ruler size={11} /> {scaleLabel}</span>
-        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · System Completion Mode v98</span>
+        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · Project Intelligence v100</span>
       </footer>
       <CloudProjectsPanel
         open={showCloudProjects}
         currentName={fileName}
         currentSourceFileName={pdf ? `${fileName}.pdf` : undefined}
         currentSourceDriveFileId={sourceDriveFileId}
+        workingProjectId={workingCloudProjectId}
         buildSnapshot={() => buildProjectSnapshot() as unknown as Record<string, unknown>}
         onRestoreRevision={(snapshot, project, revision) => void restoreCloudRevision(snapshot, project, revision)}
+        onWorkingProjectChange={(projectId) => {
+          setWorkingCloudProjectId(projectId);
+          setWorkingCloudRevisionId(null);
+          setWorkingCloudRevisionFingerprint(null);
+        }}
+        onWorkingRevisionSaved={(revision) => {
+          setWorkingCloudRevisionId(revision.id);
+          setWorkingCloudRevisionFingerprint(
+            revision.release_fingerprint ||
+            String(revision.snapshot.cloudReleaseFingerprint || currentCloudReleaseFingerprint),
+          );
+        }}
+        onProjectRiskChange={setCloudProjectRisk}
+        onContinueWorkflow={() => {
+          setShowCloudProjects(false);
+          continueSystemWorkflow(activeWorkflow.activeStage);
+        }}
         onClose={() => setShowCloudProjects(false)}
+      />
+      <ProjectCommandPalette
+        open={showCommandPalette}
+        commands={projectCommands}
+        onClose={() => setShowCommandPalette(false)}
       />
     </main>
   );
