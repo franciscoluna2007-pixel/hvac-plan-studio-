@@ -119,6 +119,7 @@ const symbolPresets: SymbolPreset[] = [
   { id: "supply-square-8", category: "Supply air", kind: "diffuser", label: "SMALL 4-WAY SUPPLY", size: "8×8", cfm: 100, variant: "4way", elevation: "CEILING" },
   { id: "supply-square-10", category: "Supply air", kind: "diffuser", label: "4-WAY SUPPLY", size: "10×10", cfm: 150, variant: "4way", elevation: "CEILING" },
   { id: "supply-square-14", category: "Supply air", kind: "diffuser", label: "LARGE 4-WAY SUPPLY", size: "14×14", cfm: 300, variant: "4way", elevation: "CEILING" },
+  { id: "supply-can-square", category: "Supply air", kind: "diffuser", label: "SQUARE SUPPLY CAN", size: "12×12", cfm: 225, variant: "supply-can", elevation: "CEILING" },
   { id: "supply-boot", category: "Supply air", kind: "diffuser", label: "REGISTER BOOT", size: "12×4", cfm: 125, variant: "boot", elevation: "HIGH WALL" },
   { id: "supply-floor", category: "Supply air", kind: "diffuser", label: "FLOOR REGISTER", size: "4×10", cfm: 100, variant: "floor", elevation: "FLOOR" },
   { id: "supply-perforated", category: "Supply air", kind: "diffuser", label: "PERFORATED SUPPLY", size: "24×24", cfm: 300, variant: "perforated", elevation: "CEILING" },
@@ -145,6 +146,7 @@ const symbolPresets: SymbolPreset[] = [
   { id: "supply-slot-1", category: "Supply air", kind: "diffuser", label: "1-SLOT LINEAR DIFFUSER", size: "1-SLOT", cfm: 100, variant: "slot-1", elevation: "CEILING" },
   { id: "supply-slot-4", category: "Supply air", kind: "diffuser", label: "4-SLOT LINEAR DIFFUSER", size: "4-SLOT", cfm: 300, variant: "slot-4", elevation: "CEILING" },
   { id: "return-standard", category: "Return air", kind: "returnGrille", label: "RETURN GRILLE", size: "14×14", cfm: 400, variant: "grille", elevation: "CEILING" },
+  { id: "return-can-rect", category: "Return air", kind: "returnGrille", label: "RECTANGULAR RETURN CAN", size: "20×12", cfm: 600, variant: "return-can", elevation: "CEILING" },
   { id: "return-filter", category: "Return air", kind: "returnGrille", label: "FILTER RETURN", size: "20×20", cfm: 800, variant: "filter", elevation: "CEILING" },
   { id: "return-eggcrate", category: "Return air", kind: "returnGrille", label: "EGGCRATE RETURN", size: "14×14", cfm: 400, variant: "eggcrate", elevation: "CEILING" },
   { id: "return-door", category: "Return air", kind: "returnGrille", label: "DOOR TRANSFER GRILLE", size: "12×12", cfm: 250, variant: "transfer", elevation: "HIGH WALL" },
@@ -250,6 +252,13 @@ function SymbolArtwork({ kind, variant = "", width = 24, height = 24 }: { kind: 
   });
 
   if (kind === "diffuser") {
+    if (variant === "supply-can") return <>
+      <rect className="supply-can-body" x={x} y={y + 3} width={width} height={height - 3} rx="2" />
+      <circle className="supply-can-collar" cx="0" cy={y + 3} r={Math.max(4, Math.min(7, width / 4))} />
+      <path className="supply-detail" d={`M ${x + 4} ${y + 9} L ${width / 2 - 4} ${y + 9} M ${x + 4} ${y + 14} L ${width / 2 - 4} ${y + 14} M ${x + 4} ${y + 19} L ${width / 2 - 4} ${y + 19}`} />
+      <path className="air-pattern" d={`M 0 ${height / 2} L 0 ${height / 2 + 10} M -4 ${height / 2 + 6} L 0 ${height / 2 + 10} L 4 ${height / 2 + 6}`} />
+      <text className="can-code supply-code" x={width / 2 - 5} y={height / 2 - 3} textAnchor="middle">S</text>
+    </>;
     if (variant === "round") return <>
       <circle className="supply-face" cx="0" cy="0" r="11" />
       <circle className="supply-detail" cx="0" cy="0" r="6.5" />
@@ -362,6 +371,13 @@ function SymbolArtwork({ kind, variant = "", width = 24, height = 24 }: { kind: 
   }
 
   if (kind === "returnGrille") {
+    if (variant === "return-can") return <>
+      <rect className="return-can-body" x={x} y={y} width={width - 4} height={height} rx="2" />
+      <circle className="return-can-collar" cx={width / 2 - 3} cy="0" r={Math.max(4, Math.min(7, height / 3))} />
+      {verticals.slice(0, 5).map((lineX, index) => <line className="return-detail" key={index} x1={lineX - 2} y1={y + 4} x2={lineX - 2} y2={height / 2 - 4} />)}
+      <path className="return-intake" d={`M ${x - 9} 0 L ${x - 2} 0 M ${x - 6} -4 L ${x - 2} 0 L ${x - 6} 4`} />
+      <text className="can-code return-code" x={x + 5} y={height / 2 - 3} textAnchor="middle">R</text>
+    </>;
     if (variant.startsWith("slot-return")) {
       const slotCount = variant === "slot-return" ? 2 : Math.max(1, Number(variant.split("-").at(-1)) || 1);
       const slotLines = Array.from({ length: slotCount }, (_, index) => ((index + 1) * 12) / (slotCount + 1) - 6);
@@ -7288,7 +7304,7 @@ function HVACPlanStudioApp() {
   const activeFieldRuns = activeFieldPackage.runs;
 
   return (
-    <main className={`app-shell ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${["rooms", "checks", "field"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""}`}>
+    <main className={`app-shell ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${["rooms", "checks", "field"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""}`}>
       <header className="topbar">
         <div className="brand">
           <div className="brand-mark"><Wind size={23} strokeWidth={2.4} /></div>
@@ -7313,7 +7329,9 @@ function HVACPlanStudioApp() {
           <button aria-label={`Duplicate ${selectedIds.length || ""} selected object${selectedIds.length === 1 ? "" : "s"}`} disabled={!selectedId} onClick={duplicateSelected}><Copy size={16} /></button>
           <span className="divider" />
           <button className="save-button" onClick={saveProject}><Save size={16} /> {saveState === "saving" ? "Saving…" : "Saved"}</button>
-          <button className="cloud-button" onClick={() => setShowCloudProjects(true)}><Cloud size={16} /> Cloud Projects</button>
+          <button className={`cloud-button ${showCloudProjects ? "active" : ""}`} aria-pressed={showCloudProjects} onClick={() => setShowCloudProjects(true)}>
+            <Cloud size={16} /> Cloud Projects <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V96"}</span>
+          </button>
           <button className="drive-button" onClick={() => void openFromDrive()}><HardDrive size={16} /> Open Drive</button>
           <button
             className={`field-mode-button ${fieldMode ? "active" : ""}`}
