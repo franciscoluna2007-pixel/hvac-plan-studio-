@@ -56,7 +56,7 @@ test("adds secure cloud projects, revisions, collaborators, and Drive packages",
   assert.match(styles, /\.cloud-revision-list/);
 });
 
-test("builds v101 Project Home, guided setup, and an RLS-safe cloud summary", async () => {
+test("builds v104 Project Home, guided setup, and an RLS-safe cloud summary", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const home = await readFile(new URL("../app/ProjectHome.tsx", import.meta.url), "utf8");
   const setup = await readFile(new URL("../app/GuidedProjectSetup.tsx", import.meta.url), "utf8");
@@ -68,7 +68,7 @@ test("builds v101 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.match(page, /showProjectHome/);
   assert.match(page, /<ProjectHome/);
   assert.match(page, /<GuidedProjectSetup/);
-  assert.match(page, /Project Home &amp; Studio Shell v101/);
+  assert.match(page, /Field Production &amp; Takeoff Center v104/);
   assert.match(page, /applyPendingProjectSetup/);
   assert.match(page, /sourceFileName/);
   assert.match(page, /pendingProjectSetupRef\.current = null/);
@@ -95,6 +95,26 @@ test("builds v101 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.match(styles, /prefers-reduced-motion/);
   assert.match(layout, /HVAC Plan Studio/);
   assert.doesNotMatch(layout, /Starter Project/);
+});
+
+test("builds v104 Field Production and Takeoff Center with controlled cloud packages", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const cloud = await readFile(new URL("../app/cloudProjects.ts", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../supabase/migrations/20260724210000_field_production_takeoff_center.sql", import.meta.url), "utf8");
+
+  assert.match(page, /v104 · FIELD PRODUCTION/);
+  assert.match(page, /Flex quantity uses your rule/);
+  assert.match(page, /Math\.ceil\(orderLength \/ 25\)/);
+  assert.match(page, /Your drawing stays manual/);
+  assert.match(page, /createTakeoffPackage/);
+  assert.match(page, /saveProjectPackageToDrive/);
+  assert.match(cloud, /saveCloudTakeoffPackage/);
+  assert.match(styles, /\.production-hero/);
+  assert.match(styles, /\.package-history/);
+  assert.match(migration, /create table if not exists public\.project_takeoff_packages/);
+  assert.match(migration, /private\.can_edit_project\(project_id\)/);
+  assert.match(migration, /revision\.project_id = project_id/);
 });
 
 test("implements the Figma cloud dock, safe restore flow, and distinct terminal can icons", async () => {

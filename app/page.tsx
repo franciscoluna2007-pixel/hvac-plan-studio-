@@ -2,7 +2,7 @@
 
 import { ChangeEvent, Component, DragEvent, ErrorInfo, PointerEvent, ReactNode, WheelEvent as ReactWheelEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
-import { checkDriveConfiguration, loadPdfFromDriveId, pickPdfFromDrive } from "./googleDrive";
+import { checkDriveConfiguration, loadPdfFromDriveId, pickPdfFromDrive, saveProjectPackageToDrive } from "./googleDrive";
 import CloudProjectsPanel, { type CloudProjectRisk } from "./CloudProjectsPanel";
 import GuidedProjectSetup, { type ProjectSetupValues } from "./GuidedProjectSetup";
 import ProjectCommandPalette, { type ProjectCommand } from "./ProjectCommandPalette";
@@ -12,6 +12,7 @@ import {
   listCloudRevisions,
   listCloudWorkItems,
   issueCloudFieldRelease,
+  saveCloudTakeoffPackage,
   type CloudProject,
   type CloudRevision,
 } from "./cloudProjects";
@@ -883,6 +884,7 @@ type SavedProject = {
   roomAirflowTargets?: Record<string, Record<string, RoomAirflowTarget>>;
   reviewDecisionsBySystem?: Record<string, Record<string, ReviewDecision>>;
   releaseRecords?: SystemReleaseRecord[];
+  takeoffPackageRecords?: TakeoffPackageRecord[];
   workflowSummary?: WorkflowSummary;
   cloudProjectId?: string;
   cloudRevisionId?: string;
@@ -981,6 +983,31 @@ type SystemReleaseRecord = {
     freshVelocityLimit: number;
     residentialFlexMax: string;
   };
+};
+
+type TakeoffRow = {
+  category: string;
+  item: string;
+  size: string;
+  quantity: string;
+  note: string;
+};
+
+type TakeoffPackageRecord = {
+  id: string;
+  systemId: string;
+  name: string;
+  revision: string;
+  preparedBy: string;
+  createdAt: string;
+  drawingSignature: string;
+  lineItemCount: number;
+  flexRollCount: number;
+  deviceCount: number;
+  fittingCount: number;
+  holdCount: number;
+  driveFileId?: string;
+  driveUrl?: string;
 };
 
 const STORAGE_PREFIX = "hvac-plan-studio:";
@@ -1210,6 +1237,12 @@ function HVACPlanStudioApp() {
   const [fieldView, setFieldView] = useState<"release" | "installer" | "coordination" | "startup">("release");
   const [fieldChecklistBySystem, setFieldChecklistBySystem] = useState<Record<string, Record<string, boolean>>>({});
   const [releaseRecords, setReleaseRecords] = useState<SystemReleaseRecord[]>([]);
+  const [takeoffPackageRecords, setTakeoffPackageRecords] = useState<TakeoffPackageRecord[]>([]);
+  const [takeoffView, setTakeoffView] = useState<"overview" | "materials" | "installer" | "packages">("overview");
+  const [takeoffPackageName, setTakeoffPackageName] = useState("");
+  const [takeoffRevision, setTakeoffRevision] = useState("");
+  const [takeoffPreparedBy, setTakeoffPreparedBy] = useState("");
+  const [takeoffSaving, setTakeoffSaving] = useState(false);
   const [releaseRevision, setReleaseRevision] = useState("");
   const [releaseBy, setReleaseBy] = useState("");
   const [releaseNote, setReleaseNote] = useState("");
@@ -1485,6 +1518,7 @@ function HVACPlanStudioApp() {
     setRoomAirflowTargets({});
     setReviewDecisionsBySystem({});
     setReleaseRecords([]);
+    setTakeoffPackageRecords([]);
     setSelectedCfmProposalIds([]);
     setActiveReviewIssueId(null);
     setReviewerName("");
@@ -1526,6 +1560,7 @@ function HVACPlanStudioApp() {
     setRoomAirflowTargets(project.roomAirflowTargets || {});
     setReviewDecisionsBySystem(project.reviewDecisionsBySystem || {});
     setReleaseRecords(project.releaseRecords || []);
+    setTakeoffPackageRecords(project.takeoffPackageRecords || []);
     setWorkingCloudProjectId(project.cloudProjectId || null);
     setWorkingCloudRevisionId(project.cloudRevisionId || null);
     setWorkingCloudRevisionFingerprint(
@@ -1977,6 +2012,7 @@ function HVACPlanStudioApp() {
       roomAirflowTargets,
       reviewDecisionsBySystem,
       releaseRecords,
+      takeoffPackageRecords,
       cloudProjectId: workingCloudProjectId || undefined,
       cloudRevisionId: workingCloudRevisionId || undefined,
       cloudReleaseFingerprint: currentCloudReleaseFingerprint,
@@ -1997,7 +2033,7 @@ function HVACPlanStudioApp() {
         })),
       },
     };
-  }, [activeBuilderSummary, activeFieldPackage, activeSystem, backgroundOpacity, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
+  }, [activeBuilderSummary, activeFieldPackage, activeSystem, backgroundOpacity, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
 
   const saveProject = useCallback(() => {
     if (!pdf) return;
@@ -4569,16 +4605,16 @@ function HVACPlanStudioApp() {
     setValidationCursor((index + 1) % selectable.length);
   }
 
-  function buildTakeoff() {
+  function buildTakeoff(systemId = activeSystem) {
     const ductTotals = new Map<string, { type: string; size: string; length: number }>();
     for (const drawing of drawings) {
-      if (drawingSystem(drawing) !== activeSystem || !["supply", "return", "fresh"].includes(drawing.type) || drawing.fitting || drawing.symbol) continue;
+      if (drawingSystem(drawing) !== systemId || !["supply", "return", "fresh"].includes(drawing.type) || drawing.fitting || drawing.symbol) continue;
       const key = `${drawing.type}-${drawing.size}`;
       const current = ductTotals.get(key) || { type: drawing.type, size: drawing.size, length: 0 };
       current.length += drawingLengthFeet(drawing);
       ductTotals.set(key, current);
     }
-    const rows: Array<{ category: string; item: string; size: string; quantity: string; note: string }> = [];
+    const rows: TakeoffRow[] = [];
     for (const total of [...ductTotals.values()].sort((a, b) => Number(b.size) - Number(a.size))) {
       const name = total.type === "supply" ? "Supply flex duct" : total.type === "return" ? "Return flex duct" : "Fresh-air duct";
       const orderLength = total.length * (1 + materialWastePercent / 100);
@@ -4591,7 +4627,7 @@ function HVACPlanStudioApp() {
         note: `${rolls} × 25-ft ${rolls === 1 ? "box" : "boxes"} · includes ${materialWastePercent}% allowance`,
       });
     }
-    const activeSymbols = drawings.filter((drawing) => drawingSystem(drawing) === activeSystem && drawing.symbol);
+    const activeSymbols = drawings.filter((drawing) => drawingSystem(drawing) === systemId && drawing.symbol);
     const groupedSymbols = new Map<string, { kind: SymbolKind; label: string; size: string; neckSize: string; variant: string; count: number }>();
     activeSymbols.forEach((drawing) => {
       const kind = drawing.symbol!.kind;
@@ -4616,7 +4652,7 @@ function HVACPlanStudioApp() {
       if (group.kind === "returnGrille") rows.push({ category: "Air devices", item: "Return can / box", size: `Ø${group.neckSize}" neck`, quantity: `${group.count} EA`, note: `${group.size} face · match ${group.label.toLowerCase()}` });
     });
     const fittingGroups = new Map<string, number>();
-    drawings.filter((drawing) => drawingSystem(drawing) === activeSystem && drawing.fitting).forEach((drawing) => {
+    drawings.filter((drawing) => drawingSystem(drawing) === systemId && drawing.fitting).forEach((drawing) => {
       const fitting = drawing.fitting!;
       const size = `${fitting.upstreamSize}×${fitting.downstreamSize}×${fitting.branchSize}`;
       const key = `${fitting.style === "tee90" ? "Tee" : "Wye"} ${size}`;
@@ -4630,13 +4666,113 @@ function HVACPlanStudioApp() {
     return rows;
   }
 
-  function materialSummary() {
-    const rows = buildTakeoff();
+  function materialSummary(systemId = activeSystem) {
+    const rows = buildTakeoff(systemId);
     const flexBoxes = rows.filter((row) => row.item.includes("flex duct")).reduce((total, row) => total + (Number(row.note.match(/^(\d+)/)?.[1]) || 0), 0);
     const deviceCount = rows.filter((row) => row.category === "Air devices" && !row.item.includes("can") && !row.item.includes("box")).reduce((total, row) => total + (Number(row.quantity.match(/^(\d+)/)?.[1]) || 0), 0);
     const fittingCount = rows.filter((row) => row.category === "Fittings").reduce((total, row) => total + (Number(row.quantity.match(/^(\d+)/)?.[1]) || 0), 0);
-    const holds = activeValidationIssues.filter((issue) => issue.severity !== "info" && ["Coordination", "Connections"].includes(issueCategory(issue.title)));
+    const holds = systemId === activeSystem
+      ? activeValidationIssues.filter((issue) => issue.severity !== "info" && ["Coordination", "Connections"].includes(issueCategory(issue.title)))
+      : [];
     return { flexBoxes, deviceCount, fittingCount, holds };
+  }
+
+  function activeTakeoffSignature(systemId = activeSystem) {
+    return stableTextHash(JSON.stringify({
+      systemId,
+      drawingSignature: systemReleaseSignature(systemId),
+      rows: buildTakeoff(systemId),
+      materialWastePercent,
+      scaleLabel,
+      scaleVerified,
+    }));
+  }
+
+  function activeTakeoffPackages() {
+    return takeoffPackageRecords
+      .filter((record) => record.systemId === activeSystem)
+      .slice()
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  function projectProductionSummary() {
+    const activeSystems = systems.filter((system) => drawings.some((drawing) => drawingSystem(drawing) === system.id));
+    return activeSystems.reduce((summary, system) => {
+      const material = materialSummary(system.id);
+      summary.systems += 1;
+      summary.lineItems += buildTakeoff(system.id).length;
+      summary.flexRolls += material.flexBoxes;
+      summary.devices += material.deviceCount;
+      summary.fittings += material.fittingCount;
+      return summary;
+    }, { systems: 0, lineItems: 0, flexRolls: 0, devices: 0, fittings: 0 });
+  }
+
+  async function createTakeoffPackage(saveToDrive = false) {
+    const rows = buildTakeoff();
+    if (!rows.length) {
+      setBranchMessage("Draw ductwork or place HVAC equipment before creating a takeoff package");
+      return;
+    }
+    if (!takeoffPackageName.trim() || !takeoffRevision.trim() || !takeoffPreparedBy.trim()) {
+      setBranchMessage("Add the package name, revision, and prepared-by name first");
+      return;
+    }
+    const material = materialSummary();
+    const record: TakeoffPackageRecord = {
+      id: crypto.randomUUID(),
+      systemId: activeSystem,
+      name: takeoffPackageName.trim(),
+      revision: takeoffRevision.trim(),
+      preparedBy: takeoffPreparedBy.trim(),
+      createdAt: new Date().toISOString(),
+      drawingSignature: activeTakeoffSignature(),
+      lineItemCount: rows.length,
+      flexRollCount: material.flexBoxes,
+      deviceCount: material.deviceCount,
+      fittingCount: material.fittingCount,
+      holdCount: material.holds.length,
+    };
+    setTakeoffSaving(true);
+    try {
+      let completed = record;
+      if (saveToDrive) {
+        const driveFile = await saveProjectPackageToDrive({
+          projectName: `${fileName.replace(/\.pdf$/i, "")} — ${record.name} ${record.revision}`,
+          packageType: "HVAC Plan Studio Field Production & Takeoff",
+          version: 104,
+          system: systemLabel(activeSystem),
+          sourcePlan: fileName,
+          scale: { label: scaleLabel, verified: scaleVerified },
+          preparedBy: record.preparedBy,
+          createdAt: record.createdAt,
+          summary: material,
+          rows,
+          manualControlNotice: "This package reports saved plan geometry. It does not reroute, resize, reconnect, balance, or renumber drawing objects.",
+        });
+        completed = { ...record, driveFileId: driveFile.id, driveUrl: driveFile.webViewLink };
+      }
+      if (workingCloudProjectId && workingCloudRevisionId) {
+        await saveCloudTakeoffPackage({
+          projectId: workingCloudProjectId,
+          revisionId: workingCloudRevisionId,
+          systemId: activeSystem,
+          name: completed.name,
+          packageRevision: completed.revision,
+          drawingSignature: completed.drawingSignature,
+          packagePayload: { ...completed, rows },
+          driveFileId: completed.driveFileId || null,
+          driveUrl: completed.driveUrl || null,
+        });
+      }
+      setTakeoffPackageRecords((current) => [completed, ...current]);
+      setTakeoffView("packages");
+      setBranchMessage(`${completed.name} ${completed.revision} saved${saveToDrive ? " to Google Drive" : ""}`);
+    } catch (packageError) {
+      setError(packageError instanceof Error ? packageError.message : "The takeoff package could not be saved.");
+    } finally {
+      setTakeoffSaving(false);
+    }
   }
 
   function exportPurchaseSheetCsv() {
@@ -7926,7 +8062,7 @@ function HVACPlanStudioApp() {
             <Search size={16} /> <span>Command</span><kbd>⌘K</kbd>
           </button>
           <button className={`cloud-button ${showCloudProjects ? "active" : ""}`} aria-pressed={showCloudProjects} onClick={() => setShowCloudProjects(true)}>
-            <Cloud size={16} /> Project Hub <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V101"}</span>
+            <Cloud size={16} /> Project Hub <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V104"}</span>
           </button>
           <button className="drive-button" onClick={() => void openFromDrive()}><HardDrive size={16} /> Open Drive</button>
           <button
@@ -9529,37 +9665,106 @@ function HVACPlanStudioApp() {
             </div>
             <div className="takeoff-note">Review-only. The panel follows connected runs and T/Y relationships; it never changes duct sizes, routes, CFM, or fittings automatically.</div>
           </div> : rightTab === "takeoff" ? <div className="takeoff-panel">
-            <div className="takeoff-heading">
-              <div><strong>MATERIAL &amp; PREFAB</strong><small>{systemLabel(activeSystem)} · {buildTakeoff().length} line items</small></div>
-              <button onClick={() => window.print()}>Print / PDF</button>
+            <div className="production-hero">
+              <div>
+                <span className="production-kicker"><CloudUpload size={12} /> v104 · FIELD PRODUCTION</span>
+                <strong>Takeoff Center</strong>
+                <small>{systemLabel(activeSystem)} · purchasing, installer sheets, and controlled packages</small>
+              </div>
+              <b className={materialSummary().holds.length ? "hold" : buildTakeoff().length ? "ready" : "empty"}>
+                {materialSummary().holds.length ? `${materialSummary().holds.length} HOLD` : buildTakeoff().length ? "READY" : "EMPTY"}
+              </b>
             </div>
-            <div className="material-controls">
-              <label>Material allowance
-                <select value={materialWastePercent} onChange={(event) => setMaterialWastePercent(Number(event.target.value))}>
-                  {[0, 5, 10, 15, 20].map((value) => <option value={value} key={value}>{value}% waste</option>)}
-                </select>
-              </label>
-              <button disabled={!buildTakeoff().length} onClick={exportPurchaseSheetCsv}><Save size={13} /> Purchase CSV</button>
-            </div>
-            <div className="material-summary-grid">
-              <div><span>25-ft flex boxes</span><strong>{materialSummary().flexBoxes}</strong></div>
-              <div><span>Air devices</span><strong>{materialSummary().deviceCount}</strong></div>
-              <div><span>T/Y fittings</span><strong>{materialSummary().fittingCount}</strong></div>
-              <div className={materialSummary().holds.length ? "attention" : "good"}><span>Fabrication holds</span><strong>{materialSummary().holds.length}</strong></div>
-            </div>
-            {materialSummary().holds.length > 0 && <div className="fabrication-holds">
-              <div><ShieldAlert size={15} /><span><strong>DO NOT FABRICATE YET</strong><small>Resolve these coordination items first</small></span></div>
-              {materialSummary().holds.slice(0, 5).map((issue, index) => <button key={`${issue.title}-hold-${index}`} onClick={() => issue.drawingId && focusDrawingOnPlan(issue.drawingId)}>
-                <AlertTriangle size={11} /><span><strong>{issue.title}</strong><small>{issue.detail}</small></span>
-              </button>)}
+            <nav className="production-tabs" role="tablist" aria-label="Field Production Center">
+              {([
+                ["overview", "Overview"],
+                ["materials", "Materials"],
+                ["installer", "Installer"],
+                ["packages", "Packages"],
+              ] as const).map(([view, label]) => <button role="tab" aria-selected={takeoffView === view} className={takeoffView === view ? "active" : ""} onClick={() => setTakeoffView(view)} key={view}>{label}</button>)}
+            </nav>
+            {takeoffView === "overview" && <>
+              <div className="production-project-strip">
+                <span><b>{projectProductionSummary().systems}</b><small>Active systems</small></span>
+                <span><b>{projectProductionSummary().lineItems}</b><small>Project line items</small></span>
+                <span><b>{projectProductionSummary().flexRolls}</b><small>25-ft flex rolls</small></span>
+              </div>
+              <div className="material-summary-grid production-metrics">
+                <div><span>25-ft flex rolls</span><strong>{materialSummary().flexBoxes}</strong><small>Every started 25 ft counts</small></div>
+                <div><span>Air devices</span><strong>{materialSummary().deviceCount}</strong><small>Supply + return faces</small></div>
+                <div><span>T/Y fittings</span><strong>{materialSummary().fittingCount}</strong><small>Saved plan geometry</small></div>
+                <div className={materialSummary().holds.length ? "attention" : "good"}><span>Fabrication holds</span><strong>{materialSummary().holds.length}</strong><small>{materialSummary().holds.length ? "Resolve before order" : "No active holds"}</small></div>
+              </div>
+              <div className="production-readiness-card">
+                <div className="field-section-heading"><strong>PRODUCTION READINESS</strong><span>{scaleVerified && !materialSummary().holds.length ? "REVIEWED" : "CHECK"}</span></div>
+                <label className={scaleVerified ? "clear" : "hold"}>{scaleVerified ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}<span><b>Drawing scale</b><small>{scaleVerified ? `${scaleLabel} verified` : "Verify scale before ordering measured duct"}</small></span></label>
+                <label className={activeFieldPackage.connectionProblems ? "hold" : "clear"}>{activeFieldPackage.connectionProblems ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}<span><b>Connections</b><small>{activeFieldPackage.connectionProblems ? `${activeFieldPackage.connectionProblems} open or detached connection${activeFieldPackage.connectionProblems === 1 ? "" : "s"}` : "Saved run and fitting connections are complete"}</small></span></label>
+                <label className={materialSummary().holds.length ? "hold" : "clear"}>{materialSummary().holds.length ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}<span><b>Fabrication coordination</b><small>{materialSummary().holds.length ? "Clear the highlighted plan issues before fabrication" : "No active coordination holds"}</small></span></label>
+              </div>
+              <div className="production-guardrail"><ShieldAlert size={15} /><span><strong>Your drawing stays manual.</strong><small>v104 reports saved geometry only. It never reroutes, resizes, reconnects, balances, or numbers ductwork.</small></span></div>
+            </>}
+            {takeoffView === "materials" && <>
+              <div className="material-controls production-controls">
+                <label>Material allowance
+                  <select value={materialWastePercent} onChange={(event) => setMaterialWastePercent(Number(event.target.value))}>
+                    {[0, 5, 10, 15, 20].map((value) => <option value={value} key={value}>{value}% waste</option>)}
+                  </select>
+                </label>
+                <button disabled={!buildTakeoff().length} onClick={exportPurchaseSheetCsv}><Save size={13} /> Purchase CSV</button>
+              </div>
+              {materialSummary().holds.length > 0 && <div className="fabrication-holds">
+                <div><ShieldAlert size={15} /><span><strong>DO NOT FABRICATE YET</strong><small>Resolve these coordination items first</small></span></div>
+                {materialSummary().holds.slice(0, 5).map((issue, index) => <button key={`${issue.title}-hold-${index}`} onClick={() => issue.drawingId && focusDrawingOnPlan(issue.drawingId)}>
+                  <AlertTriangle size={11} /><span><strong>{issue.title}</strong><small>{issue.detail}</small></span>
+                </button>)}
+              </div>}
+              {buildTakeoff().length ? <div className="takeoff-list production-list">
+                {buildTakeoff().map((row, index) => <div className="takeoff-row" key={`${row.item}-${row.size}-${index}`}>
+                  <div><i>{row.category}</i><strong>{row.item}</strong><small>{row.size} · {row.note}</small></div>
+                  <b>{row.quantity}</b>
+                </div>)}
+              </div> : <div className="empty-takeoff">Draw ductwork or place HVAC symbols to build the takeoff.</div>}
+              <div className="takeoff-note">Flex quantity uses your rule: total measured length by size, plus the selected allowance, divided into 25-ft rolls; every started roll counts as one.</div>
+            </>}
+            {takeoffView === "installer" && <div className="production-installer-sheet">
+              <div className="installer-sheet-title"><span><b>INSTALLER SHEET</b><small>{fileName} · {systemLabel(activeSystem)}</small></span><button onClick={() => window.print()}><FileText size={13} /> Print / PDF</button></div>
+              <div className="installer-sheet-stats">
+                <span><small>Design airflow</small><b>{systemStats(activeSystem).designCfm || 0} CFM</b></span>
+                <span><small>Duct runs</small><b>{activeFieldRuns.length}</b></span>
+                <span><small>Flex rolls</small><b>{materialSummary().flexBoxes}</b></span>
+                <span><small>Devices</small><b>{materialSummary().deviceCount}</b></span>
+              </div>
+              <div className="field-section-heading"><strong>FIELD MATERIAL SUMMARY</strong><span>{buildTakeoff().length} ITEMS</span></div>
+              {buildTakeoff().slice(0, 12).map((row, index) => <div className="installer-line" key={`${row.item}-installer-${index}`}><span><b>{row.item}</b><small>{row.size} · {row.note}</small></span><strong>{row.quantity}</strong></div>)}
+              <div className="field-section-heading installer-check-heading"><strong>CREW CHECKS</strong><span>FIELD VERIFY</span></div>
+              {["Approved plan revision is on site", "Scale, ceiling heights, and access are verified", "Fitting orientation matches the saved plan", "Flex is supported, straight, and free of kinks", "Equipment instructions and inspector comments govern"].map((label) => <label className="installer-check" key={label}><input type="checkbox" /><span>{label}</span></label>)}
             </div>}
-            {buildTakeoff().length ? <div className="takeoff-list">
-              {buildTakeoff().map((row, index) => <div className="takeoff-row" key={`${row.item}-${row.size}-${index}`}>
-                <div><i>{row.category}</i><strong>{row.item}</strong><small>{row.size} · {row.note}</small></div>
-                <b>{row.quantity}</b>
-              </div>)}
-            </div> : <div className="empty-takeoff">Draw ductwork or place HVAC symbols to build the takeoff.</div>}
-            <div className="takeoff-note">One 25-ft flex box is ordered for every 25 feet or portion thereof after the selected allowance. Measure twice and field-verify offsets, elevations, access, and fabricated dimensions before shop release.</div>
+            {takeoffView === "packages" && <div className="production-packages">
+              <div className="package-form">
+                <div className="field-section-heading"><strong>CREATE CONTROLLED TAKEOFF PACKAGE</strong><span>MANUAL ISSUE</span></div>
+                <label>Package name<input value={takeoffPackageName} onChange={(event) => setTakeoffPackageName(event.target.value)} placeholder={`${systemLabel(activeSystem)} rough-in`} /></label>
+                <div>
+                  <label>Revision<input value={takeoffRevision} onChange={(event) => setTakeoffRevision(event.target.value)} placeholder="A, 1, IFC…" /></label>
+                  <label>Prepared by<input value={takeoffPreparedBy} onChange={(event) => setTakeoffPreparedBy(event.target.value)} placeholder="Name / initials" /></label>
+                </div>
+                <div className="package-actions">
+                  <button disabled={takeoffSaving || !buildTakeoff().length} onClick={() => void createTakeoffPackage(false)}><Save size={13} /> Save package</button>
+                  <button disabled={takeoffSaving || !buildTakeoff().length || driveConfigured === false} onClick={() => void createTakeoffPackage(true)}><HardDrive size={13} /> Save to Drive</button>
+                </div>
+                <p>Each package stores its drawing fingerprint. A later plan change marks that package stale without changing the plan.</p>
+              </div>
+              <div className="package-history">
+                <div className="field-section-heading"><strong>PACKAGE HISTORY</strong><span>{activeTakeoffPackages().length}</span></div>
+                {activeTakeoffPackages().length ? activeTakeoffPackages().map((record) => {
+                  const current = record.drawingSignature === activeTakeoffSignature();
+                  return <div className={current ? "current" : "stale"} key={record.id}>
+                    <b>{record.revision}</b>
+                    <span><strong>{record.name}</strong><small>{record.preparedBy} · {new Date(record.createdAt).toLocaleString()} · {record.lineItemCount} items · {record.flexRollCount} flex rolls</small></span>
+                    {record.driveUrl ? <a href={record.driveUrl} target="_blank" rel="noreferrer">DRIVE</a> : <em>{current ? "CURRENT" : "STALE"}</em>}
+                  </div>;
+                }) : <div className="empty-takeoff">No controlled takeoff packages for this system yet.</div>}
+              </div>
+            </div>}
           </div> : rightTab === "field" ? <div className="field-package-panel">
             <div className="workspace-panel-hero">
               <div><ShieldAlert size={18} /><span><strong>FIELD RELEASE CENTER</strong><small>{systemLabel(activeSystem)} · installer package, coordination, and closeout</small></span></div>
@@ -10213,7 +10418,7 @@ function HVACPlanStudioApp() {
         <span><i className="online" /> Ready</span>
         <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor"}</span>
         <span><Ruler size={11} /> {scaleLabel}</span>
-        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · Project Home &amp; Studio Shell v101 · Project Intelligence v100</span>
+        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · Field Production &amp; Takeoff Center v104 · Project Intelligence v100</span>
       </footer>
       <ProjectHome
         open={showProjectHome && !showProjectSetup}
