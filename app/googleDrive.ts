@@ -1,3 +1,16 @@
+type PickerDocument = { id: string; name: string; mimeType: string; url?: string };
+type PickerResult = { action: string; docs?: PickerDocument[] };
+type GooglePickerBuilder = {
+  addView(view: unknown): GooglePickerBuilder;
+  setOAuthToken(token: string): GooglePickerBuilder;
+  setDeveloperKey(key: string): GooglePickerBuilder;
+  setAppId(appId: string): GooglePickerBuilder;
+  setCallback(callback: (data: PickerResult) => void): GooglePickerBuilder;
+  setTitle(title: string): GooglePickerBuilder;
+  enableFeature(feature: string): GooglePickerBuilder;
+  build(): { setVisible(value: boolean): void };
+};
+
 declare global {
   interface Window {
     google?: {
@@ -6,7 +19,7 @@ declare global {
           initTokenClient(config: {
             client_id: string;
             scope: string;
-            callback: (response: { access_token?: string; error?: string }) => void;
+            callback: (response: { access_token?: string; expires_in?: number; error?: string }) => void;
           }): { requestAccessToken(): void };
         };
       };
@@ -19,16 +32,7 @@ declare global {
         };
         DocsViewMode: { LIST: string };
         Feature: { NAV_HIDDEN: string };
-        PickerBuilder: new () => {
-          addView(view: unknown): unknown;
-          setOAuthToken(token: string): unknown;
-          setDeveloperKey(key: string): unknown;
-          setAppId(appId: string): unknown;
-          setCallback(callback: (data: PickerResult) => void): unknown;
-          setTitle(title: string): unknown;
-          enableFeature(feature: string): unknown;
-          build(): { setVisible(value: boolean): void };
-        };
+        PickerBuilder: new () => GooglePickerBuilder;
         ViewId: { DOCS: string };
       };
     };
@@ -38,24 +42,29 @@ declare global {
   }
 }
 
-type PickerDocument = { id: string; name: string; mimeType: string };
-type PickerResult = { action: string; docs?: PickerDocument[] };
 type GoogleDriveConfig = { clientId: string; apiKey: string; appId: string };
+export type DrivePdf = { id: string; name: string; bytes: Uint8Array; webViewLink?: string };
+export type DriveProjectPackage = { id: string; name: string; webViewLink: string; updated: boolean };
 
 let accessToken = "";
+let accessTokenExpiresAt = 0;
 let configuration: GoogleDriveConfig | null = null;
+let configurationStatus: "unknown" | "ready" | "error" = "unknown";
 
 async function getConfiguration() {
   if (configuration) return configuration;
   const response = await fetch("/api/google-config", { cache: "no-store" });
   if (!response.ok) {
+    configurationStatus = "error";
     throw new Error("Google Drive setup is incomplete. Contact the HVAC Plan Studio administrator.");
   }
   const value = await response.json() as Partial<GoogleDriveConfig>;
   if (!value.clientId || !value.apiKey || !value.appId) {
+    configurationStatus = "error";
     throw new Error("Google Drive setup is incomplete. Contact the HVAC Plan Studio administrator.");
   }
   configuration = value as GoogleDriveConfig;
+  configurationStatus = "ready";
   return configuration;
 }
 
@@ -88,7 +97,8 @@ async function loadGoogleApis() {
 
 async function authorize() {
   const config = await loadGoogleApis();
-  if (accessToken) return { token: accessToken, config };
+  if (accessToken && Date.now() < accessTokenExpiresAt - 60_000) return { token: accessToken, config };
+  accessToken = "";
   const token = await new Promise<string>((resolve, reject) => {
     const client = window.google!.accounts.oauth2.initTokenClient({
       client_id: config.clientId,
@@ -96,6 +106,7 @@ async function authorize() {
       callback: (response) => {
         if (!response.access_token) return reject(new Error(response.error || "Google Drive access was not approved."));
         accessToken = response.access_token;
+        accessTokenExpiresAt = Date.now() + Math.max(300, response.expires_in || 3600) * 1000;
         resolve(accessToken);
       },
     });
@@ -104,9 +115,27 @@ async function authorize() {
   return { token, config };
 }
 
+async function authorizedFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  let { token } = await authorize();
+  const request = () => fetch(input, {
+    ...init,
+    headers: {
+      ...init.headers,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  let response = await request();
+  if (response.status !== 401) return response;
+  accessToken = "";
+  accessTokenExpiresAt = 0;
+  token = (await authorize()).token;
+  response = await request();
+  return response;
+}
+
 export async function pickPdfFromDrive() {
   const { token, config } = await authorize();
-  return new Promise<{ name: string; bytes: Uint8Array }>((resolve, reject) => {
+  return new Promise<DrivePdf>((resolve, reject) => {
     const view = new window.google!.picker.DocsView(window.google!.picker.ViewId.DOCS);
     view.setMimeTypes("application/pdf");
     const picker = new window.google!.picker.PickerBuilder()
@@ -116,14 +145,20 @@ export async function pickPdfFromDrive() {
       .setAppId(config.appId)
       .setTitle("Choose a construction PDF")
       .setCallback(async (data) => {
-        if (data.action !== window.google!.picker.Action.PICKED || !data.docs?.[0]) return;
+        if (data.action !== window.google!.picker.Action.PICKED || !data.docs?.[0]) {
+          reject(new Error("Google Drive picker closed without selecting a PDF."));
+          return;
+        }
         try {
           const document = data.docs[0];
-          const response = await fetch(`https://www.googleapis.com/drive/v3/files/${document.id}?alt=media`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const response = await authorizedFetch(`https://www.googleapis.com/drive/v3/files/${document.id}?alt=media`);
           if (!response.ok) throw new Error("The selected PDF could not be downloaded.");
-          resolve({ name: document.name, bytes: new Uint8Array(await response.arrayBuffer()) });
+          resolve({
+            id: document.id,
+            name: document.name,
+            bytes: new Uint8Array(await response.arrayBuffer()),
+            webViewLink: document.url,
+          });
         } catch (error) {
           reject(error);
         }
@@ -133,6 +168,74 @@ export async function pickPdfFromDrive() {
   });
 }
 
+export async function loadPdfFromDriveId(fileId: string, name = "Cloud project source.pdf") {
+  const response = await authorizedFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`);
+  if (!response.ok) throw new Error("The linked source PDF could not be downloaded from Google Drive.");
+  return {
+    id: fileId,
+    name,
+    bytes: new Uint8Array(await response.arrayBuffer()),
+  } satisfies DrivePdf;
+}
+
+function safeDriveFileName(name: string) {
+  const cleaned = name.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim();
+  return `${cleaned || "HVAC Plan Studio"}.hvacplan.json`;
+}
+
+export async function saveProjectPackageToDrive(payload: Record<string, unknown>, existingFileId?: string | null) {
+  const body = JSON.stringify(payload, null, 2);
+  const projectName = typeof payload.projectName === "string" ? payload.projectName : "HVAC Plan Studio";
+  const metadata = {
+    name: safeDriveFileName(projectName),
+    mimeType: "application/json",
+    description: "HVAC Plan Studio cloud project package",
+  };
+
+  let response: Response;
+  if (existingFileId) {
+    response = await authorizedFetch(`https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(existingFileId)}?uploadType=media&fields=id,name,webViewLink`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+  } else {
+    const boundary = `hvac_plan_studio_${Date.now()}`;
+    const multipart = [
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`,
+      `--${boundary}\r\nContent-Type: application/json\r\n\r\n${body}\r\n`,
+      `--${boundary}--`,
+    ].join("");
+    response = await authorizedFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink", {
+      method: "POST",
+      headers: {
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body: multipart,
+    });
+  }
+
+  if (!response.ok) throw new Error("The project package could not be saved to Google Drive.");
+  const result = await response.json() as { id: string; name: string; webViewLink?: string };
+  return {
+    id: result.id,
+    name: result.name,
+    webViewLink: result.webViewLink || `https://drive.google.com/open?id=${result.id}`,
+    updated: Boolean(existingFileId),
+  } satisfies DriveProjectPackage;
+}
+
 export function isDriveConfigured() {
-  return true;
+  return configurationStatus !== "error";
+}
+
+export async function checkDriveConfiguration() {
+  try {
+    await getConfiguration();
+    return true;
+  } catch {
+    return false;
+  }
 }

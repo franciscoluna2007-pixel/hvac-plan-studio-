@@ -1,8 +1,19 @@
 "use client";
 
-import { ChangeEvent, DragEvent, PointerEvent, WheelEvent as ReactWheelEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, Component, DragEvent, ErrorInfo, PointerEvent, ReactNode, WheelEvent as ReactWheelEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
-import { isDriveConfigured, pickPdfFromDrive } from "./googleDrive";
+import { checkDriveConfiguration, loadPdfFromDriveId, pickPdfFromDrive } from "./googleDrive";
+import CloudProjectsPanel, { type CloudProjectRisk } from "./CloudProjectsPanel";
+import ProjectCommandPalette, { type ProjectCommand } from "./ProjectCommandPalette";
+import {
+  listCloudApprovals,
+  listCloudRevisions,
+  listCloudWorkItems,
+  issueCloudFieldRelease,
+  type CloudProject,
+  type CloudRevision,
+} from "./cloudProjects";
+import { buildSystemWorkflow, type WorkflowStageId, type WorkflowSummary } from "./workflowEngine";
 import {
   AirVent,
   AlertTriangle,
@@ -10,6 +21,7 @@ import {
   Box,
   ChevronDown,
   CircleDot,
+  Cloud,
   CloudUpload,
   Copy,
   DraftingCompass,
@@ -21,6 +33,7 @@ import {
   Gauge,
   Lock,
   MousePointer2,
+  PanelTop,
   PanelLeftClose,
   PanelRightClose,
   Maximize2,
@@ -61,12 +74,12 @@ const tools = [
   { id: "return", label: "Return duct", icon: Wind, tone: "red" },
   { id: "fresh", label: "Fresh air", icon: AirVent, tone: "green" },
   { id: "diffuser", label: "Diffuser", icon: Grid3X3 },
-  { id: "returnGrille", label: "Return grille", icon: AirVent, tone: "red" },
+  { id: "returnGrille", label: "Return grille", icon: PanelTop, tone: "red" },
   { id: "equipment", label: "Equipment", icon: Box },
   { id: "fan", label: "Exhaust fan", icon: Fan },
   { id: "damper", label: "Balance damper", icon: Gauge, tone: "yellow" },
   { id: "motorDamper", label: "Motorized OA damper", icon: ToggleLeft, tone: "green" },
-  { id: "reducer", label: "Reducer / transition", icon: DraftingCompass, tone: "yellow" },
+  { id: "reducer", label: "Reducer / transition", icon: FlipHorizontal2, tone: "yellow" },
   { id: "thermostat", label: "Thermostat", icon: Thermometer, tone: "orange" },
   { id: "smoke", label: "Duct smoke detector", icon: ShieldAlert, tone: "orange" },
   { id: "airflow", label: "Airflow arrow", icon: ArrowRight, tone: "orange" },
@@ -115,6 +128,7 @@ const symbolPresets: SymbolPreset[] = [
   { id: "supply-square-8", category: "Supply air", kind: "diffuser", label: "SMALL 4-WAY SUPPLY", size: "8×8", cfm: 100, variant: "4way", elevation: "CEILING" },
   { id: "supply-square-10", category: "Supply air", kind: "diffuser", label: "4-WAY SUPPLY", size: "10×10", cfm: 150, variant: "4way", elevation: "CEILING" },
   { id: "supply-square-14", category: "Supply air", kind: "diffuser", label: "LARGE 4-WAY SUPPLY", size: "14×14", cfm: 300, variant: "4way", elevation: "CEILING" },
+  { id: "supply-can-square", category: "Supply air", kind: "diffuser", label: "SQUARE SUPPLY CAN", size: "12×12", cfm: 225, variant: "supply-can", elevation: "CEILING" },
   { id: "supply-boot", category: "Supply air", kind: "diffuser", label: "REGISTER BOOT", size: "12×4", cfm: 125, variant: "boot", elevation: "HIGH WALL" },
   { id: "supply-floor", category: "Supply air", kind: "diffuser", label: "FLOOR REGISTER", size: "4×10", cfm: 100, variant: "floor", elevation: "FLOOR" },
   { id: "supply-perforated", category: "Supply air", kind: "diffuser", label: "PERFORATED SUPPLY", size: "24×24", cfm: 300, variant: "perforated", elevation: "CEILING" },
@@ -141,6 +155,7 @@ const symbolPresets: SymbolPreset[] = [
   { id: "supply-slot-1", category: "Supply air", kind: "diffuser", label: "1-SLOT LINEAR DIFFUSER", size: "1-SLOT", cfm: 100, variant: "slot-1", elevation: "CEILING" },
   { id: "supply-slot-4", category: "Supply air", kind: "diffuser", label: "4-SLOT LINEAR DIFFUSER", size: "4-SLOT", cfm: 300, variant: "slot-4", elevation: "CEILING" },
   { id: "return-standard", category: "Return air", kind: "returnGrille", label: "RETURN GRILLE", size: "14×14", cfm: 400, variant: "grille", elevation: "CEILING" },
+  { id: "return-can-rect", category: "Return air", kind: "returnGrille", label: "RECTANGULAR RETURN CAN", size: "20×12", cfm: 600, variant: "return-can", elevation: "CEILING" },
   { id: "return-filter", category: "Return air", kind: "returnGrille", label: "FILTER RETURN", size: "20×20", cfm: 800, variant: "filter", elevation: "CEILING" },
   { id: "return-eggcrate", category: "Return air", kind: "returnGrille", label: "EGGCRATE RETURN", size: "14×14", cfm: 400, variant: "eggcrate", elevation: "CEILING" },
   { id: "return-door", category: "Return air", kind: "returnGrille", label: "DOOR TRANSFER GRILLE", size: "12×12", cfm: 250, variant: "transfer", elevation: "HIGH WALL" },
@@ -165,7 +180,8 @@ const symbolPresets: SymbolPreset[] = [
   { id: "equipment-furnace", category: "Equipment", kind: "equipment", label: "SYSTEM 1 · 3 TON FURNACE", size: "3 TON", cfm: 1200, variant: "furnace" },
   { id: "equipment-package", category: "Equipment", kind: "equipment", label: "SYSTEM 1 · 3 TON PACKAGE UNIT", size: "3 TON", cfm: 1200, variant: "package" },
   { id: "equipment-fancoil", category: "Equipment", kind: "equipment", label: "SYSTEM 1 · 3 TON FAN COIL", size: "3 TON", cfm: 1200, variant: "fan-coil" },
-  { id: "equipment-heatpump", category: "Equipment", kind: "equipment", label: "SYSTEM 1 · 3 TON HEAT PUMP", size: "3 TON", cfm: 1200, variant: "heat-pump" },
+  { id: "equipment-heatpump-airhandler", category: "Equipment", kind: "equipment", label: "SYSTEM 1 · 3 TON HEAT-PUMP AHU", size: "3 TON", cfm: 1200, variant: "heat-pump-air-handler" },
+  { id: "equipment-heatpump", category: "Equipment", kind: "equipment", label: "OUTDOOR HEAT PUMP · 3 TON", size: "3 TON", cfm: 0, variant: "heat-pump" },
   { id: "equipment-erv", category: "Equipment", kind: "equipment", label: "ERV-1", size: "ERV", cfm: 150, variant: "erv" },
   { id: "equipment-hrv", category: "Equipment", kind: "equipment", label: "HRV-1", size: "HRV", cfm: 150, variant: "hrv" },
   { id: "equipment-condenser", category: "Equipment", kind: "equipment", label: "CONDENSER · SYSTEM 1", size: "3 TON", cfm: 0, variant: "condenser" },
@@ -175,6 +191,8 @@ const symbolPresets: SymbolPreset[] = [
   { id: "equipment-humidifier", category: "Equipment", kind: "equipment", label: "HUMIDIFIER", size: "HUM-1", cfm: 0, variant: "humidifier" },
   { id: "equipment-dehumidifier", category: "Equipment", kind: "equipment", label: "DEHUMIDIFIER", size: "DH-1", cfm: 200, variant: "dehumidifier" },
   { id: "equipment-boiler", category: "Equipment", kind: "equipment", label: "BOILER", size: "B-1", cfm: 0, variant: "boiler" },
+  { id: "equipment-supply-plenum", category: "Equipment", kind: "equipment", label: "SUPPLY PLENUM BOX", size: "PLENUM", cfm: 0, variant: "supply-plenum-box" },
+  { id: "equipment-return-plenum", category: "Equipment", kind: "equipment", label: "RETURN PLENUM BOX", size: "PLENUM", cfm: 0, variant: "return-plenum-box" },
   { id: "device-exhaust", category: "Air devices", kind: "fan", label: "EF-1", size: "EF-1", cfm: 80, variant: "exhaust", elevation: "CEILING" },
   { id: "device-inline", category: "Air devices", kind: "fan", label: "INLINE FAN", size: "IF-1", cfm: 150, variant: "inline", elevation: "ABOVE CEILING" },
   { id: "device-roof-fan", category: "Air devices", kind: "fan", label: "ROOF EXHAUST FAN", size: "REF-1", cfm: 600, variant: "roof", elevation: "ROOF" },
@@ -220,8 +238,11 @@ function symbolFamily(preset: SymbolPreset) {
 function symbolDimensions(size: string) {
   const parts = size.replace(/"/g, "").split(/[x×]/i).map(Number).filter(Number.isFinite);
   const ratio = parts.length > 1 ? Math.max(.35, Math.min(2.85, parts[0] / parts[1])) : 1;
-  const width = ratio >= 1 ? 24 * Math.sqrt(ratio) : 24;
-  const height = ratio >= 1 ? 24 / Math.sqrt(ratio) : 24 / ratio;
+  const nominalScale = parts.length > 1
+    ? Math.max(.78, Math.min(1.25, Math.sqrt((parts[0] * parts[1]) / 144)))
+    : 1;
+  const width = (ratio >= 1 ? 24 * Math.sqrt(ratio) : 24) * nominalScale;
+  const height = (ratio >= 1 ? 24 / Math.sqrt(ratio) : 24 / ratio) * nominalScale;
   return {
     width: Math.max(16, Math.min(42, width)),
     height: Math.max(11, Math.min(34, height)),
@@ -246,6 +267,13 @@ function SymbolArtwork({ kind, variant = "", width = 24, height = 24 }: { kind: 
   });
 
   if (kind === "diffuser") {
+    if (variant === "supply-can") return <>
+      <rect className="supply-can-body" x={x} y={y + 3} width={width} height={height - 3} rx="2" />
+      <circle className="supply-can-collar" cx="0" cy={y + 3} r={Math.max(4, Math.min(7, width / 4))} />
+      <path className="supply-detail" d={`M ${x + 4} ${y + 9} L ${width / 2 - 4} ${y + 9} M ${x + 4} ${y + 14} L ${width / 2 - 4} ${y + 14} M ${x + 4} ${y + 19} L ${width / 2 - 4} ${y + 19}`} />
+      <path className="air-pattern" d={`M 0 ${height / 2} L 0 ${height / 2 + 10} M -4 ${height / 2 + 6} L 0 ${height / 2 + 10} L 4 ${height / 2 + 6}`} />
+      <text className="can-code supply-code" x={width / 2 - 5} y={height / 2 - 3} textAnchor="middle">S</text>
+    </>;
     if (variant === "round") return <>
       <circle className="supply-face" cx="0" cy="0" r="11" />
       <circle className="supply-detail" cx="0" cy="0" r="6.5" />
@@ -358,6 +386,13 @@ function SymbolArtwork({ kind, variant = "", width = 24, height = 24 }: { kind: 
   }
 
   if (kind === "returnGrille") {
+    if (variant === "return-can") return <>
+      <rect className="return-can-body" x={x} y={y} width={width - 4} height={height} rx="2" />
+      <circle className="return-can-collar" cx={width / 2 - 3} cy="0" r={Math.max(4, Math.min(7, height / 3))} />
+      {verticals.slice(0, 5).map((lineX, index) => <line className="return-detail" key={index} x1={lineX - 2} y1={y + 4} x2={lineX - 2} y2={height / 2 - 4} />)}
+      <path className="return-intake" d={`M ${x - 9} 0 L ${x - 2} 0 M ${x - 6} -4 L ${x - 2} 0 L ${x - 6} 4`} />
+      <text className="can-code return-code" x={x + 5} y={height / 2 - 3} textAnchor="middle">R</text>
+    </>;
     if (variant.startsWith("slot-return")) {
       const slotCount = variant === "slot-return" ? 2 : Math.max(1, Number(variant.split("-").at(-1)) || 1);
       const slotLines = Array.from({ length: slotCount }, (_, index) => ((index + 1) * 12) / (slotCount + 1) - 6);
@@ -470,20 +505,21 @@ function SymbolArtwork({ kind, variant = "", width = 24, height = 24 }: { kind: 
       <text className="equipment-code vertical-unit-code" x="0" y="1" textAnchor="middle">{code}</text>
     </>;
     if (variant === "air-handler") return horizontalUnit("AHU", "coil");
+    if (variant === "heat-pump-air-handler") return horizontalUnit("HPAH", "coil");
     if (variant === "vertical-air-handler") return verticalUnit("VAH", false);
     if (variant === "vertical-furnace") return verticalUnit("VUF", true);
     if (variant === "fan-coil") return horizontalUnit("FCU", "fan");
     if (variant === "package") return horizontalUnit("PKG", "split");
-    if (variant === "furnace") return <>
-      <path className="supply-plenum" d="M -9 -36 L 9 -36 L 12 -16 L -12 -16 Z" />
-      <rect className="equipment-body" x="-14" y="-16" width="28" height="32" rx="2" />
-      <path className="return-plenum" d="M -12 16 L 12 16 L 9 36 L -9 36 Z" />
-      <path className="supply-flow" d="M 0 -18 L 0 -31 M -4 -27 L 0 -31 L 4 -27" />
-      <path className="return-flow" d="M 0 31 L 0 18 M -4 22 L 0 18 L 4 22" />
-      <path className="unit-detail flame" d="M -7 9 C -12 2 -4 -6 0 -10 C 1 -4 9 -1 7 8 C 4 13 -4 13 -7 9 Z" />
-      <text className="plenum-code supply-code" x="0" y="-23" textAnchor="middle">S</text>
-      <text className="plenum-code return-code" x="0" y="28" textAnchor="middle">R</text>
-      <text className="equipment-code" x="0" y="5" textAnchor="middle">FUR</text>
+    if (variant === "furnace") return horizontalUnit("FUR", "flame");
+    if (variant === "supply-plenum-box") return <>
+      <path className="supply-plenum standalone-plenum" d="M -24 -13 L 19 -10 L 27 -6 L 27 6 L 19 10 L -24 13 Z" />
+      <path className="supply-flow" d="M -14 0 L 18 0 M 13 -5 L 19 0 L 13 5" />
+      <text className="plenum-code supply-code" x="-7" y="3" textAnchor="middle">SUPPLY</text>
+    </>;
+    if (variant === "return-plenum-box") return <>
+      <path className="return-plenum standalone-plenum" d="M -27 -6 L -19 -10 L 24 -13 L 24 13 L -19 10 L -27 6 Z" />
+      <path className="return-flow" d="M 18 0 L -18 0 M -13 -5 L -19 0 L -13 5" />
+      <text className="plenum-code return-code" x="6" y="3" textAnchor="middle">RETURN</text>
     </>;
     if (variant === "rtu") return <>
       <rect className="roof-curb" x="-25" y="-17" width="50" height="34" rx="2" />
@@ -656,10 +692,14 @@ type SymbolMeta = {
   kind: SymbolKind;
   label: string;
   rotation: number;
+  scaleX?: number;
+  scaleY?: number;
   variant?: string;
   neckSize?: string;
   connectedRunId?: string;
   connectedEnd?: "start" | "end";
+  returnRunId?: string;
+  returnEnd?: "start" | "end";
 };
 type MeasurementMeta = {
   feet: number;
@@ -680,6 +720,7 @@ type Drawing = {
   type: DrawType | "symbol" | "measurement";
   points: Point[];
   size: string;
+  lineWeight?: number;
   page: number;
   fitting?: FittingMeta;
   symbol?: SymbolMeta;
@@ -689,6 +730,7 @@ type Drawing = {
   roomName?: string;
   roomType?: "general" | "bedroom" | "bathroom" | "closet";
   elevation?: string;
+  labelOffset?: Point;
 };
 type RoomAirflowPriority = "standard" | "high" | "low";
 type RoomAirflowTarget = {
@@ -710,6 +752,7 @@ type TerminalCfmProposal = {
 };
 const primaryAirflowEquipmentVariants = new Set([
   "air-handler",
+  "heat-pump-air-handler",
   "vertical-air-handler",
   "vertical-furnace",
   "furnace",
@@ -717,6 +760,7 @@ const primaryAirflowEquipmentVariants = new Set([
   "fan-coil",
   "rtu",
 ]);
+const runSizeOptions = ["4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"];
 const allowedResidentialFlexSizes = ["4", "6", "7", "8", "10", "12", "14", "16"];
 
 function isPrimaryAirflowEquipment(drawing?: Drawing) {
@@ -725,11 +769,35 @@ function isPrimaryAirflowEquipment(drawing?: Drawing) {
     primaryAirflowEquipmentVariants.has(drawing.symbol.variant || "")
   );
 }
+
+function equipmentTypeName(variant = "") {
+  const names: Record<string, string> = {
+    "air-handler": "AHU",
+    "heat-pump-air-handler": "HEAT-PUMP AHU",
+    "vertical-air-handler": "VERTICAL AHU",
+    "vertical-furnace": "VERTICAL FURNACE",
+    furnace: "FURNACE",
+    package: "PACKAGE UNIT",
+    "fan-coil": "FAN COIL",
+    "heat-pump": "OUTDOOR HEAT PUMP",
+    condenser: "CONDENSER",
+    rtu: "RTU",
+  };
+  return names[variant] || "";
+}
+
+export default function Home() {
+  return <WorkspaceErrorBoundary>
+    <HVACPlanStudioApp />
+  </WorkspaceErrorBoundary>;
+}
 type DragState =
   | { kind: "point"; drawingId: string; pointIndex: number; before: Drawing[] }
   | { kind: "line"; drawingId: string; start: Point; original: Point[]; before: Drawing[] }
+  | { kind: "label"; drawingId: string; start: Point; originalOffset: Point; before: Drawing[] }
   | { kind: "fitting"; drawingId: string; start: Point; originalCenter: Point; originalPorts: Point[]; connectedIds: string[]; before: Drawing[] }
   | { kind: "symbol"; drawingId: string; before: Drawing[] }
+  | { kind: "symbol-resize"; drawingId: string; center: Point; rotation: number; halfWidth: number; halfHeight: number; before: Drawing[] }
   | { kind: "group"; start: Point; ids: string[]; originals: Record<string, Point[]>; before: Drawing[] };
 type PanState = {
   pointerId: number;
@@ -795,6 +863,7 @@ type SavedProject = {
   systemNames?: Record<string, string>;
   showCfmLabels?: boolean;
   showLengthLabels?: boolean;
+  showFittingLabels?: boolean;
   visibleLayers?: Partial<Record<LayerId, boolean>>;
   backgroundOpacity?: number;
   showGrid?: boolean;
@@ -813,6 +882,10 @@ type SavedProject = {
   roomAirflowTargets?: Record<string, Record<string, RoomAirflowTarget>>;
   reviewDecisionsBySystem?: Record<string, Record<string, ReviewDecision>>;
   releaseRecords?: SystemReleaseRecord[];
+  workflowSummary?: WorkflowSummary;
+  cloudProjectId?: string;
+  cloudRevisionId?: string;
+  cloudReleaseFingerprint?: string;
 };
 
 type CommissioningRecord = {
@@ -954,14 +1027,50 @@ const drawingColors: Record<DrawType, string> = {
   fresh: "#45d18b",
 };
 
-export default function Home() {
+type WorkspaceErrorBoundaryState = {
+  failed: boolean;
+};
+
+class WorkspaceErrorBoundary extends Component<{ children: ReactNode }, WorkspaceErrorBoundaryState> {
+  state: WorkspaceErrorBoundaryState = { failed: false };
+
+  static getDerivedStateFromError(): WorkspaceErrorBoundaryState {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("HVAC Plan Studio recovered from a workspace error", error, info);
+  }
+
+  render() {
+    if (this.state.failed) {
+      return <main className="workspace-recovery-screen">
+        <div className="workspace-recovery-card">
+          <ShieldAlert size={34} />
+          <span>WORKSPACE SAFETY RECOVERY</span>
+          <h1>Your plan is still saved</h1>
+          <p>A drawing action was stopped before it could leave the screen dark. Reload the last autosaved plan and continue working.</p>
+          <button onClick={() => window.location.reload()}>Reload saved plan</button>
+        </div>
+      </main>;
+    }
+    return this.props.children;
+  }
+}
+
+function HVACPlanStudioApp() {
   const inputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasViewportRef = useRef<HTMLDivElement>(null);
   const planSheetRef = useRef<HTMLDivElement>(null);
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [pdfFingerprint, setPdfFingerprint] = useState("");
+  const [sourceDriveFileId, setSourceDriveFileId] = useState<string | null>(null);
   const [fileName, setFileName] = useState("Untitled HVAC Plan");
+  const [workingCloudProjectId, setWorkingCloudProjectId] = useState<string | null>(null);
+  const [workingCloudRevisionId, setWorkingCloudRevisionId] = useState<string | null>(null);
+  const [workingCloudRevisionFingerprint, setWorkingCloudRevisionFingerprint] = useState<string | null>(null);
+  const [cloudProjectRisk, setCloudProjectRisk] = useState<CloudProjectRisk | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [camera, setCamera] = useState({ x: 0, y: 0 });
@@ -973,6 +1082,7 @@ export default function Home() {
   const [symbolSearch, setSymbolSearch] = useState("");
   const [placementRotation, setPlacementRotation] = useState(0);
   const [ductSize, setDuctSize] = useState("14");
+  const [runLineWeight, setRunLineWeight] = useState(0.2);
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [undoStack, setUndoStack] = useState<Drawing[][]>([]);
   const [redoStack, setRedoStack] = useState<Drawing[][]>([]);
@@ -993,6 +1103,9 @@ export default function Home() {
   const [branchMessage, setBranchMessage] = useState("");
   const [branchPlacementResult, setBranchPlacementResult] = useState<{ fittingId: string; message: string } | null>(null);
   const [branchOpportunityCursor, setBranchOpportunityCursor] = useState(0);
+  const [branchWorkflow, setBranchWorkflow] = useState<"run-first" | "place-first">("run-first");
+  const [queuedBranchRunId, setQueuedBranchRunId] = useState<string | null>(null);
+  const [branchHoverRunId, setBranchHoverRunId] = useState<string | null>(null);
   const [branchStyle, setBranchStyle] = useState<"auto" | "wye45" | "tee90">("auto");
   const [branchMatchChoices, setBranchMatchChoices] = useState<Record<string, string>>({});
   const [scaleFeetPerUnit, setScaleFeetPerUnit] = useState(1 / 24.3);
@@ -1005,6 +1118,9 @@ export default function Home() {
   const [rightTab, setRightTab] = useState<"builder" | "layers" | "rooms" | "network" | "takeoff" | "field" | "checks">("builder");
   const [balanceView, setBalanceView] = useState<"system" | "rooms" | "runs">("system");
   const [saveState, setSaveState] = useState<"saved" | "saving">("saved");
+  const [showCloudProjects, setShowCloudProjects] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [driveConfigured, setDriveConfigured] = useState<boolean | null>(null);
   const [showSizingReview, setShowSizingReview] = useState(false);
   const [selectedSizingIds, setSelectedSizingIds] = useState<string[]>([]);
   const [supplyVelocityLimit, setSupplyVelocityLimit] = useState(900);
@@ -1021,6 +1137,58 @@ export default function Home() {
   const [activeReviewIssueId, setActiveReviewIssueId] = useState<string | null>(null);
   const [reviewerName, setReviewerName] = useState("");
   const [reviewDecisionNote, setReviewDecisionNote] = useState("");
+
+  useEffect(() => {
+    setCloudProjectRisk((current) =>
+      current?.projectId === workingCloudProjectId ? current : null);
+  }, [workingCloudProjectId]);
+
+  const refreshWorkingCloudRisk = useCallback(async () => {
+    if (!workingCloudProjectId) {
+      setCloudProjectRisk(null);
+      return null;
+    }
+    try {
+      const [cloudRevisions, cloudWorkItems, cloudApprovals] = await Promise.all([
+        listCloudRevisions(workingCloudProjectId),
+        listCloudWorkItems(workingCloudProjectId),
+        listCloudApprovals(workingCloudProjectId),
+      ]);
+      const latestRevisionId = cloudRevisions[0]?.id || null;
+      const risk: CloudProjectRisk = {
+        projectId: workingCloudProjectId,
+        verification: "verified",
+        latestRevisionId,
+        latestRevisionNumber: cloudRevisions[0]?.revision_number || 0,
+        latestReleaseFingerprint: cloudRevisions[0]?.release_fingerprint || null,
+        openCriticalWork: cloudWorkItems.filter((item) =>
+          item.priority === "critical" && !["resolved", "closed"].includes(item.status)).length,
+        pendingApprovals: cloudApprovals.filter((approval) =>
+          approval.revision_id === latestRevisionId && approval.status === "requested").length,
+        changesRequested: cloudApprovals.filter((approval) =>
+          approval.revision_id === latestRevisionId && approval.status === "changes_requested").length,
+        approvedApprovals: cloudApprovals.filter((approval) =>
+          approval.revision_id === latestRevisionId && approval.status === "approved").length,
+      };
+      setCloudProjectRisk(risk);
+      return risk;
+    } catch {
+      const risk: CloudProjectRisk = {
+        projectId: workingCloudProjectId,
+        verification: "unverified",
+        latestRevisionId: null,
+        latestRevisionNumber: 0,
+        latestReleaseFingerprint: null,
+        openCriticalWork: 0,
+        pendingApprovals: 0,
+        changesRequested: 0,
+        approvedApprovals: 0,
+      };
+      setCloudProjectRisk(risk);
+      return risk;
+    }
+  }, [workingCloudProjectId]);
+
   const [reviewDecisionsBySystem, setReviewDecisionsBySystem] = useState<Record<string, Record<string, ReviewDecision>>>({});
   const [fieldView, setFieldView] = useState<"release" | "installer" | "coordination" | "startup">("release");
   const [fieldChecklistBySystem, setFieldChecklistBySystem] = useState<Record<string, Record<string, boolean>>>({});
@@ -1050,8 +1218,9 @@ export default function Home() {
   const [fieldMode, setFieldMode] = useState(false);
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
-  const [showCfmLabels, setShowCfmLabels] = useState(true);
-  const [showLengthLabels, setShowLengthLabels] = useState(true);
+  const [showCfmLabels, setShowCfmLabels] = useState(false);
+  const [showLengthLabels, setShowLengthLabels] = useState(false);
+  const [showFittingLabels, setShowFittingLabels] = useState(false);
   const [visibleLayers, setVisibleLayers] = useState<Record<LayerId, boolean>>(defaultVisibleLayers);
   const [backgroundOpacity, setBackgroundOpacity] = useState(100);
   const [showGrid, setShowGrid] = useState(true);
@@ -1062,6 +1231,32 @@ export default function Home() {
   const [systemNames, setSystemNames] = useState<Record<string, string>>(defaultSystemNames);
   const [roomAirflowTargets, setRoomAirflowTargets] = useState<Record<string, Record<string, RoomAirflowTarget>>>({});
   const [selectedCfmProposalIds, setSelectedCfmProposalIds] = useState<string[]>([]);
+
+  const currentCloudReleaseFingerprint = useMemo(() => cloudReleaseFingerprintFromProject({
+    drawings,
+    pdfFingerprint,
+    scaleFeetPerUnit,
+    scaleLabel,
+    scaleVerified,
+    systemNames,
+    supplyVelocityLimit,
+    returnVelocityLimit,
+    freshVelocityLimit,
+    residentialFlexMax,
+    fieldChecklistBySystem,
+    punchItems,
+    rfiItems,
+    roomAirflowTargets,
+    reviewDecisionsBySystem,
+  }), [drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, supplyVelocityLimit, systemNames]);
+
+  useEffect(() => {
+    if (!workingCloudProjectId || rightTab !== "field" || fieldView !== "release") return;
+    void refreshWorkingCloudRisk();
+    const timer = window.setInterval(() => void refreshWorkingCloudRisk(), 60_000);
+    return () => window.clearInterval(timer);
+  }, [fieldView, refreshWorkingCloudRisk, rightTab, workingCloudProjectId]);
+
   const dragRef = useRef<DragState | null>(null);
   const panRef = useRef<PanState | null>(null);
   const pendingFocusRef = useRef<{ page: number; point: Point } | null>(null);
@@ -1092,15 +1287,15 @@ export default function Home() {
   );
   const activeFieldPackage = useMemo(
     () => fieldPackageSummary(activeReviewSummary, activeFieldConnections),
-    [activeFieldConnections, activeReviewSummary, activeSystem, drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, supplyVelocityLimit],
+    [activeFieldConnections, activeReviewSummary, activeSystem, cloudProjectRisk, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, supplyVelocityLimit, workingCloudProjectId, workingCloudRevisionFingerprint, workingCloudRevisionId],
   );
   const activeBuilderSummary = useMemo(
     () => systemBuilderSummary(activeValidationDashboard, activeFieldPackage),
     [activeFieldPackage, activeSystem, activeValidationDashboard, drawings, residentialFlexMax, returnVelocityLimit, supplyVelocityLimit],
   );
   const projectCommandSnapshot = useMemo(
-    () => rightTab === "field" ? projectCommandSummary() : null,
-    [activeFieldPackage, activeSystem, commissioningBySystem, drawings, fieldChecklistBySystem, punchItems, releaseRecords, reviewDecisionsBySystem, rfiItems, rightTab, scaleVerified],
+    () => projectCommandSummary(),
+    [activeFieldPackage, activeSystem, commissioningBySystem, drawings, fieldChecklistBySystem, punchItems, releaseRecords, reviewDecisionsBySystem, rfiItems, scaleVerified],
   );
   const filteredProjectRowsSnapshot = useMemo(
     () => {
@@ -1120,20 +1315,41 @@ export default function Home() {
   }, [selectedId]);
 
   useEffect(() => {
+    let cancelled = false;
+    void checkDriveConfiguration().then((configured) => {
+      if (!cancelled) setDriveConfigured(configured);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (selectedId && !drawings.some((drawing) => drawing.id === selectedId)) {
+      setSelectedId(null);
+      setSelectedIds([]);
+    }
+  }, [drawings, selectedId]);
+
+  useEffect(() => {
     if (activeTool === "branch") return;
     setPendingBranchFittingId(null);
     setBranchPreview(null);
     setBranchPlacementResult(null);
+    setQueuedBranchRunId(null);
+    setBranchHoverRunId(null);
   }, [activeTool]);
 
   useEffect(() => {
     if (!branchPlacementResult) return;
     const timer = window.setTimeout(() => {
       setBranchPlacementResult(null);
-      if (activeTool === "branch") setBranchMessage("Branch pass continues · choose another trunk or jump to the next suggested junction");
+      if (activeTool === "branch") {
+        setBranchMessage(branchWorkflow === "run-first"
+          ? "Run-first branch pass continues · click the next completed diffuser run"
+          : "Branch pass continues · choose another trunk or jump to the next suggested junction");
+      }
     }, 4500);
     return () => window.clearTimeout(timer);
-  }, [activeTool, branchPlacementResult]);
+  }, [activeTool, branchPlacementResult, branchWorkflow]);
 
   useEffect(() => {
     zoomRef.current = zoom;
@@ -1232,8 +1448,9 @@ export default function Home() {
     setScaleVerified(false);
     setSystemNames(defaultSystemNames);
     setActiveSystem("system-1");
-    setShowCfmLabels(true);
-    setShowLengthLabels(true);
+    setShowCfmLabels(false);
+    setShowLengthLabels(false);
+    setShowFittingLabels(false);
     setVisibleLayers(defaultVisibleLayers);
     setBackgroundOpacity(100);
     setShowGrid(true);
@@ -1260,53 +1477,69 @@ export default function Home() {
     setReleaseNote("");
   }
 
+  function applyProjectSnapshot(project: SavedProject, sourceFingerprint?: string) {
+    const restoredDrawings = Array.isArray(project.drawings) ? project.drawings : [];
+    setDrawings(synchronizeFittingSizes(restoredDrawings, restoredDrawings));
+    setScaleFeetPerUnit(project.scaleFeetPerUnit || 1 / 24.3);
+    setScaleLabel(project.scaleLabel || '1/4" = 1\'-0"');
+    setScaleLocked(true);
+    setScaleVerified(project.scaleVerified ?? false);
+    setCalibrating(false);
+    if (sourceFingerprint && project.pdfFingerprint && project.pdfFingerprint !== sourceFingerprint) {
+      setBranchMessage("A revised PDF was detected. Existing markups were restored, but every prior field release is now stale");
+    }
+    setSystemNames({ ...defaultSystemNames, ...(project.systemNames || {}) });
+    setShowCfmLabels(project.showCfmLabels ?? false);
+    setShowLengthLabels(project.showLengthLabels ?? false);
+    setShowFittingLabels(project.showFittingLabels ?? false);
+    setVisibleLayers({ ...defaultVisibleLayers, ...(project.visibleLayers || {}) });
+    setBackgroundOpacity(project.backgroundOpacity ?? 100);
+    setShowGrid(project.showGrid ?? true);
+    setSnapEnabled(project.snapEnabled ?? true);
+    setLockedLayers({ ...defaultLockedLayers, ...(project.lockedLayers || {}) });
+    setSupplyVelocityLimit(project.supplyVelocityLimit ?? 900);
+    setReturnVelocityLimit(project.returnVelocityLimit ?? 700);
+    setFreshVelocityLimit(project.freshVelocityLimit ?? 600);
+    setResidentialFlexMax(project.residentialFlexMax || "16");
+    setFieldChecklistBySystem(project.fieldChecklistBySystem || (project.fieldChecklist ? { "system-1": project.fieldChecklist } : {}));
+    setMaterialWastePercent(project.materialWastePercent ?? 10);
+    setCommissioningBySystem(project.commissioningBySystem || {});
+    setPunchItems(project.punchItems || []);
+    setRfiItems(project.rfiItems || []);
+    setRoomAirflowTargets(project.roomAirflowTargets || {});
+    setReviewDecisionsBySystem(project.reviewDecisionsBySystem || {});
+    setReleaseRecords(project.releaseRecords || []);
+    setWorkingCloudProjectId(project.cloudProjectId || null);
+    setWorkingCloudRevisionId(project.cloudRevisionId || null);
+    setWorkingCloudRevisionFingerprint(
+      project.cloudReleaseFingerprint ||
+      (project.cloudProjectId ? cloudReleaseFingerprintFromProject(project) : null),
+    );
+    setSelectedCfmProposalIds([]);
+    setActiveReviewIssueId(null);
+    setUndoStack([]);
+    setRedoStack([]);
+  }
+
   function restoreProject(name: string, sourceFingerprint: string) {
     try {
       const stored = localStorage.getItem(`${STORAGE_PREFIX}${name.toLowerCase()}`);
       if (!stored) {
         setDrawings([]);
+        setWorkingCloudProjectId(null);
+        setWorkingCloudRevisionId(null);
+        setWorkingCloudRevisionFingerprint(null);
         resetProjectWorkflowState();
         setUndoStack([]);
         setRedoStack([]);
         return;
       }
-      const project = JSON.parse(stored) as SavedProject;
-      const restoredDrawings = Array.isArray(project.drawings) ? project.drawings : [];
-      setDrawings(synchronizeFittingSizes(restoredDrawings, restoredDrawings));
-      setScaleFeetPerUnit(project.scaleFeetPerUnit || 1 / 24.3);
-      setScaleLabel(project.scaleLabel || '1/4" = 1\'-0"');
-      setScaleLocked(true);
-      setScaleVerified(project.scaleVerified ?? false);
-      setCalibrating(false);
-      if (project.pdfFingerprint && project.pdfFingerprint !== sourceFingerprint) {
-        setBranchMessage("A revised PDF was detected. Existing markups were restored, but every prior field release is now stale");
-      }
-      setSystemNames({ ...defaultSystemNames, ...(project.systemNames || {}) });
-      setShowCfmLabels(project.showCfmLabels ?? true);
-      setShowLengthLabels(project.showLengthLabels ?? true);
-      setVisibleLayers({ ...defaultVisibleLayers, ...(project.visibleLayers || {}) });
-      setBackgroundOpacity(project.backgroundOpacity ?? 100);
-      setShowGrid(project.showGrid ?? true);
-      setSnapEnabled(project.snapEnabled ?? true);
-      setLockedLayers({ ...defaultLockedLayers, ...(project.lockedLayers || {}) });
-      setSupplyVelocityLimit(project.supplyVelocityLimit ?? 900);
-      setReturnVelocityLimit(project.returnVelocityLimit ?? 700);
-      setFreshVelocityLimit(project.freshVelocityLimit ?? 600);
-      setResidentialFlexMax(project.residentialFlexMax || "16");
-      setFieldChecklistBySystem(project.fieldChecklistBySystem || (project.fieldChecklist ? { "system-1": project.fieldChecklist } : {}));
-      setMaterialWastePercent(project.materialWastePercent ?? 10);
-      setCommissioningBySystem(project.commissioningBySystem || {});
-      setPunchItems(project.punchItems || []);
-      setRfiItems(project.rfiItems || []);
-      setRoomAirflowTargets(project.roomAirflowTargets || {});
-      setReviewDecisionsBySystem(project.reviewDecisionsBySystem || {});
-      setReleaseRecords(project.releaseRecords || []);
-      setSelectedCfmProposalIds([]);
-      setActiveReviewIssueId(null);
-      setUndoStack([]);
-      setRedoStack([]);
+      applyProjectSnapshot(JSON.parse(stored) as SavedProject, sourceFingerprint);
     } catch {
       setDrawings([]);
+      setWorkingCloudProjectId(null);
+      setWorkingCloudRevisionId(null);
+      setWorkingCloudRevisionFingerprint(null);
       resetProjectWorkflowState();
       setUndoStack([]);
       setRedoStack([]);
@@ -1328,6 +1561,10 @@ export default function Home() {
       const projectName = file.name.replace(/\.pdf$/i, "");
       setPdf(document);
       setPdfFingerprint(sourceFingerprint);
+      setSourceDriveFileId(null);
+      setWorkingCloudProjectId(null);
+      setWorkingCloudRevisionId(null);
+      setWorkingCloudRevisionFingerprint(null);
       setFileName(projectName);
       setPageNumber(1);
       setZoom(1);
@@ -1339,7 +1576,7 @@ export default function Home() {
     }
   }
 
-  async function openPdfBytes(name: string, bytes: Uint8Array) {
+  async function openPdfBytes(name: string, bytes: Uint8Array, driveFileId?: string | null) {
     setLoading(true);
     setError("");
     try {
@@ -1348,6 +1585,10 @@ export default function Home() {
       const projectName = name.replace(/\.pdf$/i, "");
       setPdf(document);
       setPdfFingerprint(sourceFingerprint);
+      setSourceDriveFileId(driveFileId || null);
+      setWorkingCloudProjectId(null);
+      setWorkingCloudRevisionId(null);
+      setWorkingCloudRevisionFingerprint(null);
       setFileName(projectName);
       setPageNumber(1);
       setZoom(1);
@@ -1362,9 +1603,52 @@ export default function Home() {
   async function openFromDrive() {
     try {
       const selected = await pickPdfFromDrive();
-      await openPdfBytes(selected.name, selected.bytes);
+      await openPdfBytes(selected.name, selected.bytes, selected.id);
     } catch (driveError) {
       setError(driveError instanceof Error ? driveError.message : "Google Drive could not be opened.");
+    }
+  }
+
+  async function restoreCloudRevision(
+    snapshot: Record<string, unknown>,
+    project: CloudProject,
+    revision: CloudRevision,
+  ) {
+    const savedProject = snapshot as unknown as SavedProject;
+    setLoading(true);
+    setError("");
+    try {
+      let sourceFingerprint = savedProject.pdfFingerprint || "";
+      if (project.source_drive_file_id) {
+        const source = await loadPdfFromDriveId(
+          project.source_drive_file_id,
+          project.source_file_name || `${project.name}.pdf`,
+        );
+        sourceFingerprint = stableByteHash(source.bytes);
+        const document = await pdfjsLib.getDocument({ data: source.bytes }).promise;
+        setPdf(document);
+        setPdfFingerprint(sourceFingerprint);
+        setSourceDriveFileId(project.source_drive_file_id);
+        setPageNumber(1);
+        setZoom(1);
+      } else if (!pdf) {
+        setBranchMessage("Cloud revision restored. Open the matching source PDF to place the saved HVAC drawing over its plan");
+      }
+      setFileName(savedProject.fileName || project.name);
+      applyProjectSnapshot(savedProject, sourceFingerprint);
+      setWorkingCloudProjectId(project.id);
+      setWorkingCloudRevisionId(revision.id);
+      setWorkingCloudRevisionFingerprint(
+        revision.release_fingerprint ||
+        savedProject.cloudReleaseFingerprint ||
+        cloudReleaseFingerprintFromProject(savedProject),
+      );
+      setBranchMessage(`Cloud revision R${revision.revision_number} restored · local autosave is active`);
+      setShowCloudProjects(false);
+    } catch (cloudError) {
+      setError(cloudError instanceof Error ? cloudError.message : "The cloud revision could not be restored.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -1576,9 +1860,23 @@ export default function Home() {
     requestAnimationFrame(() => centerPlan());
   }
 
-  const saveProject = useCallback(() => {
-    if (!pdf) return;
-    const project: SavedProject = {
+  const buildProjectSnapshot = useCallback((): SavedProject => {
+    const workflow = buildSystemWorkflow({
+      runs: activeBuilderSummary.runs.length,
+      fittings: activeBuilderSummary.fittings.length,
+      devices: activeBuilderSummary.devices.length,
+      openConnections: activeBuilderSummary.unconnectedDevices,
+      brokenPorts: activeBuilderSummary.brokenPorts,
+      hasPrimaryUnit: activeBuilderSummary.devices.some((drawing) => isPrimaryAirflowEquipment(drawing)),
+      airflowBalanced: systemStats(activeSystem).balanced,
+      sizingReviews: activeBuilderSummary.sizing.length,
+      criticalIssues: activeBuilderSummary.audit.counts.critical,
+      warningIssues: activeBuilderSummary.audit.counts.warning,
+      releaseReady: activeFieldPackage.gatesClear,
+      released: activeFieldPackage.released,
+      releaseStale: activeFieldPackage.stale,
+    });
+    return {
       version: 3,
       fileName,
       drawings,
@@ -1590,6 +1888,7 @@ export default function Home() {
       systemNames,
       showCfmLabels,
       showLengthLabels,
+      showFittingLabels,
       visibleLayers,
       backgroundOpacity,
       showGrid,
@@ -1607,10 +1906,34 @@ export default function Home() {
       roomAirflowTargets,
       reviewDecisionsBySystem,
       releaseRecords,
+      cloudProjectId: workingCloudProjectId || undefined,
+      cloudRevisionId: workingCloudRevisionId || undefined,
+      cloudReleaseFingerprint: currentCloudReleaseFingerprint,
+      workflowSummary: {
+        version: 1,
+        activeSystemId: activeSystem,
+        stage: workflow.activeStage,
+        progress: projectCommandSnapshot.rows.length ? projectCommandSnapshot.progress : workflow.progress,
+        nextAction: workflow.nextAction,
+        updatedAt: new Date().toISOString(),
+        systems: projectCommandSnapshot.rows.map((row) => ({
+          id: row.id,
+          name: systemLabel(row.id),
+          stage: row.closeoutReady ? "Closeout complete" : row.fieldReady ? "Field ready" : row.designReady ? "Design ready" : "In progress",
+          progress: row.progress,
+          blockers: row.blockers.length,
+          fieldReady: row.fieldReady,
+        })),
+      },
     };
+  }, [activeBuilderSummary, activeFieldPackage, activeSystem, backgroundOpacity, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
+
+  const saveProject = useCallback(() => {
+    if (!pdf) return;
+    const project = buildProjectSnapshot();
     localStorage.setItem(`${STORAGE_PREFIX}${fileName.toLowerCase()}`, JSON.stringify(project));
     setSaveState("saved");
-  }, [backgroundOpacity, commissioningBySystem, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdf, pdfFingerprint, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, showCfmLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, visibleLayers]);
+  }, [buildProjectSnapshot, fileName, pdf]);
 
   useEffect(() => {
     if (!pdf) return;
@@ -1620,11 +1943,12 @@ export default function Home() {
   }, [drawings, fileName, pdf, saveProject]);
 
   function setHistory(next: Drawing[]) {
-    setDrawings((current) => {
-      setUndoStack((stack) => [...stack, current]);
-      setRedoStack([]);
-      return next;
-    });
+    const availableIds = new Set(next.map((drawing) => drawing.id));
+    setUndoStack((stack) => [...stack, drawings]);
+    setRedoStack([]);
+    setSelectedIds((current) => current.filter((id) => availableIds.has(id)));
+    setSelectedId((current) => current && availableIds.has(current) ? current : null);
+    setDrawings(next);
   }
 
   function nearestSegment(point: Point, ignoredId?: string) {
@@ -1693,6 +2017,62 @@ export default function Home() {
       side: (target.side === 1 ? -1 : 1) as 1 | -1,
       reversed: true,
     };
+  }
+
+  function queuedBranchRoute(center: Point, mainId: string, mainAngle: number) {
+    const drawing = drawings.find((candidate) =>
+      candidate.id === queuedBranchRunId &&
+      candidate.id !== mainId &&
+      candidate.page === pageNumber &&
+      candidate.type === "supply" &&
+      !candidate.fitting &&
+      !candidate.symbol &&
+      candidate.points.length >= 2
+    );
+    if (!drawing) return null;
+    const lastIndex = drawing.points.length - 1;
+    const startDistance = Math.hypot(drawing.points[0].x - center.x, drawing.points[0].y - center.y);
+    const endDistance = Math.hypot(drawing.points[lastIndex].x - center.x, drawing.points[lastIndex].y - center.y);
+    const endpointIndex = startDistance <= endDistance ? 0 : lastIndex;
+    const endpoint = drawing.points[endpointIndex];
+    const orientedPoints = endpointIndex === 0 ? drawing.points : [...drawing.points].reverse();
+    const neighbor = orientedPoints[1];
+    const angle = Math.atan2(neighbor.y - endpoint.y, neighbor.x - endpoint.x);
+    const divergence = Math.abs(Math.sin(angle - mainAngle));
+    if (divergence < .12) {
+      setBranchMessage("That branch runs almost parallel with the trunk · choose a clearer T/Y location");
+      return null;
+    }
+    const cross = Math.cos(mainAngle) * Math.sin(angle) - Math.sin(mainAngle) * Math.cos(angle);
+    return {
+      drawing,
+      points: cleanPoints([center, ...orientedPoints.slice(1)]),
+      angle,
+      side: (cross >= 0 ? 1 : -1) as 1 | -1,
+      distance: Math.min(startDistance, endDistance),
+    };
+  }
+
+  function armRunFirstBranch(point: Point) {
+    const candidate = nearestSupplySegment(point);
+    if (!candidate || candidate.distance > 42 / zoom) {
+      setBranchMessage("Step 1 · click directly on the completed blue run going to the diffuser");
+      return false;
+    }
+    const alreadyAssigned = drawings.some((drawing) =>
+      drawing.fitting?.connectedIds.includes(candidate.drawing.id)
+    );
+    if (alreadyAssigned) {
+      setBranchMessage("That run is already attached to a T/Y · choose an unconnected diffuser run");
+      return false;
+    }
+    setQueuedBranchRunId(candidate.drawing.id);
+    setBranchHoverRunId(null);
+    setBranchPreview(null);
+    setSnapMarker(candidate.point);
+    setActiveSystem(drawingSystem(candidate.drawing));
+    setBranchMessage(`${candidate.drawing.size}″ branch run armed for Port 3 · now click anywhere on the blue trunk`);
+    return true;
   }
 
   function existingBranchRoute(center: Point, mainId: string, mainAngle: number) {
@@ -1836,6 +2216,8 @@ export default function Home() {
     setSelectedId(null);
     setPendingBranchFittingId(null);
     setBranchPlacementResult(null);
+    setQueuedBranchRunId(branchWorkflow === "run-first" ? opportunity.branchRunId : null);
+    setBranchHoverRunId(null);
     setBranchPreview({
       center: opportunity.center,
       angle: opportunity.angle,
@@ -1851,7 +2233,9 @@ export default function Home() {
       mode: "split-trunk",
     });
     setSnapMarker(opportunity.center);
-    setBranchMessage(`Suggested junction ${index + 1} of ${opportunities.length} · click the highlighted T/Y to confirm`);
+    setBranchMessage(branchWorkflow === "run-first"
+      ? `Branch run armed · suggested trunk location ${index + 1} of ${opportunities.length} · click the highlighted T/Y to confirm`
+      : `Suggested junction ${index + 1} of ${opportunities.length} · click the highlighted T/Y to confirm`);
     const viewport = canvasViewportRef.current;
     if (viewport) updateCamera({
       x: viewport.clientWidth / 2 - opportunity.center.x * zoomRef.current,
@@ -1943,6 +2327,8 @@ export default function Home() {
     setHistory(connectedDrawings);
     setSelectedId(updatedFitting.id);
     setPendingBranchFittingId(null);
+    setQueuedBranchRunId(null);
+    setBranchHoverRunId(null);
     setBranchPreview(null);
     setSnapMarker(null);
     const completionMessage = `${resolvedStyle === "tee90" ? "90° tee" : "45° wye"} complete · 3 of 3 ports attached`;
@@ -2065,8 +2451,32 @@ export default function Home() {
     ];
   }
 
-  function fittingLegWidth(size: string) {
-    return Math.max(5.5, Math.min(10, 4.5 + (Number(size) || 8) * .3));
+  function normalizedRunLineWeight(value?: number) {
+    return [0.1, 0.2, 0.3].includes(Number(value)) ? Number(value) : 0.2;
+  }
+
+  function runStrokeWidth(value?: number) {
+    return 1 + normalizedRunLineWeight(value) * 20;
+  }
+
+  function fittingPortVisual(fitting: Drawing, port: 0 | 1 | 2) {
+    const connectedId = fitting.fitting?.connectedIds[port];
+    const connectedRun = drawings.find((drawing) =>
+      drawing.id === connectedId &&
+      !drawing.fitting &&
+      !drawing.symbol &&
+      ["supply", "return", "fresh"].includes(drawing.type)
+    );
+    const fallbackSize = [
+      fitting.fitting?.upstreamSize,
+      fitting.fitting?.downstreamSize,
+      fitting.fitting?.branchSize,
+    ][port] || "8";
+    return {
+      size: connectedRun?.size || fallbackSize,
+      lineWeight: normalizedRunLineWeight(connectedRun?.lineWeight),
+      strokeWidth: runStrokeWidth(connectedRun?.lineWeight),
+    };
   }
 
   function snapRunsToFittingPorts(drawingsToSnap: Drawing[], fitting: Drawing, previousFitting = fitting) {
@@ -3374,6 +3784,39 @@ export default function Home() {
     return (hash >>> 0).toString(36);
   }
 
+  function canonicalReleaseValue(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(canonicalReleaseValue);
+    if (!value || typeof value !== "object") return value;
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalReleaseValue(entry)]),
+    );
+  }
+
+  function cloudReleaseFingerprintFromProject(project: Partial<SavedProject>) {
+    const releaseState = {
+      drawings: [...(project.drawings || [])].sort((left, right) => left.id.localeCompare(right.id)),
+      pdfFingerprint: project.pdfFingerprint || "",
+      scaleFeetPerUnit: project.scaleFeetPerUnit || 0,
+      scaleLabel: project.scaleLabel || "",
+      scaleVerified: Boolean(project.scaleVerified),
+      systemNames: project.systemNames || {},
+      velocityRules: {
+        supply: project.supplyVelocityLimit || 0,
+        return: project.returnVelocityLimit || 0,
+        fresh: project.freshVelocityLimit || 0,
+        residentialFlexMax: project.residentialFlexMax || "",
+      },
+      fieldChecklistBySystem: project.fieldChecklistBySystem || {},
+      punchItems: project.punchItems || [],
+      rfiItems: project.rfiItems || [],
+      roomAirflowTargets: project.roomAirflowTargets || {},
+      reviewDecisionsBySystem: project.reviewDecisionsBySystem || {},
+    };
+    return stableTextHash(JSON.stringify(canonicalReleaseValue(releaseState)));
+  }
+
   function stableByteHash(value: Uint8Array) {
     let hash = 2166136261;
     for (let index = 0; index < value.length; index += 1) {
@@ -3805,6 +4248,7 @@ export default function Home() {
         type: drawing.type,
         points: drawing.points,
         size: drawing.size,
+        lineWeight: normalizedRunLineWeight(drawing.lineWeight),
         cfm: drawing.cfm || 0,
         roomName: drawing.roomName || "",
         roomType: drawing.roomType || "",
@@ -3850,6 +4294,20 @@ export default function Home() {
       reviewDecisions,
       rfiState,
       punchState,
+      cloudReview: cloudProjectRisk?.projectId === workingCloudProjectId ? {
+        projectId: cloudProjectRisk.projectId,
+        verification: cloudProjectRisk.verification,
+        latestRevisionId: cloudProjectRisk.latestRevisionId,
+        latestRevisionNumber: cloudProjectRisk.latestRevisionNumber,
+        latestReleaseFingerprint: cloudProjectRisk.latestReleaseFingerprint,
+        openCriticalWork: cloudProjectRisk.openCriticalWork,
+        pendingApprovals: cloudProjectRisk.pendingApprovals,
+        changesRequested: cloudProjectRisk.changesRequested,
+        approvedApprovals: cloudProjectRisk.approvedApprovals,
+        workingRevisionId: workingCloudRevisionId,
+        workingRevisionFingerprint: workingCloudRevisionFingerprint,
+        currentReleaseFingerprint: currentCloudReleaseFingerprint,
+      } : null,
     }));
   }
 
@@ -3925,6 +4383,40 @@ export default function Home() {
       drawingSystem(drawing) === activeSystem &&
       (["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") || isPrimaryAirflowEquipment(drawing))
     )) {
+      if (isPrimaryAirflowEquipment(device)) {
+        for (const ductType of ["supply", "return"] as const) {
+          const port = equipmentPlenumPorts(device)[ductType];
+          const candidates = next
+            .filter((drawing) =>
+              drawing.page === device.page &&
+              drawingSystem(drawing) === activeSystem &&
+              drawing.type === ductType &&
+              !drawing.fitting &&
+              drawing.points.length > 1
+            )
+            .flatMap((run) => [
+              { run, endpoint: run.points[0], end: "start" as const },
+              { run, endpoint: run.points[run.points.length - 1], end: "end" as const },
+            ])
+            .map((candidate) => ({
+              ...candidate,
+              distance: Math.hypot(candidate.endpoint.x - port.x, candidate.endpoint.y - port.y),
+            }))
+            .sort((a, b) => a.distance - b.distance);
+          const nearest = candidates[0];
+          if (!nearest || nearest.distance > 90 / zoomRef.current) continue;
+          const savedRunId = ductType === "supply" ? device.symbol!.connectedRunId : device.symbol!.returnRunId;
+          const savedEnd = ductType === "supply" ? device.symbol!.connectedEnd : device.symbol!.returnEnd;
+          if (savedRunId === nearest.run.id && savedEnd === nearest.end && nearest.distance < 2) continue;
+          const endpointIndex = nearest.end === "start" ? 0 : nearest.run.points.length - 1;
+          nearest.run.points = nearest.run.points.map((point, index) => index === endpointIndex ? { ...port } : point);
+          device.symbol = ductType === "supply"
+            ? { ...device.symbol!, connectedRunId: nearest.run.id, connectedEnd: nearest.end }
+            : { ...device.symbol!, returnRunId: nearest.run.id, returnEnd: nearest.end };
+          connected += 1;
+        }
+        continue;
+      }
       const desiredType = device.symbol!.kind === "returnGrille" ? "return" : "supply";
       const candidates = next
         .filter((drawing) =>
@@ -3944,7 +4436,7 @@ export default function Home() {
         }))
         .sort((a, b) => a.distance - b.distance);
       const nearest = candidates[0];
-      const maximumDistance = (device.symbol!.kind === "equipment" ? 90 : 70) / zoomRef.current;
+      const maximumDistance = 70 / zoomRef.current;
       if (!nearest || nearest.distance > maximumDistance) continue;
       const alreadyConnected = device.symbol!.connectedRunId === nearest.run.id &&
         device.symbol!.connectedEnd === nearest.end &&
@@ -4229,6 +4721,27 @@ export default function Home() {
     const openRfis = activeRfiItems().filter((item) => !["approved", "closed"].includes(item.status)).length;
     const openPunches = activePunchItems().filter((item) => item.status === "open").length;
     const criticalPunches = activePunchItems().filter((item) => item.status === "open" && item.priority === "critical").length;
+    const activeCloudRisk = cloudProjectRisk?.projectId === workingCloudProjectId ? cloudProjectRisk : null;
+    const cloudReviewHolds = activeCloudRisk
+      ? activeCloudRisk.openCriticalWork + activeCloudRisk.pendingApprovals + activeCloudRisk.changesRequested
+      : 0;
+    const cloudRevisionCurrent = Boolean(
+      activeCloudRisk?.verification === "verified" &&
+      activeCloudRisk.latestRevisionId &&
+      activeCloudRisk.latestRevisionId === workingCloudRevisionId &&
+      activeCloudRisk.latestReleaseFingerprint &&
+      activeCloudRisk.latestReleaseFingerprint === workingCloudRevisionFingerprint &&
+      workingCloudRevisionFingerprint === currentCloudReleaseFingerprint,
+    );
+    let cloudGateDetail = "Cloud status not verified";
+    if (activeCloudRisk?.verification === "verified") {
+      if (!activeCloudRisk.latestRevisionId) cloudGateDetail = "Save a named cloud revision";
+      else if (activeCloudRisk.latestRevisionId !== workingCloudRevisionId) cloudGateDetail = `Open latest revision R${activeCloudRisk.latestRevisionNumber}`;
+      else if (!cloudRevisionCurrent) cloudGateDetail = "Working drawing changed · save a new revision";
+      else if (activeCloudRisk.approvedApprovals < 1) cloudGateDetail = `Revision R${activeCloudRisk.latestRevisionNumber} needs approval`;
+      else if (cloudReviewHolds) cloudGateDetail = `${activeCloudRisk.openCriticalWork} critical · ${activeCloudRisk.pendingApprovals} pending · ${activeCloudRisk.changesRequested} changes requested`;
+      else cloudGateDetail = `Revision R${activeCloudRisk.latestRevisionNumber} approved`;
+    }
     const gates = [
       { id: "runs", label: "Duct runs drawn", clear: Boolean(runs.length), detail: runs.length ? `${runs.length} runs` : "No duct runs" },
       { id: "critical", label: "Critical review issues fixed", clear: critical === 0, detail: critical ? `${critical} critical` : "Clear" },
@@ -4240,6 +4753,12 @@ export default function Home() {
       { id: "checklist", label: "Field checklist complete", clear: checklistComplete === fieldChecklistItems.length, detail: `${checklistComplete}/${fieldChecklistItems.length}` },
       { id: "rfi", label: "RFIs approved or closed", clear: openRfis === 0, detail: openRfis ? `${openRfis} open` : "Clear" },
       { id: "punch", label: "Critical punch items closed", clear: criticalPunches === 0, detail: criticalPunches ? `${criticalPunches} critical` : "Clear" },
+      ...(workingCloudProjectId ? [{
+        id: "cloud",
+        label: "Latest cloud revision approved and current",
+        clear: cloudRevisionCurrent && cloudReviewHolds === 0 && (activeCloudRisk?.approvedApprovals || 0) > 0,
+        detail: cloudGateDetail,
+      }] : []),
     ];
     const gatesClear = gates.every((gate) => gate.clear);
     const latestRelease = latestSystemRelease();
@@ -4275,7 +4794,51 @@ export default function Home() {
     };
   }
 
-  function issueSystemRelease() {
+  async function issueSystemRelease() {
+    let verifiedCloudRisk: CloudProjectRisk | null = null;
+    if (workingCloudProjectId) {
+      const previousRisk = cloudProjectRisk?.projectId === workingCloudProjectId ? cloudProjectRisk : null;
+      const verifiedRisk = await refreshWorkingCloudRisk();
+      verifiedCloudRisk = verifiedRisk;
+      if (!verifiedRisk || verifiedRisk.verification !== "verified") {
+        setBranchMessage("Field release is blocked until cloud work and reviews can be verified");
+        return;
+      }
+      const riskChanged = !previousRisk ||
+        previousRisk.latestRevisionId !== verifiedRisk.latestRevisionId ||
+        previousRisk.openCriticalWork !== verifiedRisk.openCriticalWork ||
+        previousRisk.pendingApprovals !== verifiedRisk.pendingApprovals ||
+        previousRisk.changesRequested !== verifiedRisk.changesRequested ||
+        previousRisk.approvedApprovals !== verifiedRisk.approvedApprovals ||
+        previousRisk.latestReleaseFingerprint !== verifiedRisk.latestReleaseFingerprint ||
+        previousRisk.verification !== verifiedRisk.verification;
+      if (riskChanged) {
+        setBranchMessage("Cloud review status refreshed. Review the updated release gate, then issue again");
+        return;
+      }
+      if (verifiedRisk.openCriticalWork + verifiedRisk.pendingApprovals + verifiedRisk.changesRequested > 0) {
+        setBranchMessage("Field release is blocked by cloud reviews or critical project work");
+        setShowCloudProjects(true);
+        return;
+      }
+      if (!verifiedRisk.latestRevisionId || verifiedRisk.latestRevisionId !== workingCloudRevisionId) {
+        setBranchMessage("Open the latest cloud revision before issuing it for field use");
+        setShowCloudProjects(true);
+        return;
+      }
+      if (!verifiedRisk.latestReleaseFingerprint ||
+        verifiedRisk.latestReleaseFingerprint !== workingCloudRevisionFingerprint ||
+        workingCloudRevisionFingerprint !== currentCloudReleaseFingerprint) {
+        setBranchMessage("The working drawing changed. Save and approve a new named revision before field release");
+        setShowCloudProjects(true);
+        return;
+      }
+      if (verifiedRisk.approvedApprovals < 1) {
+        setBranchMessage(`Cloud revision R${verifiedRisk.latestRevisionNumber} needs an approval before field release`);
+        setShowCloudProjects(true);
+        return;
+      }
+    }
     const summary = activeFieldPackage;
     if (!summary.gatesClear) {
       setBranchMessage("Release is blocked. Clear every release gate first");
@@ -4289,7 +4852,7 @@ export default function Home() {
       setBranchMessage(`Revision ${summary.latestRelease.revision} is already the current field release`);
       return;
     }
-    const record: SystemReleaseRecord = {
+    const draftRecord: SystemReleaseRecord = {
       id: crypto.randomUUID(),
       systemId: activeSystem,
       revision: releaseRevision.trim(),
@@ -4316,6 +4879,29 @@ export default function Home() {
       })),
       rulesSnapshot: { scaleLabel, scaleFeetPerUnit, supplyVelocityLimit, returnVelocityLimit, freshVelocityLimit, residentialFlexMax },
     };
+    let record = draftRecord;
+    if (workingCloudProjectId && verifiedCloudRisk?.latestRevisionId) {
+      try {
+        const cloudRelease = await issueCloudFieldRelease({
+          projectId: workingCloudProjectId,
+          revisionId: verifiedCloudRisk.latestRevisionId,
+          releaseFingerprint: currentCloudReleaseFingerprint,
+          systemId: activeSystem,
+          releaseRevision: draftRecord.revision,
+          releasedByName: draftRecord.releasedBy,
+          drawingSignature: draftRecord.drawingSignature,
+          releaseSignature: draftRecord.releaseSignature,
+          releasePayload: draftRecord as unknown as Record<string, unknown>,
+        });
+        record = { ...draftRecord, id: cloudRelease.id, releasedAt: cloudRelease.created_at };
+      } catch (cloudError) {
+        setBranchMessage(cloudError instanceof Error
+          ? cloudError.message
+          : "The cloud release check changed. Review the project and try again.");
+        void refreshWorkingCloudRisk();
+        return;
+      }
+    }
     setReleaseRecords((current) => [...current, record]);
     setBranchMessage(`${systemLabel(activeSystem)} revision ${record.revision} released for field use`);
     setReleaseNote("");
@@ -4533,7 +5119,43 @@ export default function Home() {
     setRightTab("field");
   }
 
+  function continueSystemWorkflow(stage: WorkflowStageId) {
+    setRightPanelOpen(true);
+    if (stage === "runs") {
+      setRightTab("builder");
+      setActiveTool("supply");
+      setBranchMessage("Continue drawing supply, return, or fresh-air runs. Left-click draws; right-click pans");
+      return;
+    }
+    if (stage === "branches") {
+      setRightTab("builder");
+      setActiveTool("branch");
+      setBranchMessage("T/Y placement ready · split finished runs, then attach Port 3 to an existing branch run");
+      return;
+    }
+    if (stage === "connections") {
+      setRightTab("builder");
+      setActiveTool("select");
+      setBranchMessage("Review open devices and saved T/Y ports below. Nothing reconnects until you press its action");
+      return;
+    }
+    if (stage === "airflow") {
+      openSystemBalanceWorkspace("system");
+      return;
+    }
+    if (stage === "review") {
+      openSystemAuditWorkflow();
+      return;
+    }
+    setFieldView("release");
+    setRightTab("field");
+  }
+
   function openReleaseGate(gateId: string) {
+    if (gateId === "cloud") {
+      setShowCloudProjects(true);
+      return;
+    }
     if (["critical", "warning", "connections", "rooms"].includes(gateId)) {
       setReviewQueueFilter("open");
       setReviewView("issues");
@@ -4804,7 +5426,11 @@ export default function Home() {
   function placeSmartBranch(point: Point) {
     setBranchPlacementResult(null);
     if (attachPendingBranchRun(point)) return;
-    const threeRunMatch = existingThreeRunJunction(point);
+    if (branchWorkflow === "run-first" && !queuedBranchRunId) {
+      armRunFirstBranch(point);
+      return;
+    }
+    const threeRunMatch = queuedBranchRunId ? null : existingThreeRunJunction(point);
     if (threeRunMatch) {
       const [upstreamMatch, downstreamMatch, branchMatch] = threeRunMatch.ports;
       const fittingId = crypto.randomUUID();
@@ -4855,10 +5481,17 @@ export default function Home() {
       setBranchMessage("Move closer to a blue supply run");
       return;
     }
+    if (queuedBranchRunId && rawTarget.drawing.id === queuedBranchRunId) {
+      setBranchMessage("That is the branch run already armed for Port 3 · click the main trunk where the T/Y belongs");
+      return;
+    }
     const target = orientMainTowardAirflow(rawTarget);
 
     const center = target.point;
-    const matchedRoute = existingBranchRoute(center, target.drawing.id, target.angle);
+    const matchedRoute = queuedBranchRunId
+      ? queuedBranchRoute(center, target.drawing.id, target.angle)
+      : existingBranchRoute(center, target.drawing.id, target.angle);
+    if (queuedBranchRunId && !matchedRoute) return;
     const downstreamSize = steppedSize(target.drawing.size, 1);
     const branchSize = matchedRoute?.drawing.size || steppedSize(target.drawing.size, 2);
     const downstreamId = crypto.randomUUID();
@@ -4935,6 +5568,8 @@ export default function Home() {
     setActiveSystem(drawingSystem(target.drawing));
     setSelectedId(fittingId);
     if (branchRun) {
+      setQueuedBranchRunId(null);
+      setBranchHoverRunId(null);
       const completionMessage = `${resolvedStyle === "tee90" ? "90° tee" : "45° wye"} complete · trunk split and 3 of 3 ports attached`;
       setBranchMessage(completionMessage);
       setBranchPlacementResult({ fittingId, message: completionMessage });
@@ -5108,7 +5743,7 @@ export default function Home() {
     const defaults: Record<SymbolKind, { label: string; size: string; cfm: number }> = {
       diffuser: { label: "12×12 SUPPLY", size: "12×12", cfm: 225 },
       returnGrille: { label: "14×14 RETURN", size: "14×14", cfm: 1200 },
-      equipment: { label: "SYSTEM 1 · 3 TON", size: "3 TON", cfm: 1200 },
+      equipment: { label: "3 TON AHU", size: "3 TON", cfm: 1200 },
       fan: { label: "EF-1", size: "EF-1", cfm: 80 },
       damper: { label: "VD · ACCESSIBLE", size: "VD", cfm: 0 },
       motorDamper: { label: "MOTORIZED OA DAMPER · 24V NC", size: "OA", cfm: 0 },
@@ -5120,6 +5755,10 @@ export default function Home() {
     };
     const preset = symbolPresets.find((item) => item.id === activePresetId && item.kind === kind);
     const selectedDefaults = preset || defaults[kind];
+    const equipmentType = kind === "equipment" ? equipmentTypeName(preset?.variant || "air-handler") : "";
+    const placedLabel = kind === "equipment" && equipmentType
+      ? `${systemLabel(activeSystem).toUpperCase()} · ${selectedDefaults.size} ${equipmentType}`
+      : selectedDefaults.label;
     const snapped = snapPoint(point);
     const symbol: Drawing = {
       id: crypto.randomUUID(),
@@ -5138,7 +5777,7 @@ export default function Home() {
             : ""),
       symbol: {
         kind,
-        label: selectedDefaults.label,
+        label: placedLabel,
         rotation: placementRotation,
         variant: preset?.variant,
         neckSize: ["diffuser", "returnGrille"].includes(kind) ? (kind === "returnGrille" ? "12" : "8") : undefined,
@@ -5172,7 +5811,11 @@ export default function Home() {
         fittingPortPoints(drawing).forEach((port) => add(port, "fitting port", "PORT", 0, 24 / zoom));
         return;
       }
-      if (isPrimaryAirflowEquipment(drawing)) add(drawing.points[0], "equipment port", "EQUIPMENT", 1, 22 / zoom);
+      if (isPrimaryAirflowEquipment(drawing)) {
+        const ports = equipmentPlenumPorts(drawing);
+        add(ports.supply, "equipment port", "SUPPLY PLENUM", 1, 24 / zoom);
+        add(ports.return, "equipment port", "RETURN PLENUM", 1, 24 / zoom);
+      }
       drawing.points.forEach((vertex, index) => add(vertex, "endpoint", index === 0 || index === drawing.points.length - 1 ? "ENDPOINT" : "VERTEX", 2));
       drawing.points.slice(0, -1).forEach((vertex, index) => {
         const next = drawing.points[index + 1];
@@ -5261,6 +5904,34 @@ export default function Home() {
     return next;
   }
 
+  function linkRunToMatchingEquipmentPlenum(current: Drawing[], runId: string) {
+    const run = current.find((drawing) => drawing.id === runId);
+    if (!run || !["supply", "return"].includes(run.type) || run.fitting || run.symbol) return current;
+    const ductType = run.type as "supply" | "return";
+    const candidates = current
+      .filter((drawing) =>
+        isPrimaryAirflowEquipment(drawing) &&
+        drawing.page === run.page &&
+        drawingSystem(drawing) === drawingSystem(run)
+      )
+      .flatMap((equipment) => {
+        const port = equipmentPlenumPorts(equipment)[ductType];
+        return [
+          { equipment, port, end: "start" as const, distance: Math.hypot(run.points[0].x - port.x, run.points[0].y - port.y) },
+          { equipment, port, end: "end" as const, distance: Math.hypot(run.points.at(-1)!.x - port.x, run.points.at(-1)!.y - port.y) },
+        ];
+      })
+      .sort((a, b) => a.distance - b.distance);
+    const match = candidates[0];
+    if (!match || match.distance > 4 / zoom) return current;
+    return current.map((drawing) => drawing.id === match.equipment.id && drawing.symbol ? {
+      ...drawing,
+      symbol: ductType === "supply"
+        ? { ...drawing.symbol, connectedRunId: run.id, connectedEnd: match.end }
+        : { ...drawing.symbol, returnRunId: run.id, returnEnd: match.end },
+    } : drawing);
+  }
+
   function finishDrawing() {
     if (draft.length > 1 && ["supply", "return", "fresh"].includes(activeTool)) {
       const continuing = continuingRunId ? drawings.find((drawing) => drawing.id === continuingRunId) : null;
@@ -5269,20 +5940,22 @@ export default function Home() {
         const extendedPoints = startsAtFirst
           ? [...draft.slice(1).reverse(), ...continuing.points]
           : [...continuing.points, ...draft.slice(1)];
-        setHistory(drawings.map((drawing) => drawing.id === continuing.id ? { ...drawing, points: cleanPoints(extendedPoints) } : drawing));
+        const extended = drawings.map((drawing) => drawing.id === continuing.id ? { ...drawing, points: cleanPoints(extendedPoints) } : drawing);
+        setHistory(linkRunToMatchingEquipmentPlenum(extended, continuing.id));
       } else {
         const drawing: Drawing = {
           id: crypto.randomUUID(),
           type: activeTool as DrawType,
           points: draft,
           size: ductSize,
+          lineWeight: ["supply", "return"].includes(activeTool) ? runLineWeight : 0.2,
           page: pageNumber,
           cfm: defaultCfm(ductSize),
           systemId: activeSystem,
           elevation: "",
         };
         const connected = addJunctionPoints(drawings, [draft[0], draft[draft.length - 1]]);
-        setHistory([...connected, drawing]);
+        setHistory(linkRunToMatchingEquipmentPlenum([...connected, drawing], drawing.id));
       }
     }
     setContinuingRunId(null);
@@ -5329,12 +6002,17 @@ export default function Home() {
     const secondRun = { ...structuredClone(drawing), id: secondId, points: cleanPoints([best.point, ...drawing.points.slice(best.segmentIndex + 1)]) };
     const updated = drawings.flatMap((item) => {
       if (item.id === drawing.id) return [firstRun, secondRun];
-      if (item.symbol?.connectedRunId === drawing.id) {
+      if (item.symbol?.connectedRunId === drawing.id || item.symbol?.returnRunId === drawing.id) {
         return [{
           ...item,
           symbol: {
             ...item.symbol,
-            connectedRunId: item.symbol.connectedEnd === "end" ? secondId : drawing.id,
+            connectedRunId: item.symbol.connectedRunId === drawing.id
+              ? item.symbol.connectedEnd === "end" ? secondId : drawing.id
+              : item.symbol.connectedRunId,
+            returnRunId: item.symbol.returnRunId === drawing.id
+              ? item.symbol.returnEnd === "end" ? secondId : drawing.id
+              : item.symbol.returnRunId,
           },
         }];
       }
@@ -5388,16 +6066,25 @@ export default function Home() {
     };
     const updated = drawings.filter((drawing) => drawing.id !== secondRun.id).map((drawing) => {
       if (drawing.id === firstRun.id) return joined;
-      if (drawing.symbol?.connectedRunId === firstRun.id || drawing.symbol?.connectedRunId === secondRun.id) {
-        const startDistance = Math.hypot(drawing.points[0].x - joined.points[0].x, drawing.points[0].y - joined.points[0].y);
+      const supplyConnected = drawing.symbol?.connectedRunId === firstRun.id || drawing.symbol?.connectedRunId === secondRun.id;
+      const returnConnected = drawing.symbol?.returnRunId === firstRun.id || drawing.symbol?.returnRunId === secondRun.id;
+      if (supplyConnected || returnConnected) {
+        const ports = isPrimaryAirflowEquipment(drawing) ? equipmentPlenumPorts(drawing) : null;
+        const supplyAnchor = ports?.supply || drawing.points[0];
+        const returnAnchor = ports?.return || drawing.points[0];
         const joinedEnd = joined.points[joined.points.length - 1];
-        const endDistance = Math.hypot(drawing.points[0].x - joinedEnd.x, drawing.points[0].y - joinedEnd.y);
         return {
           ...drawing,
           symbol: {
             ...drawing.symbol,
-            connectedRunId: firstRun.id,
-            connectedEnd: startDistance <= endDistance ? "start" : "end",
+            connectedRunId: supplyConnected ? firstRun.id : drawing.symbol?.connectedRunId,
+            connectedEnd: supplyConnected
+              ? Math.hypot(supplyAnchor.x - joined.points[0].x, supplyAnchor.y - joined.points[0].y) <= Math.hypot(supplyAnchor.x - joinedEnd.x, supplyAnchor.y - joinedEnd.y) ? "start" : "end"
+              : drawing.symbol?.connectedEnd,
+            returnRunId: returnConnected ? firstRun.id : drawing.symbol?.returnRunId,
+            returnEnd: returnConnected
+              ? Math.hypot(returnAnchor.x - joined.points[0].x, returnAnchor.y - joined.points[0].y) <= Math.hypot(returnAnchor.x - joinedEnd.x, returnAnchor.y - joinedEnd.y) ? "start" : "end"
+              : drawing.symbol?.returnEnd,
           },
         };
       }
@@ -5533,39 +6220,99 @@ export default function Home() {
     setBranchPlacementResult(null);
   }
 
+  function removeDeletedDrawingReferences(current: Drawing[], idsToDelete: string[]) {
+    const deleted = new Set(idsToDelete);
+    return current
+      .filter((drawing) => !deleted.has(drawing.id))
+      .map((drawing) => {
+        const symbolDisconnected = Boolean(
+          drawing.symbol?.connectedRunId &&
+          deleted.has(drawing.symbol.connectedRunId),
+        );
+        const returnDisconnected = Boolean(
+          drawing.symbol?.returnRunId &&
+          deleted.has(drawing.symbol.returnRunId),
+        );
+        const connectedIds = drawing.fitting?.connectedIds.map((id) =>
+          deleted.has(id) ? "" : id
+        );
+        const fittingDisconnected = Boolean(
+          drawing.fitting &&
+          connectedIds?.some((id, index) => id !== drawing.fitting?.connectedIds[index]),
+        );
+        if (!symbolDisconnected && !returnDisconnected && !fittingDisconnected) return drawing;
+        return {
+          ...drawing,
+          symbol: drawing.symbol
+            ? {
+              ...drawing.symbol,
+              connectedRunId: symbolDisconnected ? undefined : drawing.symbol.connectedRunId,
+              connectedEnd: symbolDisconnected ? undefined : drawing.symbol.connectedEnd,
+              returnRunId: returnDisconnected ? undefined : drawing.symbol.returnRunId,
+              returnEnd: returnDisconnected ? undefined : drawing.symbol.returnEnd,
+            }
+            : drawing.symbol,
+          fitting: fittingDisconnected
+            ? { ...drawing.fitting!, connectedIds: connectedIds! }
+            : drawing.fitting,
+        };
+      });
+  }
+
+  function clearDeletedDrawingState(idsToDelete: string[]) {
+    const deleted = new Set(idsToDelete);
+    selectOnly(null);
+    setSplitMode(false);
+    setSelectionBox(null);
+    if (continuingRunId && deleted.has(continuingRunId)) setContinuingRunId(null);
+    if (queuedBranchRunId && deleted.has(queuedBranchRunId)) setQueuedBranchRunId(null);
+    if (pendingBranchFittingId && deleted.has(pendingBranchFittingId)) setPendingBranchFittingId(null);
+    if (branchPlacementResult && deleted.has(branchPlacementResult.fittingId)) setBranchPlacementResult(null);
+    if (branchHoverRunId && deleted.has(branchHoverRunId)) setBranchHoverRunId(null);
+  }
+
   function deleteSelected() {
     if (!selectedId) return;
     if (selectedIds.length > 1) {
       const ids = connectedSelection(selectedIds).filter((id) => !drawingLocked(drawings.find((drawing) => drawing.id === id)));
-      setHistory(drawings.filter((drawing) => !ids.includes(drawing.id)).map((drawing) =>
-        drawing.symbol?.connectedRunId && ids.includes(drawing.symbol.connectedRunId)
-          ? { ...drawing, symbol: { ...drawing.symbol, connectedRunId: undefined, connectedEnd: undefined } }
-          : drawing));
-      selectOnly(null);
+      if (!ids.length) {
+        setBranchMessage("Selected objects are on locked layers");
+        return;
+      }
+      clearDeletedDrawingState(ids);
+      setHistory(removeDeletedDrawingReferences(drawings, ids));
       setBranchMessage(`${ids.length} connected objects deleted · undo restores the full group`);
       return;
     }
     const selected = drawings.find((drawing) => drawing.id === selectedId);
+    if (!selected) {
+      clearDeletedDrawingState([selectedId]);
+      return;
+    }
     if (drawingLocked(selected)) return;
     if (selected?.fitting) {
       removeFittingAndHeal(selected);
       return;
     }
-    setHistory(drawings.filter((drawing) => drawing.id !== selectedId).map((drawing) =>
-      drawing.symbol?.connectedRunId === selectedId
-        ? { ...drawing, symbol: { ...drawing.symbol, connectedRunId: undefined, connectedEnd: undefined } }
-        : drawing));
-    setSelectedId(null);
+    const ids = [selected.id];
+    clearDeletedDrawingState(ids);
+    setHistory(removeDeletedDrawingReferences(drawings, ids));
+    setBranchMessage(selected.symbol
+      ? "Icon deleted · connected ductwork kept · Undo restores it"
+      : "Run deleted · connected icons and fitting ports safely detached · Undo restores it");
   }
 
   function removeFittingAndHeal(fitting: Drawing) {
     if (!fitting.fitting) return;
     const [inletPort, outletPort] = fittingPortPoints(fitting);
-    const [upstreamId, downstreamId, branchId] = fitting.fitting.connectedIds;
+    const [upstreamId, downstreamId] = fitting.fitting.connectedIds;
     const upstream = drawings.find((drawing) => drawing.id === upstreamId);
     const downstream = drawings.find((drawing) => drawing.id === downstreamId);
-    if (!upstream || !downstream) {
-      setBranchMessage("Cannot heal main run · reconnect all 3 ports first");
+    if (!upstream || !downstream || upstream.points.length < 2 || downstream.points.length < 2) {
+      clearDeletedDrawingState([fitting.id]);
+      setHistory(removeDeletedDrawingReferences(drawings, [fitting.id]));
+      setActiveTool("select");
+      setBranchMessage("T/Y fitting deleted · incomplete routes kept in place · Undo restores it");
       return;
     }
     const upstreamEndsAtPort = Math.hypot(
@@ -5589,16 +6336,32 @@ export default function Home() {
         drawing.id !== upstreamId &&
         drawing.id !== downstreamId
       ).map((drawing) => {
-        if (!drawing.symbol?.connectedRunId || ![upstreamId, downstreamId].includes(drawing.symbol.connectedRunId)) return drawing;
+        const supplyConnected = Boolean(drawing.symbol?.connectedRunId && [upstreamId, downstreamId].includes(drawing.symbol.connectedRunId));
+        const returnConnected = Boolean(drawing.symbol?.returnRunId && [upstreamId, downstreamId].includes(drawing.symbol.returnRunId));
+        if (!supplyConnected && !returnConnected) return drawing;
         const healedEnd = healedMain.points[healedMain.points.length - 1];
-        const startDistance = Math.hypot(drawing.points[0].x - healedMain.points[0].x, drawing.points[0].y - healedMain.points[0].y);
-        const endDistance = Math.hypot(drawing.points[0].x - healedEnd.x, drawing.points[0].y - healedEnd.y);
-        return { ...drawing, symbol: { ...drawing.symbol, connectedRunId: healedMain.id, connectedEnd: startDistance <= endDistance ? "start" as const : "end" as const } };
+        const ports = isPrimaryAirflowEquipment(drawing) ? equipmentPlenumPorts(drawing) : null;
+        const supplyAnchor = ports?.supply || drawing.points[0];
+        const returnAnchor = ports?.return || drawing.points[0];
+        return {
+          ...drawing,
+          symbol: {
+            ...drawing.symbol!,
+            connectedRunId: supplyConnected ? healedMain.id : drawing.symbol?.connectedRunId,
+            connectedEnd: supplyConnected
+              ? Math.hypot(supplyAnchor.x - healedMain.points[0].x, supplyAnchor.y - healedMain.points[0].y) <= Math.hypot(supplyAnchor.x - healedEnd.x, supplyAnchor.y - healedEnd.y) ? "start" as const : "end" as const
+              : drawing.symbol?.connectedEnd,
+            returnRunId: returnConnected ? healedMain.id : drawing.symbol?.returnRunId,
+            returnEnd: returnConnected
+              ? Math.hypot(returnAnchor.x - healedMain.points[0].x, returnAnchor.y - healedMain.points[0].y) <= Math.hypot(returnAnchor.x - healedEnd.x, returnAnchor.y - healedEnd.y) ? "start" as const : "end" as const
+              : drawing.symbol?.returnEnd,
+          },
+        };
       });
+    clearDeletedDrawingState([fitting.id]);
     setHistory([...retained, healedMain]);
-    setSelectedId(branchId);
     setActiveTool("select");
-    setBranchMessage("Fitting removed · main run healed · branch route kept for reinsertion");
+    setBranchMessage("T/Y fitting deleted · main run healed · branch route kept · Undo restores it");
   }
 
   function copySelected() {
@@ -5614,7 +6377,7 @@ export default function Home() {
       id: crypto.randomUUID(),
       page: pageNumber,
       points: copied.points.map((point) => ({ x: point.x + 18, y: point.y + 18 })),
-      symbol: copied.symbol ? { ...structuredClone(copied.symbol), connectedRunId: undefined, connectedEnd: undefined } : undefined,
+      symbol: copied.symbol ? { ...structuredClone(copied.symbol), connectedRunId: undefined, connectedEnd: undefined, returnRunId: undefined, returnEnd: undefined } : undefined,
     };
     setHistory([...drawings, pasted]);
     setSelectedId(pasted.id);
@@ -5639,6 +6402,8 @@ export default function Home() {
           ...structuredClone(drawing.symbol),
           connectedRunId: drawing.symbol.connectedRunId ? idMap.get(drawing.symbol.connectedRunId) : undefined,
           connectedEnd: drawing.symbol.connectedRunId && idMap.get(drawing.symbol.connectedRunId) ? drawing.symbol.connectedEnd : undefined,
+          returnRunId: drawing.symbol.returnRunId ? idMap.get(drawing.symbol.returnRunId) : undefined,
+          returnEnd: drawing.symbol.returnRunId && idMap.get(drawing.symbol.returnRunId) ? drawing.symbol.returnEnd : undefined,
         } : undefined,
       }));
       setHistory([...drawings, ...duplicates]);
@@ -5655,7 +6420,7 @@ export default function Home() {
       id: crypto.randomUUID(),
       page: pageNumber,
       points: selected.points.map((point) => ({ x: point.x + 18, y: point.y + 18 })),
-      symbol: selected.symbol ? { ...structuredClone(selected.symbol), connectedRunId: undefined, connectedEnd: undefined } : undefined,
+      symbol: selected.symbol ? { ...structuredClone(selected.symbol), connectedRunId: undefined, connectedEnd: undefined, returnRunId: undefined, returnEnd: undefined } : undefined,
     };
     clipboardRef.current = structuredClone(duplicate);
     setHistory([...drawings, duplicate]);
@@ -5723,6 +6488,22 @@ export default function Home() {
     setDuctSize(size);
   }
 
+  function updateRunLineWeight(value: number) {
+    const lineWeight = normalizedRunLineWeight(value);
+    setRunLineWeight(lineWeight);
+    const selected = drawings.find((drawing) =>
+      drawing.id === selectedId &&
+      !drawing.fitting &&
+      !drawing.symbol &&
+      ["supply", "return"].includes(drawing.type)
+    );
+    if (!selected) return;
+    setHistory(drawings.map((drawing) =>
+      drawing.id === selected.id ? { ...drawing, lineWeight } : drawing
+    ));
+    setBranchMessage(`${selected.type === "return" ? "Return" : "Supply"} run line weight set to ${lineWeight.toFixed(2)} mm · connected T/Y leg matched automatically`);
+  }
+
   function updateSelectedCfm(cfm: number) {
     if (!selectedId || !Number.isFinite(cfm)) return;
     setHistory(drawings.map((drawing) => drawing.id === selectedId ? { ...drawing, cfm: Math.max(0, cfm) } : drawing));
@@ -5738,7 +6519,7 @@ export default function Home() {
         cfm: isPrimaryAirflowEquipment(drawing) ? Math.round(tons * 400) : drawing.cfm,
         symbol: {
           ...drawing.symbol,
-          label: `${systemLabel(drawingSystem(drawing)).toUpperCase()} · ${tons} TON`,
+          label: `${systemLabel(drawingSystem(drawing)).toUpperCase()} · ${tons} TON ${equipmentTypeName(drawing.symbol.variant) || "EQUIPMENT"}`,
         },
       };
     }));
@@ -5762,7 +6543,7 @@ export default function Home() {
         cfm: targetCfm,
         symbol: {
           ...drawing.symbol,
-          label: `${systemLabel(activeSystem).toUpperCase()} · ${tons} TON`,
+          label: `${systemLabel(activeSystem).toUpperCase()} · ${tons} TON ${equipmentTypeName(drawing.symbol.variant) || "EQUIPMENT"}`,
         },
       };
     }));
@@ -5795,10 +6576,17 @@ export default function Home() {
 
   function updateSelectedSymbol(changes: Partial<SymbolMeta>) {
     if (!selectedId) return;
-    setHistory(drawings.map((drawing) =>
+    const next = drawings.map((drawing) =>
       drawing.id === selectedId && drawing.symbol
         ? { ...drawing, symbol: { ...drawing.symbol, ...changes } }
-        : drawing));
+        : drawing);
+    const updated = next.find((drawing) => drawing.id === selectedId);
+    const connectionIds = [updated?.symbol?.connectedRunId, updated?.symbol?.returnRunId].filter((id): id is string => Boolean(id));
+    setHistory(
+      isPrimaryAirflowEquipment(updated) && ["rotation", "scaleX", "scaleY"].some((key) => key in changes)
+        ? syncConnectedTerminals(next, connectionIds)
+        : next
+    );
   }
 
   function updateSelectedCanDimension(axis: 0 | 1, value: string) {
@@ -5849,31 +6637,55 @@ export default function Home() {
     return best;
   }
 
-  function equipmentConnection(selected?: Drawing) {
+  function equipmentPlenumPorts(selected: Drawing) {
+    const variant = selected.symbol?.variant || "";
+    const local = variant === "rtu"
+      ? { supply: { x: 10.5, y: 23 }, return: { x: -10.5, y: 23 } }
+      : ["vertical-air-handler", "vertical-furnace"].includes(variant)
+        ? { supply: { x: 0, y: -40 }, return: { x: 0, y: 40 } }
+        : { supply: { x: 37, y: 0 }, return: { x: -37, y: 0 } };
+    const radians = (selected.symbol?.rotation || 0) * Math.PI / 180;
+    const scaleX = normalizedSymbolScale(selected.symbol?.scaleX);
+    const scaleY = normalizedSymbolScale(selected.symbol?.scaleY);
+    const transform = (point: Point) => {
+      const x = point.x * scaleX;
+      const y = point.y * scaleY;
+      return {
+        x: selected.points[0].x + x * Math.cos(radians) - y * Math.sin(radians),
+        y: selected.points[0].y + x * Math.sin(radians) + y * Math.cos(radians),
+      };
+    };
+    return { supply: transform(local.supply), return: transform(local.return), local };
+  }
+
+  function equipmentConnection(selected?: Drawing, ductType: "supply" | "return" = "supply") {
     if (!isPrimaryAirflowEquipment(selected)) return null;
-    if (selected.symbol.connectedRunId) {
+    const runId = ductType === "supply" ? selected.symbol.connectedRunId : selected.symbol.returnRunId;
+    const connectedEnd = ductType === "supply" ? selected.symbol.connectedEnd : selected.symbol.returnEnd;
+    const portPoint = equipmentPlenumPorts(selected)[ductType];
+    if (runId) {
       const run = drawings.find((drawing) =>
-        drawing.id === selected.symbol?.connectedRunId &&
+        drawing.id === runId &&
         drawing.page === selected.page &&
-        drawing.type === "supply" &&
+        drawing.type === ductType &&
         !drawing.fitting &&
         drawingSystem(drawing) === drawingSystem(selected)
       );
       if (run) {
-        const endpoint = selected.symbol.connectedEnd === "start" ? run.points[0] : run.points[run.points.length - 1];
-        return { run, endpoint, distance: Math.hypot(endpoint.x - selected.points[0].x, endpoint.y - selected.points[0].y), end: selected.symbol.connectedEnd || "start" as const, saved: true };
+        const endpoint = connectedEnd === "start" ? run.points[0] : run.points[run.points.length - 1];
+        return { run, endpoint, portPoint, distance: Math.hypot(endpoint.x - portPoint.x, endpoint.y - portPoint.y), end: connectedEnd || "start" as const, saved: true, ductType };
       }
     }
-    let best: { run: Drawing; endpoint: Point; distance: number; end: "start" | "end"; saved: boolean } | null = null;
+    let best: { run: Drawing; endpoint: Point; portPoint: Point; distance: number; end: "start" | "end"; saved: boolean; ductType: "supply" | "return" } | null = null;
     drawings.filter((drawing) =>
       drawing.page === selected.page &&
-      drawing.type === "supply" &&
+      drawing.type === ductType &&
       !drawing.fitting &&
       drawingSystem(drawing) === drawingSystem(selected)
     ).forEach((run) => {
       ([{ endpoint: run.points[0], end: "start" as const }, { endpoint: run.points[run.points.length - 1], end: "end" as const }]).forEach(({ endpoint, end }) => {
-        const distance = Math.hypot(endpoint.x - selected.points[0].x, endpoint.y - selected.points[0].y);
-        if (!best || distance < best.distance) best = { run, endpoint, distance, end, saved: false };
+        const distance = Math.hypot(endpoint.x - portPoint.x, endpoint.y - portPoint.y);
+        if (!best || distance < best.distance) best = { run, endpoint, portPoint, distance, end, saved: false, ductType };
       });
     });
     return best;
@@ -5904,34 +6716,75 @@ export default function Home() {
     setBranchMessage("Can detached · duct and can remain in place for manual editing");
   }
 
-  function attachSelectedEquipmentToRun() {
+  function attachSelectedEquipmentToRun(ductType: "supply" | "return" = "supply") {
     const selected = drawings.find((drawing) => drawing.id === selectedId);
-    const connection = equipmentConnection(selected);
+    const connection = equipmentConnection(selected, ductType);
     if (!selected || !connection || connection.distance > 90 / zoom) {
-      setBranchMessage("Move the unit closer to a supply trunk endpoint, then attach");
+      setBranchMessage(`Move the unit’s ${ductType} plenum closer to a ${ductType} run endpoint, then attach`);
       return;
     }
-    setHistory(drawings.map((drawing) => drawing.id === selected.id ? {
-      ...drawing,
-      points: [{ ...connection.endpoint }],
-      symbol: { ...drawing.symbol!, connectedRunId: connection.run.id, connectedEnd: connection.end },
-    } : drawing));
-    setBranchMessage(`Unit attached to ${connection.run.size}″ supply trunk · live system path saved`);
+    setHistory(drawings.map((drawing) => {
+      if (drawing.id === connection.run.id) {
+        const endpointIndex = connection.end === "start" ? 0 : drawing.points.length - 1;
+        return { ...drawing, points: drawing.points.map((point, index) => index === endpointIndex ? { ...connection.portPoint } : point) };
+      }
+      if (drawing.id !== selected.id || !drawing.symbol) return drawing;
+      return {
+        ...drawing,
+        symbol: ductType === "supply"
+          ? { ...drawing.symbol, connectedRunId: connection.run.id, connectedEnd: connection.end }
+          : { ...drawing.symbol, returnRunId: connection.run.id, returnEnd: connection.end },
+      };
+    }));
+    setBranchMessage(`Unit ${ductType} run attached to the ${ductType} plenum · ${connection.run.size}″ connection saved`);
   }
 
-  function detachSelectedEquipment() {
+  function detachSelectedEquipment(ductType: "supply" | "return" = "supply") {
     const selected = drawings.find((drawing) => drawing.id === selectedId && drawing.symbol?.kind === "equipment");
-    if (!selected?.symbol?.connectedRunId) return;
+    const runId = ductType === "supply" ? selected?.symbol?.connectedRunId : selected?.symbol?.returnRunId;
+    if (!selected?.symbol || !runId) return;
     setHistory(drawings.map((drawing) => drawing.id === selected.id ? {
       ...drawing,
-      symbol: { ...drawing.symbol!, connectedRunId: undefined, connectedEnd: undefined },
+      symbol: ductType === "supply"
+        ? { ...drawing.symbol!, connectedRunId: undefined, connectedEnd: undefined }
+        : { ...drawing.symbol!, returnRunId: undefined, returnEnd: undefined },
     } : drawing));
-    setBranchMessage("Unit detached · trunk and equipment remain in place for manual editing");
+    setBranchMessage(`Unit ${ductType} run detached · duct and equipment remain in place`);
   }
 
   function syncConnectedTerminals(current: Drawing[], runIds?: string[]) {
-    const runs = new Map(current.filter((drawing) => !drawing.fitting && !drawing.symbol).map((drawing) => [drawing.id, drawing]));
-    return current.map((drawing) => {
+    const next = current.map((drawing) => ({ ...drawing }));
+    const runIndex = new Map(next
+      .map((drawing, index) => ({ drawing, index }))
+      .filter(({ drawing }) => !drawing.fitting && !drawing.symbol)
+      .map(({ drawing, index }) => [drawing.id, index]));
+    next.filter(isPrimaryAirflowEquipment).forEach((equipment) => {
+      if (!equipment.symbol) return;
+      const ports = equipmentPlenumPorts(equipment);
+      let symbol = { ...equipment.symbol };
+      ([
+        { ductType: "supply" as const, runId: symbol.connectedRunId, end: symbol.connectedEnd, port: ports.supply },
+        { ductType: "return" as const, runId: symbol.returnRunId, end: symbol.returnEnd, port: ports.return },
+      ]).forEach((binding) => {
+        if (!binding.runId) return;
+        const index = runIndex.get(binding.runId);
+        if (index === undefined) {
+          symbol = binding.ductType === "supply"
+            ? { ...symbol, connectedRunId: undefined, connectedEnd: undefined }
+            : { ...symbol, returnRunId: undefined, returnEnd: undefined };
+          return;
+        }
+        if (runIds && !runIds.includes(binding.runId)) return;
+        const run = next[index];
+        const endpointIndex = binding.end === "start" ? 0 : run.points.length - 1;
+        next[index] = { ...run, points: run.points.map((point, pointIndex) => pointIndex === endpointIndex ? { ...binding.port } : point) };
+      });
+      const equipmentIndex = next.findIndex((drawing) => drawing.id === equipment.id);
+      next[equipmentIndex] = { ...equipment, symbol };
+    });
+    const runs = new Map(next.filter((drawing) => !drawing.fitting && !drawing.symbol).map((drawing) => [drawing.id, drawing]));
+    return next.map((drawing) => {
+      if (isPrimaryAirflowEquipment(drawing)) return drawing;
       const runId = drawing.symbol?.connectedRunId;
       if (!runId || (runIds && !runIds.includes(runId))) return drawing;
       const run = runs.get(runId);
@@ -6021,6 +6874,22 @@ export default function Home() {
     setActiveSystem(drawingSystem(drawing));
   }
 
+  function startRunLabelDrag(event: PointerEvent<SVGTextElement>, drawing: Drawing) {
+    if (activeTool !== "select" || event.button !== 0 || drawingLocked(drawing)) return;
+    event.stopPropagation();
+    event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      kind: "label",
+      drawingId: drawing.id,
+      start: canvasPoint(event as unknown as PointerEvent<SVGSVGElement>),
+      originalOffset: drawing.labelOffset || { x: 0, y: 0 },
+      before: drawings,
+    };
+    selectOnly(drawing.id);
+    setActiveSystem(drawingSystem(drawing));
+    setBranchMessage("Drag the duct-size label to a clear location");
+  }
+
   function startFittingDrag(event: PointerEvent<SVGGElement>, drawing: Drawing) {
     if (activeTool !== "select" || !drawing.fitting || event.button !== 0 || drawingLocked(drawing)) return;
     event.stopPropagation();
@@ -6061,6 +6930,44 @@ export default function Home() {
     dragRef.current = { kind: "symbol", drawingId: drawing.id, before: drawings };
     setSelectedId(drawing.id);
     setActiveSystem(drawingSystem(drawing));
+  }
+
+  function normalizedSymbolScale(value?: number) {
+    return Math.max(.4, Math.min(3, Number(value) || 1));
+  }
+
+  function symbolResizeBounds(drawing: Drawing) {
+    const dimensions = symbolDimensions(drawing.size);
+    const variant = drawing.symbol?.variant || "";
+    if (drawing.symbol?.kind === "equipment") {
+      return ["vertical-air-handler", "vertical-furnace"].includes(variant)
+        ? { width: 58, height: 92 }
+        : { width: 82, height: 58 };
+    }
+    if (drawing.symbol?.kind === "fan") return { width: 54, height: 54 };
+    return {
+      width: Math.max(20, dimensions.width),
+      height: Math.max(16, dimensions.height),
+    };
+  }
+
+  function startSymbolResize(event: PointerEvent<SVGRectElement>, drawing: Drawing) {
+    if (activeTool !== "select" || !drawing.symbol || event.button !== 0 || drawingLocked(drawing)) return;
+    event.stopPropagation();
+    event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
+    const bounds = symbolResizeBounds(drawing);
+    dragRef.current = {
+      kind: "symbol-resize",
+      drawingId: drawing.id,
+      center: drawing.points[0],
+      rotation: drawing.symbol.rotation,
+      halfWidth: bounds.width / 2,
+      halfHeight: bounds.height / 2,
+      before: drawings,
+    };
+    selectOnly(drawing.id);
+    setActiveSystem(drawingSystem(drawing));
+    setBranchMessage("Drag the corner to stretch the icon · hold Shift to keep its proportions");
   }
 
   function startGroupDrag(event: PointerEvent<SVGElement>, drawingId: string) {
@@ -6114,6 +7021,14 @@ export default function Home() {
               : drawing);
             return syncConnectedTerminals(moved, [drag.drawingId]);
           });
+        } else if (drag.kind === "label") {
+          const dx = raw.x - drag.start.x;
+          const dy = raw.y - drag.start.y;
+          setDrawings((current) => current.map((drawing) =>
+            drawing.id === drag.drawingId
+              ? { ...drawing, labelOffset: { x: drag.originalOffset.x + dx, y: drag.originalOffset.y + dy } }
+              : drawing
+          ));
         } else if (drag.kind === "fitting") {
           const nextCenter = raw;
           setDrawings((current) => current.map((drawing) => {
@@ -6139,6 +7054,29 @@ export default function Home() {
                 index === (firstDistance <= lastDistance ? 0 : lastIndex) ? nextPort : point),
             };
           }));
+        } else if (drag.kind === "symbol-resize") {
+          const radians = drag.rotation * Math.PI / 180;
+          const dx = raw.x - drag.center.x;
+          const dy = raw.y - drag.center.y;
+          const localX = dx * Math.cos(radians) + dy * Math.sin(radians);
+          const localY = -dx * Math.sin(radians) + dy * Math.cos(radians);
+          let scaleX = normalizedSymbolScale(Math.abs(localX) / Math.max(1, drag.halfWidth));
+          let scaleY = normalizedSymbolScale(Math.abs(localY) / Math.max(1, drag.halfHeight));
+          if (event.shiftKey) {
+            const uniformScale = Math.max(scaleX, scaleY);
+            scaleX = uniformScale;
+            scaleY = uniformScale;
+          }
+          setDrawings((current) => {
+            const next = current.map((drawing) =>
+              drawing.id === drag.drawingId && drawing.symbol
+                ? { ...drawing, symbol: { ...drawing.symbol, scaleX, scaleY } }
+                : drawing
+            );
+            const equipment = next.find((drawing) => drawing.id === drag.drawingId);
+            const connectionIds = [equipment?.symbol?.connectedRunId, equipment?.symbol?.returnRunId].filter((id): id is string => Boolean(id));
+            return isPrimaryAirflowEquipment(equipment) ? syncConnectedTerminals(next, connectionIds) : next;
+          });
         } else if (drag.kind === "symbol") {
           const result = snapResult(raw, drag.drawingId);
           const nextPoint = result?.point || raw;
@@ -6147,14 +7085,9 @@ export default function Home() {
           setAlignmentGuides(guidesFor(nextPoint, drag.drawingId));
           setDrawings((current) => {
             const movedSymbol = current.find((drawing) => drawing.id === drag.drawingId);
-            const runId = movedSymbol?.symbol?.connectedRunId;
-            const connectedEnd = movedSymbol?.symbol?.connectedEnd;
-            return current.map((drawing) => {
-              if (drawing.id === drag.drawingId) return { ...drawing, points: [nextPoint] };
-              if (drawing.id !== runId) return drawing;
-              const endpointIndex = connectedEnd === "start" ? 0 : drawing.points.length - 1;
-              return { ...drawing, points: drawing.points.map((point, index) => index === endpointIndex ? nextPoint : point) };
-            });
+            const next = current.map((drawing) => drawing.id === drag.drawingId ? { ...drawing, points: [nextPoint] } : drawing);
+            const connectionIds = [movedSymbol?.symbol?.connectedRunId, movedSymbol?.symbol?.returnRunId].filter((id): id is string => Boolean(id));
+            return syncConnectedTerminals(next, connectionIds);
           });
         } else if (drag.kind === "group") {
           const dx = raw.x - drag.start.x;
@@ -6215,7 +7148,19 @@ export default function Home() {
           : "Fitting placed · click directly on any blue branch run to finish");
         return;
       }
-      const threeRunMatch = existingThreeRunJunction(raw);
+      if (branchWorkflow === "run-first" && !queuedBranchRunId) {
+        const candidate = nearestSupplySegment(raw);
+        const candidateReady = Boolean(candidate && candidate.distance <= 42 / zoom);
+        setBranchHoverRunId(candidateReady ? candidate!.drawing.id : null);
+        setBranchPreview(null);
+        setSnapMarker(candidateReady ? candidate!.point : null);
+        setBranchMessage(candidateReady
+          ? `Click this ${candidate!.drawing.size}″ run to arm it for Port 3`
+          : "Step 1 · move over the completed blue run going to the diffuser");
+        return;
+      }
+      setBranchHoverRunId(null);
+      const threeRunMatch = queuedBranchRunId ? null : existingThreeRunJunction(raw);
       if (threeRunMatch) {
         const runIds = threeRunMatch.ports.map((match) => match.drawing.id);
         setBranchPreview({
@@ -6238,8 +7183,21 @@ export default function Home() {
       }
       const rawTarget = nearestSupplySegment(raw);
       if (rawTarget && rawTarget.distance <= 42 / zoom) {
+        if (queuedBranchRunId && rawTarget.drawing.id === queuedBranchRunId) {
+          setBranchPreview(null);
+          setSnapMarker(rawTarget.point);
+          setBranchMessage("Branch run is armed · move to the main trunk and click where the T/Y belongs");
+          return;
+        }
         const target = orientMainTowardAirflow(rawTarget);
-        const matchedRoute = existingBranchRoute(target.point, target.drawing.id, target.angle);
+        const matchedRoute = queuedBranchRunId
+          ? queuedBranchRoute(target.point, target.drawing.id, target.angle)
+          : existingBranchRoute(target.point, target.drawing.id, target.angle);
+        if (queuedBranchRunId && !matchedRoute) {
+          setBranchPreview(null);
+          setSnapMarker(target.point);
+          return;
+        }
         const previewStyle = matchedRoute
           ? branchStyle === "auto" ? automaticBranchStyle(target.angle, matchedRoute.angle) : branchStyle
           : branchStyle === "tee90" ? "tee90" : "wye45";
@@ -6258,9 +7216,11 @@ export default function Home() {
           mode: "split-trunk",
         });
         setSnapMarker(target.point);
-        setBranchMessage(matchedRoute
-          ? "3-run connection found · click to insert fitting"
-          : "Main run found · click to split it and place the fitting anywhere");
+        setBranchMessage(queuedBranchRunId && matchedRoute
+          ? "Branch run armed · click this trunk location to split, rotate, size and connect the T/Y"
+          : matchedRoute
+            ? "3-run connection found · click to insert fitting"
+            : "Main run found · click to split it and place the fitting anywhere");
       } else {
         setBranchPreview(null);
         setSnapMarker(null);
@@ -6330,16 +7290,23 @@ export default function Home() {
         if (result.repaired) {
           setBranchMessage(`${result.repaired} nearby fitting${result.repaired === 1 ? "" : "s"} automatically reattached`);
         }
-        return syncConnectedTerminals(result.drawings, [drag.drawingId]);
+        return syncConnectedTerminals(linkRunToMatchingEquipmentPlenum(result.drawings, drag.drawingId), [drag.drawingId]);
       });
     } else if (drag.kind === "symbol") {
       setDrawings((current) => {
         const symbol = current.find((drawing) => drawing.id === drag.drawingId);
-        const runId = symbol?.symbol?.connectedRunId;
-        if (!runId) return current;
-        const result = repairFittingsAfterRunEdit(current, runId);
-        return syncConnectedTerminals(result.drawings, [runId]);
+        const runIds = [symbol?.symbol?.connectedRunId, symbol?.symbol?.returnRunId].filter((id): id is string => Boolean(id));
+        if (!runIds.length) return current;
+        let next = current;
+        runIds.forEach((runId) => {
+          next = repairFittingsAfterRunEdit(next, runId).drawings;
+        });
+        return syncConnectedTerminals(next, runIds);
       });
+    } else if (drag.kind === "symbol-resize") {
+      setBranchMessage("Icon resized visually · scheduled face and neck sizes were not changed");
+    } else if (drag.kind === "label") {
+      setBranchMessage("Duct-size label repositioned · route geometry was not changed");
     }
     dragRef.current = null;
     setSnapMarker(null);
@@ -6352,18 +7319,19 @@ export default function Home() {
     const center = drawing.points[0];
     const { kind, label, rotation, variant } = drawing.symbol;
     const formattedSize = drawing.size.replace(/x/g, "×");
-    const displayLabel = kind === "returnGrille"
+    const defaultTerminalLabel = kind === "returnGrille"
       ? `${formattedSize} RETURN`
-      : kind === "diffuser"
-        ? `${formattedSize} SUPPLY`
-        : label;
+      : `${formattedSize} SUPPLY`;
+    const usesCatalogLabel = ["diffuser", "returnGrille"].includes(kind) && symbolPresets.some((preset) =>
+      preset.kind === kind &&
+      preset.variant === variant &&
+      preset.label === label
+    );
+    const displayLabel = ["diffuser", "returnGrille"].includes(kind)
+      ? usesCatalogLabel ? defaultTerminalLabel : label.trim() || defaultTerminalLabel
+      : label;
     const selected = isSelected(drawing.id);
-    const sizeParts = drawing.size.replace(/"/g, "").split(/[x×]/i).map(Number).filter(Number.isFinite);
-    const canRatio = sizeParts.length > 1 ? Math.max(.35, Math.min(2.85, sizeParts[0] / sizeParts[1])) : 1;
-    const canWidth = canRatio >= 1 ? 24 * Math.sqrt(canRatio) : 24;
-    const canHeight = canRatio >= 1 ? 24 / Math.sqrt(canRatio) : 24 / canRatio;
-    const symbolWidth = Math.max(16, Math.min(42, canWidth));
-    const symbolHeight = Math.max(11, Math.min(34, canHeight));
+    const { width: symbolWidth, height: symbolHeight } = symbolDimensions(drawing.size);
     const grilleLines = Array.from({ length: Math.max(3, Math.min(8, Math.round(symbolWidth / 5))) }, (_, index) =>
       -symbolWidth / 2 + ((index + 1) * symbolWidth) / (Math.max(3, Math.min(8, Math.round(symbolWidth / 5))) + 1));
     const artworkClass = `hvac-symbol symbol-${kind} variant-${variant || "standard"} ${drawing.symbol.connectedRunId ? "terminal-linked" : ""} ${activeTraceSymbolIds.has(drawing.id) ? "traced-symbol" : ""} ${preview ? "symbol-preview" : ""} ${selected ? "selected-symbol" : ""}`;
@@ -6377,29 +7345,53 @@ export default function Home() {
           : ["diffuser", "returnGrille"].includes(kind)
             ? -symbolHeight / 2 - 10
             : -22;
-    const elevationY = kind === "equipment"
-      ? verticalEquipment ? 54 : 46
-      : kind === "fan"
-        ? 34
-        : ["diffuser", "returnGrille"].includes(kind)
-          ? symbolHeight / 2 + 12
-          : 27;
     const interactionRadius = kind === "equipment" ? verticalEquipment ? 47 : 43 : kind === "fan" ? 31 : 25;
+    const scaleX = normalizedSymbolScale(drawing.symbol.scaleX);
+    const scaleY = normalizedSymbolScale(drawing.symbol.scaleY);
+    const resizeBounds = symbolResizeBounds(drawing);
+    const labelPositionY = labelY - (scaleY - 1) * resizeBounds.height / 2;
     if (variant !== "__legacy") return <g
       className={artworkClass}
       transform={`translate(${center.x} ${center.y}) rotate(${rotation})`}
       onPointerDown={preview ? undefined : (event) => startSymbolDrag(event, drawing)}
     >
-      <circle className="symbol-hit" cx="0" cy="0" r={interactionRadius} />
-      <SymbolArtwork kind={kind} variant={variant} width={symbolWidth} height={symbolHeight} />
-      {["diffuser", "returnGrille"].includes(kind) && <>
-        <circle className="can-neck-point" cx="0" cy="0" r="3.5" />
-        {drawing.symbol.connectedRunId && <circle className="terminal-link-ring" cx="0" cy="0" r="6" />}
-        {selected && <text className="can-neck-label" x="6" y="4">Ø{drawing.symbol.neckSize || "8"} NECK</text>}
+      <g className="symbol-visual" transform={`scale(${scaleX} ${scaleY})`}>
+        <circle className="symbol-hit" cx="0" cy="0" r={interactionRadius} />
+        <SymbolArtwork kind={kind} variant={variant} width={symbolWidth} height={symbolHeight} />
+        {selected && isPrimaryAirflowEquipment(drawing) && (() => {
+          const ports = equipmentPlenumPorts(drawing).local;
+          return <>
+            <circle className="equipment-plenum-port return-port" cx={ports.return.x} cy={ports.return.y} r="4.2" />
+            <circle className="equipment-plenum-port supply-port" cx={ports.supply.x} cy={ports.supply.y} r="4.2" />
+          </>;
+        })()}
+        {["diffuser", "returnGrille"].includes(kind) && <>
+          <circle className="can-neck-point" cx="0" cy="0" r="3.5" />
+          {drawing.symbol.connectedRunId && <circle className="terminal-link-ring" cx="0" cy="0" r="6" />}
+          {selected && <text className="can-neck-label" x="6" y="4">Ø{drawing.symbol.neckSize || "8"} NECK</text>}
+        </>}
+        {selected && <circle className="rotation-ring" cx="0" cy="0" r={interactionRadius} />}
+      </g>
+      <text className="symbol-label" x="0" y={labelPositionY} textAnchor="middle">{displayLabel}</text>
+      {selected && !preview && <>
+        <rect
+          className="symbol-resize-outline"
+          x={-resizeBounds.width * scaleX / 2}
+          y={-resizeBounds.height * scaleY / 2}
+          width={resizeBounds.width * scaleX}
+          height={resizeBounds.height * scaleY}
+        />
+        {([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([cornerX, cornerY]) => <rect
+          className="symbol-resize-handle"
+          key={`${cornerX}-${cornerY}`}
+          x={cornerX * resizeBounds.width * scaleX / 2 - 3.5}
+          y={cornerY * resizeBounds.height * scaleY / 2 - 3.5}
+          width="7"
+          height="7"
+          rx="1.4"
+          onPointerDown={(event) => startSymbolResize(event, drawing)}
+        />)}
       </>}
-      <text className="symbol-label" x="0" y={labelY} textAnchor="middle">{displayLabel}</text>
-      {drawing.elevation && <text className="symbol-elevation" x="0" y={elevationY} textAnchor="middle">EL {drawing.elevation}</text>}
-      {selected && <circle className="rotation-ring" cx="0" cy="0" r={interactionRadius} />}
     </g>;
 
     // Compatibility renderer for any deliberately imported legacy symbol variant.
@@ -6516,7 +7508,6 @@ export default function Home() {
         <path d="M -7 -5 L 7 -5 M -7 0 L 7 0 M -7 5 L 3 5" />
       </>}
       <text className="symbol-label" x="0" y={kind === "equipment" ? -27 : kind === "airflow" ? -10 : ["diffuser", "returnGrille"].includes(kind) ? -symbolHeight / 2 - 7 : -16} textAnchor="middle">{displayLabel}</text>
-      {drawing.elevation && <text className="symbol-elevation" x="0" y={kind === "equipment" ? 29 : ["diffuser", "returnGrille"].includes(kind) ? symbolHeight / 2 + 10 : 21} textAnchor="middle">EL {drawing.elevation}</text>}
       {selected && <circle className="rotation-ring" cx="0" cy="0" r="23" />}
     </g>;
   }
@@ -6524,12 +7515,34 @@ export default function Home() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.matches("input, select, textarea")) return;
       const key = event.key.toLowerCase();
+      if (showCommandPalette) {
+        if (event.key === "Escape" || ((event.ctrlKey || event.metaKey) && key === "k")) {
+          event.preventDefault();
+          setShowCommandPalette(false);
+        }
+        return;
+      }
+      if (showCloudProjects) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setShowCloudProjects(false);
+        }
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && key === "k") {
+        event.preventDefault();
+        setShowCommandPalette((visible) => !visible);
+        return;
+      }
+      if (target?.matches("input, select, textarea")) return;
       if (event.key === "Escape") {
+        setShowCommandPalette(false);
         setDraft([]);
         setContinuingRunId(null);
         setPendingBranchFittingId(null);
+        setQueuedBranchRunId(null);
+        setBranchHoverRunId(null);
         setBranchPreview(null);
         setHoverPoint(null);
         setSnapMarker(null);
@@ -6539,7 +7552,10 @@ export default function Home() {
         setSplitMode(false);
         selectOnly(null);
       }
-      if (event.key === "Delete" || event.key === "Backspace") deleteSelected();
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        deleteSelected();
+      }
       if ((event.ctrlKey || event.metaKey) && key === "z") {
         event.preventDefault();
         event.shiftKey ? redo() : undo();
@@ -6630,6 +7646,24 @@ export default function Home() {
   const activeAirflowSetup = airflowSetupSummary();
   const branchOpportunityList = activeTool === "branch" ? branchOpportunities() : [];
   const pageBranchFittings = drawings.filter((drawing) => drawing.page === pageNumber && drawing.fitting);
+  const assignedBranchRunIds = new Set(pageBranchFittings.flatMap((fitting) => fitting.fitting?.connectedIds.filter(Boolean) || []));
+  const diffuserTerminalRunIds = new Set(drawings
+    .filter((drawing) =>
+      drawing.page === pageNumber &&
+      drawingSystem(drawing) === activeSystem &&
+      drawing.symbol?.kind === "diffuser" &&
+      drawing.symbol.connectedRunId
+    )
+    .map((drawing) => drawing.symbol!.connectedRunId!));
+  const runFirstCandidateRuns = drawings.filter((drawing) =>
+    drawing.page === pageNumber &&
+    drawingSystem(drawing) === activeSystem &&
+    drawing.type === "supply" &&
+    !drawing.fitting &&
+    diffuserTerminalRunIds.has(drawing.id) &&
+    !assignedBranchRunIds.has(drawing.id)
+  );
+  const queuedBranchRun = drawings.find((drawing) => drawing.id === queuedBranchRunId);
   const openBranchPorts = pageBranchFittings.reduce((total, fitting) =>
     total + Math.max(0, 3 - (fitting.fitting?.connectedIds.filter(Boolean).length || 0)), 0);
   const liveDraftPoints = [...draft, ...(hoverPoint ? [hoverPoint] : [])];
@@ -6649,16 +7683,118 @@ export default function Home() {
     openRfis: 0,
     progress: 0,
   };
+  const activeWorkflow = buildSystemWorkflow({
+    runs: activeBuilderSummary.runs.length,
+    fittings: activeBuilderSummary.fittings.length,
+    devices: activeBuilderSummary.devices.length,
+    openConnections: activeBuilderSummary.unconnectedDevices,
+    brokenPorts: activeBuilderSummary.brokenPorts,
+    hasPrimaryUnit: Boolean(activeAirflowSetup.primaryUnit),
+    airflowBalanced: activeAirflowSetup.supplyBalanced && activeAirflowSetup.returnBalanced,
+    sizingReviews: activeBuilderSummary.sizing.length,
+    criticalIssues: activeBuilderSummary.audit.counts.critical,
+    warningIssues: activeBuilderSummary.audit.counts.warning,
+    releaseReady: activeFieldPackage.gatesClear,
+    released: activeFieldPackage.released,
+    releaseStale: activeFieldPackage.stale,
+  });
   const activeFieldRuns = activeFieldPackage.runs;
+  const projectCommands: ProjectCommand[] = [
+    {
+      id: "project-hub",
+      label: "Open Project Intelligence Hub",
+      detail: "Readiness, work, approvals, files, people, and immutable revisions",
+      group: "Project",
+      shortcut: "P",
+      keywords: "cloud command center dashboard collaboration",
+      run: () => setShowCloudProjects(true),
+    },
+    {
+      id: "continue-work",
+      label: activeWorkflow.nextAction,
+      detail: `${systemLabel(activeSystem)} · continue the next safe system step`,
+      group: "Project",
+      shortcut: "↵",
+      run: () => continueSystemWorkflow(activeWorkflow.activeStage),
+    },
+    {
+      id: "supply-run",
+      label: "Start a supply run",
+      detail: `Draw a ${ductSize}" supply route on the active sheet`,
+      group: "Draw",
+      shortcut: "S",
+      run: () => { finishDrawing(); setActiveTool("supply"); },
+    },
+    {
+      id: "return-run",
+      label: "Start a return run",
+      detail: `Draw a ${ductSize}" return route on the active sheet`,
+      group: "Draw",
+      shortcut: "R",
+      run: () => { finishDrawing(); setActiveTool("return"); },
+    },
+    {
+      id: "branch-pass",
+      label: "Start the run-first T/Y branch pass",
+      detail: "Draw routes first, then split and attach each reviewed fitting",
+      group: "Draw",
+      shortcut: "B",
+      run: () => { finishDrawing(); setBranchWorkflow("run-first"); setActiveTool("branch"); },
+    },
+    {
+      id: "airflow",
+      label: "Open system airflow and balancing",
+      detail: "Review tonnage, scheduled CFM, returns, and proposed sizes",
+      group: "Systems",
+      run: () => openSystemBalanceWorkspace("system"),
+    },
+    {
+      id: "plan-review",
+      label: "Run the HVAC plan review",
+      detail: "Prioritized, explainable findings with hard field-release gates",
+      group: "Review",
+      run: openSystemAuditWorkflow,
+    },
+    {
+      id: "field-release",
+      label: "Open Field Release Center",
+      detail: "Installation package, RFI, punch, startup, and named approval",
+      group: "Field",
+      run: () => { setRightPanelOpen(true); setRightTab("field"); setFieldView("release"); },
+    },
+    {
+      id: "sheets",
+      label: "Open sheet navigator",
+      detail: pdf ? `Jump across ${pdf.numPages} construction sheet${pdf.numPages === 1 ? "" : "s"}` : "Import a PDF to activate sheets",
+      group: "Navigate",
+      disabled: !pdf,
+      run: () => setShowSheetNavigator(true),
+    },
+    {
+      id: "drive",
+      label: "Open a source plan from Google Drive",
+      detail: "Choose an authorized PDF using the connected Google app",
+      group: "Project",
+      run: () => void openFromDrive(),
+    },
+    ...systems.filter((system) => systemStats(system.id).objects > 0).map((system): ProjectCommand => ({
+      id: `system-${system.id}`,
+      label: `Go to ${systemLabel(system.id)}`,
+      detail: `${systemStats(system.id).designCfm} design CFM · ${systemStats(system.id).balanced ? "balanced" : "review airflow"}`,
+      group: "Systems",
+      keywords: system.id,
+      run: () => { setActiveSystem(system.id); setSelectedId(null); },
+    })),
+  ];
 
   return (
-    <main className={`app-shell ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${["rooms", "checks", "field"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""}`}>
+    <main className={`app-shell ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${["rooms", "checks", "field"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""}`}>
       <header className="topbar">
         <div className="brand">
           <div className="brand-mark"><Wind size={23} strokeWidth={2.4} /></div>
           <div>
             <strong>HVAC Plan Studio</strong>
-            <span>Professional Drafting Workspace</span>
+            <span>HVAC Delivery Operating System</span>
           </div>
         </div>
 
@@ -6677,6 +7813,12 @@ export default function Home() {
           <button aria-label={`Duplicate ${selectedIds.length || ""} selected object${selectedIds.length === 1 ? "" : "s"}`} disabled={!selectedId} onClick={duplicateSelected}><Copy size={16} /></button>
           <span className="divider" />
           <button className="save-button" onClick={saveProject}><Save size={16} /> {saveState === "saving" ? "Saving…" : "Saved"}</button>
+          <button className="command-button" onClick={() => setShowCommandPalette(true)} title="Open command palette · Ctrl/⌘ K">
+            <Search size={16} /> <span>Command</span><kbd>⌘K</kbd>
+          </button>
+          <button className={`cloud-button ${showCloudProjects ? "active" : ""}`} aria-pressed={showCloudProjects} onClick={() => setShowCloudProjects(true)}>
+            <Cloud size={16} /> Project Hub <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V100"}</span>
+          </button>
           <button className="drive-button" onClick={() => void openFromDrive()}><HardDrive size={16} /> Open Drive</button>
           <button
             className={`field-mode-button ${fieldMode ? "active" : ""}`}
@@ -6690,6 +7832,18 @@ export default function Home() {
           <button aria-label="Settings"><Settings size={18} /></button>
         </nav>
       </header>
+
+      <div className="field-workflow-hud" aria-label="Field workflow controls">
+        <div>
+          <span>FIELD WORKFLOW · {systemLabel(activeSystem)}</span>
+          <strong>{activeWorkflow.nextAction}</strong>
+        </div>
+        <b>{activeWorkflow.progress}%</b>
+        <button className={showCfmLabels ? "active" : ""} onClick={() => setShowCfmLabels((visible) => !visible)}>CFM</button>
+        <button className={showLengthLabels ? "active" : ""} onClick={() => setShowLengthLabels((visible) => !visible)}>Distance</button>
+        <button className={showFittingLabels ? "active" : ""} onClick={() => setShowFittingLabels((visible) => !visible)}>T/Y text</button>
+        <button onClick={() => { setFieldMode(false); continueSystemWorkflow(activeWorkflow.activeStage); }}>Open task</button>
+      </div>
 
       <section className="print-header">
         <div>
@@ -6711,14 +7865,52 @@ export default function Home() {
           </div>
           <div className="tool-list">
             {tools.filter(({ id }) => ["select", "supply", "branch", "return", "fresh"].includes(id)).map(({ id, label, icon: Icon, tone }) => (
-              <button className={`tool ${activeTool === id ? "active" : ""}`} key={label} onClick={() => { finishDrawing(); setActiveTool(id); setSelectedId(null); setPendingBranchFittingId(null); setBranchPreview(null); setSymbolPreview(null); }}>
+              <button className={`tool ${activeTool === id ? "active" : ""}`} key={label} onClick={() => { finishDrawing(); setActiveTool(id); setSelectedId(null); setPendingBranchFittingId(null); setQueuedBranchRunId(null); setBranchHoverRunId(null); setBranchPreview(null); setSymbolPreview(null); }}>
                 <span className={`tool-icon ${tone || ""}`}><Icon size={19} /></span>
                 <span>{label}</span>
                 {activeTool === id && <kbd>{id === "select" ? "V" : "●"}</kbd>}
               </button>
             ))}
+            <div className={`run-size-default ${selectedRun ? "editing" : ""}`}>
+              <div>
+                <span>RUN SIZE</span>
+                <b>{selectedRun ? `SELECTED ${selectedRun.type.toUpperCase()}` : "NEW RUN DEFAULT"}</b>
+              </div>
+              <select
+                aria-label={selectedRun ? "Selected run size" : "Default new run size"}
+                value={selectedRun?.size || ductSize}
+                onChange={(event) => selectedRun ? updateSelectedSize(event.target.value) : setDuctSize(event.target.value)}
+              >
+                {[...runSizeOptions].reverse().map((size) => <option key={size} value={size}>{size}&quot;</option>)}
+              </select>
+              <small>4″–16″ in one-inch steps · selected runs update immediately.</small>
+            </div>
             <div className={`branch-designer ${activeTool === "branch" ? "active" : ""}`}>
-              <div className="library-title"><DraftingCompass size={14} /><span>SMART BRANCH BUILDER</span><b>3 PORTS · NETWORK CFM</b></div>
+              <div className="library-title"><DraftingCompass size={14} /><span>RUN-FIRST BRANCH PASS</span><b>DRAW RUNS · THEN SPLIT</b></div>
+              <div className="branch-mode-toggle" role="group" aria-label="T/Y placement workflow">
+                <button className={branchWorkflow === "run-first" ? "active" : ""} onClick={() => {
+                  finishDrawing();
+                  setActiveTool("branch");
+                  setBranchWorkflow("run-first");
+                  setPendingBranchFittingId(null);
+                  setQueuedBranchRunId(null);
+                  setBranchHoverRunId(null);
+                  setBranchPreview(null);
+                  setBranchPlacementResult(null);
+                  setBranchMessage("Step 1 · click the completed blue run going to the diffuser");
+                }}>Run first</button>
+                <button className={branchWorkflow === "place-first" ? "active" : ""} onClick={() => {
+                  finishDrawing();
+                  setActiveTool("branch");
+                  setBranchWorkflow("place-first");
+                  setPendingBranchFittingId(null);
+                  setQueuedBranchRunId(null);
+                  setBranchHoverRunId(null);
+                  setBranchPreview(null);
+                  setBranchPlacementResult(null);
+                  setBranchMessage("Click any blue trunk to split it and place a T/Y");
+                }}>Place first</button>
+              </div>
               <label>Fitting style
                 <select value={branchStyle} onChange={(event) => setBranchStyle(event.target.value as "auto" | "wye45" | "tee90")}>
                   <option value="auto">Auto-select from run angle</option>
@@ -6726,10 +7918,33 @@ export default function Home() {
                   <option value="tee90">90° Tee branch</option>
                 </select>
               </label>
-              <button className="branch-arm" onClick={() => { finishDrawing(); setActiveTool("branch"); setSelectedId(null); setPendingBranchFittingId(null); setBranchPreview(null); }}>
+              <button className="branch-arm" onClick={() => {
+                finishDrawing();
+                setActiveTool("branch");
+                setSelectedId(null);
+                setPendingBranchFittingId(null);
+                setBranchHoverRunId(null);
+                setBranchPreview(null);
+                setBranchPlacementResult(null);
+                if (branchWorkflow === "run-first") {
+                  setQueuedBranchRunId(null);
+                  setBranchMessage("Step 1 · click the completed blue run going to the diffuser");
+                } else {
+                  setBranchMessage("Click any blue trunk to split it and place a T/Y");
+                }
+              }}>
                 <span className={`mini-fitting ${branchStyle === "auto" ? "wye45" : branchStyle}`}><i /><i /><i /></span>
-                Place fitting on any supply run
+                {branchWorkflow === "run-first" ? "Start run-first branch pass" : "Place fitting on any supply run"}
               </button>
+              {branchWorkflow === "run-first" && queuedBranchRun && <div className="branch-run-armed-card">
+                <div><b>PORT 3 RUN ARMED</b><strong>{queuedBranchRun.size}&quot; · {drawingLengthFeet(queuedBranchRun).toFixed(1)} LF</strong></div>
+                <span>Click the main blue trunk exactly where the T/Y belongs. The closest end of this run will move to Port 3.</span>
+                <button onClick={() => {
+                  setQueuedBranchRunId(null);
+                  setBranchPreview(null);
+                  setBranchMessage("Branch selection cleared · click another completed diffuser run");
+                }}>Change branch run</button>
+              </div>}
               {pendingBranchFittingId && <div className="branch-link-step">
                 <b>STEP 2 · PICK THE BRANCH RUN</b>
                 <span>Click anywhere on the blue run that should connect to Port 3.</span>
@@ -6739,7 +7954,9 @@ export default function Home() {
                   setBranchMessage("Fitting kept with Port 3 open · select it later to reattach");
                 }}>Leave Port 3 open for now</button>
               </div>}
-              <small>Draw every run first. Click anywhere on a blue trunk to split it and place the fitting. If Port 3 stays open, click any blue branch run next to attach it—no perfect crossing required.</small>
+              <small>{branchWorkflow === "run-first"
+                ? "Your workflow: draw all diffuser runs first → click a completed branch run → click the trunk location. The app splits the trunk, rotates the fitting, moves the closest branch endpoint and keeps all three ports connected."
+                : "Manual fallback: click anywhere on a blue trunk to split it. If Port 3 stays open, click any blue branch run next—no perfect crossing required."}</small>
             </div>
             <div className="symbol-library">
               <div className="library-title"><Sparkles size={14} /><span>HVAC SYMBOL LIBRARY</span><b>{symbolPresets.length}+ presets</b></div>
@@ -6856,13 +8073,14 @@ export default function Home() {
 
           <div className="panel-section">
             <div className="section-title"><span>OBJECT PROPERTIES</span><SlidersHorizontal size={15} /></div>
-            {drawings.find((drawing) => drawing.id === selectedId)?.symbol ? <>
-              <label>Field label
+            {selectedDrawing?.symbol ? <>
+              <label>Plan label
                 <input
                   className="property-input"
                   value={drawings.find((drawing) => drawing.id === selectedId)?.symbol?.label || ""}
                   onChange={(event) => updateSelectedSymbol({ label: event.target.value })}
                 />
+                <small>Rename any placed symbol—including linear supplies and returns. Catalog defaults keep the scheduled face size visible.</small>
               </label>
               {["diffuser", "returnGrille"].includes(selectedDrawing?.symbol?.kind || "") && <div className="smart-can-editor">
                 <div className="smart-can-heading">
@@ -6939,6 +8157,14 @@ export default function Home() {
                   <button onClick={() => rotateSelectedSymbol(15)}>+15°</button>
                 </div>
               </label>
+              <div className="symbol-resize-control">
+                <div>
+                  <span>PLAN ICON SIZE</span>
+                  <strong>{Math.round(normalizedSymbolScale(selectedDrawing.symbol.scaleX) * 100)}% × {Math.round(normalizedSymbolScale(selectedDrawing.symbol.scaleY) * 100)}%</strong>
+                </div>
+                <button onClick={() => updateSelectedSymbol({ scaleX: 1, scaleY: 1 })}>Reset size</button>
+                <small>Select the icon and drag any blue corner. Hold Shift while dragging to keep the original proportions.</small>
+              </div>
               {isPrimaryAirflowEquipment(selectedDrawing) && <label>Primary equipment size
                 <select
                   value={Number(drawings.find((drawing) => drawing.id === selectedId)?.size.match(/[\d.]+/)?.[0] || 3)}
@@ -6947,23 +8173,26 @@ export default function Home() {
                   {[1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5].map((tons) => <option key={tons} value={tons}>{tons} ton · {tons * 400} CFM</option>)}
                 </select>
               </label>}
-              {isPrimaryAirflowEquipment(selectedDrawing) && (() => {
-                const connection = equipmentConnection(selectedDrawing);
-                const attached = Boolean(connection?.saved);
-                return <div className={`can-connection equipment-connection ${attached ? "connected" : ""}`}>
-                  <div>
-                    <span>LIVE SUPPLY TRUNK CONNECTION</span>
-                    <strong>{attached
-                      ? `Linked · ${connection?.run.size}″ supply · ${connection?.end}`
-                      : connection
-                        ? `${(connection.distance * scaleFeetPerUnit).toFixed(1)} ft from nearest trunk endpoint`
-                        : "No supply trunk found"}</strong>
-                  </div>
-                  {attached
-                    ? <button onClick={detachSelectedEquipment}>Detach</button>
-                    : <button disabled={!connection} onClick={attachSelectedEquipmentToRun}>Attach trunk</button>}
-                </div>;
-              })()}
+              {isPrimaryAirflowEquipment(selectedDrawing) && <div className="equipment-plenum-connections">
+                {(["supply", "return"] as const).map((ductType) => {
+                  const connection = equipmentConnection(selectedDrawing, ductType);
+                  const attached = Boolean(connection?.saved);
+                  return <div className={`can-connection equipment-connection ${ductType}-connection ${attached ? "connected" : ""}`} key={ductType}>
+                    <div>
+                      <span>LIVE {ductType.toUpperCase()} PLENUM CONNECTION</span>
+                      <strong>{attached
+                        ? `Linked · ${connection?.run.size}″ ${ductType} · ${connection?.end} endpoint`
+                        : connection
+                          ? `${(connection.distance * scaleFeetPerUnit).toFixed(1)} ft from the ${ductType} plenum`
+                          : `No ${ductType} run found`}</strong>
+                    </div>
+                    {attached
+                      ? <button onClick={() => detachSelectedEquipment(ductType)}>Detach</button>
+                      : <button disabled={!connection} onClick={() => attachSelectedEquipmentToRun(ductType)}>Attach {ductType}</button>}
+                  </div>;
+                })}
+                <small>Each run locks to the matching plenum edge—not the center of the unit. Moving, rotating, or resizing the unit keeps both endpoints attached.</small>
+              </div>}
               {selectedDrawing?.symbol?.kind === "equipment" && !isPrimaryAirflowEquipment(selectedDrawing) && <div className="auxiliary-equipment-note">
                 <strong>REFERENCE EQUIPMENT</strong>
                 <span>This symbol is excluded from indoor design airflow and does not connect to the supply trunk.</span>
@@ -6988,7 +8217,7 @@ export default function Home() {
                   ? "The full connected path is highlighted on the plan."
                   : "Attach this object manually to include it in the airflow network."}</small>
               </div>}
-            </> : drawings.find((drawing) => drawing.id === selectedId)?.fitting ? <div className="fitting-properties">
+            </> : selectedDrawing?.fitting ? <div className="fitting-properties">
               <div className="fitting-property-title"><DraftingCompass size={14} /><span>3-RUN FITTING</span><b>{drawings.find((drawing) => drawing.id === selectedId)?.fitting?.style === "tee90" ? "90° TEE" : "45° WYE"}</b></div>
               <div className="network-trace-summary">
                 <span>CONNECTED NETWORK</span>
@@ -7075,7 +8304,7 @@ export default function Home() {
                 return <div className="fitting-port-editor" key={label}>
                   <label>{label} size
                     <select value={value} onChange={(event) => updateFittingPortSize(port as 0 | 1 | 2, event.target.value)}>
-                      {["16", "14", "12", "10", "8", "7", "6", "4"].map((size) => <option key={size}>{size}</option>)}
+                      {[...runSizeOptions].reverse().map((size) => <option key={size}>{size}</option>)}
                     </select>
                   </label>
                   <label>Connected existing run
@@ -7097,15 +8326,24 @@ export default function Home() {
                   </span>;
                 })}
               </div>
-            </div> : drawings.find((drawing) => drawing.id === selectedId)?.measurement ? <div className="engineering-card">
+            </div> : selectedDrawing?.measurement ? <div className="engineering-card">
               <span>MEASURED DISTANCE</span>
               <strong>{drawings.find((drawing) => drawing.id === selectedId)?.measurement?.feet.toFixed(1)} FT</strong>
               <small>{scaleLabel}</small>
             </div> : <>
-              <label>{selectedId ? "Selected duct size" : "New duct size"}
-                <select value={selectedId ? drawings.find((drawing) => drawing.id === selectedId)?.fitting?.upstreamSize || drawings.find((drawing) => drawing.id === selectedId)?.size || ductSize : ductSize} onChange={(event) => updateSelectedSize(event.target.value)}><option>16</option><option>14</option><option>12</option><option>10</option><option>8</option><option>7</option><option>6</option><option>4</option></select>
-              </label>
-              {selectedId && !drawings.find((drawing) => drawing.id === selectedId)?.fitting && <div className="engineering-properties">
+              {((selectedRun && ["supply", "return"].includes(selectedRun.type)) || (!selectedDrawing && ["supply", "return"].includes(activeTool))) && <label className="line-weight-control">
+                Run line weight
+                <select
+                  value={selectedRun ? normalizedRunLineWeight(selectedRun.lineWeight) : runLineWeight}
+                  onChange={(event) => updateRunLineWeight(Number(event.target.value))}
+                >
+                  <option value="0.1">0.10 mm · Fine</option>
+                  <option value="0.2">0.20 mm · Standard</option>
+                  <option value="0.3">0.30 mm · Bold</option>
+                </select>
+                <small>Supply and return only · every connected T/Y leg matches this weight automatically.</small>
+              </label>}
+              {selectedRun && <div className="engineering-properties">
                 <div className="duct-trace-summary">
                   <div>
                     <span>CONNECTED DUCT PATH</span>
@@ -7126,6 +8364,13 @@ export default function Home() {
                   </button>
                   <small>Reconnects existing or empty ports only · no branch stubs</small>
                 </div>
+                <div className="run-label-control">
+                  <div><span>DUCT-SIZE LABEL</span><strong>Drag the number directly on the plan</strong></div>
+                  <button
+                    disabled={!selectedRun.labelOffset}
+                    onClick={() => setHistory(drawings.map((drawing) => drawing.id === selectedRun.id ? { ...drawing, labelOffset: undefined } : drawing))}
+                  >Reset position</button>
+                </div>
                 <label>Manual airflow override (CFM)
                   <input
                     className="property-input"
@@ -7136,18 +8381,18 @@ export default function Home() {
                   />
                 </label>
                 <div className="engineering-grid">
-                  <div><span>Length</span><strong>{drawingLengthFeet(drawings.find((drawing) => drawing.id === selectedId)!)} LF</strong></div>
-                  <div><span>Connected airflow</span><strong>{runAirflow(drawings.find((drawing) => drawing.id === selectedId)!)} CFM</strong></div>
-                  <div><span>Velocity</span><strong>{velocityFpm(drawings.find((drawing) => drawing.id === selectedId)?.size || "0", runAirflow(drawings.find((drawing) => drawing.id === selectedId)!))} FPM</strong></div>
-                  <div><span>Source</span><strong>{airflowNetwork().calculated.get(selectedId) ? "AUTO" : "MANUAL"}</strong></div>
-                  <div><span>Friction rate</span><strong>{runPressure(drawings.find((drawing) => drawing.id === selectedId)!).frictionRate.toFixed(2)} /100 FT</strong></div>
-                  <div><span>Pressure loss</span><strong>{runPressure(drawings.find((drawing) => drawing.id === selectedId)!).pressureDrop.toFixed(2)} IN. W.G.</strong></div>
+                  <div><span>Length</span><strong>{drawingLengthFeet(selectedRun)} LF</strong></div>
+                  <div><span>Connected airflow</span><strong>{runAirflow(selectedRun)} CFM</strong></div>
+                  <div><span>Velocity</span><strong>{velocityFpm(selectedRun.size, runAirflow(selectedRun))} FPM</strong></div>
+                  <div><span>Source</span><strong>{airflowNetwork().calculated.get(selectedRun.id) ? "AUTO" : "MANUAL"}</strong></div>
+                  <div><span>Friction rate</span><strong>{runPressure(selectedRun).frictionRate.toFixed(2)} /100 FT</strong></div>
+                  <div><span>Pressure loss</span><strong>{runPressure(selectedRun).pressureDrop.toFixed(2)} IN. W.G.</strong></div>
                 </div>
               </div>}
             </>}
             <label>System zone
               <select
-                value={selectedId ? drawingSystem(drawings.find((drawing) => drawing.id === selectedId)!) : activeSystem}
+                value={selectedDrawing ? drawingSystem(selectedDrawing) : activeSystem}
                 onChange={(event) => updateSelectedSystem(event.target.value)}
               >
                 {systems.map((system) => <option key={system.id} value={system.id}>{systemLabel(system.id)}</option>)}
@@ -7161,7 +8406,7 @@ export default function Home() {
                 onBlur={() => setSaveState("saving")}
               />
             </label>
-            {selectedId && <>
+            {selectedDrawing && <>
               <label>Install height / elevation
                 <input
                   className="property-input"
@@ -7236,6 +8481,15 @@ export default function Home() {
               <Ruler size={14} /> Length
             </button>
             <button
+              className={`display-toggle ${showFittingLabels ? "active" : ""}`}
+              disabled={!pdf}
+              onClick={() => setShowFittingLabels((visible) => !visible)}
+              title="Show or hide T/Y fitting names and three-size labels"
+              aria-pressed={showFittingLabels}
+            >
+              <DraftingCompass size={14} /> T/Y Text
+            </button>
+            <button
               className={`sheets-button ${showSheetNavigator ? "active" : ""}`}
               disabled={!pdf}
               onClick={() => setShowSheetNavigator((visible) => !visible)}
@@ -7298,7 +8552,7 @@ export default function Home() {
                 value={selectedDrawing?.fitting?.upstreamSize || selectedDrawing?.size || ductSize}
                 onChange={(event) => updateSelectedSize(event.target.value)}
               >
-                {["16", "14", "12", "10", "8", "7", "6", "4"].map((size) => <option key={size} value={size}>{size}&quot;</option>)}
+                {[...runSizeOptions].reverse().map((size) => <option key={size} value={size}>{size}&quot;</option>)}
               </select>}
               {selectedDrawing?.symbol && <button onClick={() => rotateSelectedSymbol(-15)}>−15°</button>}
               {selectedDrawing?.symbol && <button onClick={() => rotateSelectedSymbol(15)}>+15°</button>}
@@ -7317,17 +8571,27 @@ export default function Home() {
               <b>{liveDraftCfm} CFM · {liveDraftVelocity} FPM</b>
               <small>Left-click direction · Shift locks angle · Right-click finishes</small>
             </div>}
-            {pdf && activeTool === "branch" && <div className={`branch-workflow-hud ${pendingBranchFittingId ? "awaiting-branch" : ""} ${branchPlacementResult ? "complete" : ""}`} aria-live="polite">
+            {pdf && activeTool === "branch" && <div className={`branch-workflow-hud ${pendingBranchFittingId ? "awaiting-branch" : ""} ${queuedBranchRunId ? "run-armed" : ""} ${branchPlacementResult ? "complete" : ""}`} aria-live="polite">
               <div className="branch-workflow-heading">
-                <span><DraftingCompass size={14} /> SMART T/Y</span>
-                <b>{branchPlacementResult ? "3 / 3 CONNECTED" : pendingBranchFittingId ? "PORT 3 OPEN" : "READY"}</b>
+                <span><DraftingCompass size={14} /> {branchWorkflow === "run-first" ? "RUN-FIRST T/Y PASS" : "SMART T/Y"}</span>
+                <b>{branchPlacementResult
+                  ? "3 / 3 CONNECTED"
+                  : pendingBranchFittingId
+                    ? "PORT 3 OPEN"
+                    : queuedBranchRunId
+                      ? "BRANCH ARMED"
+                      : branchWorkflow === "run-first" ? "PICK BRANCH" : "READY"}</b>
               </div>
               <div className="branch-workflow-steps">
-                {[
+                {(branchWorkflow === "run-first" ? [
+                  { number: 1, label: "Pick branch run", state: queuedBranchRunId || branchPlacementResult ? "done" : "active" },
+                  { number: 2, label: "Click trunk", state: branchPlacementResult ? "done" : queuedBranchRunId ? "active" : "next" },
+                  { number: 3, label: "Auto-connect", state: branchPlacementResult ? "done" : "next" },
+                ] : [
                   { number: 1, label: "Pick trunk", state: pendingBranchFittingId || branchPlacementResult ? "done" : "active" },
                   { number: 2, label: "Split + place", state: pendingBranchFittingId || branchPlacementResult ? "done" : branchPreview?.mainRunId ? "active" : "next" },
                   { number: 3, label: "Attach Port 3", state: branchPlacementResult ? "done" : pendingBranchFittingId ? "active" : "next" },
-                ].map((step) => <div className={`branch-workflow-step ${step.state}`} key={step.number}>
+                ]).map((step) => <div className={`branch-workflow-step ${step.state}`} key={step.number}>
                   <i>{step.state === "done" ? <CheckCircle2 size={13} /> : step.number}</i>
                   <span>{step.label}</span>
                 </div>)}
@@ -7335,16 +8599,50 @@ export default function Home() {
               <div className="branch-pass-summary">
                 <span><b>{pageBranchFittings.length}</b> fittings on sheet</span>
                 <span className={openBranchPorts ? "warning" : ""}><b>{openBranchPorts}</b> open Port 3</span>
-                <span className={branchOpportunityList.length ? "ready" : ""}><b>{branchOpportunityList.length}</b> suggested next</span>
+                <span className={(branchWorkflow === "run-first" ? runFirstCandidateRuns.length : branchOpportunityList.length) ? "ready" : ""}>
+                  <b>{branchWorkflow === "run-first" ? runFirstCandidateRuns.length : branchOpportunityList.length}</b> {branchWorkflow === "run-first" ? "diffuser runs ready" : "suggested next"}
+                </span>
               </div>
-              <strong className="branch-workflow-message">{branchPlacementResult?.message || branchMessage || "Move over a blue supply trunk, then click where the fitting belongs."}</strong>
+              <strong className="branch-workflow-message">{branchPlacementResult?.message || branchMessage || (branchWorkflow === "run-first"
+                ? "Step 1 · click the completed blue run going to the diffuser."
+                : "Move over a blue supply trunk, then click where the fitting belongs.")}</strong>
               {!pendingBranchFittingId && !branchPlacementResult && <div className="branch-workflow-actions">
-                <button
-                  className="primary"
-                  disabled={!branchOpportunityList.length}
-                  onClick={() => focusNextBranchOpportunity(branchOpportunityList)}
-                >Find next suggested T/Y</button>
-                <small>Suggestions only highlight likely junctions. You confirm every fitting.</small>
+                {branchWorkflow === "run-first" ? <>
+                  {!queuedBranchRunId && <button
+                    className="primary"
+                    disabled={!runFirstCandidateRuns.length}
+                    onClick={() => {
+                      const run = runFirstCandidateRuns[0];
+                      if (!run) return;
+                      setQueuedBranchRunId(run.id);
+                      setBranchHoverRunId(null);
+                      setBranchPreview(null);
+                      setBranchMessage(`${run.size}″ diffuser run armed for Port 3 · click any blue trunk where the T/Y belongs`);
+                      const viewport = canvasViewportRef.current;
+                      const terminal = drawings.find((drawing) => drawing.symbol?.connectedRunId === run.id);
+                      const point = terminal?.points[0] || run.points[run.points.length - 1];
+                      if (viewport) updateCamera({
+                        x: viewport.clientWidth / 2 - point.x * zoomRef.current,
+                        y: viewport.clientHeight / 2 - point.y * zoomRef.current,
+                      });
+                    }}
+                  >Pick next diffuser run</button>}
+                  {queuedBranchRunId && <button onClick={() => {
+                    setQueuedBranchRunId(null);
+                    setBranchPreview(null);
+                    setBranchMessage("Branch selection cleared · click another completed diffuser run");
+                  }}>Change selected branch</button>}
+                  <small>{queuedBranchRunId
+                    ? "Branch is locked for Port 3. Click the main trunk to complete all three connections."
+                    : "Click any blue branch manually, or jump to the next diffuser-linked run."}</small>
+                </> : <>
+                  <button
+                    className="primary"
+                    disabled={!branchOpportunityList.length}
+                    onClick={() => focusNextBranchOpportunity(branchOpportunityList)}
+                  >Find next suggested T/Y</button>
+                  <small>Suggestions only highlight likely junctions. You confirm every fitting.</small>
+                </>}
               </div>}
               {pendingBranchFittingId && <div className="branch-workflow-actions">
                 <button onClick={() => {
@@ -7357,12 +8655,25 @@ export default function Home() {
               {branchPlacementResult && <div className="branch-workflow-actions">
                 <button
                   className="primary"
-                  disabled={!branchOpportunityList.length}
-                  onClick={() => focusNextBranchOpportunity(branchOpportunityList)}
-                >Next suggested T/Y</button>
+                  disabled={branchWorkflow === "run-first" ? !runFirstCandidateRuns.length : !branchOpportunityList.length}
+                  onClick={() => {
+                    if (branchWorkflow === "run-first") {
+                      const run = runFirstCandidateRuns[0];
+                      if (!run) return;
+                      setBranchPlacementResult(null);
+                      setQueuedBranchRunId(run.id);
+                      setBranchPreview(null);
+                      setBranchMessage(`${run.size}″ diffuser run armed for Port 3 · click any blue trunk where the T/Y belongs`);
+                    } else {
+                      focusNextBranchOpportunity(branchOpportunityList);
+                    }
+                  }}
+                >{branchWorkflow === "run-first" ? "Pick next branch run" : "Next suggested T/Y"}</button>
                 <button onClick={() => {
                   const fitting = drawings.find((drawing) => drawing.id === branchPlacementResult.fittingId && drawing.fitting);
                   if (!fitting) return;
+                  setBranchWorkflow("place-first");
+                  setQueuedBranchRunId(null);
                   setPendingBranchFittingId(fitting.id);
                   setSelectedId(fitting.id);
                   setBranchPlacementResult(null);
@@ -7448,58 +8759,81 @@ export default function Home() {
                           left: { x: center.x + Math.cos(branchAxis) * 10 + Math.cos(branchAxis + Math.PI / 2) * 3, y: center.y + Math.sin(branchAxis) * 10 + Math.sin(branchAxis + Math.PI / 2) * 3 },
                           right: { x: center.x + Math.cos(branchAxis) * 10 + Math.cos(branchAxis - Math.PI / 2) * 3, y: center.y + Math.sin(branchAxis) * 10 + Math.sin(branchAxis - Math.PI / 2) * 3 },
                         };
-                        const portSizes = [drawing.fitting.upstreamSize, drawing.fitting.downstreamSize, drawing.fitting.branchSize];
+                        const portVisuals = ([0, 1, 2] as const).map((port) => fittingPortVisual(drawing, port));
+                        const portSizes = portVisuals.map((visual) => visual.size);
                         const portStates = ([0, 1, 2] as const).map((port) => fittingPortState(drawing, port));
+                        const fittingFullyConnected = portStates.every((state) => state.connected);
+                        const showPortGuides = pendingBranchFittingId === drawing.id;
+                        const labelAngle = axis - drawing.fitting.side * Math.PI / 2;
+                        const fittingLabelPoint = {
+                          x: center.x + Math.cos(labelAngle) * 15,
+                          y: center.y + Math.sin(labelAngle) * 15,
+                        };
                         return <g
                           key={drawing.id}
-                          className={`branch-fitting ${activeTrace.fittingIds.has(drawing.id) ? "traced-fitting" : ""} ${isSelected(drawing.id) ? "selected-fitting" : ""} ${branchPlacementResult?.fittingId === drawing.id ? "connection-confirmed" : ""}`}
+                          className={`branch-fitting ${fittingFullyConnected ? "complete-fitting" : "open-fitting"} ${showPortGuides ? "showing-port-guides" : ""} ${activeTrace.fittingIds.has(drawing.id) ? "traced-fitting" : ""} ${isSelected(drawing.id) ? "selected-fitting" : ""} ${branchPlacementResult?.fittingId === drawing.id ? "connection-confirmed" : ""}`}
                           onPointerDown={(event) => startFittingDrag(event, drawing)}
                         >
                           <circle className="fitting-hit" cx={center.x} cy={center.y} r="22" />
-                          <path className={`fitting-leg ${portStates[0].overloaded ? "overloaded" : ""}`} style={{ strokeWidth: fittingLegWidth(drawing.fitting.upstreamSize) }} d={`M ${inlet.x} ${inlet.y} L ${center.x} ${center.y}`} />
-                          <path className={`fitting-leg ${portStates[1].overloaded ? "overloaded" : ""}`} style={{ strokeWidth: fittingLegWidth(drawing.fitting.downstreamSize) }} d={`M ${center.x} ${center.y} L ${outlet.x} ${outlet.y}`} />
-                          <path className={`fitting-leg ${portStates[2].overloaded ? "overloaded" : ""}`} style={{ strokeWidth: fittingLegWidth(drawing.fitting.branchSize) }} d={`M ${shoulderA.x} ${shoulderA.y} Q ${center.x} ${center.y} ${shoulderB.x} ${shoulderB.y} L ${branchPort.x} ${branchPort.y}`} />
+                          <path className={`fitting-leg ${portStates[0].overloaded ? "overloaded" : ""}`} style={{ strokeWidth: portVisuals[0].strokeWidth }} d={`M ${inlet.x} ${inlet.y} L ${center.x} ${center.y}`} />
+                          <path className={`fitting-leg ${portStates[1].overloaded ? "overloaded" : ""}`} style={{ strokeWidth: portVisuals[1].strokeWidth }} d={`M ${center.x} ${center.y} L ${outlet.x} ${outlet.y}`} />
+                          <path className={`fitting-leg ${portStates[2].overloaded ? "overloaded" : ""}`} style={{ strokeWidth: portVisuals[2].strokeWidth }} d={`M ${shoulderA.x} ${shoulderA.y} Q ${center.x} ${center.y} ${shoulderB.x} ${shoulderB.y} L ${branchPort.x} ${branchPort.y}`} />
                           {[outletArrow, branchArrow].map((arrow, index) => <path
                             className="fitting-flow-arrow"
                             key={`flow-${index}`}
                             d={`M ${arrow.left.x} ${arrow.left.y} L ${arrow.tip.x} ${arrow.tip.y} L ${arrow.right.x} ${arrow.right.y}`}
                           />)}
-                          {[inlet, outlet, branchPort].map((port, index) => <g className={`${portStates[index].connected ? "connected-port" : "disconnected-port"} ${portStates[index].overloaded ? "overloaded-port" : ""}`} key={index}>
+                          {showPortGuides && [inlet, outlet, branchPort].map((port, index) => <g className={`${portStates[index].connected ? "connected-port" : "disconnected-port"} ${portStates[index].overloaded ? "overloaded-port" : ""}`} key={index}>
                             <circle className="fitting-port" cx={port.x} cy={port.y} r="5.8" />
                             <text className="port-number" x={port.x} y={port.y + 2.7} textAnchor="middle">{index + 1}</text>
                             <text className="fitting-port-size" x={port.x} y={port.y - 9} textAnchor="middle">{portSizes[index]}&quot;</text>
                             {showCfmLabels && <text className="fitting-port-cfm" x={port.x} y={port.y + 14} textAnchor="middle">{portStates[index].cfm} CFM</text>}
-                            {(isSelected(drawing.id) || activeTool === "branch") && <text className="port-role" x={port.x} y={port.y + (showCfmLabels ? 23 : 15)} textAnchor="middle">{["IN", "OUT", "BRANCH"][index]}</text>}
+                            <text className="port-role" x={port.x} y={port.y + (showCfmLabels ? 23 : 15)} textAnchor="middle">{["IN", "OUT", "BRANCH"][index]}</text>
                           </g>)}
-                          <circle className="fitting-core" cx={center.x} cy={center.y} r="5.5" />
-                          <text className="fitting-label" x={branchPort.x + 9} y={branchPort.y - 7}>{drawing.fitting.style === "tee90" ? "TEE" : "WYE"} · {drawing.size}{drawing.elevation ? ` · EL ${drawing.elevation}` : ""}</text>
+                          {showFittingLabels && <text
+                            className="fitting-label"
+                            x={fittingLabelPoint.x}
+                            y={fittingLabelPoint.y}
+                            textAnchor="middle"
+                          >{drawing.fitting.style === "tee90" ? "TEE" : "WYE"} {portSizes.join("×")}{drawing.elevation ? ` · EL ${drawing.elevation}` : ""}</text>
+                          }
                           {branchPlacementResult?.fittingId === drawing.id && <text className="connection-confirmed-label" x={center.x} y={center.y - 30} textAnchor="middle">✓ 3 / 3 CONNECTED</text>}
                         </g>;
                       }
                       const path = drawing.points.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
                       const middle = drawing.points[Math.floor(drawing.points.length / 2)];
-                      const branchCandidateClass = branchPreview?.mainRunId === drawing.id
-                        ? "branch-candidate-main"
-                        : branchPreview?.runIds?.includes(drawing.id) || branchPreview?.branchRunId === drawing.id
-                          ? "branch-candidate-route"
-                          : "";
-                      return <g key={drawing.id} className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${isSelected(drawing.id) ? "selected-drawing" : ""} ${branchCandidateClass}`.trim()} onPointerDown={(event) => {
+                      const runLabelPoint = {
+                        x: middle.x + 8 + (drawing.labelOffset?.x || 0),
+                        y: middle.y - 8 + (drawing.labelOffset?.y || 0),
+                      };
+                      const branchCandidateClass = queuedBranchRunId === drawing.id
+                        ? "branch-run-armed"
+                        : branchHoverRunId === drawing.id
+                          ? "branch-run-pick"
+                          : branchPreview?.mainRunId === drawing.id
+                            ? "branch-candidate-main"
+                            : branchPreview?.runIds?.includes(drawing.id) || branchPreview?.branchRunId === drawing.id
+                            ? "branch-candidate-route"
+                              : "";
+                      const runSelected = isSelected(drawing.id);
+                      const showRunNodeHandles = runSelected || Boolean(branchCandidateClass);
+                      return <g key={drawing.id} className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${runSelected ? "selected-drawing" : ""} ${branchCandidateClass}`.trim()} onPointerDown={(event) => {
                         if (activeTool !== "select" || drawingLocked(drawing)) return;
                         event.stopPropagation();
                         event.shiftKey ? toggleSelection(drawing.id) : selectOnly(drawing.id);
                       }}>
                         <path className="hit-line" d={path} onPointerDown={(event) => startLineDrag(event, drawing)} />
-                        <path className="duct-line" d={path} stroke={drawingColors[drawing.type as DrawType]} />
-                        {drawing.points.map((point, index) => <circle
-                          className={isSelected(drawing.id) ? `edit-handle ${index === 0 || index === drawing.points.length - 1 ? "endpoint-grip" : "vertex-grip"}` : ""}
+                        <path className="duct-line" d={path} stroke={drawingColors[drawing.type as DrawType]} style={{ strokeWidth: runStrokeWidth(drawing.lineWeight) }} />
+                        {showRunNodeHandles && drawing.points.map((point, index) => <circle
+                          className={runSelected ? `edit-handle ${index === 0 || index === drawing.points.length - 1 ? "endpoint-grip" : "vertex-grip"}` : "branch-candidate-node"}
                           key={index}
                           cx={point.x}
                           cy={point.y}
-                          r={isSelected(drawing.id) ? 6 : 3.5}
+                          r={runSelected ? 6 : 3.5}
                           fill={drawingColors[drawing.type as DrawType]}
                           onPointerDown={(event) => startPointDrag(event, drawing.id, index)}
                         />)}
-                        {isSelected(drawing.id) && drawing.points.slice(0, -1).map((point, index) => {
+                        {runSelected && drawing.points.slice(0, -1).map((point, index) => {
                           const next = drawing.points[index + 1];
                           return <circle
                             className="midpoint-grip"
@@ -7510,7 +8844,14 @@ export default function Home() {
                             onPointerDown={(event) => startMidpointStretch(event, drawing.id, index)}
                           />;
                         })}
-                        <text x={middle.x + 8} y={middle.y - 8}>
+                        {queuedBranchRunId === drawing.id && <text className="branch-run-armed-label" x={middle.x + 8} y={middle.y - 24}>PORT 3 RUN ARMED</text>}
+                        <text
+                          className={`run-label ${drawing.labelOffset ? "custom-position" : ""}`}
+                          x={runLabelPoint.x}
+                          y={runLabelPoint.y}
+                          onPointerDown={(event) => startRunLabelDrag(event, drawing)}
+                        >
+                          <title>Drag to reposition this duct-size label</title>
                           {drawing.size}&quot;
                           {showLengthLabels ? ` · ${drawingLengthFeet(drawing).toFixed(1)} LF` : ""}
                           {showCfmLabels ? ` · ${runAirflow(drawing)} CFM${airflowNetwork().calculated.get(drawing.id) ? " AUTO" : ""}` : ""}
@@ -7564,7 +8905,7 @@ export default function Home() {
                       </g>)}
                     </g>}
                     {draft.length > 0 && <g className="draft-drawing">
-                      <polyline points={[...draft, ...(hoverPoint ? [hoverPoint] : [])].map((point) => `${point.x},${point.y}`).join(" ")} stroke={drawingColors[activeTool as DrawType]} />
+                      <polyline points={[...draft, ...(hoverPoint ? [hoverPoint] : [])].map((point) => `${point.x},${point.y}`).join(" ")} stroke={drawingColors[activeTool as DrawType]} style={{ strokeWidth: runStrokeWidth(runLineWeight) }} />
                       {draft.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="4" fill={drawingColors[activeTool as DrawType]} />)}
                     </g>}
                     {measureDraft.length > 0 && hoverPoint && <g className="measure-preview">
@@ -7618,24 +8959,35 @@ export default function Home() {
                         </text>
                       </g>;
                     })()}
-                    {symbolPreview && renderSymbol({
-                      id: "symbol-preview",
-                      type: "symbol",
-                      points: [symbolPreview.point],
-                      size: "",
-                      page: pageNumber,
-                      symbol: {
-                        kind: symbolPreview.kind,
-                        rotation: placementRotation,
-                        variant: symbolPresets.find((preset) => preset.id === activePresetId && preset.kind === symbolPreview.kind)?.variant,
-                        label: symbolPresets.find((preset) => preset.id === activePresetId && preset.kind === symbolPreview.kind)?.label || {
-                          diffuser: "12×12 SUPPLY",
-                          returnGrille: "14×14 RETURN",
-                          equipment: "SYSTEM 1 · 3 TON",
-                          fan: "EF-1",
-                        }[symbolPreview.kind],
-                      },
-                    }, true)}
+                    {symbolPreview && (() => {
+                      const preset = symbolPresets.find((item) => item.id === activePresetId && item.kind === symbolPreview.kind);
+                      const fallback = {
+                        diffuser: { label: "12×12 SUPPLY", size: "12×12", cfm: 225, elevation: "CEILING" },
+                        returnGrille: { label: "14×14 RETURN", size: "14×14", cfm: 1200, elevation: "CEILING" },
+                        equipment: { label: `${systemLabel(activeSystem).toUpperCase()} · 3 TON AHU`, size: "3 TON", cfm: 1200, elevation: "" },
+                        fan: { label: "EF-1", size: "EF-1", cfm: 80, elevation: "CEILING" },
+                      }[symbolPreview.kind];
+                      const selected = preset || fallback;
+                      const equipmentType = symbolPreview.kind === "equipment" ? equipmentTypeName(preset?.variant || "air-handler") : "";
+                      return renderSymbol({
+                        id: "symbol-preview",
+                        type: "symbol",
+                        points: [symbolPreview.point],
+                        size: selected.size,
+                        page: pageNumber,
+                        cfm: selected.cfm,
+                        elevation: selected.elevation,
+                        systemId: activeSystem,
+                        symbol: {
+                          kind: symbolPreview.kind,
+                          rotation: placementRotation,
+                          variant: preset?.variant,
+                          label: equipmentType
+                            ? `${systemLabel(activeSystem).toUpperCase()} · ${selected.size} ${equipmentType}`
+                            : selected.label,
+                        },
+                      }, true);
+                    })()}
                     {snapMarker && <g className={`snap-marker snap-${snapInfo?.kind.replace(" ", "-") || "point"}`}>
                       <circle cx={snapMarker.x} cy={snapMarker.y} r="9" />
                       <path d={`M ${snapMarker.x - 5} ${snapMarker.y} L ${snapMarker.x + 5} ${snapMarker.y} M ${snapMarker.x} ${snapMarker.y - 5} L ${snapMarker.x} ${snapMarker.y + 5}`} />
@@ -7653,7 +9005,8 @@ export default function Home() {
                 <button className="drive-upload-button" disabled={loading} onClick={() => void openFromDrive()}><HardDrive size={17} /> Open from Drive</button>
               </div>
               <span>or drag and drop a file here</span>
-              {!isDriveConfigured() && <div className="drive-setup-note">Drive button ready · Google app credentials still need to be added</div>}
+              {driveConfigured === null && <div className="drive-setup-note">Checking Google Drive connection…</div>}
+              {driveConfigured === false && <div className="drive-setup-note">Google Drive needs administrator configuration before it can open plans.</div>}
               <div className="file-note"><CircleDot size={13} /> PDF up to 100 MB · Set drawing scale after upload</div>
             </div>}
           </div>
@@ -7674,15 +9027,29 @@ export default function Home() {
               <div className="builder-hero-heading">
                 <span><Sparkles size={17} /></span>
                 <div><strong>SMART SYSTEM BUILDER</strong><small>{systemLabel(activeSystem)} · lines first, fittings second, cans last</small></div>
-                <b>{activeBuilderSummary.progress}%</b>
+                <b>{activeWorkflow.progress}%</b>
               </div>
-              <div className="builder-progress"><i style={{ width: `${activeBuilderSummary.progress}%` }} /></div>
+              <div className="builder-progress"><i style={{ width: `${activeWorkflow.progress}%` }} /></div>
               <div className="builder-stage-strip">
-                <span className={activeBuilderSummary.runs.length ? "complete" : "active"}><b>1</b> Runs</span>
-                <span className={activeBuilderSummary.fittings.length ? "complete" : activeBuilderSummary.runs.length ? "active" : ""}><b>2</b> T/Y</span>
-                <span className={activeBuilderSummary.devices.length ? "complete" : activeBuilderSummary.fittings.length ? "active" : ""}><b>3</b> Cans</span>
-                <span className={activeBuilderSummary.audit.counts.critical === 0 && activeBuilderSummary.runs.length ? "complete" : activeBuilderSummary.devices.length ? "active" : ""}><b>4</b> Review</span>
+                {activeWorkflow.stages.map((stage) => <button
+                  className={stage.status}
+                  key={stage.id}
+                  onClick={() => continueSystemWorkflow(stage.id)}
+                  title={stage.detail}
+                >
+                  <b>{stage.status === "complete" ? <CheckCircle2 size={9} /> : stage.number}</b>
+                  {stage.shortLabel}
+                </button>)}
               </div>
+            </div>
+
+            <div className="workflow-next-action">
+              <div>
+                <span>NEXT SAFE ACTION</span>
+                <strong>{activeWorkflow.nextAction}</strong>
+                <small>{activeWorkflow.stages.find((stage) => stage.status === "active")?.detail}</small>
+              </div>
+              <button onClick={() => continueSystemWorkflow(activeWorkflow.activeStage)}>Continue system <ArrowRight size={13} /></button>
             </div>
 
             <div className="builder-metrics">
@@ -8597,7 +9964,7 @@ export default function Home() {
             <div className="takeoff-note">Design-intent review only. Engineering objects and scheduled values govern. Field verify before fabrication and final balance.</div>
             </>}
           </div>}
-          <div className="status-card"><span className="pulse" /><div><strong>{splitMode ? "Split run mode" : calibrating && pdf ? "Scale calibration" : activeTool === "measure" && pdf ? "Measurement tool" : symbolTools.includes(activeTool as SymbolKind) && pdf ? "HVAC symbol placement" : activeTool === "branch" && pdf ? pendingBranchFittingId ? "Choose branch run" : "Smart T/Y placement" : continuingRunId ? "Extending connected branch run" : draft.length ? "Drawing in progress" : pdf ? "Construction plan loaded" : "Drawing engine ready"}</strong><small>{splitMode ? "Click the duct centerline where you want two editable sections · Esc cancels" : calibrating && pdf ? `Pick two points exactly ${referenceFeet} ft apart` : activeTool === "measure" && pdf ? "Pick two points to place a field dimension" : symbolTools.includes(activeTool as SymbolKind) && pdf ? `Wheel rotates preview · Shift+wheel 45° · ${placementRotation}° · click places` : activeTool === "branch" && pdf ? branchMessage || "Click anywhere on a blue supply run · trunk splits automatically" : continuingRunId ? "Left-click: add route points · Shift: lock 45°/90° · Right-click: finish on the same run" : draft.length ? "Left-click: add point · Shift: lock 45°/90° · Right-click: finish · Esc: cancel" : pdf ? `${pdf.numPages} page PDF · ${drawings.length} drawing objects` : "Upload a plan to start drafting"}</small></div></div>
+          <div className="status-card"><span className="pulse" /><div><strong>{splitMode ? "Split run mode" : calibrating && pdf ? "Scale calibration" : activeTool === "measure" && pdf ? "Measurement tool" : symbolTools.includes(activeTool as SymbolKind) && pdf ? "HVAC symbol placement" : activeTool === "branch" && pdf ? pendingBranchFittingId ? "Choose branch run" : queuedBranchRunId ? "Run-first branch armed" : branchWorkflow === "run-first" ? "Pick completed branch run" : "Smart T/Y placement" : continuingRunId ? "Extending connected branch run" : draft.length ? "Drawing in progress" : pdf ? "Construction plan loaded" : "Drawing engine ready"}</strong><small>{splitMode ? "Click the duct centerline where you want two editable sections · Esc cancels" : calibrating && pdf ? `Pick two points exactly ${referenceFeet} ft apart` : activeTool === "measure" && pdf ? "Pick two points to place a field dimension" : symbolTools.includes(activeTool as SymbolKind) && pdf ? `Wheel rotates preview · Shift+wheel 45° · ${placementRotation}° · click places` : activeTool === "branch" && pdf ? branchMessage || (branchWorkflow === "run-first" ? "Click a completed diffuser run, then click its main trunk location" : "Click anywhere on a blue supply run · trunk splits automatically") : continuingRunId ? "Left-click: add route points · Shift: lock 45°/90° · Right-click: finish on the same run" : draft.length ? "Left-click: add point · Shift: lock 45°/90° · Right-click: finish · Esc: cancel" : pdf ? `${pdf.numPages} page PDF · ${drawings.length} drawing objects` : "Upload a plan to start drafting"}</small></div></div>
         </aside>
       </section>
 
@@ -8732,8 +10099,40 @@ export default function Home() {
         <span><i className="online" /> Ready</span>
         <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor"}</span>
         <span><Ruler size={11} /> {scaleLabel}</span>
-        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · Stable Right-Click Navigation v3.1</span>
+        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · Project Intelligence v100</span>
       </footer>
+      <CloudProjectsPanel
+        open={showCloudProjects}
+        currentName={fileName}
+        currentSourceFileName={pdf ? `${fileName}.pdf` : undefined}
+        currentSourceDriveFileId={sourceDriveFileId}
+        workingProjectId={workingCloudProjectId}
+        buildSnapshot={() => buildProjectSnapshot() as unknown as Record<string, unknown>}
+        onRestoreRevision={(snapshot, project, revision) => void restoreCloudRevision(snapshot, project, revision)}
+        onWorkingProjectChange={(projectId) => {
+          setWorkingCloudProjectId(projectId);
+          setWorkingCloudRevisionId(null);
+          setWorkingCloudRevisionFingerprint(null);
+        }}
+        onWorkingRevisionSaved={(revision) => {
+          setWorkingCloudRevisionId(revision.id);
+          setWorkingCloudRevisionFingerprint(
+            revision.release_fingerprint ||
+            String(revision.snapshot.cloudReleaseFingerprint || currentCloudReleaseFingerprint),
+          );
+        }}
+        onProjectRiskChange={setCloudProjectRisk}
+        onContinueWorkflow={() => {
+          setShowCloudProjects(false);
+          continueSystemWorkflow(activeWorkflow.activeStage);
+        }}
+        onClose={() => setShowCloudProjects(false)}
+      />
+      <ProjectCommandPalette
+        open={showCommandPalette}
+        commands={projectCommands}
+        onClose={() => setShowCommandPalette(false)}
+      />
     </main>
   );
 }
