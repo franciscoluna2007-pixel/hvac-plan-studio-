@@ -4,9 +4,24 @@ import { ChangeEvent, Component, DragEvent, ErrorInfo, PointerEvent, ReactNode, 
 import * as pdfjsLib from "pdfjs-dist";
 import { checkDriveConfiguration, loadPdfFromDriveId, pickPdfFromDrive, saveProjectPackageToDrive } from "./googleDrive";
 import CloudProjectsPanel, { type CloudProjectRisk } from "./CloudProjectsPanel";
+import FieldPackageComposer from "./FieldPackageComposer";
 import GuidedProjectSetup, { type ProjectSetupValues } from "./GuidedProjectSetup";
+import PlanIntelligencePanel from "./PlanIntelligencePanel";
 import ProjectCommandPalette, { type ProjectCommand } from "./ProjectCommandPalette";
 import ProjectHome from "./ProjectHome";
+import SystemBalanceStudio from "./SystemBalanceStudio";
+import { type FieldPackageSectionId } from "./fieldPackage";
+import {
+  buildFindingIdentity,
+  type PlanFindingCategory,
+  type PlanIntelligenceFinding,
+} from "./planIntelligence";
+import {
+  BALANCE_CALCULATION_VERSION,
+  summarizeSystemBalance,
+  type BalanceReviewRecord,
+  type SystemBalanceModel,
+} from "./systemBalance";
 import {
   listCloudApprovals,
   listCloudRevisions,
@@ -728,6 +743,7 @@ type Drawing = {
   symbol?: SymbolMeta;
   measurement?: MeasurementMeta;
   cfm?: number;
+  cfmSource?: "planning-seed" | "manual" | "room-target";
   systemId?: string;
   roomName?: string;
   roomType?: "general" | "bedroom" | "bathroom" | "closet";
@@ -882,6 +898,8 @@ type SavedProject = {
   punchItems?: PunchItem[];
   rfiItems?: RfiItem[];
   roomAirflowTargets?: Record<string, Record<string, RoomAirflowTarget>>;
+  roomAirflowTargetReviewFingerprints?: Record<string, string>;
+  balanceReviewRecords?: BalanceReviewRecord[];
   reviewDecisionsBySystem?: Record<string, Record<string, ReviewDecision>>;
   releaseRecords?: SystemReleaseRecord[];
   takeoffPackageRecords?: TakeoffPackageRecord[];
@@ -944,6 +962,10 @@ type RfiItem = {
 type ValidationSeverity = "critical" | "warning" | "info";
 type ValidationIssue = {
   id: string;
+  ruleId: string;
+  evidenceFingerprint: string;
+  legacyId?: string;
+  instanceKey?: string;
   severity: ValidationSeverity;
   title: string;
   detail: string;
@@ -952,6 +974,7 @@ type ValidationIssue = {
 type ReviewDecisionStatus = "accepted" | "rfi" | "punch";
 type ReviewDecision = {
   issueId: string;
+  evidenceFingerprint?: string;
   status: ReviewDecisionStatus;
   reviewer: string;
   note: string;
@@ -974,7 +997,7 @@ type SystemReleaseRecord = {
   pdfFingerprint?: string;
   gateSnapshot?: Array<{ id: string; label: string; clear: boolean; detail: string }>;
   checklistSnapshot?: Array<{ id: string; label: string; checked: boolean }>;
-  issueSnapshot?: Array<{ id: string; severity: ValidationSeverity; title: string; detail: string; disposition: string; reviewer: string; note: string }>;
+  issueSnapshot?: Array<{ id: string; ruleId: string; evidenceFingerprint: string; severity: ValidationSeverity; title: string; detail: string; disposition: string; reviewer: string; note: string }>;
   rulesSnapshot?: {
     scaleLabel: string;
     scaleFeetPerUnit: number;
@@ -1150,6 +1173,18 @@ function HVACPlanStudioApp() {
   const [showCloudProjects, setShowCloudProjects] = useState(false);
   const [cloudInitialProjectId, setCloudInitialProjectId] = useState<string | null>(null);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showPlanIntelligence, setShowPlanIntelligence] = useState(false);
+  const [showFieldPackageComposer, setShowFieldPackageComposer] = useState(false);
+  const [showSystemBalanceStudio, setShowSystemBalanceStudio] = useState(false);
+  const [printPackageSections, setPrintPackageSections] = useState<FieldPackageSectionId[]>([
+    "plan",
+    "release",
+    "materials",
+    "airflow",
+    "review",
+    "coordination",
+    "startup",
+  ]);
   const [showProjectHome, setShowProjectHome] = useState(true);
   const [showProjectSetup, setShowProjectSetup] = useState(false);
   const [driveConfigured, setDriveConfigured] = useState<boolean | null>(null);
@@ -1280,7 +1315,9 @@ function HVACPlanStudioApp() {
   const [activeSystem, setActiveSystem] = useState("system-1");
   const [systemNames, setSystemNames] = useState<Record<string, string>>(defaultSystemNames);
   const [roomAirflowTargets, setRoomAirflowTargets] = useState<Record<string, Record<string, RoomAirflowTarget>>>({});
+  const [roomAirflowTargetReviewFingerprints, setRoomAirflowTargetReviewFingerprints] = useState<Record<string, string>>({});
   const [selectedCfmProposalIds, setSelectedCfmProposalIds] = useState<string[]>([]);
+  const [balanceReviewRecords, setBalanceReviewRecords] = useState<BalanceReviewRecord[]>([]);
 
   const currentCloudReleaseFingerprint = useMemo(() => cloudReleaseFingerprintFromProject({
     drawings,
@@ -1297,8 +1334,15 @@ function HVACPlanStudioApp() {
     punchItems,
     rfiItems,
     roomAirflowTargets,
+    roomAirflowTargetReviewFingerprints,
+    balanceReviewRecords,
     reviewDecisionsBySystem,
-  }), [drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, supplyVelocityLimit, systemNames]);
+  }), [balanceReviewRecords, drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, supplyVelocityLimit, systemNames]);
+
+  useEffect(() => {
+    setSelectedCfmProposalIds([]);
+    setSelectedSizingIds([]);
+  }, [activeSystem]);
 
   useEffect(() => {
     if (!workingCloudProjectId || rightTab !== "field" || fieldView !== "release") return;
@@ -1322,6 +1366,17 @@ function HVACPlanStudioApp() {
   const activeReviewedIssueRows = useMemo(
     () => reviewedIssueRows(activeValidationIssues),
     [activeSystem, activeValidationIssues, punchItems, reviewDecisionsBySystem, rfiItems],
+  );
+  const activePlanIntelligenceFindings = useMemo<PlanIntelligenceFinding[]>(
+    () => activeReviewedIssueRows.map((row) => ({
+      ...row.issue,
+      category: issueCategory(row.issue.title),
+      reference: reviewIssueReference(row.issue),
+      resolved: row.resolvedByDecision,
+      decisionStatus: row.decision?.status,
+      decisionStale: row.decisionStale,
+    })),
+    [activeReviewedIssueRows],
   );
   const activeReviewSummary = useMemo(
     () => reviewSummary(activeReviewedIssueRows),
@@ -1516,6 +1571,8 @@ function HVACPlanStudioApp() {
     setPunchItems([]);
     setRfiItems([]);
     setRoomAirflowTargets({});
+    setRoomAirflowTargetReviewFingerprints({});
+    setBalanceReviewRecords([]);
     setReviewDecisionsBySystem({});
     setReleaseRecords([]);
     setTakeoffPackageRecords([]);
@@ -1540,6 +1597,7 @@ function HVACPlanStudioApp() {
       setBranchMessage("A revised PDF was detected. Existing markups were restored, but every prior field release is now stale");
     }
     setSystemNames({ ...defaultSystemNames, ...(project.systemNames || {}) });
+    setActiveSystem(project.workflowSummary?.activeSystemId || "system-1");
     setShowCfmLabels(project.showCfmLabels ?? false);
     setShowLengthLabels(project.showLengthLabels ?? false);
     setShowFittingLabels(project.showFittingLabels ?? false);
@@ -1558,6 +1616,8 @@ function HVACPlanStudioApp() {
     setPunchItems(project.punchItems || []);
     setRfiItems(project.rfiItems || []);
     setRoomAirflowTargets(project.roomAirflowTargets || {});
+    setRoomAirflowTargetReviewFingerprints(project.roomAirflowTargetReviewFingerprints || {});
+    setBalanceReviewRecords(Array.isArray(project.balanceReviewRecords) ? project.balanceReviewRecords : []);
     setReviewDecisionsBySystem(project.reviewDecisionsBySystem || {});
     setReleaseRecords(project.releaseRecords || []);
     setTakeoffPackageRecords(project.takeoffPackageRecords || []);
@@ -2010,6 +2070,8 @@ function HVACPlanStudioApp() {
       punchItems,
       rfiItems,
       roomAirflowTargets,
+      roomAirflowTargetReviewFingerprints,
+      balanceReviewRecords,
       reviewDecisionsBySystem,
       releaseRecords,
       takeoffPackageRecords,
@@ -2033,7 +2095,7 @@ function HVACPlanStudioApp() {
         })),
       },
     };
-  }, [activeBuilderSummary, activeFieldPackage, activeSystem, backgroundOpacity, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
+  }, [activeBuilderSummary, activeFieldPackage, activeSystem, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
 
   const saveProject = useCallback(() => {
     if (!pdf) return;
@@ -2812,23 +2874,86 @@ function HVACPlanStudioApp() {
     const direct = new Map<string, number>();
     const terminalRun = new Map<string, string>();
     const equipmentRun = new Map<string, string>();
+    const equipmentReturnRun = new Map<string, string>();
     const children = new Map<string, string[]>();
+    const returnAdjacency = new Map<string, Set<string>>();
+    const returnRootRuns = new Set<string>();
+    const returnFittingLinks: Array<[string, string]> = [];
+    const runEndpointTouches = (run: Drawing, point: Point, savedEnd?: "start" | "end") => {
+      const endpoints = savedEnd
+        ? [savedEnd === "start" ? run.points[0] : run.points[run.points.length - 1]]
+        : [run.points[0], run.points[run.points.length - 1]];
+      return endpoints.some((endpoint) => endpoint && Math.hypot(endpoint.x - point.x, endpoint.y - point.y) < 2);
+    };
     for (const fitting of drawings.filter((drawing) => drawing.fitting)) {
       const [upstreamId, downstreamId, branchId] = fitting.fitting!.connectedIds;
-      children.set(upstreamId, [...new Set([...(children.get(upstreamId) || []), downstreamId, branchId].filter(Boolean))]);
+      const ports = fittingPortPoints(fitting);
+      const upstream = runs.find((run) =>
+        run.id === upstreamId &&
+        ["supply", "return", "fresh"].includes(run.type)
+      );
+      if (!upstream || !runEndpointTouches(upstream, ports[0])) continue;
+      const validChildren = [
+        { id: downstreamId, port: ports[1] },
+        { id: branchId, port: ports[2] },
+      ].flatMap(({ id, port }) => {
+        const run = runs.find((candidate) => candidate.id === id && candidate.type === upstream.type);
+        return run && runEndpointTouches(run, port) ? [run.id] : [];
+      });
+      children.set(upstream.id, [...new Set([...(children.get(upstream.id) || []), ...validChildren])]);
+      if (upstream.type === "return") {
+        validChildren.forEach((childId) => returnFittingLinks.push([upstream.id, childId]));
+      }
     }
+    const returnRuns = runs.filter((run) => run.type === "return");
+    returnRuns.forEach((run) => returnAdjacency.set(run.id, new Set()));
+    returnFittingLinks.forEach(([upstreamId, childId]) => {
+      returnAdjacency.get(upstreamId)?.add(childId);
+      returnAdjacency.get(childId)?.add(upstreamId);
+    });
+    returnRuns.forEach((run, index) => {
+      const endpoints = [run.points[0], run.points[run.points.length - 1]];
+      returnRuns.slice(index + 1).forEach((candidate) => {
+        if (
+          candidate.page !== run.page ||
+          drawingSystem(candidate) !== drawingSystem(run)
+        ) return;
+        const candidateEndpoints = [candidate.points[0], candidate.points[candidate.points.length - 1]];
+        const touches = endpoints.some((point) =>
+          candidateEndpoints.some((candidatePoint) =>
+            point && candidatePoint && Math.hypot(point.x - candidatePoint.x, point.y - candidatePoint.y) < 2
+          )
+        );
+        if (!touches) return;
+        returnAdjacency.get(run.id)?.add(candidate.id);
+        returnAdjacency.get(candidate.id)?.add(run.id);
+      });
+    });
     for (const symbol of drawings.filter((drawing) => drawing.symbol)) {
       const desiredType = symbol.symbol?.kind === "diffuser" ? ["supply"] : symbol.symbol?.kind === "returnGrille" ? ["return"] : [];
       if (isPrimaryAirflowEquipment(symbol)) {
+        const plenums = equipmentPlenumPorts(symbol);
         const savedRun = runs.find((run) =>
           run.id === symbol.symbol?.connectedRunId &&
           run.page === symbol.page &&
           run.type === "supply" &&
-          drawingSystem(run) === drawingSystem(symbol)
+          drawingSystem(run) === drawingSystem(symbol) &&
+          runEndpointTouches(run, plenums.supply, symbol.symbol?.connectedEnd)
         );
         if (savedRun) {
           equipmentRun.set(symbol.id, savedRun.id);
         }
+        const physicallyRootedReturns = returnRuns.filter((run) =>
+          run.page === symbol.page &&
+          drawingSystem(run) === drawingSystem(symbol) &&
+          runEndpointTouches(run, plenums.return)
+        );
+        physicallyRootedReturns.forEach((run) => returnRootRuns.add(run.id));
+        const savedReturnRun = physicallyRootedReturns.find((run) =>
+          run.id === symbol.symbol?.returnRunId &&
+          runEndpointTouches(run, plenums.return, symbol.symbol?.returnEnd)
+        ) || physicallyRootedReturns[0];
+        if (savedReturnRun) equipmentReturnRun.set(symbol.id, savedReturnRun.id);
         continue;
       }
       if (!desiredType.length) continue;
@@ -2836,7 +2961,8 @@ function HVACPlanStudioApp() {
         run.id === symbol.symbol?.connectedRunId &&
         run.page === symbol.page &&
         desiredType.includes(run.type) &&
-        drawingSystem(run) === drawingSystem(symbol)
+        drawingSystem(run) === drawingSystem(symbol) &&
+        runEndpointTouches(run, symbol.points[0], symbol.symbol?.connectedEnd)
       );
       if (savedRun) {
         terminalRun.set(symbol.id, savedRun.id);
@@ -2853,7 +2979,59 @@ function HVACPlanStudioApp() {
       return total;
     };
     runs.forEach((run) => calculate(run.id));
-    return { calculated, terminalRun, equipmentRun, children };
+    const reachableSupplyRuns = new Set<string>();
+    const supplyQueue = [...equipmentRun.values()];
+    while (supplyQueue.length) {
+      const runId = supplyQueue.shift()!;
+      if (reachableSupplyRuns.has(runId)) continue;
+      reachableSupplyRuns.add(runId);
+      supplyQueue.push(...(children.get(runId) || []));
+    }
+    const reachableReturnRuns = new Set<string>();
+    const returnParent = new Map<string, string | null>();
+    const returnTraversal: string[] = [];
+    const returnQueue = [...returnRootRuns];
+    returnQueue.forEach((runId) => returnParent.set(runId, null));
+    while (returnQueue.length) {
+      const runId = returnQueue.shift()!;
+      if (reachableReturnRuns.has(runId)) continue;
+      reachableReturnRuns.add(runId);
+      returnTraversal.push(runId);
+      for (const adjacentId of returnAdjacency.get(runId) || []) {
+        if (returnParent.has(adjacentId)) continue;
+        returnParent.set(adjacentId, runId);
+        returnQueue.push(adjacentId);
+      }
+    }
+    const returnCalculated = new Map(
+      returnTraversal.map((runId) => [runId, direct.get(runId) || 0]),
+    );
+    for (const runId of [...returnTraversal].reverse()) {
+      const parentId = returnParent.get(runId);
+      if (!parentId) continue;
+      returnCalculated.set(
+        parentId,
+        (returnCalculated.get(parentId) || 0) + (returnCalculated.get(runId) || 0),
+      );
+    }
+    returnCalculated.forEach((cfm, runId) => calculated.set(runId, cfm));
+    const rootedTerminalRun = new Map<string, string>();
+    drawings.filter((drawing) => ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "")).forEach((terminal) => {
+      const runId = terminalRun.get(terminal.id);
+      if (!runId) return;
+      if (terminal.symbol?.kind === "diffuser" && reachableSupplyRuns.has(runId)) rootedTerminalRun.set(terminal.id, runId);
+      if (terminal.symbol?.kind === "returnGrille" && reachableReturnRuns.has(runId)) rootedTerminalRun.set(terminal.id, runId);
+    });
+    return {
+      calculated,
+      terminalRun,
+      rootedTerminalRun,
+      equipmentRun,
+      equipmentReturnRun,
+      children,
+      reachableSupplyRuns,
+      reachableReturnRuns,
+    };
   }
 
   function airflowNetwork() {
@@ -2861,6 +3039,7 @@ function HVACPlanStudioApp() {
   }
 
   function runAirflow(drawing: Drawing) {
+    if (drawing.cfmSource === "manual") return Math.max(0, drawing.cfm ?? 0);
     const propagated = airflowNetwork().calculated.get(drawing.id) || 0;
     return propagated || drawing.cfm || defaultCfm(drawing.size);
   }
@@ -3266,17 +3445,27 @@ function HVACPlanStudioApp() {
   }
 
   function sizingSuggestions() {
+    const network = airflowNetwork();
     return drawings
       .filter((drawing) => ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting && drawingSystem(drawing) === activeSystem)
-      .map((drawing) => {
-        const cfm = runAirflow(drawing);
+      .flatMap((drawing) => {
+        const hasManualOverride = drawing.cfmSource === "manual";
+        const pathIsContinuous = drawing.type === "supply"
+          ? network.reachableSupplyRuns.has(drawing.id)
+          : drawing.type === "return"
+            ? network.reachableReturnRuns.has(drawing.id)
+            : hasManualOverride;
+        const propagated = pathIsContinuous ? network.calculated.get(drawing.id) || 0 : 0;
+        const manual = Math.max(0, drawing.cfm ?? 0);
+        const cfm = hasManualOverride ? manual : propagated;
+        if (!cfm) return [];
         const recommended = recommendedDuctSize(cfm, drawing.type);
         const limit = drawing.type === "supply"
           ? supplyVelocityLimit
           : drawing.type === "return"
             ? returnVelocityLimit
             : freshVelocityLimit;
-        return {
+        return [{
           id: drawing.id,
           type: drawing.type,
           current: drawing.size,
@@ -3287,9 +3476,18 @@ function HVACPlanStudioApp() {
           limit,
           overCapacity: velocityFpm(recommended, cfm) > limit,
           room: drawing.roomName?.trim() || "Unassigned route",
-        };
+          airflowSource: hasManualOverride ? "manual" as const : "terminal-linked" as const,
+          pressureDrop: runPressure({ ...drawing, cfm }).pressureDrop,
+        }];
       })
-      .filter((suggestion) => suggestion.current !== suggestion.recommended);
+      .filter((suggestion) => suggestion.overCapacity || suggestion.current !== suggestion.recommended);
+  }
+
+  function hasPlanningSeedTerminalCfm() {
+    const setup = airflowSetupSummary();
+    return [...setup.supplyTerminals, ...setup.returnTerminals].some((drawing) =>
+      !drawing.cfmSource || drawing.cfmSource === "planning-seed"
+    );
   }
 
   function reducerRecommendations() {
@@ -3433,11 +3631,20 @@ function HVACPlanStudioApp() {
   }
 
   function applySizingSuggestions() {
+    applySizingSuggestionIds(selectedSizingIds);
+  }
+
+  function applySizingSuggestionIds(ids: string[]) {
+    if (hasPlanningSeedTerminalCfm()) {
+      setBranchMessage("Replace planning-seed terminal CFM before applying velocity-screened duct sizes");
+      setSelectedSizingIds([]);
+      return;
+    }
     const proposed = new Map(sizingSuggestions()
-      .filter((suggestion) => selectedSizingIds.includes(suggestion.id) && !suggestion.overCapacity)
+      .filter((suggestion) => ids.includes(suggestion.id) && !suggestion.overCapacity)
       .map((suggestion) => [suggestion.id, suggestion.recommended]));
     if (!proposed.size) {
-      setBranchMessage("Select at least one safe reviewed size change before applying");
+      setBranchMessage("Select at least one velocity-screened size change before applying");
       return;
     }
     const resized = drawings.map((drawing) => {
@@ -3496,10 +3703,10 @@ function HVACPlanStudioApp() {
     const supplyTerminals = drawings.filter((drawing) => drawing.symbol?.kind === "diffuser" && drawingSystem(drawing) === activeSystem);
     const returnTerminals = drawings.filter((drawing) => drawing.symbol?.kind === "returnGrille" && drawingSystem(drawing) === activeSystem);
     const connectedSupplyCfm = supplyTerminals
-      .filter((drawing) => network.terminalRun.has(drawing.id))
+      .filter((drawing) => network.rootedTerminalRun.has(drawing.id))
       .reduce((total, drawing) => total + (drawing.cfm || 0), 0);
     const connectedReturnCfm = returnTerminals
-      .filter((drawing) => network.terminalRun.has(drawing.id))
+      .filter((drawing) => network.rootedTerminalRun.has(drawing.id))
       .reduce((total, drawing) => total + (drawing.cfm || 0), 0);
     const maximumFlexSize = allowedResidentialFlexSizes.includes(residentialFlexMax) ? Number(residentialFlexMax) : 16;
     const maxFlexSupplyCapacity = Math.round(Math.PI * Math.pow(maximumFlexSize / 12, 2) / 4 * supplyVelocityLimit);
@@ -3520,8 +3727,8 @@ function HVACPlanStudioApp() {
       returnTerminals,
       connectedSupplyCfm,
       connectedReturnCfm,
-      connectedSupplyTerminals: supplyTerminals.filter((drawing) => network.terminalRun.has(drawing.id)).length,
-      connectedReturnTerminals: returnTerminals.filter((drawing) => network.terminalRun.has(drawing.id)).length,
+      connectedSupplyTerminals: supplyTerminals.filter((drawing) => network.rootedTerminalRun.has(drawing.id)).length,
+      connectedReturnTerminals: returnTerminals.filter((drawing) => network.rootedTerminalRun.has(drawing.id)).length,
       supplyGap,
       returnGap,
       supplyPercent,
@@ -3579,7 +3786,7 @@ function HVACPlanStudioApp() {
       const terminalCount = drawings.filter((drawing) =>
         drawing.symbol?.kind === "diffuser" &&
         drawingSystem(drawing) === activeSystem &&
-        runIds.has(network.terminalRun.get(drawing.id) || "")
+        runIds.has(network.rootedTerminalRun.get(drawing.id) || "")
       ).length;
       let detachedPorts = 0;
       let missingPorts = 0;
@@ -3756,13 +3963,48 @@ function HVACPlanStudioApp() {
     return roomAirflowTargets[activeSystem] || suggestedRoomAirflowTargets();
   }
 
+  function roomAirflowTargetsFingerprint(
+    systemId: string,
+    targets = roomAirflowTargets[systemId] || {},
+  ) {
+    const roomTopology = systemId === activeSystem
+      ? roomSchedule()
+        .map((room) => ({
+          room: room.name.toLowerCase(),
+          diffusers: room.diffusers,
+          returns: room.returns,
+        }))
+        .sort((left, right) => left.room.localeCompare(right.room))
+      : [];
+    return stableTextHash(JSON.stringify(
+      {
+        planningTargetCfm: systemId === activeSystem ? designAirflow().targetCfm : 0,
+        roomTopology,
+        targets: Object.entries(targets)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([room, target]) => [room, {
+            supplyCfm: target.supplyCfm,
+            returnCfm: target.returnCfm,
+            priority: target.priority,
+          }]),
+      },
+    ));
+  }
+
+  function roomAirflowTargetsAreReviewed(systemId = activeSystem) {
+    const targets = roomAirflowTargets[systemId];
+    const everyScheduledRoomHasTargets = systemId === activeSystem && roomSchedule().every((room) =>
+      Boolean(targets?.[room.name.toLowerCase()])
+    );
+    return Boolean(
+      targets &&
+      Object.keys(targets).length &&
+      everyScheduledRoomHasTargets &&
+      roomAirflowTargetReviewFingerprints[systemId] === roomAirflowTargetsFingerprint(systemId, targets)
+    );
+  }
+
   function openSystemBalanceWorkspace(view: "system" | "rooms" | "runs" = "system") {
-    if (!roomAirflowTargets[activeSystem] && roomSchedule().length) {
-      setRoomAirflowTargets((current) => ({
-        ...current,
-        [activeSystem]: suggestedRoomAirflowTargets(),
-      }));
-    }
     setSelectedCfmProposalIds([]);
     setBalanceView(view);
     setRightTab("rooms");
@@ -3772,7 +4014,7 @@ function HVACPlanStudioApp() {
     const suggested = suggestedRoomAirflowTargets(roomAirflowTargets[activeSystem] || {});
     setRoomAirflowTargets((current) => ({ ...current, [activeSystem]: suggested }));
     setSelectedCfmProposalIds([]);
-    setBranchMessage(`${systemLabel(activeSystem)} room targets recalculated for review · no drawing CFM changed`);
+    setBranchMessage(`${systemLabel(activeSystem)} draft room targets recalculated · review and save them before applying CFM`);
   }
 
   function updateRoomAirflowTarget(roomName: string, changes: Partial<RoomAirflowTarget>) {
@@ -3790,6 +4032,19 @@ function HVACPlanStudioApp() {
       [activeSystem]: { ...currentSystem, [key]: nextTarget },
     }));
     setSelectedCfmProposalIds([]);
+  }
+
+  function saveReviewedRoomAirflowTargets() {
+    const targets = activeRoomAirflowTargets();
+    if (!Object.keys(targets).length) {
+      setBranchMessage("Assign room names before saving reviewed room targets");
+      return;
+    }
+    const fingerprint = roomAirflowTargetsFingerprint(activeSystem, targets);
+    setRoomAirflowTargets((current) => ({ ...current, [activeSystem]: targets }));
+    setRoomAirflowTargetReviewFingerprints((current) => ({ ...current, [activeSystem]: fingerprint }));
+    setSelectedCfmProposalIds([]);
+    setBranchMessage(`${systemLabel(activeSystem)} room coordination targets saved as reviewed · drawing CFM was not changed`);
   }
 
   function terminalCfmProposals(targets = activeRoomAirflowTargets()): TerminalCfmProposal[] {
@@ -3819,7 +4074,7 @@ function HVACPlanStudioApp() {
           proposed: split.get(drawing.id) || 0,
           target: total,
           terminalCount: terminals.length,
-          connected: network.terminalRun.has(drawing.id),
+          connected: network.rootedTerminalRun.has(drawing.id),
         })).filter((proposal) => proposal.current !== proposal.proposed);
       };
       return [
@@ -3830,15 +4085,168 @@ function HVACPlanStudioApp() {
   }
 
   function applySelectedCfmProposals() {
-    const proposals = terminalCfmProposals().filter((proposal) => selectedCfmProposalIds.includes(proposal.id));
+    applyCfmProposalIds(selectedCfmProposalIds);
+  }
+
+  function applyCfmProposalIds(ids: string[]) {
+    if (!roomAirflowTargetsAreReviewed()) {
+      setSelectedCfmProposalIds([]);
+      setBranchMessage("Review and save the room coordination targets before applying terminal CFM");
+      return;
+    }
+    const proposals = terminalCfmProposals().filter((proposal) => ids.includes(proposal.id) && proposal.connected);
     if (!proposals.length) {
-      setBranchMessage("Select at least one reviewed terminal CFM change before applying");
+      setBranchMessage("Select at least one connected, reviewed terminal CFM change before applying");
       return;
     }
     const proposed = new Map(proposals.map((proposal) => [proposal.drawingId, proposal.proposed]));
-    setHistory(drawings.map((drawing) => proposed.has(drawing.id) ? { ...drawing, cfm: proposed.get(drawing.id) } : drawing));
+    setHistory(drawings.map((drawing) => proposed.has(drawing.id)
+      ? { ...drawing, cfm: proposed.get(drawing.id), cfmSource: "room-target" }
+      : drawing));
     setSelectedCfmProposalIds([]);
     setBranchMessage(`${proposals.length} reviewed terminal CFM change${proposals.length === 1 ? "" : "s"} applied in one undoable step · duct sizes were not changed`);
+  }
+
+  function buildSystemBalanceModel(): SystemBalanceModel {
+    const setup = airflowSetupSummary();
+    const network = airflowNetwork();
+    const targets = activeRoomAirflowTargets();
+    const equipmentSources = setup.equipment.map((drawing) => drawing.cfmSource || "planning-seed");
+    const airflowTargetSource: SystemBalanceModel["airflowTargetSource"] = !setup.targetCfm
+      ? "missing"
+      : equipmentSources.every((source) => source === "manual")
+        ? "user-entered"
+        : equipmentSources.some((source) => source === "manual")
+          ? "mixed"
+          : "planning-seed";
+    const terminals = [...setup.supplyTerminals, ...setup.returnTerminals];
+    const planningSeedTerminalCount = terminals.filter((drawing) =>
+      !drawing.cfmSource || drawing.cfmSource === "planning-seed"
+    ).length;
+    const missingTerminalCfm = terminals.filter((drawing) => !drawing.cfm).length;
+    const savedRoomTargets = roomAirflowTargets[activeSystem];
+    const networks = networkBalanceRows().map((row) => ({
+      unitId: row.unit.id,
+      unitLabel: row.unit.symbol?.label || `${row.unit.size} ${row.unit.symbol?.variant || "indoor unit"}`,
+      rootRunId: row.rootRunId,
+      designCfm: row.designCfm,
+      assignedCfm: row.assignedCfm,
+      remainingCfm: row.remainingCfm,
+      returnCfm: row.returnCfm,
+      percent: row.percent,
+      runCount: row.runCount,
+      fittingCount: row.fittingCount,
+      terminalCount: row.terminalCount,
+      problemCount: row.problemCount,
+      firstProblemDrawingId: row.firstProblemFittingId,
+      balanced: row.balanced,
+    }));
+    const rooms = roomSchedule().map((room) => {
+      const target = targets[room.name.toLowerCase()] || { supplyCfm: 0, returnCfm: 0 };
+      const deviceDrawings = room.drawingIds
+        .map((id) => drawings.find((drawing) => drawing.id === id))
+        .filter((drawing): drawing is Drawing => Boolean(
+          drawing?.symbol && ["diffuser", "returnGrille"].includes(drawing.symbol.kind),
+        ));
+      return {
+        name: room.name,
+        type: room.type || "general",
+        supplyTarget: target.supplyCfm,
+        supplyScheduled: room.supplyCfm,
+        returnTarget: target.returnCfm,
+        returnScheduled: room.returnCfm,
+        diffusers: room.diffusers,
+        returns: room.returns,
+        connectedDevices: deviceDrawings.filter((drawing) => network.rootedTerminalRun.has(drawing.id)).length,
+        deviceCount: room.diffusers + room.returns,
+        missingCfm: room.missingCfm,
+        needsReturn: room.needsReturn,
+        drawingIds: room.drawingIds,
+      };
+    });
+    const runs = sizingSuggestions().map((run) => ({
+      id: run.id,
+      type: run.type as "supply" | "return" | "fresh",
+      room: run.room,
+      currentSize: run.current,
+      recommendedSize: run.recommended,
+      cfm: run.cfm,
+      currentVelocity: run.currentVelocity,
+      recommendedVelocity: run.velocity,
+      velocityLimit: run.limit,
+      pressureDrop: run.pressureDrop,
+      airflowSource: run.airflowSource,
+      overCapacity: run.overCapacity,
+    }));
+    return {
+      systemId: activeSystem,
+      systemName: systemLabel(activeSystem),
+      calculationVersion: BALANCE_CALCULATION_VERSION,
+      evidenceFingerprint: stableTextHash(`${systemDrawingSignature(activeSystem)}|${BALANCE_CALCULATION_VERSION}`),
+      designCfm: setup.targetCfm,
+      supplyCfm: setup.supplyCfm,
+      returnCfm: setup.returnCfm,
+      connectedSupplyCfm: setup.connectedSupplyCfm,
+      connectedReturnCfm: setup.connectedReturnCfm,
+      connectedSupplyTerminals: setup.connectedSupplyTerminals,
+      connectedReturnTerminals: setup.connectedReturnTerminals,
+      supplyTerminalCount: setup.supplyTerminals.length,
+      returnTerminalCount: setup.returnTerminals.length,
+      totalRunCount: drawings.filter((drawing) =>
+        drawingSystem(drawing) === activeSystem &&
+        ["supply", "return", "fresh"].includes(drawing.type) &&
+        !drawing.fitting
+      ).length,
+      scaleVerified,
+      airflowTargetSource,
+      planningSeedTerminalCount,
+      missingTerminalCfm,
+      roomTargetSource: savedRoomTargets && roomAirflowTargetsAreReviewed()
+        ? "saved-targets"
+        : "draft-allocation",
+      rules: {
+        supplyVelocityLimit,
+        returnVelocityLimit,
+        freshVelocityLimit,
+        residentialFlexMax,
+      },
+      runs,
+      rooms,
+      networks,
+      cfmProposals: terminalCfmProposals(targets).map((proposal) => ({
+        id: proposal.id,
+        drawingId: proposal.drawingId,
+        kind: proposal.kind,
+        room: proposal.room,
+        label: proposal.label,
+        current: proposal.current,
+        proposed: proposal.proposed,
+        connected: proposal.connected,
+      })),
+      reviews: balanceReviewRecords.filter((review) => review.systemId === activeSystem),
+    };
+  }
+
+  function recordSystemBalanceReview(reviewer: string, note: string) {
+    const model = buildSystemBalanceModel();
+    const summary = summarizeSystemBalance(model);
+    const review: BalanceReviewRecord = {
+      id: crypto.randomUUID(),
+      systemId: activeSystem,
+      reviewer,
+      note,
+      createdAt: new Date().toISOString(),
+      evidenceFingerprint: model.evidenceFingerprint,
+      score: summary.score,
+      designCfm: model.designCfm,
+      supplyCfm: model.supplyCfm,
+      returnCfm: model.returnCfm,
+      openSizeRecommendations: model.runs.length,
+      openCfmRecommendations: model.cfmProposals.length,
+      connectionProblems: summary.connectionProblems + summary.unresolvedNetworks + summary.disconnectedDevices,
+    };
+    setBalanceReviewRecords((current) => [...current, review]);
+    setBranchMessage(`${systemLabel(activeSystem)} balance state reviewed by ${reviewer} · drawing geometry was not changed`);
   }
 
   function selectRoomOnPlan(drawingIds: string[]) {
@@ -3882,6 +4290,48 @@ function HVACPlanStudioApp() {
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
   }
 
+  function exportSystemBalanceRunCsv() {
+    const model = buildSystemBalanceModel();
+    if (!model.runs.length) {
+      setBranchMessage("No velocity-screened size candidates or over-capacity runs are waiting");
+      return;
+    }
+    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const csv = [
+      ["HVAC SYSTEM BALANCE REVIEW — PLANNING ONLY"],
+      ["System", model.systemName],
+      ["Calculation version", model.calculationVersion],
+      ["Evidence fingerprint", model.evidenceFingerprint],
+      ["Airflow target source", model.airflowTargetSource],
+      ["Room target source", model.roomTargetSource],
+      ["Drawing scale", model.scaleVerified ? scaleLabel : "UNVERIFIED — LOSS HIDDEN"],
+      [],
+      ["Run ID", "Type", "Room / Route", "Airflow Source", "Planning CFM", "Current Size", "Velocity-Screened Candidate", "Current FPM", "Candidate FPM", "Limit FPM", "Current-Segment Rough Loss", "Status"],
+      ...model.runs.map((run) => [
+        run.id,
+        run.type,
+        run.room,
+        run.airflowSource,
+        run.cfm,
+        `${run.currentSize}"`,
+        `${run.recommendedSize}"`,
+        run.currentVelocity,
+        run.recommendedVelocity,
+        run.velocityLimit,
+        model.scaleVerified ? `~${run.pressureDrop.toFixed(2)} in. w.g.` : "Scale unverified",
+        run.overCapacity ? "OVER CAPACITY — PARALLEL PATH / REDESIGN" : "REVIEW CANDIDATE",
+      ]),
+      [],
+      ["Disclaimer", "Velocity-screened planning candidates do not verify pressure, sound, blower performance, room loads, code, or installation conditions."],
+    ].map((row) => row.map(quote).join(",")).join("\n");
+    const link = document.createElement("a");
+    const objectUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    link.href = objectUrl;
+    link.download = `${systemLabel(activeSystem).replaceAll(" ", "-").toLowerCase()}-balance-size-review.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+
   function stableTextHash(value: string) {
     let hash = 2166136261;
     for (let index = 0; index < value.length; index += 1) {
@@ -3919,6 +4369,12 @@ function HVACPlanStudioApp() {
       punchItems: project.punchItems || [],
       rfiItems: project.rfiItems || [],
       roomAirflowTargets: project.roomAirflowTargets || {},
+      ...(project.roomAirflowTargetReviewFingerprints && Object.keys(project.roomAirflowTargetReviewFingerprints).length
+        ? { roomAirflowTargetReviewFingerprints: project.roomAirflowTargetReviewFingerprints }
+        : {}),
+      ...(project.balanceReviewRecords?.length
+        ? { balanceReviewRecords: project.balanceReviewRecords }
+        : {}),
       reviewDecisionsBySystem: project.reviewDecisionsBySystem || {},
     };
     return stableTextHash(JSON.stringify(canonicalReleaseValue(releaseState)));
@@ -3934,7 +4390,7 @@ function HVACPlanStudioApp() {
   }
 
   function validationIssues(): ValidationIssue[] {
-    const issues: Array<Omit<ValidationIssue, "id">> = [];
+    const issues: Array<Omit<ValidationIssue, "id" | "ruleId" | "evidenceFingerprint">> = [];
     const balance = designAirflow();
     const equipment = drawings.filter((drawing) => isPrimaryAirflowEquipment(drawing) && drawingSystem(drawing) === activeSystem);
     const diffusers = drawings.filter((drawing) => drawing.symbol?.kind === "diffuser" && drawingSystem(drawing) === activeSystem);
@@ -3979,7 +4435,7 @@ function HVACPlanStudioApp() {
         detail: `${drawing.size}" at ${cfm} CFM is approximately ${pressure.frictionRate.toFixed(2)} in. w.g./100 ft. Review size, compression, and routing.`,
         drawingId: drawing.id,
       });
-      if (pressure.pressureDrop > .15) issues.push({
+      if (scaleVerified && pressure.pressureDrop > .15) issues.push({
         severity: pressure.pressureDrop > .25 ? "critical" : "warning",
         title: "Run pressure loss high",
         detail: `${pressure.equivalentLength.toFixed(0)} equivalent ft produces approximately ${pressure.pressureDrop.toFixed(2)} in. w.g. loss.`,
@@ -4009,6 +4465,7 @@ function HVACPlanStudioApp() {
           title: "Branch fitting leg undersized",
           detail: `Port ${port + 1} carries ${state.cfm} CFM and should increase to ${state.recommended}".`,
           drawingId: fitting.id,
+          instanceKey: `port-${port + 1}`,
         });
       });
     }
@@ -4064,17 +4521,28 @@ function HVACPlanStudioApp() {
     if (equipment.length && !drawings.some((drawing) => drawingSystem(drawing) === activeSystem && drawing.symbol?.kind === "thermostat")) {
       issues.push({ severity: "info", title: "Thermostat location not marked", detail: `Add the control point for ${systemLabel(activeSystem)} so the field team can coordinate wiring.` });
     }
-    return issues.map((issue) => ({
-      ...issue,
-      id: `review-${stableTextHash([activeSystem, issue.title, issue.drawingId || "system", issue.detail].join("|"))}`,
-    }));
+    return issues.map((issue) => {
+      const identity = buildFindingIdentity({
+        systemId: activeSystem,
+        title: issue.title,
+        severity: issue.severity,
+        detail: issue.detail,
+        drawingId: issue.drawingId,
+        instanceKey: issue.instanceKey,
+      });
+      return {
+        ...issue,
+        ...identity,
+        legacyId: `review-${stableTextHash([activeSystem, issue.title, issue.drawingId || "system", issue.detail].join("|"))}`,
+      };
+    });
   }
 
-  function issueCategory(title: string) {
+  function issueCategory(title: string): PlanFindingCategory {
     const value = title.toLowerCase();
     if (["disconnect", "connection", "fitting", "pulled away", "systems touch"].some((term) => value.includes(term))) return "Connections";
     if (["return", "bedroom", "door-closed"].some((term) => value.includes(term))) return "Return paths";
-    if (["velocity", "friction", "pressure loss"].some((term) => value.includes(term))) return "Velocity & pressure";
+    if (["velocity", "friction", "pressure loss", "undersized", "progression"].some((term) => value.includes(term))) return "Duct sizing";
     if (["cfm", "balance", "airflow"].some((term) => value.includes(term))) return "Airflow";
     return "Coordination";
   }
@@ -4114,6 +4582,10 @@ function HVACPlanStudioApp() {
     return reviewDecisionsBySystem[systemId] || {};
   }
 
+  function reviewDecisionForIssue(issue: ValidationIssue, decisions = activeReviewDecisions()) {
+    return decisions[issue.id] || (issue.legacyId ? decisions[issue.legacyId] : undefined);
+  }
+
   function reviewIssueReference(issue: ValidationIssue) {
     return `REV-${issue.id.replace("review-", "").slice(-5).toUpperCase()}`;
   }
@@ -4127,14 +4599,21 @@ function HVACPlanStudioApp() {
     const severityOrder: Record<ValidationSeverity, number> = { critical: 0, warning: 1, info: 2 };
     return issues
       .map((issue) => {
-        const decision = decisions[issue.id];
+        const decision = reviewDecisionForIssue(issue, decisions);
+        const decisionStale = Boolean(
+          decision &&
+          (decision.issueId !== issue.id ||
+            decision.evidenceFingerprint !== issue.evidenceFingerprint)
+        );
         const linkedRfi = decision?.status === "rfi" ? rfiItems.find((item) => item.id === decision.linkedRecordId) : undefined;
         const linkedPunch = decision?.status === "punch" ? punchItems.find((item) => item.id === decision.linkedRecordId) : undefined;
-        const decisionComplete = decision?.status === "accepted" ||
+        const decisionComplete = !decisionStale && (
+          decision?.status === "accepted" ||
           (decision?.status === "rfi" && Boolean(linkedRfi && ["approved", "closed"].includes(linkedRfi.status))) ||
-          (decision?.status === "punch" && linkedPunch?.status === "resolved");
+          (decision?.status === "punch" && linkedPunch?.status === "resolved")
+        );
         const resolvedByDecision = issue.severity !== "critical" && Boolean(decisionComplete);
-        return { issue, decision, resolvedByDecision };
+        return { issue, decision, decisionStale, resolvedByDecision };
       })
       .sort((a, b) =>
         severityOrder[a.issue.severity] - severityOrder[b.issue.severity] ||
@@ -4190,11 +4669,12 @@ function HVACPlanStudioApp() {
   }
 
   function focusReviewIssue(issue: ValidationIssue) {
+    const decision = reviewDecisionForIssue(issue);
     setRightTab("checks");
     setReviewView("issues");
     setActiveReviewIssueId(issue.id);
-    setReviewerName(activeReviewDecisions()[issue.id]?.reviewer || "");
-    setReviewDecisionNote(activeReviewDecisions()[issue.id]?.note || "");
+    setReviewerName(decision?.reviewer || "");
+    setReviewDecisionNote(decision?.note || "");
     if (issue.drawingId) focusDrawingOnPlan(issue.drawingId);
   }
 
@@ -4226,7 +4706,7 @@ function HVACPlanStudioApp() {
       return;
     }
     const now = new Date().toISOString();
-    const existingDecision = activeReviewDecisions()[issue.id];
+    const existingDecision = reviewDecisionForIssue(issue);
     let linkedRecordId: string | undefined;
     if (status === "rfi") {
       const linkedExistingRfi = existingDecision?.status === "rfi" ? rfiItems.find((item) => item.id === existingDecision.linkedRecordId) : undefined;
@@ -4292,16 +4772,18 @@ function HVACPlanStudioApp() {
     }
     const decision: ReviewDecision = {
       issueId: issue.id,
+      evidenceFingerprint: issue.evidenceFingerprint,
       status,
       reviewer: reviewerName.trim(),
       note: reviewDecisionNote.trim(),
       updatedAt: now,
       linkedRecordId,
     };
-    setReviewDecisionsBySystem((current) => ({
-      ...current,
-      [activeSystem]: { ...(current[activeSystem] || {}), [issue.id]: decision },
-    }));
+    setReviewDecisionsBySystem((current) => {
+      const nextSystem = { ...(current[activeSystem] || {}), [issue.id]: decision };
+      if (issue.legacyId && issue.legacyId !== issue.id) delete nextSystem[issue.legacyId];
+      return { ...current, [activeSystem]: nextSystem };
+    });
     setBranchMessage(issue.severity === "critical"
       ? `${issue.title} was documented, but remains a release blocker until the drawing condition is fixed`
       : `${issue.title} review decision recorded`);
@@ -4321,10 +4803,13 @@ function HVACPlanStudioApp() {
     if (!rows.length) return;
     const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
     const csv = [
-      ["System", "Reference", "Severity", "Category", "Issue", "Detail", "Disposition", "Reviewer", "Decision Note", "Updated", "Plan Link"],
+      ["System", "Reference", "Rule ID", "Evidence ID", "Evidence State", "Severity", "Category", "Issue", "Detail", "Disposition", "Reviewer", "Decision Note", "Updated", "Plan Link"],
       ...rows.map((row) => [
         systemLabel(activeSystem),
         reviewIssueReference(row.issue),
+        row.issue.ruleId,
+        row.issue.evidenceFingerprint,
+        row.decisionStale ? "CHANGED — REVIEW AGAIN" : "CURRENT",
         row.issue.severity,
         issueCategory(row.issue.title),
         row.issue.title,
@@ -4357,19 +4842,25 @@ function HVACPlanStudioApp() {
         size: drawing.size,
         lineWeight: normalizedRunLineWeight(drawing.lineWeight),
         cfm: drawing.cfm || 0,
+        ...(drawing.cfmSource ? { cfmSource: drawing.cfmSource } : {}),
         roomName: drawing.roomName || "",
         roomType: drawing.roomType || "",
         elevation: drawing.elevation || "",
+        labelOffset: drawing.labelOffset,
         fitting: drawing.fitting,
         symbol: drawing.symbol,
       }));
     return stableTextHash(JSON.stringify({
       drawings: scopedDrawings,
       roomTargets: Object.entries(roomAirflowTargets[systemId] || {}).sort(([a], [b]) => a.localeCompare(b)),
+      ...(roomAirflowTargetReviewFingerprints[systemId]
+        ? { roomTargetReviewFingerprint: roomAirflowTargetReviewFingerprints[systemId] }
+        : {}),
       pdfFingerprint,
       scaleFeetPerUnit,
       scaleLabel,
       scaleVerified,
+      visibleLabels: { showCfmLabels, showLengthLabels, showFittingLabels },
       velocityRules: { supplyVelocityLimit, returnVelocityLimit, freshVelocityLimit, residentialFlexMax },
     }));
   }
@@ -4383,6 +4874,7 @@ function HVACPlanStudioApp() {
         status: decision.status,
         reviewer: decision.reviewer,
         note: decision.note,
+        evidenceFingerprint: decision.evidenceFingerprint || "",
         updatedAt: decision.updatedAt,
       }));
     const rfiState = rfiItems
@@ -4779,7 +5271,14 @@ function HVACPlanStudioApp() {
     const rows = buildTakeoff();
     if (!rows.length) return;
     const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const packageStatus = activeFieldPackage.released && !activeFieldPackage.stale && scaleVerified
+      ? activeFieldPackage.status
+      : "DRAFT — NOT FOR INSTALLATION";
     const csv = [
+      ["Package status", packageStatus, "", "", "", ""],
+      ["Drawing scale", scaleVerified ? scaleLabel : "UNVERIFIED", "", "", "", ""],
+      ["Drawing signature", systemDrawingSignature(), "", "", "", ""],
+      [],
       ["System", "Category", "Item", "Size", "Order Quantity", "Purchasing / Fabrication Note"],
       ...rows.map((row) => [systemLabel(activeSystem), row.category, row.item, row.size, row.quantity, row.note]),
     ].map((row) => row.map(quote).join(",")).join("\n");
@@ -4801,45 +5300,68 @@ function HVACPlanStudioApp() {
     const runById = new Map(runs.map((run) => [run.id, run]));
     const adjacency = new Map(runs.map((run) => [run.id, new Set<string>()]));
     const fittingProblems = new Set<string>();
+    const coveredEndpoints = new Set<string>();
+    const endpointUseCount = new Map<string, number>();
     const fittings = drawings.filter((drawing) => drawingSystem(drawing) === systemId && drawing.fitting);
+    const endpointKey = (runId: string, end: "start" | "end") => `${runId}:${end}`;
+    const coverEndpoint = (runId: string, end: "start" | "end") => {
+      const key = endpointKey(runId, end);
+      const uses = (endpointUseCount.get(key) || 0) + 1;
+      endpointUseCount.set(key, uses);
+      coveredEndpoints.add(key);
+      if (uses > 1) fittingProblems.add(runId);
+    };
 
     fittings.forEach((fitting) => {
       const ports = fittingPortPoints(fitting);
-      const validRunIds = fitting.fitting!.connectedIds.map((runId, port) => {
+      const valid: Array<{ runId: string; end: "start" | "end" }> = [];
+      fitting.fitting!.connectedIds.forEach((runId, port) => {
         const run = runById.get(runId);
-        if (!run || run.page !== fitting.page || run.type !== "supply") return "";
-        const endpoints = [run.points[0], run.points[run.points.length - 1]];
-        return endpoints.some((point) => Math.hypot(point.x - ports[port].x, point.y - ports[port].y) < 2) ? run.id : "";
+        if (!run || run.page !== fitting.page || run.type !== "supply") return;
+        const startDistance = Math.hypot(run.points[0].x - ports[port].x, run.points[0].y - ports[port].y);
+        const endPoint = run.points[run.points.length - 1];
+        const endDistance = Math.hypot(endPoint.x - ports[port].x, endPoint.y - ports[port].y);
+        if (Math.min(startDistance, endDistance) >= 2) return;
+        valid.push({ runId: run.id, end: startDistance <= endDistance ? "start" : "end" });
       });
-      const valid = validRunIds.filter(Boolean);
-      if (valid.length !== 3) valid.forEach((runId) => fittingProblems.add(runId));
-      valid.forEach((runId) => {
-        valid.forEach((otherId) => {
+      if (valid.length !== 3) valid.forEach(({ runId }) => fittingProblems.add(runId));
+      valid.forEach(({ runId, end }) => {
+        coverEndpoint(runId, end);
+        valid.forEach(({ runId: otherId }) => {
           if (otherId !== runId) adjacency.get(runId)?.add(otherId);
         });
       });
     });
 
-    const validEquipmentLinks = new Set<string>();
-    const validSupplyTerminalLinks = new Set<string>();
-    const validReturnTerminalLinks = new Set<string>();
-    drawings.filter((drawing) => drawingSystem(drawing) === systemId && drawing.symbol?.connectedRunId).forEach((symbol) => {
-      const run = runById.get(symbol.symbol!.connectedRunId!);
-      if (!run || run.page !== symbol.page) return;
-      const expectedType = isPrimaryAirflowEquipment(symbol) || symbol.symbol?.kind === "diffuser"
-        ? "supply"
-        : symbol.symbol?.kind === "returnGrille"
-          ? "return"
-          : "";
-      if (!expectedType || run.type !== expectedType) return;
-      const point = symbol.points[0];
-      const physicallyAttached = [run.points[0], run.points[run.points.length - 1]].some((endpoint) =>
-        Math.hypot(endpoint.x - point.x, endpoint.y - point.y) < 2
-      );
-      if (!physicallyAttached) return;
-      if (isPrimaryAirflowEquipment(symbol)) validEquipmentLinks.add(run.id);
-      if (symbol.symbol?.kind === "diffuser") validSupplyTerminalLinks.add(run.id);
-      if (symbol.symbol?.kind === "returnGrille") validReturnTerminalLinks.add(run.id);
+    function runTouchesPoint(
+      runId: string | undefined,
+      expectedType: "supply" | "return",
+      point: Point,
+      savedEnd: "start" | "end" | undefined,
+    ) {
+      const run = runId ? runById.get(runId) : undefined;
+      if (!run || run.type !== expectedType || !savedEnd) return undefined;
+      const endpoint = savedEnd === "start" ? run.points[0] : run.points[run.points.length - 1];
+      const physicallyAttached = Math.hypot(endpoint.x - point.x, endpoint.y - point.y) < 2;
+      return physicallyAttached ? { run, end: savedEnd } : undefined;
+    }
+    drawings.filter((drawing) => drawingSystem(drawing) === systemId && drawing.symbol).forEach((symbol) => {
+      if (isPrimaryAirflowEquipment(symbol)) {
+        const plenums = equipmentPlenumPorts(symbol);
+        const supplyLink = runTouchesPoint(symbol.symbol?.connectedRunId, "supply", plenums.supply, symbol.symbol?.connectedEnd);
+        const returnLink = runTouchesPoint(symbol.symbol?.returnRunId, "return", plenums.return, symbol.symbol?.returnEnd);
+        if (supplyLink && supplyLink.run.page === symbol.page) coverEndpoint(supplyLink.run.id, supplyLink.end);
+        if (returnLink && returnLink.run.page === symbol.page) coverEndpoint(returnLink.run.id, returnLink.end);
+        return;
+      }
+      if (symbol.symbol?.kind === "diffuser") {
+        const link = runTouchesPoint(symbol.symbol.connectedRunId, "supply", symbol.points[0], symbol.symbol.connectedEnd);
+        if (link && link.run.page === symbol.page) coverEndpoint(link.run.id, link.end);
+      }
+      if (symbol.symbol?.kind === "returnGrille") {
+        const link = runTouchesPoint(symbol.symbol.connectedRunId, "return", symbol.points[0], symbol.symbol.connectedEnd);
+        if (link && link.run.page === symbol.page) coverEndpoint(link.run.id, link.end);
+      }
     });
 
     const result = new Map<string, { connected: boolean; detail: string }>();
@@ -4856,34 +5378,31 @@ function HVACPlanStudioApp() {
         adjacency.get(runId)?.forEach((nextId) => queue.push(nextId));
       }
       const componentRuns = [...component].map((runId) => runById.get(runId)!).filter(Boolean);
-      const hasFittingProblem = [...component].some((runId) => fittingProblems.has(runId));
-      const hasSource = [...component].some((runId) => validEquipmentLinks.has(runId));
-      const hasSupplyTerminal = [...component].some((runId) => validSupplyTerminalLinks.has(runId));
-      const hasReturnTerminal = [...component].some((runId) => validReturnTerminalLinks.has(runId));
       const freshControls = drawings.filter((drawing) =>
         drawingSystem(drawing) === systemId &&
         drawing.symbol?.kind === "motorDamper" &&
         componentRuns.some((run) => run.page === drawing.page && pointToDrawingDistance(drawing.points[0], run) <= 12)
       ).length;
       componentRuns.forEach((run) => {
-        const connected = !hasFittingProblem && (
-          run.type === "supply"
-            ? hasSource && hasSupplyTerminal
-            : run.type === "return"
-              ? hasReturnTerminal
-              : freshControls > 0
-        );
+        const hasFittingProblem = fittingProblems.has(run.id);
+        const startCovered = coveredEndpoints.has(endpointKey(run.id, "start"));
+        const endCovered = coveredEndpoints.has(endpointKey(run.id, "end"));
+        const openEnds = [
+          !startCovered ? "start" : "",
+          !endCovered ? "end" : "",
+        ].filter(Boolean).join(" and ");
+        const connected = run.type === "fresh"
+          ? freshControls > 0
+          : !hasFittingProblem && startCovered && endCovered;
         const detail = hasFittingProblem
           ? "Open or detached T/Y port"
-          : run.type === "supply" && !hasSource
-            ? "No equipment source"
-            : run.type === "supply" && !hasSupplyTerminal
-              ? "No connected supply terminal"
-              : run.type === "return" && !hasReturnTerminal
-                ? "No connected return grille"
-                : run.type === "fresh" && !freshControls
-                  ? "No motorized OA damper on run"
-                  : "Verified";
+          : run.type === "supply" && openEnds
+            ? `Open ${openEnds} endpoint — connect to equipment supply plenum, T/Y port, or supply terminal`
+            : run.type === "return" && openEnds
+              ? `Open ${openEnds} endpoint — connect to equipment return plenum, T/Y port, or return grille`
+              : run.type === "fresh" && !freshControls
+                ? "No motorized OA damper on run"
+                : "Verified";
         result.set(run.id, { connected, detail });
       });
     });
@@ -5077,6 +5596,8 @@ function HVACPlanStudioApp() {
       checklistSnapshot: fieldChecklistItems.map((item) => ({ ...item, checked: Boolean(activeFieldChecklist()[item.id]) })),
       issueSnapshot: activeReviewedIssueRows.map((row) => ({
         id: row.issue.id,
+        ruleId: row.issue.ruleId,
+        evidenceFingerprint: row.issue.evidenceFingerprint,
         severity: row.issue.severity,
         title: row.issue.title,
         detail: row.issue.detail,
@@ -5097,7 +5618,7 @@ function HVACPlanStudioApp() {
           releaseRevision: draftRecord.revision,
           releasedByName: draftRecord.releasedBy,
           drawingSignature: draftRecord.drawingSignature,
-          releaseSignature: draftRecord.releaseSignature,
+          releaseSignature: summary.releaseSignature,
           releasePayload: draftRecord as unknown as Record<string, unknown>,
         });
         record = { ...draftRecord, id: cloudRelease.id, releasedAt: cloudRelease.created_at };
@@ -5152,8 +5673,15 @@ function HVACPlanStudioApp() {
     const rows = activeFieldPackage.runs;
     if (!rows.length) return;
     const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const packageStatus = activeFieldPackage.released && !activeFieldPackage.stale && scaleVerified
+      ? activeFieldPackage.status
+      : "DRAFT — NOT FOR INSTALLATION";
     const csv = [
-      ["System", "Duct Type", "Size", "Length LF", "Calculated CFM", "Room / Area", "Elevation", "Connection Review"],
+      ["Package status", packageStatus, "", "", "", "", "", ""],
+      ["Drawing scale", scaleVerified ? scaleLabel : "UNVERIFIED", "", "", "", "", "", ""],
+      ["Drawing signature", systemDrawingSignature(), "", "", "", "", "", ""],
+      [],
+      ["System", "Duct Type", "Size", "Length LF", "Planning CFM", "Room / Area", "Elevation", "Connection Review"],
       ...rows.map((run) => [
         systemLabel(activeSystem),
         run.type,
@@ -5347,7 +5875,7 @@ function HVACPlanStudioApp() {
       return;
     }
     if (stage === "airflow") {
-      openSystemBalanceWorkspace("system");
+      openSystemBalanceStudio();
       return;
     }
     if (stage === "review") {
@@ -5733,13 +6261,14 @@ function HVACPlanStudioApp() {
       return;
     }
 
-    const upstream: Drawing = { ...target.drawing, points: upstreamPoints, cfm: target.drawing.cfm || defaultCfm(target.drawing.size) };
+    const upstream: Drawing = { ...target.drawing, points: upstreamPoints };
     const downstream: Drawing = {
       ...target.drawing,
       id: downstreamId,
       points: downstreamPoints,
       size: downstreamSize,
-      cfm: defaultCfm(downstreamSize),
+      cfm: target.drawing.cfm,
+      cfmSource: target.drawing.cfmSource,
     };
     const branchRun: Drawing | null = matchedRoute ? {
       ...matchedRoute.drawing,
@@ -5793,11 +6322,6 @@ function HVACPlanStudioApp() {
     const keys = ["upstreamSize", "downstreamSize", "branchSize"] as const;
     const connectedId = fitting.fitting.connectedIds[port];
     const updatedMeta = { ...fitting.fitting, [keys[port]]: size };
-    const inlet = drawings.find((drawing) => drawing.id === fitting.fitting!.connectedIds[0]);
-    const inletCfm = inlet?.cfm || defaultCfm(updatedMeta.upstreamSize);
-    const outletArea = Number(updatedMeta.downstreamSize) ** 2;
-    const branchArea = Number(updatedMeta.branchSize) ** 2;
-    const totalArea = Math.max(1, outletArea + branchArea);
     const resized = drawings.map((drawing) => {
       if (drawing.id === fitting.id) return {
         ...drawing,
@@ -5805,12 +6329,7 @@ function HVACPlanStudioApp() {
         fitting: updatedMeta,
       };
       if (drawing.id === connectedId) {
-        if (port === 0) return { ...drawing, size, cfm: defaultCfm(size) };
-        return { ...drawing, size, cfm: Math.round(inletCfm * (port === 1 ? outletArea : branchArea) / totalArea / 5) * 5 };
-      }
-      if (port !== 0 && drawing.id === fitting.fitting!.connectedIds[port === 1 ? 2 : 1]) {
-        const otherArea = port === 1 ? branchArea : outletArea;
-        return { ...drawing, cfm: Math.round(inletCfm * otherArea / totalArea / 5) * 5 };
+        return { ...drawing, size };
       }
       return drawing;
     });
@@ -5975,6 +6494,7 @@ function HVACPlanStudioApp() {
       page: pageNumber,
       systemId: activeSystem,
       cfm: selectedDefaults.cfm,
+      cfmSource: "planning-seed",
       elevation: preset?.elevation || (["diffuser", "returnGrille", "fan"].includes(kind)
         ? "CEILING"
         : kind === "thermostat"
@@ -6158,6 +6678,7 @@ function HVACPlanStudioApp() {
           lineWeight: ["supply", "return"].includes(activeTool) ? runLineWeight : 0.2,
           page: pageNumber,
           cfm: defaultCfm(ductSize),
+          cfmSource: "planning-seed",
           systemId: activeSystem,
           elevation: "",
         };
@@ -6682,14 +7203,14 @@ function HVACPlanStudioApp() {
             branchSize,
           },
         };
-        if (drawing.id === upstreamId) return { ...drawing, size, cfm: defaultCfm(size) };
-        if (drawing.id === downstreamId) return { ...drawing, size: downstreamSize, cfm: defaultCfm(downstreamSize) };
-        if (drawing.id === branchId) return { ...drawing, size: branchSize, cfm: defaultCfm(branchSize) };
+        if (drawing.id === upstreamId) return { ...drawing, size };
+        if (drawing.id === downstreamId) return { ...drawing, size: downstreamSize };
+        if (drawing.id === branchId) return { ...drawing, size: branchSize };
         return drawing;
       });
       setHistory(synchronizeFittingSizes(resized, drawings));
     } else {
-      const resized = drawings.map((drawing) => drawing.id === selectedId ? { ...drawing, size, cfm: defaultCfm(size) } : drawing);
+      const resized = drawings.map((drawing) => drawing.id === selectedId ? { ...drawing, size } : drawing);
       setHistory(synchronizeFittingSizes(resized, drawings));
     }
     setDuctSize(size);
@@ -6713,7 +7234,7 @@ function HVACPlanStudioApp() {
 
   function updateSelectedCfm(cfm: number) {
     if (!selectedId || !Number.isFinite(cfm)) return;
-    setHistory(drawings.map((drawing) => drawing.id === selectedId ? { ...drawing, cfm: Math.max(0, cfm) } : drawing));
+    setHistory(drawings.map((drawing) => drawing.id === selectedId ? { ...drawing, cfm: Math.max(0, cfm), cfmSource: "manual" } : drawing));
   }
 
   function updateEquipmentTonnage(tons: number) {
@@ -6724,6 +7245,7 @@ function HVACPlanStudioApp() {
         ...drawing,
         size: `${tons} TON`,
         cfm: isPrimaryAirflowEquipment(drawing) ? Math.round(tons * 400) : drawing.cfm,
+        cfmSource: isPrimaryAirflowEquipment(drawing) ? "planning-seed" : drawing.cfmSource,
         symbol: {
           ...drawing.symbol,
           label: `${systemLabel(drawingSystem(drawing)).toUpperCase()} · ${tons} TON ${equipmentTypeName(drawing.symbol.variant) || "EQUIPMENT"}`,
@@ -6748,6 +7270,7 @@ function HVACPlanStudioApp() {
         ...drawing,
         size: `${tons} TON`,
         cfm: targetCfm,
+        cfmSource: "planning-seed",
         symbol: {
           ...drawing.symbol,
           label: `${systemLabel(activeSystem).toUpperCase()} · ${tons} TON ${equipmentTypeName(drawing.symbol.variant) || "EQUIPMENT"}`,
@@ -6813,6 +7336,7 @@ function HVACPlanStudioApp() {
       ...drawing,
       size: preset.size,
       cfm: preset.cfm,
+      cfmSource: "planning-seed",
       elevation: preset.elevation || drawing.elevation,
       symbol: { ...drawing.symbol!, label: preset.label, variant: preset.variant },
     } : drawing));
@@ -7737,6 +8261,10 @@ function HVACPlanStudioApp() {
         }
         return;
       }
+      if (showPlanIntelligence || showFieldPackageComposer || showSystemBalanceStudio) {
+        if (event.key === "Escape") event.preventDefault();
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === "h") {
         event.preventDefault();
         setShowProjectHome(true);
@@ -7930,6 +8458,53 @@ function HVACPlanStudioApp() {
     releaseStale: activeFieldPackage.stale,
   });
   const activeFieldRuns = activeFieldPackage.runs;
+  const modalWorkspaceActive = showProjectHome || showProjectSetup || showPlanIntelligence || showFieldPackageComposer || showSystemBalanceStudio;
+  const packagePrintClasses = printPackageSections.map((section) => `package-include-${section}`).join(" ");
+
+  function openPlanIntelligence() {
+    setShowCommandPalette(false);
+    setShowCloudProjects(false);
+    setShowFieldPackageComposer(false);
+    setShowProjectHome(false);
+    setShowProjectSetup(false);
+    setShowPlanIntelligence(true);
+  }
+
+  function openFieldPackageComposer() {
+    setShowCommandPalette(false);
+    setShowCloudProjects(false);
+    setShowPlanIntelligence(false);
+    setShowProjectHome(false);
+    setShowProjectSetup(false);
+    setShowFieldPackageComposer(true);
+  }
+
+  function openSystemBalanceStudio() {
+    setShowCommandPalette(false);
+    setShowCloudProjects(false);
+    setShowPlanIntelligence(false);
+    setShowFieldPackageComposer(false);
+    setShowProjectHome(false);
+    setShowProjectSetup(false);
+    setSelectedCfmProposalIds([]);
+    setSelectedSizingIds([]);
+    setShowSystemBalanceStudio(true);
+  }
+
+  function printSelectedFieldPackage(sections: FieldPackageSectionId[]) {
+    setPrintPackageSections(sections);
+    setShowFieldPackageComposer(false);
+    selectOnly(null);
+    setActiveReviewIssueId("");
+    setPendingBranchFittingId(null);
+    setQueuedBranchRunId(null);
+    setBranchHoverRunId(null);
+    setBranchPreview(null);
+    setSnapMarker(null);
+    setAlignmentGuides([]);
+    window.setTimeout(() => window.print(), 80);
+  }
+
   const projectCommands: ProjectCommand[] = [
     {
       id: "project-home",
@@ -7983,10 +8558,11 @@ function HVACPlanStudioApp() {
     },
     {
       id: "airflow",
-      label: "Open system airflow and balancing",
-      detail: "Review tonnage, scheduled CFM, returns, and proposed sizes",
+      label: "Open System Balance Studio",
+      detail: `${activeAirflowSetup.targetCfm || "No"} planning CFM · review continuous paths, room CFM, and velocity-screened sizes`,
       group: "Systems",
-      run: () => openSystemBalanceWorkspace("system"),
+      keywords: "airflow balancing cfm duct size velocity review v103",
+      run: openSystemBalanceStudio,
     },
     {
       id: "plan-review",
@@ -7996,11 +8572,29 @@ function HVACPlanStudioApp() {
       run: openSystemAuditWorkflow,
     },
     {
+      id: "plan-intelligence",
+      label: "Open Plan Intelligence",
+      detail: `${activeReviewSummary.blockers} release blocker${activeReviewSummary.blockers === 1 ? "" : "s"} · stable evidence and manual actions`,
+      group: "Review",
+      disabled: !pdf,
+      keywords: "explainable findings evidence readiness cockpit v102",
+      run: openPlanIntelligence,
+    },
+    {
       id: "field-release",
       label: "Open Field Release Center",
       detail: "Installation package, RFI, punch, startup, and named approval",
       group: "Field",
       run: () => { setRightPanelOpen(true); setRightTab("field"); setFieldView("release"); },
+    },
+    {
+      id: "field-package",
+      label: "Compose a field package",
+      detail: "Choose an installer, sheet-metal, startup, or closeout package",
+      group: "Field",
+      disabled: !pdf,
+      keywords: "print pdf export installer takeoff startup package",
+      run: openFieldPackageComposer,
     },
     {
       id: "sheets",
@@ -8028,8 +8622,8 @@ function HVACPlanStudioApp() {
   ];
 
   return (
-    <main className={`app-shell ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${["rooms", "checks", "field"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""}`}>
-      <header className="topbar" inert={showProjectHome || showProjectSetup ? true : undefined} aria-hidden={showProjectHome || showProjectSetup}>
+    <main className={`app-shell ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${["rooms", "checks", "field"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${activeFieldPackage.released && !activeFieldPackage.stale ? "package-print-released" : "package-print-draft"}`}>
+      <header className="topbar" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
         <button className="brand" onClick={() => setShowProjectHome(true)} aria-label="Open Project Home">
           <div className="brand-mark"><Wind size={23} strokeWidth={2.4} /></div>
           <div>
@@ -8065,6 +8659,7 @@ function HVACPlanStudioApp() {
             <Cloud size={16} /> Project Hub <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V104"}</span>
           </button>
           <button className="drive-button" onClick={() => void openFromDrive()}><HardDrive size={16} /> Open Drive</button>
+          <button className="intelligence-button" disabled={!pdf} onClick={openPlanIntelligence}><Sparkles size={16} /> Plan Intelligence</button>
           <button
             className={`field-mode-button ${fieldMode ? "active" : ""}`}
             onClick={() => setFieldMode((enabled) => !enabled)}
@@ -8073,11 +8668,11 @@ function HVACPlanStudioApp() {
             {fieldMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             {fieldMode ? "Exit field mode" : "Field mode"}
           </button>
-          <button className="primary-button" disabled={!pdf} onClick={() => window.print()}>Export plan</button>
+          <button className="primary-button" disabled={!pdf} onClick={openFieldPackageComposer}>Compose package</button>
         </nav>
       </header>
 
-      <div className="field-workflow-hud" aria-label="Field workflow controls" inert={showProjectHome || showProjectSetup ? true : undefined} aria-hidden={showProjectHome || showProjectSetup}>
+      <div className="field-workflow-hud" aria-label="Field workflow controls" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
         <div>
           <span>FIELD WORKFLOW · {systemLabel(activeSystem)}</span>
           <strong>{activeWorkflow.nextAction}</strong>
@@ -8089,7 +8684,8 @@ function HVACPlanStudioApp() {
         <button onClick={() => { setFieldMode(false); continueSystemWorkflow(activeWorkflow.activeStage); }}>Open task</button>
       </div>
 
-      <section className="print-header" inert={showProjectHome || showProjectSetup ? true : undefined} aria-hidden={showProjectHome || showProjectSetup}>
+      <div className="print-package-watermark" aria-hidden="true">DRAFT · NOT ISSUED FOR FIELD</div>
+      <section className="print-header" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
         <div>
           <strong>HVAC PLAN STUDIO · FIELD INSTALLATION PLAN</strong>
           <h1>{fileName}</h1>
@@ -8101,7 +8697,7 @@ function HVACPlanStudioApp() {
         </dl>
       </section>
 
-      <section className="workspace" inert={showProjectHome || showProjectSetup ? true : undefined} aria-hidden={showProjectHome || showProjectSetup}>
+      <section className="workspace" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
         <aside className="left-panel">
           <div className="panel-heading">
             <div><span>DESIGN TOOLS</span><small>FIELD STANDARD</small></div>
@@ -8512,7 +9108,7 @@ function HVACPlanStudioApp() {
                   const selected = drawings.find((drawing) => drawing.id === selectedId)!;
                   reshapeSelectedFitting(selected.fitting?.style || "wye45", selected.fitting?.side === 1 ? -1 : 1);
                 }}>Flip left / right</button>
-                <button onClick={() => { openSystemBalanceWorkspace("rooms"); setBranchMessage("Review terminal CFM proposals before applying any airflow changes"); }}>Review CFM split</button>
+                <button onClick={openSystemBalanceStudio}>Review system balance</button>
                 <button className="network-size-action" onClick={openSystemSizingWorkflow}>Review connected sizes</button>
                 <button className="reattach-action" onClick={reattachSelectedFitting}>Reattach nearby runs</button>
                 <button className="reattach-action" onClick={() => {
@@ -8625,12 +9221,12 @@ function HVACPlanStudioApp() {
                   />
                 </label>
                 <div className="engineering-grid">
-                  <div><span>Length</span><strong>{drawingLengthFeet(selectedRun)} LF</strong></div>
+                  <div><span>Length</span><strong>{scaleVerified ? `${drawingLengthFeet(selectedRun)} LF` : "SCALE UNVERIFIED"}</strong></div>
                   <div><span>Connected airflow</span><strong>{runAirflow(selectedRun)} CFM</strong></div>
                   <div><span>Velocity</span><strong>{velocityFpm(selectedRun.size, runAirflow(selectedRun))} FPM</strong></div>
-                  <div><span>Source</span><strong>{airflowNetwork().calculated.get(selectedRun.id) ? "AUTO" : "MANUAL"}</strong></div>
+                  <div><span>Source</span><strong>{selectedRun.cfmSource === "manual" ? "MANUAL" : airflowNetwork().calculated.get(selectedRun.id) ? "TERMINAL SCHEDULE" : "PLANNING"}</strong></div>
                   <div><span>Friction rate</span><strong>{runPressure(selectedRun).frictionRate.toFixed(2)} /100 FT</strong></div>
-                  <div><span>Pressure loss</span><strong>{runPressure(selectedRun).pressureDrop.toFixed(2)} IN. W.G.</strong></div>
+                  <div><span>Segment loss</span><strong>{scaleVerified ? `${runPressure(selectedRun).pressureDrop.toFixed(2)} IN. W.G.` : "SCALE UNVERIFIED"}</strong></div>
                 </div>
               </div>}
             </>}
@@ -8980,7 +9576,7 @@ function HVACPlanStudioApp() {
                         const [a, b] = drawing.points;
                         const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
                         return <g key={drawing.id} className={`measurement ${isSelected(drawing.id) ? "selected-measurement" : ""}`} onPointerDown={(event) => {
-                          if (activeTool !== "select" || drawingLocked(drawing)) return;
+                          if (event.button !== 0 || panRef.current || activeTool !== "select" || drawingLocked(drawing)) return;
                           event.stopPropagation();
                           event.shiftKey ? toggleSelection(drawing.id) : selectOnly(drawing.id);
                         }}>
@@ -9068,7 +9664,7 @@ function HVACPlanStudioApp() {
                       const runSelected = isSelected(drawing.id);
                       const showRunNodeHandles = runSelected || Boolean(branchCandidateClass);
                       return <g key={drawing.id} className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${runSelected ? "selected-drawing" : ""} ${branchCandidateClass}`.trim()} onPointerDown={(event) => {
-                        if (activeTool !== "select" || drawingLocked(drawing)) return;
+                        if (event.button !== 0 || panRef.current || activeTool !== "select" || drawingLocked(drawing)) return;
                         event.stopPropagation();
                         event.shiftKey ? toggleSelection(drawing.id) : selectOnly(drawing.id);
                       }}>
@@ -9323,13 +9919,13 @@ function HVACPlanStudioApp() {
 
               <div className={`builder-action-card ${activeBuilderSummary.sizing.length ? "attention" : "complete"}`}>
                 <div className="builder-action-icon"><Gauge size={17} /></div>
-                <span><i>STEP 2</i><strong>Calculate CFM &amp; review duct sizes</strong><small>Propagates terminal airflow through connected T/Y fittings and prepares safe size recommendations using your velocity limits and 16″ residential maximum.</small></span>
+                <span><i>STEP 2</i><strong>Calculate CFM &amp; review duct sizes</strong><small>Propagates reviewed terminal airflow through continuous T/Y paths and prepares velocity-screened candidates using your limits and 16″ residential maximum.</small></span>
                 <div className={`system-airflow-setup ${!activeAirflowSetup.primaryUnit ? "missing-unit" : ""}`}>
                   <div className="airflow-setup-heading">
                     <span><Wind size={15} /><strong>SYSTEM AIRFLOW SETUP</strong></span>
                     <b>{activeAirflowSetup.primaryUnit ? `${activeAirflowSetup.targetCfm} CFM` : "UNIT REQUIRED"}</b>
                   </div>
-                  <label>Primary equipment tonnage · 400 CFM per ton
+                  <label>Planning airflow · editable 400 CFM per ton
                     <select
                       aria-label="Active system equipment tonnage"
                       value={activeAirflowSetup.primaryTons || 3}
@@ -9347,7 +9943,7 @@ function HVACPlanStudioApp() {
                         <small>{activeAirflowSetup.supplyGap > 0 ? `${activeAirflowSetup.supplyGap} CFM remaining` : activeAirflowSetup.supplyGap < 0 ? `${Math.abs(activeAirflowSetup.supplyGap)} CFM over` : "Target matched"}</small>
                       </div>
                       <div className={activeAirflowSetup.returnBalanced ? "good" : "attention"}>
-                        <span>Return scheduled</span>
+                        <span>Return vs planning baseline</span>
                         <strong>{activeAirflowSetup.returnCfm} CFM</strong>
                         <small>{activeAirflowSetup.returnGap > 0 ? `${activeAirflowSetup.returnGap} CFM remaining` : activeAirflowSetup.returnGap < 0 ? `${Math.abs(activeAirflowSetup.returnGap)} CFM over` : "Target matched"}</small>
                       </div>
@@ -9367,7 +9963,7 @@ function HVACPlanStudioApp() {
                 </div>
                 <div className="builder-action-stats"><b>{activeAirflowSetup.targetCfm}</b> design · <b>{activeAirflowSetup.supplyCfm}</b> supply · <b>{activeAirflowSetup.returnCfm}</b> return CFM</div>
                 <div className="builder-action-buttons">
-                  <button disabled={!activeAirflowSetup.primaryUnit} onClick={() => openSystemBalanceWorkspace("rooms")}>Open room balancing</button>
+                  <button disabled={!activeAirflowSetup.primaryUnit} onClick={openSystemBalanceStudio}>Open Balance Studio</button>
                   <button disabled={!activeBuilderSummary.runs.length} onClick={openSystemSizingWorkflow}>Review duct sizes</button>
                 </div>
               </div>
@@ -9450,9 +10046,9 @@ function HVACPlanStudioApp() {
                 <div><dt>Returns</dt><dd>{drawings.filter((drawing) => drawing.type === "return" && drawingSystem(drawing) === activeSystem).length}</dd></div>
                 <div><dt>Return grilles</dt><dd>{drawings.filter((drawing) => drawing.symbol?.kind === "returnGrille" && drawingSystem(drawing) === activeSystem).length}</dd></div>
                 <div><dt>Indoor airflow units</dt><dd>{drawings.filter((drawing) => isPrimaryAirflowEquipment(drawing) && drawingSystem(drawing) === activeSystem).length}</dd></div>
-                <div><dt>Total duct length</dt><dd>{drawings.filter((drawing) => ["supply", "return", "fresh"].includes(drawing.type) && drawingSystem(drawing) === activeSystem).reduce((total, drawing) => total + drawingLengthFeet(drawing), 0).toFixed(1)} LF</dd></div>
+                <div><dt>Total duct length</dt><dd>{scaleVerified ? `${drawings.filter((drawing) => ["supply", "return", "fresh"].includes(drawing.type) && drawingSystem(drawing) === activeSystem).reduce((total, drawing) => total + drawingLengthFeet(drawing), 0).toFixed(1)} LF` : "Scale unverified"}</dd></div>
                 <div><dt>System airflow</dt><dd>{Math.max(0, ...drawings.filter((drawing) => drawing.type === "supply" && drawingSystem(drawing) === activeSystem).map((drawing) => runAirflow(drawing)))} CFM</dd></div>
-                <div><dt>Connected terminals</dt><dd>{drawings.filter((drawing) => ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") && drawingSystem(drawing) === activeSystem && airflowNetwork().terminalRun.has(drawing.id)).length}</dd></div>
+                <div><dt>Continuous terminals</dt><dd>{drawings.filter((drawing) => ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") && drawingSystem(drawing) === activeSystem && airflowNetwork().rootedTerminalRun.has(drawing.id)).length}</dd></div>
               </dl>
             </div>
             <div className="system-schedule">
@@ -9479,7 +10075,7 @@ function HVACPlanStudioApp() {
                 <small>{systemLabel(activeSystem)} · review first, apply once</small>
               </div>
               <span className={`check-pill ${activeAirflowSetup.supplyBalanced && activeAirflowSetup.returnBalanced ? "clear" : "warning"}`}>
-                {activeAirflowSetup.targetCfm ? activeAirflowSetup.supplyBalanced && activeAirflowSetup.returnBalanced ? "READY" : "REVIEW" : "NO UNIT"}
+                {activeAirflowSetup.targetCfm ? activeAirflowSetup.supplyBalanced && activeAirflowSetup.returnBalanced ? "SCHEDULE ALIGNED" : "REVIEW" : "NO UNIT"}
               </span>
             </div>
             <div className="balance-view-tabs" role="tablist" aria-label="Balance workspace views">
@@ -9495,12 +10091,12 @@ function HVACPlanStudioApp() {
             {balanceView === "system" ? <>
               <div className="balance-system-hero">
                 <span><Wind size={18} /></span>
-                <div><small>DESIGN AIRFLOW</small><strong>{activeAirflowSetup.targetCfm} CFM</strong><p>{activeAirflowSetup.equipment.length} indoor airflow source{activeAirflowSetup.equipment.length === 1 ? "" : "s"} · 400 CFM/ton</p></div>
+                <div><small>PLANNING AIRFLOW</small><strong>{activeAirflowSetup.targetCfm} CFM</strong><p>{activeAirflowSetup.equipment.length} indoor airflow source{activeAirflowSetup.equipment.length === 1 ? "" : "s"} · editable 400 CFM/ton starting value</p></div>
                 <button disabled={!activeAirflowSetup.primaryUnit} onClick={() => { setSelectedId(activeAirflowSetup.primaryUnit?.id || null); setActiveTool("select"); }}>Select unit</button>
               </div>
               <div className="balance-system-grid">
                 <div className={activeAirflowSetup.supplyBalanced ? "good" : "attention"}><span>Supply scheduled</span><strong>{activeAirflowSetup.supplyCfm}</strong><small>{activeAirflowSetup.supplyGap > 0 ? `${activeAirflowSetup.supplyGap} remaining` : activeAirflowSetup.supplyGap < 0 ? `${Math.abs(activeAirflowSetup.supplyGap)} over` : "Target matched"}</small></div>
-                <div className={activeAirflowSetup.returnBalanced ? "good" : "attention"}><span>Return scheduled</span><strong>{activeAirflowSetup.returnCfm}</strong><small>{activeAirflowSetup.returnGap > 0 ? `${activeAirflowSetup.returnGap} remaining` : activeAirflowSetup.returnGap < 0 ? `${Math.abs(activeAirflowSetup.returnGap)} over` : "Target matched"}</small></div>
+                <div className={activeAirflowSetup.returnBalanced ? "good" : "attention"}><span>Return vs planning baseline</span><strong>{activeAirflowSetup.returnCfm}</strong><small>{activeAirflowSetup.returnGap > 0 ? `${activeAirflowSetup.returnGap} remaining` : activeAirflowSetup.returnGap < 0 ? `${Math.abs(activeAirflowSetup.returnGap)} over` : "Baseline matched"}</small></div>
                 <div><span>Supply connected</span><strong>{activeAirflowSetup.connectedSupplyCfm}</strong><small>{activeAirflowSetup.connectedSupplyTerminals}/{activeAirflowSetup.supplyTerminals.length} cans</small></div>
                 <div><span>Return connected</span><strong>{activeAirflowSetup.connectedReturnCfm}</strong><small>{activeAirflowSetup.connectedReturnTerminals}/{activeAirflowSetup.returnTerminals.length} grilles</small></div>
               </div>
@@ -9519,7 +10115,7 @@ function HVACPlanStudioApp() {
                     <div><span>Unit design</span><strong>{row.designCfm} CFM</strong></div>
                     <div><span>Connected supply</span><strong>{row.assignedCfm} CFM</strong></div>
                     <div className={Math.abs(row.remainingCfm) <= Math.max(25, row.designCfm * .1) ? "good" : "attention"}><span>Remaining</span><strong>{row.remainingCfm > 0 ? "+" : ""}{row.remainingCfm} CFM</strong></div>
-                    <div><span>System return total</span><strong>{row.returnCfm} CFM</strong></div>
+                    <div><span>Return vs planning baseline</span><strong>{row.returnCfm} CFM</strong></div>
                   </div>
                   <div className="network-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.percent}>
                     <i style={{ width: `${Math.min(100, Math.max(0, row.percent))}%` }} /><span>{row.percent}% assigned</span>
@@ -9532,10 +10128,11 @@ function HVACPlanStudioApp() {
                   </div>
                 </div>)}
               </div> : <div className="empty-takeoff">Place an indoor airflow unit and connect its supply trunk to build the system network.</div>}
-              <div className="balance-workspace-note">System return is shown once as a system total. A return is never assigned to an individual unit unless you explicitly separate it into another system.</div>
+              <div className="balance-workspace-note">System return is shown once against the planning-airflow baseline, not as a verified return design. A return is never assigned to an individual unit unless you explicitly separate it into another system.</div>
             </> : balanceView === "rooms" ? <>
               <div className="balance-toolbar">
                 <button disabled={!roomSchedule().length || !activeAirflowSetup.targetCfm} onClick={recalculateRoomAirflowTargets}><Sparkles size={12} /> Recalculate targets</button>
+                <button disabled={!roomSchedule().length} onClick={saveReviewedRoomAirflowTargets}><CheckCircle2 size={12} /> Save reviewed targets</button>
                 <button disabled={!roomSchedule().length} onClick={exportRoomScheduleCsv}><Save size={12} /> Export CSV</button>
               </div>
               <div className="room-summary-grid balance-summary">
@@ -9549,7 +10146,7 @@ function HVACPlanStudioApp() {
                   const target = activeRoomAirflowTargets()[room.name.toLowerCase()] || { supplyCfm: 0, returnCfm: 0, priority: "standard" as RoomAirflowPriority };
                   const supplyVariance = room.supplyCfm - target.supplyCfm;
                   const returnVariance = room.returnCfm - target.returnCfm;
-                  const connectedIds = room.drawingIds.filter((id) => airflowNetwork().terminalRun.has(id));
+                  const connectedIds = room.drawingIds.filter((id) => airflowNetwork().rootedTerminalRun.has(id));
                   return <article className={`balance-room-card ${room.needsReturn ? "needs-return" : ""}`} key={room.name}>
                     <div className="balance-room-heading">
                       <span><strong>{room.name}</strong><small>{room.type} · {connectedIds.length}/{room.diffusers + room.returns} terminals connected</small></span>
@@ -9571,26 +10168,26 @@ function HVACPlanStudioApp() {
                 })}
               </div> : <div className="empty-takeoff">Assign room names to supply diffusers and return grilles to build room targets.</div>}
               <div className="cfm-review-tray">
-                <div className="cfm-review-heading"><span><strong>REVIEWED CFM CHANGES</strong><small>Equal splits are proposals—not room-load calculations</small></span><b>{selectedCfmProposalIds.length}/{terminalCfmProposals().length}</b></div>
+                <div className="cfm-review-heading"><span><strong>{roomAirflowTargetsAreReviewed() ? "REVIEWED-TARGET CFM CHANGES" : "DRAFT CFM CHANGES"}</strong><small>{roomAirflowTargetsAreReviewed() ? "Continuous paths only · still not a room-load calculation" : "Review and save targets before applying"}</small></span><b>{selectedCfmProposalIds.length}/{terminalCfmProposals().length}</b></div>
                 <div className="cfm-review-actions">
-                  <button disabled={!terminalCfmProposals().length} onClick={() => setSelectedCfmProposalIds(terminalCfmProposals().map((proposal) => proposal.id))}>Select all</button>
+                  <button disabled={!roomAirflowTargetsAreReviewed() || !terminalCfmProposals().some((proposal) => proposal.connected)} onClick={() => setSelectedCfmProposalIds(terminalCfmProposals().filter((proposal) => proposal.connected).map((proposal) => proposal.id))}>Select continuous</button>
                   <button disabled={!selectedCfmProposalIds.length} onClick={() => setSelectedCfmProposalIds([])}>Clear</button>
                 </div>
                 {terminalCfmProposals().length ? <div className="cfm-proposal-list">
                   {terminalCfmProposals().map((proposal) => <div className={!proposal.connected ? "disconnected" : ""} key={proposal.id}>
-                    <input aria-label={`Approve ${proposal.room} ${proposal.label} CFM change`} type="checkbox" checked={selectedCfmProposalIds.includes(proposal.id)} onChange={() => setSelectedCfmProposalIds((current) => current.includes(proposal.id) ? current.filter((id) => id !== proposal.id) : [...current, proposal.id])} />
+                    <input aria-label={`Approve ${proposal.room} ${proposal.label} CFM change`} type="checkbox" disabled={!roomAirflowTargetsAreReviewed() || !proposal.connected} checked={selectedCfmProposalIds.includes(proposal.id)} onChange={() => setSelectedCfmProposalIds((current) => current.includes(proposal.id) ? current.filter((id) => id !== proposal.id) : [...current, proposal.id])} />
                     <button onClick={() => { setSelectedId(proposal.drawingId); setActiveTool("select"); }}>
                       <span><strong>{proposal.room} · {proposal.kind}</strong><small>{proposal.label} · {proposal.connected ? "connected" : "connect before release"}</small></span>
                       <b>{proposal.current} → {proposal.proposed}</b>
                     </button>
                   </div>)}
                 </div> : <div className="cfm-review-clear"><CheckCircle2 size={16} /> Scheduled terminal CFM matches the room targets.</div>}
-                <button className="apply-cfm-proposals" disabled={!selectedCfmProposalIds.length} onClick={applySelectedCfmProposals}>Apply {selectedCfmProposalIds.length} selected CFM change{selectedCfmProposalIds.length === 1 ? "" : "s"} · one Undo</button>
+                <button className="apply-cfm-proposals" disabled={!roomAirflowTargetsAreReviewed() || !selectedCfmProposalIds.length} onClick={applySelectedCfmProposals}>Apply {selectedCfmProposalIds.length} reviewed CFM change{selectedCfmProposalIds.length === 1 ? "" : "s"} · one Undo</button>
               </div>
               <div className="balance-workspace-note">Targets are coordination values you can edit. Final room airflow still requires load review, equipment data, field balancing, and your approval.</div>
             </> : <>
               <div className="balance-toolbar">
-                <button disabled={!sizingSuggestions().some((suggestion) => !suggestion.overCapacity)} onClick={() => setSelectedSizingIds(sizingSuggestions().filter((suggestion) => !suggestion.overCapacity).map((suggestion) => suggestion.id))}>Select safe sizes</button>
+                <button disabled={hasPlanningSeedTerminalCfm() || !sizingSuggestions().some((suggestion) => !suggestion.overCapacity)} onClick={() => setSelectedSizingIds(sizingSuggestions().filter((suggestion) => !suggestion.overCapacity).map((suggestion) => suggestion.id))}>Select velocity-screened sizes</button>
                 <button disabled={!selectedSizingIds.length} onClick={() => setSelectedSizingIds([])}>Clear</button>
               </div>
               <div className="run-review-rules">
@@ -9600,7 +10197,7 @@ function HVACPlanStudioApp() {
               </div>
               {sizingSuggestions().length ? <div className="balance-run-list">
                 {sizingSuggestions().map((suggestion) => <div className={`balance-run-row ${suggestion.overCapacity ? "over-capacity" : ""}`} key={suggestion.id}>
-                  <input aria-label={`Approve ${suggestion.room} duct size change`} type="checkbox" disabled={suggestion.overCapacity} checked={selectedSizingIds.includes(suggestion.id)} onChange={() => toggleSizingSuggestion(suggestion.id)} />
+                  <input aria-label={`Approve ${suggestion.room} duct size change`} type="checkbox" disabled={suggestion.overCapacity || hasPlanningSeedTerminalCfm()} checked={selectedSizingIds.includes(suggestion.id)} onChange={() => toggleSizingSuggestion(suggestion.id)} />
                   <button onClick={() => { setSelectedId(suggestion.id); setActiveTool("select"); }}>
                     <span><strong>{suggestion.room} · {suggestion.type.toUpperCase()}</strong><small>{suggestion.cfm} CFM · {suggestion.currentVelocity} FPM now · {suggestion.velocity} FPM proposed</small></span>
                     <b>{suggestion.current}″ → {suggestion.recommended}″</b>
@@ -9608,7 +10205,7 @@ function HVACPlanStudioApp() {
                   {suggestion.overCapacity && <p>Over the {suggestion.limit} FPM limit even at {residentialFlexMax}″. Add a parallel path or revise the design manually.</p>}
                 </div>)}
               </div> : <div className="cfm-review-clear"><CheckCircle2 size={17} /> All connected runs match the current sizing rules.</div>}
-              <button className="balance-apply-sizes" disabled={!selectedSizingIds.length} onClick={applySizingSuggestions}>Apply {selectedSizingIds.length} approved size change{selectedSizingIds.length === 1 ? "" : "s"} · one Undo</button>
+              <button className="balance-apply-sizes" disabled={hasPlanningSeedTerminalCfm() || !selectedSizingIds.length} onClick={applySizingSuggestions}>Apply {selectedSizingIds.length} reviewed size change{selectedSizingIds.length === 1 ? "" : "s"} · one Undo</button>
               <div className={`progression-summary ${sizeProgressionIssues().length ? "attention" : "good"}`}>
                 <span><strong>{sizeProgressionIssues().length} progression review{sizeProgressionIssues().length === 1 ? "" : "s"}</strong><small>Keep reductions gradual—such as 14×12×10 → 12×10×10 → 10×8×8.</small></span>
                 <button onClick={openSystemSizingWorkflow}>Full sizing checks</button>
@@ -9626,7 +10223,7 @@ function HVACPlanStudioApp() {
               {networkBalanceRows().map((row) => <div className={`network-balance-card ${row.balanced ? "balanced" : "attention"}`} key={row.unit.id}>
                 <button className="network-unit-heading" onClick={() => { setSelectedId(row.unit.id); setActiveTool("select"); }}>
                   <span><strong>{row.unit.symbol?.label || "HVAC EQUIPMENT"}</strong><small>{row.rootRunId ? `${row.runCount} runs · ${row.fittingCount} fittings · ${row.terminalCount} diffusers` : "Supply trunk not connected"}</small></span>
-                  <b>{row.balanced ? "BALANCED" : row.rootRunId ? "REVIEW" : "DISCONNECTED"}</b>
+                  <b>{row.balanced ? "SCHEDULE ALIGNED" : row.rootRunId ? "REVIEW" : "DISCONNECTED"}</b>
                 </button>
                 <div className="network-airflow-grid">
                   <div><span>Design</span><strong>{row.designCfm} CFM</strong></div>
@@ -9727,7 +10324,7 @@ function HVACPlanStudioApp() {
               <div className="takeoff-note">Flex quantity uses your rule: total measured length by size, plus the selected allowance, divided into 25-ft rolls; every started roll counts as one.</div>
             </>}
             {takeoffView === "installer" && <div className="production-installer-sheet">
-              <div className="installer-sheet-title"><span><b>INSTALLER SHEET</b><small>{fileName} · {systemLabel(activeSystem)}</small></span><button onClick={() => window.print()}><FileText size={13} /> Print / PDF</button></div>
+              <div className="installer-sheet-title"><span><b>INSTALLER SHEET</b><small>{fileName} · {systemLabel(activeSystem)}</small></span><button onClick={openFieldPackageComposer}><FileText size={13} /> Compose PDF</button></div>
               <div className="installer-sheet-stats">
                 <span><small>Design airflow</small><b>{systemStats(activeSystem).designCfm || 0} CFM</b></span>
                 <span><small>Duct runs</small><b>{activeFieldRuns.length}</b></span>
@@ -9828,7 +10425,7 @@ function HVACPlanStudioApp() {
               </span>
             </div>
             <div className="field-package-actions">
-              <button onClick={() => window.print()}><FileText size={13} /> Print package</button>
+              <button onClick={openFieldPackageComposer}><FileText size={13} /> Compose package</button>
               <button disabled={!activeFieldRuns.length} onClick={exportFieldRunScheduleCsv}><Save size={13} /> Run CSV</button>
               <button onClick={exportReleaseManifestCsv}><Save size={13} /> Release CSV</button>
             </div>
@@ -9993,7 +10590,7 @@ function HVACPlanStudioApp() {
                 <div><dt>Elevation holds</dt><dd>{activeFieldPackage.missingElevation}</dd></div>
               </dl>
               <div className="field-package-actions installer-actions">
-                <button onClick={() => window.print()}><FileText size={13} /> Print installer package</button>
+                <button onClick={openFieldPackageComposer}><FileText size={13} /> Compose installer package</button>
                 <button disabled={!activeFieldRuns.length} onClick={exportFieldRunScheduleCsv}><Save size={13} /> Run CSV</button>
               </div>
             </div>
@@ -10082,10 +10679,10 @@ function HVACPlanStudioApp() {
                   <button disabled={!reviewerName.trim() || !reviewDecisionNote.trim()} onClick={() => resolveReviewIssue(activeReviewRow.issue, "punch")}>Add punch item</button>
                   {activeReviewRow.decision && <button className="reopen" onClick={() => reopenReviewIssue(activeReviewRow.issue.id)}>Reopen review</button>}
                 </div>
-                {activeReviewRow.decision && <div className={`recorded-decision ${activeReviewRow.resolvedByDecision ? "complete" : "pending"}`}>
+                {activeReviewRow.decision && <div className={`recorded-decision ${activeReviewRow.decisionStale ? "stale" : activeReviewRow.resolvedByDecision ? "complete" : "pending"}`}>
                   {activeReviewRow.resolvedByDecision ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
                   <span>
-                    <strong>{activeReviewRow.decision.status.toUpperCase()} · {activeReviewRow.resolvedByDecision ? "REVIEW COMPLETE" : "PENDING CLOSEOUT"} · {activeReviewRow.decision.reviewer}</strong>
+                    <strong>{activeReviewRow.decision.status.toUpperCase()} · {activeReviewRow.decisionStale ? "EVIDENCE CHANGED · REVIEW AGAIN" : activeReviewRow.resolvedByDecision ? "REVIEW COMPLETE" : "PENDING CLOSEOUT"} · {activeReviewRow.decision.reviewer}</strong>
                     <small>{activeReviewRow.decision.note} · {new Date(activeReviewRow.decision.updatedAt).toLocaleString()}</small>
                   </span>
                 </div>}
@@ -10230,7 +10827,7 @@ function HVACPlanStudioApp() {
               <div><span>Design</span><strong>{designAirflow().targetCfm} CFM</strong></div>
               <div><span>Diffusers</span><strong>{designAirflow().supplyCfm} CFM</strong></div>
               <div><span>Return</span><strong>{designAirflow().returnCfm} CFM</strong></div>
-              <div className="wide"><span>Connected network</span><strong>{drawings.filter((drawing) => ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") && drawingSystem(drawing) === activeSystem && airflowNetwork().terminalRun.has(drawing.id)).length} terminals in {systemLabel(activeSystem)}</strong></div>
+              <div className="wide"><span>Continuous network</span><strong>{drawings.filter((drawing) => ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") && drawingSystem(drawing) === activeSystem && airflowNetwork().rootedTerminalRun.has(drawing.id)).length} terminals traced to equipment in {systemLabel(activeSystem)}</strong></div>
               <div className={Math.abs(designAirflow().difference) <= designAirflow().targetCfm * .1 && designAirflow().targetCfm ? "good" : "attention"}>
                 <span>Assigned</span><strong>{designAirflow().percent}%</strong>
               </div>
@@ -10247,14 +10844,14 @@ function HVACPlanStudioApp() {
               <span>Residential flex maximum {residentialFlexMax}&quot;</span>
               <span>Flex friction target ≤0.10 in. w.g./100 ft</span>
             </div>
-            <div className={`pressure-card ${pressureSummary().highestDrop > .15 ? "attention" : "good"}`}>
-              <div><Gauge size={16} /><span><strong>PRESSURE-LOSS ESTIMATE</strong><small>Installed flex · bends include 8 equivalent ft each</small></span></div>
+            <div className={`pressure-card ${!scaleVerified ? "attention" : pressureSummary().highestDrop > .15 ? "attention" : "good"}`}>
+              <div><Gauge size={16} /><span><strong>PRESSURE-LOSS ESTIMATE</strong><small>{scaleVerified ? "Current segment rough loss · bends include 8 equivalent ft each" : "Verify drawing scale before using length-based loss"}</small></span></div>
               <dl>
                 <div><dt>Average friction</dt><dd>{pressureSummary().averageFriction.toFixed(2)} in. w.g./100 ft</dd></div>
-                <div><dt>Highest run loss</dt><dd>{pressureSummary().highestDrop.toFixed(2)} in. w.g.</dd></div>
+                <div><dt>Highest segment loss</dt><dd>{scaleVerified ? `${pressureSummary().highestDrop.toFixed(2)} in. w.g.` : "Scale unverified"}</dd></div>
                 <div><dt>Runs reviewed</dt><dd>{pressureSummary().runs.length}</dd></div>
               </dl>
-              {pressureSummary().highestRun && <button onClick={() => { setSelectedId(pressureSummary().highestRun!.id); setActiveTool("select"); }}>
+              {scaleVerified && pressureSummary().highestRun && <button onClick={() => { setSelectedId(pressureSummary().highestRun!.id); setActiveTool("select"); }}>
                 Select highest-loss run
               </button>}
               <p>Planning estimate only. Final available static pressure requires equipment data, filters, coils, grilles, fittings, and field measurements.</p>
@@ -10288,11 +10885,11 @@ function HVACPlanStudioApp() {
       </section>
 
       <section className="print-takeoff">
-        <div className="print-section-heading">
+        <div className="print-section-heading package-print-section package-section-materials">
           <strong>MATERIAL TAKEOFF</strong>
           <span>Approximate quantities · field verify before ordering</span>
         </div>
-        <table>
+        <table className="package-print-section package-section-materials">
           <thead><tr><th>Category</th><th>Item</th><th>Size</th><th>Quantity</th><th>Field note</th></tr></thead>
           <tbody>
             {buildTakeoff().map((row, index) => <tr key={`${row.item}-print-${index}`}>
@@ -10300,14 +10897,14 @@ function HVACPlanStudioApp() {
             </tr>)}
           </tbody>
         </table>
-        <div className="field-notes">
+        <div className="field-notes package-print-section package-section-materials">
           <strong>FIELD NOTES</strong>
           <span>Keep flex straight, fully supported, and free of kinks or sags.</span>
           <span>Verify structure, lighting, plumbing, ceiling height, and access before installation.</span>
           <span>Elevation labels marked EL VERIFY must be coordinated before duct installation.</span>
           <span>Final duct sizes, routing, fabricated dimensions, and airflow must be field verified.</span>
         </div>
-        <div className="print-checks">
+        <div className="print-checks package-print-section package-section-review">
           <strong>AIRFLOW & VALIDATION SUMMARY</strong>
           <div>
             <span>Design airflow: {designAirflow().targetCfm} CFM</span>
@@ -10315,10 +10912,17 @@ function HVACPlanStudioApp() {
             <span>Assigned return: {designAirflow().returnCfm} CFM</span>
             <span>Duct elevations assigned: {drawings.filter((drawing) => drawingSystem(drawing) === activeSystem && ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting && drawing.elevation?.trim()).length} of {drawings.filter((drawing) => drawingSystem(drawing) === activeSystem && ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting).length}</span>
           </div>
-          {activeReviewedIssueRows.filter((row) => row.issue.severity !== "info").map((row, index) => <span key={`${row.issue.title}-print-${index}`}>• {row.issue.title}: {row.issue.detail}{row.decision ? ` · ${row.issue.severity === "critical" ? "DOCUMENTED / STILL BLOCKING" : row.resolvedByDecision ? row.decision.status.toUpperCase() : `${row.decision.status.toUpperCase()} / PENDING`} by ${row.decision.reviewer}` : ""}</span>)}
+          {activeReviewedIssueRows.filter((row) => row.issue.severity !== "info").map((row, index) => <span key={`${row.issue.id}-print-${index}`}>
+            • {row.issue.title}: {row.issue.detail}
+            {row.decisionStale
+              ? ` · EVIDENCE CHANGED — REVIEW AGAIN · ${row.issue.evidenceFingerprint.toUpperCase()}`
+              : row.decision
+                ? ` · ${row.issue.severity === "critical" ? "DOCUMENTED / STILL BLOCKING" : row.resolvedByDecision ? row.decision.status.toUpperCase() : `${row.decision.status.toUpperCase()} / PENDING`} by ${row.decision.reviewer} · ${row.issue.evidenceFingerprint.toUpperCase()}`
+                : ` · OPEN · ${row.issue.evidenceFingerprint.toUpperCase()}`}
+          </span>)}
           {!activeReviewedIssueRows.filter((row) => row.issue.severity !== "info").length && <span>✓ No critical airflow or velocity issues detected.</span>}
         </div>
-        <div className="print-field-package">
+        <div className="print-field-package package-print-section package-section-release">
           <div className="print-section-heading">
             <strong>FIELD INSTALLATION RELEASE · {systemLabel(activeSystem)}</strong>
             <span>{activeFieldPackage.status}</span>
@@ -10346,7 +10950,7 @@ function HVACPlanStudioApp() {
             </tr>)}</tbody>
           </table>}
         </div>
-        {activeRfiItems().length > 0 && <div className="print-rfi-list">
+        {activeRfiItems().length > 0 && <div className="print-rfi-list package-print-section package-section-coordination">
           <div className="print-section-heading">
             <strong>RFI &amp; CHANGE LOG · {systemLabel(activeSystem)}</strong>
             <span>{activeRfiItems().filter((item) => !["approved", "closed"].includes(item.status)).length} OPEN</span>
@@ -10358,7 +10962,7 @@ function HVACPlanStudioApp() {
             </tr>)}</tbody>
           </table>
         </div>}
-        <div className="print-commissioning">
+        <div className="print-commissioning package-print-section package-section-startup">
           <div className="print-section-heading">
             <strong>STARTUP, BALANCING &amp; COMMISSIONING · {systemLabel(activeSystem)}</strong>
             <span>{commissioningSummary().ready ? "COMPLETE" : "OPEN"}</span>
@@ -10378,7 +10982,7 @@ function HVACPlanStudioApp() {
           </div>
           {activeCommissioningRecord().notes && <div className="print-commissioning-notes"><b>Closeout notes:</b> {activeCommissioningRecord().notes}</div>}
         </div>
-        {activePunchItems().length > 0 && <div className="print-punch-list">
+        {activePunchItems().length > 0 && <div className="print-punch-list package-print-section package-section-coordination">
           <div className="print-section-heading">
             <strong>FIELD PUNCH LIST &amp; AS-BUILT RECORD · {systemLabel(activeSystem)}</strong>
             <span>{activePunchItems().filter((item) => item.status === "open").length} OPEN · {activePunchItems().filter((item) => item.status === "resolved").length} RESOLVED</span>
@@ -10391,11 +10995,11 @@ function HVACPlanStudioApp() {
           </table>
         </div>}
         {roomSchedule().length > 0 && <>
-          <div className="print-section-heading room-print-heading">
+          <div className="print-section-heading room-print-heading package-print-section package-section-airflow">
             <strong>ROOM AIRFLOW SCHEDULE · {systemLabel(activeSystem)}</strong>
             <span>Supply, return, terminal count, and bedroom return-path review</span>
           </div>
-          <table className="print-room-schedule">
+          <table className="print-room-schedule package-print-section package-section-airflow">
             <thead>
               <tr><th>Room</th><th>Type</th><th>Supply</th><th>Return</th><th>Balance</th><th>Devices</th><th>Return path</th></tr>
             </thead>
@@ -10414,11 +11018,11 @@ function HVACPlanStudioApp() {
         </>}
       </section>
 
-      <footer inert={showProjectHome || showProjectSetup ? true : undefined} aria-hidden={showProjectHome || showProjectSetup}>
+      <footer inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
         <span><i className="online" /> Ready</span>
         <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor"}</span>
         <span><Ruler size={11} /> {scaleLabel}</span>
-        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · Field Production &amp; Takeoff Center v104 · Project Intelligence v100</span>
+        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · Field Production &amp; Takeoff Center v104 · System Balance Studio v103</span>
       </footer>
       <ProjectHome
         open={showProjectHome && !showProjectSetup}
@@ -10454,6 +11058,73 @@ function HVACPlanStudioApp() {
         onCancel={() => setShowProjectSetup(false)}
         onStart={startGuidedProject}
       />}
+      <PlanIntelligencePanel
+        open={showPlanIntelligence}
+        projectName={fileName}
+        systemName={systemLabel(activeSystem)}
+        findings={activePlanIntelligenceFindings}
+        releaseStatus={activeFieldPackage.status}
+        releaseReady={!activeFieldPackage.stale && activeFieldPackage.gatesClear}
+        scaleVerified={scaleVerified}
+        onClose={() => setShowPlanIntelligence(false)}
+        onOpenFinding={(finding) => {
+          setShowPlanIntelligence(false);
+          setRightPanelOpen(true);
+          focusReviewIssue(finding);
+        }}
+        onOpenEngineering={() => {
+          setShowPlanIntelligence(false);
+          setRightPanelOpen(true);
+          setRightTab("checks");
+          setReviewView("engineering");
+        }}
+        onComposePackage={openFieldPackageComposer}
+      />
+      {showSystemBalanceStudio && <SystemBalanceStudio
+        open={showSystemBalanceStudio}
+        projectName={fileName}
+        model={buildSystemBalanceModel()}
+        onClose={() => setShowSystemBalanceStudio(false)}
+        onFocusDrawing={(drawingId) => {
+          setShowSystemBalanceStudio(false);
+          window.requestAnimationFrame(() => focusDrawingOnPlan(drawingId));
+        }}
+        onOpenEngineering={(view) => {
+          setShowSystemBalanceStudio(false);
+          setRightPanelOpen(true);
+          openSystemBalanceWorkspace(view);
+          window.requestAnimationFrame(() => {
+            document.querySelector<HTMLElement>('.balance-view-tabs button[aria-selected="true"]')?.focus();
+          });
+        }}
+        onApplySizes={applySizingSuggestionIds}
+        onApplyCfm={applyCfmProposalIds}
+        onRecordReview={recordSystemBalanceReview}
+        onExportRooms={exportRoomScheduleCsv}
+        onExportRuns={exportSystemBalanceRunCsv}
+      />}
+      <FieldPackageComposer
+        open={showFieldPackageComposer}
+        projectName={fileName}
+        systemName={systemLabel(activeSystem)}
+        status={activeFieldPackage.status}
+        released={activeFieldPackage.released}
+        stale={activeFieldPackage.stale}
+        scaleVerified={scaleVerified}
+        releaseRevision={activeFieldPackage.latestRelease?.revision}
+        drawingSignature={activeFieldPackage.signature}
+        runCount={activeFieldPackage.runs.length}
+        critical={activeFieldPackage.critical}
+        warnings={activeFieldPackage.openWarnings}
+        connectionProblems={activeFieldPackage.connectionProblems}
+        gateCount={activeFieldPackage.gates.length}
+        clearedGateCount={activeFieldPackage.gates.filter((gate) => gate.clear).length}
+        onClose={() => setShowFieldPackageComposer(false)}
+        onPrint={printSelectedFieldPackage}
+        onDownloadManifest={exportReleaseManifestCsv}
+        onDownloadRuns={exportFieldRunScheduleCsv}
+        onDownloadTakeoff={exportPurchaseSheetCsv}
+      />
       <CloudProjectsPanel
         open={showCloudProjects}
         currentName={fileName}
