@@ -4,7 +4,9 @@ import { ChangeEvent, Component, DragEvent, ErrorInfo, PointerEvent, ReactNode, 
 import * as pdfjsLib from "pdfjs-dist";
 import { checkDriveConfiguration, loadPdfFromDriveId, pickPdfFromDrive } from "./googleDrive";
 import CloudProjectsPanel, { type CloudProjectRisk } from "./CloudProjectsPanel";
+import GuidedProjectSetup, { type ProjectSetupValues } from "./GuidedProjectSetup";
 import ProjectCommandPalette, { type ProjectCommand } from "./ProjectCommandPalette";
+import ProjectHome from "./ProjectHome";
 import {
   listCloudApprovals,
   listCloudRevisions,
@@ -19,7 +21,6 @@ import {
   AlertTriangle,
   ArrowRight,
   Box,
-  ChevronDown,
   CircleDot,
   Cloud,
   CloudUpload,
@@ -29,6 +30,7 @@ import {
   FileText,
   FolderOpen,
   HardDrive,
+  Home as HomeIcon,
   Grid3X3,
   Gauge,
   Lock,
@@ -49,7 +51,6 @@ import {
   Save,
   Scissors,
   Search,
-  Settings,
   ShieldAlert,
   Sparkles,
   StickyNote,
@@ -1066,6 +1067,7 @@ function HVACPlanStudioApp() {
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [pdfFingerprint, setPdfFingerprint] = useState("");
   const [sourceDriveFileId, setSourceDriveFileId] = useState<string | null>(null);
+  const [sourceFileName, setSourceFileName] = useState<string | null>(null);
   const [fileName, setFileName] = useState("Untitled HVAC Plan");
   const [workingCloudProjectId, setWorkingCloudProjectId] = useState<string | null>(null);
   const [workingCloudRevisionId, setWorkingCloudRevisionId] = useState<string | null>(null);
@@ -1119,7 +1121,10 @@ function HVACPlanStudioApp() {
   const [balanceView, setBalanceView] = useState<"system" | "rooms" | "runs">("system");
   const [saveState, setSaveState] = useState<"saved" | "saving">("saved");
   const [showCloudProjects, setShowCloudProjects] = useState(false);
+  const [cloudInitialProjectId, setCloudInitialProjectId] = useState<string | null>(null);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showProjectHome, setShowProjectHome] = useState(true);
+  const [showProjectSetup, setShowProjectSetup] = useState(false);
   const [driveConfigured, setDriveConfigured] = useState<boolean | null>(null);
   const [showSizingReview, setShowSizingReview] = useState(false);
   const [selectedSizingIds, setSelectedSizingIds] = useState<string[]>([]);
@@ -1137,6 +1142,18 @@ function HVACPlanStudioApp() {
   const [activeReviewIssueId, setActiveReviewIssueId] = useState<string | null>(null);
   const [reviewerName, setReviewerName] = useState("");
   const [reviewDecisionNote, setReviewDecisionNote] = useState("");
+  const pendingProjectSetupRef = useRef<ProjectSetupValues | null>(null);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const handleFilePickerCancel = () => {
+      pendingProjectSetupRef.current = null;
+      setShowProjectHome(true);
+    };
+    input.addEventListener("cancel", handleFilePickerCancel);
+    return () => input.removeEventListener("cancel", handleFilePickerCancel);
+  }, []);
 
   useEffect(() => {
     setCloudProjectRisk((current) =>
@@ -1546,10 +1563,48 @@ function HVACPlanStudioApp() {
     }
   }
 
+  function applyPendingProjectSetup() {
+    const setup = pendingProjectSetupRef.current;
+    if (!setup) return;
+    const unitsPerFoot: Record<ProjectSetupValues["scale"], number> = {
+      '1/8" = 1\'-0"': 12.15,
+      '3/16" = 1\'-0"': 18.225,
+      '1/4" = 1\'-0"': 24.3,
+      '1/2" = 1\'-0"': 48.6,
+    };
+    setDuctSize(setup.defaultDuctSize);
+    setScaleFeetPerUnit(1 / unitsPerFoot[setup.scale]);
+    setScaleLabel(setup.scale);
+    setScaleLocked(true);
+    setScaleVerified(false);
+    setCalibrating(false);
+    setMeasureDraft([]);
+    setBranchMessage(
+      `Project setup ready · ${setup.tonnage} ton / ${Number(setup.tonnage) * 400} CFM reference · verify the drawing scale before measurement`,
+    );
+    setShowProjectHome(false);
+    if (setup.collaboration === "cloud") setShowCloudProjects(true);
+    pendingProjectSetupRef.current = null;
+  }
+
+  function startGuidedProject(setup: ProjectSetupValues) {
+    pendingProjectSetupRef.current = setup;
+    setShowProjectSetup(false);
+    if (setup.source === "drive") {
+      void openFromDrive();
+    } else {
+      inputRef.current?.click();
+    }
+  }
+
   async function openPdf(file?: File) {
-    if (!file) return;
+    if (!file) {
+      pendingProjectSetupRef.current = null;
+      return;
+    }
     if (file.type !== "application/pdf") {
       setError("Please choose a PDF construction plan.");
+      pendingProjectSetupRef.current = null;
       return;
     }
     setLoading(true);
@@ -1558,10 +1613,11 @@ function HVACPlanStudioApp() {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const sourceFingerprint = stableByteHash(bytes);
       const document = await pdfjsLib.getDocument({ data: bytes }).promise;
-      const projectName = file.name.replace(/\.pdf$/i, "");
+      const projectName = pendingProjectSetupRef.current?.projectName.trim() || file.name.replace(/\.pdf$/i, "");
       setPdf(document);
       setPdfFingerprint(sourceFingerprint);
       setSourceDriveFileId(null);
+      setSourceFileName(file.name);
       setWorkingCloudProjectId(null);
       setWorkingCloudRevisionId(null);
       setWorkingCloudRevisionFingerprint(null);
@@ -1569,8 +1625,11 @@ function HVACPlanStudioApp() {
       setPageNumber(1);
       setZoom(1);
       restoreProject(projectName, sourceFingerprint);
+      applyPendingProjectSetup();
+      setShowProjectHome(false);
     } catch {
       setError("This PDF could not be opened. Try another file.");
+      pendingProjectSetupRef.current = null;
     } finally {
       setLoading(false);
     }
@@ -1582,10 +1641,11 @@ function HVACPlanStudioApp() {
     try {
       const sourceFingerprint = stableByteHash(bytes);
       const document = await pdfjsLib.getDocument({ data: bytes }).promise;
-      const projectName = name.replace(/\.pdf$/i, "");
+      const projectName = pendingProjectSetupRef.current?.projectName.trim() || name.replace(/\.pdf$/i, "");
       setPdf(document);
       setPdfFingerprint(sourceFingerprint);
       setSourceDriveFileId(driveFileId || null);
+      setSourceFileName(name);
       setWorkingCloudProjectId(null);
       setWorkingCloudRevisionId(null);
       setWorkingCloudRevisionFingerprint(null);
@@ -1593,8 +1653,11 @@ function HVACPlanStudioApp() {
       setPageNumber(1);
       setZoom(1);
       restoreProject(projectName, sourceFingerprint);
+      applyPendingProjectSetup();
+      setShowProjectHome(false);
     } catch {
       setError("This Drive PDF could not be opened.");
+      pendingProjectSetupRef.current = null;
     } finally {
       setLoading(false);
     }
@@ -1606,6 +1669,7 @@ function HVACPlanStudioApp() {
       await openPdfBytes(selected.name, selected.bytes, selected.id);
     } catch (driveError) {
       setError(driveError instanceof Error ? driveError.message : "Google Drive could not be opened.");
+      pendingProjectSetupRef.current = null;
     }
   }
 
@@ -1629,6 +1693,7 @@ function HVACPlanStudioApp() {
         setPdf(document);
         setPdfFingerprint(sourceFingerprint);
         setSourceDriveFileId(project.source_drive_file_id);
+        setSourceFileName(project.source_file_name || `${project.name}.pdf`);
         setPageNumber(1);
         setZoom(1);
       } else if (!pdf) {
@@ -1645,6 +1710,7 @@ function HVACPlanStudioApp() {
       );
       setBranchMessage(`Cloud revision R${revision.revision_number} restored · local autosave is active`);
       setShowCloudProjects(false);
+      setShowProjectHome(false);
     } catch (cloudError) {
       setError(cloudError instanceof Error ? cloudError.message : "The cloud revision could not be restored.");
     } finally {
@@ -1653,7 +1719,12 @@ function HVACPlanStudioApp() {
   }
 
   function onFileChange(event: ChangeEvent<HTMLInputElement>) {
-    void openPdf(event.target.files?.[0]);
+    const file = event.target.files?.[0];
+    if (!file) {
+      pendingProjectSetupRef.current = null;
+      return;
+    }
+    void openPdf(file);
     event.target.value = "";
   }
 
@@ -7523,6 +7594,30 @@ function HVACPlanStudioApp() {
         }
         return;
       }
+      if (showProjectSetup) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setShowProjectSetup(false);
+        }
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === "h") {
+        event.preventDefault();
+        setShowProjectHome(true);
+        return;
+      }
+      if (showProjectHome) {
+        if ((event.ctrlKey || event.metaKey) && key === "k") {
+          event.preventDefault();
+          setShowCommandPalette(true);
+          return;
+        }
+        if (event.key === "Escape" && pdf) {
+          event.preventDefault();
+          setShowProjectHome(false);
+        }
+        return;
+      }
       if (showCloudProjects) {
         if (event.key === "Escape") {
           event.preventDefault();
@@ -7701,6 +7796,15 @@ function HVACPlanStudioApp() {
   const activeFieldRuns = activeFieldPackage.runs;
   const projectCommands: ProjectCommand[] = [
     {
+      id: "project-home",
+      label: "Open Project Home",
+      detail: "Recent projects, coordination priorities, source plans, and guided setup",
+      group: "Project",
+      shortcut: "⇧H",
+      keywords: "home dashboard recent projects onboarding",
+      run: () => setShowProjectHome(true),
+    },
+    {
       id: "project-hub",
       label: "Open Project Intelligence Hub",
       detail: "Readiness, work, approvals, files, people, and immutable revisions",
@@ -7788,36 +7892,41 @@ function HVACPlanStudioApp() {
   ];
 
   return (
-    <main className={`app-shell ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${["rooms", "checks", "field"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""}`}>
-      <header className="topbar">
-        <div className="brand">
+    <main className={`app-shell ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${["rooms", "checks", "field"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""}`}>
+      <header className="topbar" inert={showProjectHome || showProjectSetup ? true : undefined} aria-hidden={showProjectHome || showProjectSetup}>
+        <button className="brand" onClick={() => setShowProjectHome(true)} aria-label="Open Project Home">
           <div className="brand-mark"><Wind size={23} strokeWidth={2.4} /></div>
           <div>
             <strong>HVAC Plan Studio</strong>
-            <span>HVAC Delivery Operating System</span>
+            <span>Delivery operating system</span>
+          </div>
+        </button>
+
+        <div className="project-name">
+          <div className="project-breadcrumb">
+            <span><HomeIcon size={13} /> Projects</span>
+            <i>/</i>
+            <strong>{fileName}</strong>
+          </div>
+          <div className="project-context-row">
+            <select className="system-switcher" aria-label="Active HVAC system" value={activeSystem} onChange={(event) => { setActiveSystem(event.target.value); setSelectedId(null); }}>
+              {systems.map((system) => <option key={system.id} value={system.id}>{systemLabel(system.id)}</option>)}
+            </select>
+            <span className={`project-readiness ${workingCloudRevisionId ? "cloud" : "local"}`}>
+              <i /> {workingCloudRevisionId ? `Cloud R${cloudProjectRisk?.latestRevisionNumber || "—"}` : "Local working copy"}
+            </span>
           </div>
         </div>
 
-        <div className="project-name">
-          <FileText size={15} />
-          <span>{fileName}</span>
-          <select className="system-switcher" aria-label="Active HVAC system" value={activeSystem} onChange={(event) => { setActiveSystem(event.target.value); setSelectedId(null); }}>
-            {systems.map((system) => <option key={system.id} value={system.id}>{systemLabel(system.id)}</option>)}
-          </select>
-        </div>
-
         <nav className="top-actions" aria-label="Project actions">
-          <button aria-label="Undo" onClick={undo}><Undo2 size={17} /></button>
-          <button aria-label="Redo" onClick={redo}><Redo2 size={17} /></button>
-          <button aria-label={`Delete ${selectedIds.length || ""} selected object${selectedIds.length === 1 ? "" : "s"}`} disabled={!selectedId} onClick={deleteSelected}><Trash2 size={17} /></button>
-          <button aria-label={`Duplicate ${selectedIds.length || ""} selected object${selectedIds.length === 1 ? "" : "s"}`} disabled={!selectedId} onClick={duplicateSelected}><Copy size={16} /></button>
-          <span className="divider" />
-          <button className="save-button" onClick={saveProject}><Save size={16} /> {saveState === "saving" ? "Saving…" : "Saved"}</button>
+          <span className={`studio-save-state ${saveState}`}>
+            <i /> {saveState === "saving" ? "Saving…" : "Saved"}
+          </span>
           <button className="command-button" onClick={() => setShowCommandPalette(true)} title="Open command palette · Ctrl/⌘ K">
             <Search size={16} /> <span>Command</span><kbd>⌘K</kbd>
           </button>
           <button className={`cloud-button ${showCloudProjects ? "active" : ""}`} aria-pressed={showCloudProjects} onClick={() => setShowCloudProjects(true)}>
-            <Cloud size={16} /> Project Hub <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V100"}</span>
+            <Cloud size={16} /> Project Hub <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V101"}</span>
           </button>
           <button className="drive-button" onClick={() => void openFromDrive()}><HardDrive size={16} /> Open Drive</button>
           <button
@@ -7829,11 +7938,10 @@ function HVACPlanStudioApp() {
             {fieldMode ? "Exit field mode" : "Field mode"}
           </button>
           <button className="primary-button" disabled={!pdf} onClick={() => window.print()}>Export plan</button>
-          <button aria-label="Settings"><Settings size={18} /></button>
         </nav>
       </header>
 
-      <div className="field-workflow-hud" aria-label="Field workflow controls">
+      <div className="field-workflow-hud" aria-label="Field workflow controls" inert={showProjectHome || showProjectSetup ? true : undefined} aria-hidden={showProjectHome || showProjectSetup}>
         <div>
           <span>FIELD WORKFLOW · {systemLabel(activeSystem)}</span>
           <strong>{activeWorkflow.nextAction}</strong>
@@ -7845,7 +7953,7 @@ function HVACPlanStudioApp() {
         <button onClick={() => { setFieldMode(false); continueSystemWorkflow(activeWorkflow.activeStage); }}>Open task</button>
       </div>
 
-      <section className="print-header">
+      <section className="print-header" inert={showProjectHome || showProjectSetup ? true : undefined} aria-hidden={showProjectHome || showProjectSetup}>
         <div>
           <strong>HVAC PLAN STUDIO · FIELD INSTALLATION PLAN</strong>
           <h1>{fileName}</h1>
@@ -7857,7 +7965,7 @@ function HVACPlanStudioApp() {
         </dl>
       </section>
 
-      <section className="workspace">
+      <section className="workspace" inert={showProjectHome || showProjectSetup ? true : undefined} aria-hidden={showProjectHome || showProjectSetup}>
         <aside className="left-panel">
           <div className="panel-heading">
             <div><span>DESIGN TOOLS</span><small>FIELD STANDARD</small></div>
@@ -8441,6 +8549,12 @@ function HVACPlanStudioApp() {
         <section className="canvas-area">
           <div className="canvas-toolbar">
             {!leftPanelOpen && <button className="panel-restore" onClick={() => setLeftPanelOpen(true)}><PanelLeftClose size={16} /> Tools</button>}
+            <div className="canvas-edit-actions" role="group" aria-label="Edit history">
+              <button aria-label="Undo" onClick={undo} disabled={!undoStack.length}><Undo2 size={16} /></button>
+              <button aria-label="Redo" onClick={redo} disabled={!redoStack.length}><Redo2 size={16} /></button>
+              <button aria-label="Save working copy" onClick={saveProject}><Save size={15} /></button>
+            </div>
+            <span className="divider" />
             <button onClick={() => setActiveTool("select")}><MousePointer2 size={16} /> {activeTool === "select" ? "Select" : tools.find((tool) => tool.id === activeTool)?.label}</button>
             <span className="divider" />
             <button className={activeTool === "select" ? "active" : ""} aria-label="Pan drawing" title="Right-click and drag anywhere to pan the plan. Left-click stays reserved for drawing and selecting." onClick={() => setActiveTool("select")}><Hand size={16} /> Grab plan</button>
@@ -10095,18 +10209,53 @@ function HVACPlanStudioApp() {
         </>}
       </section>
 
-      <footer>
+      <footer inert={showProjectHome || showProjectSetup ? true : undefined} aria-hidden={showProjectHome || showProjectSetup}>
         <span><i className="online" /> Ready</span>
         <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor"}</span>
         <span><Ruler size={11} /> {scaleLabel}</span>
-        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · Project Intelligence v100</span>
+        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · Project Home &amp; Studio Shell v101 · Project Intelligence v100</span>
       </footer>
+      <ProjectHome
+        open={showProjectHome && !showProjectSetup}
+        hasPlan={Boolean(pdf)}
+        currentProjectName={fileName}
+        currentRevisionLabel={workingCloudRevisionId ? `Cloud revision R${cloudProjectRisk?.latestRevisionNumber || "—"}` : "Local working copy"}
+        driveConfigured={driveConfigured}
+        busy={loading}
+        notice={error}
+        onClose={() => setShowProjectHome(false)}
+        onNewProject={() => {
+          setError("");
+          setShowProjectSetup(true);
+        }}
+        onOpenLocal={() => {
+          setError("");
+          inputRef.current?.click();
+        }}
+        onOpenDrive={() => {
+          setError("");
+          void openFromDrive();
+        }}
+        onOpenProjectHub={(projectId) => {
+          setCloudInitialProjectId(projectId || null);
+          setShowProjectHome(false);
+          setShowCloudProjects(true);
+        }}
+        onOpenCommand={() => setShowCommandPalette(true)}
+      />
+      {showProjectSetup && <GuidedProjectSetup
+        open
+        driveConfigured={driveConfigured}
+        onCancel={() => setShowProjectSetup(false)}
+        onStart={startGuidedProject}
+      />}
       <CloudProjectsPanel
         open={showCloudProjects}
         currentName={fileName}
-        currentSourceFileName={pdf ? `${fileName}.pdf` : undefined}
+        currentSourceFileName={pdf ? sourceFileName || `${fileName}.pdf` : undefined}
         currentSourceDriveFileId={sourceDriveFileId}
         workingProjectId={workingCloudProjectId}
+        initialProjectId={cloudInitialProjectId}
         buildSnapshot={() => buildProjectSnapshot() as unknown as Record<string, unknown>}
         onRestoreRevision={(snapshot, project, revision) => void restoreCloudRevision(snapshot, project, revision)}
         onWorkingProjectChange={(projectId) => {
@@ -10126,7 +10275,10 @@ function HVACPlanStudioApp() {
           setShowCloudProjects(false);
           continueSystemWorkflow(activeWorkflow.activeStage);
         }}
-        onClose={() => setShowCloudProjects(false)}
+        onClose={() => {
+          setShowCloudProjects(false);
+          if (!pdf) setShowProjectHome(true);
+        }}
       />
       <ProjectCommandPalette
         open={showCommandPalette}

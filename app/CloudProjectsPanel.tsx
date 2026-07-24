@@ -93,6 +93,7 @@ type Props = {
   currentSourceFileName?: string;
   currentSourceDriveFileId?: string | null;
   workingProjectId: string | null;
+  initialProjectId?: string | null;
   buildSnapshot: () => Snapshot;
   onRestoreRevision: (snapshot: Snapshot, project: CloudProject, revision: CloudRevision) => void;
   onWorkingProjectChange: (projectId: string | null) => void;
@@ -127,6 +128,7 @@ export default function CloudProjectsPanel({
   currentSourceFileName,
   currentSourceDriveFileId,
   workingProjectId,
+  initialProjectId,
   buildSnapshot,
   onRestoreRevision,
   onWorkingProjectChange,
@@ -270,8 +272,11 @@ export default function CloudProjectsPanel({
   const refreshProjects = useCallback(async () => {
     const next = await listCloudProjects();
     setProjects(next);
-    setActiveProjectId((current) => current && next.some((project) => project.id === current) ? current : next[0]?.id || null);
-  }, []);
+    setActiveProjectId((current) => {
+      if (initialProjectId && next.some((project) => project.id === initialProjectId)) return initialProjectId;
+      return current && next.some((project) => project.id === current) ? current : next[0]?.id || null;
+    });
+  }, [initialProjectId]);
 
   const refreshProjectDetails = useCallback(async (projectId: string) => {
     const requestId = ++detailsRequestRef.current;

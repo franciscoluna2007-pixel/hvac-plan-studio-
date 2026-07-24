@@ -56,6 +56,47 @@ test("adds secure cloud projects, revisions, collaborators, and Drive packages",
   assert.match(styles, /\.cloud-revision-list/);
 });
 
+test("builds v101 Project Home, guided setup, and an RLS-safe cloud summary", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const home = await readFile(new URL("../app/ProjectHome.tsx", import.meta.url), "utf8");
+  const setup = await readFile(new URL("../app/GuidedProjectSetup.tsx", import.meta.url), "utf8");
+  const cloud = await readFile(new URL("../app/cloudProjects.ts", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../supabase/migrations/20260724170000_project_home_cards.sql", import.meta.url), "utf8");
+
+  assert.match(page, /showProjectHome/);
+  assert.match(page, /<ProjectHome/);
+  assert.match(page, /<GuidedProjectSetup/);
+  assert.match(page, /Project Home &amp; Studio Shell v101/);
+  assert.match(page, /applyPendingProjectSetup/);
+  assert.match(page, /sourceFileName/);
+  assert.match(page, /pendingProjectSetupRef\.current = null/);
+  assert.match(page, /addEventListener\("cancel", handleFilePickerCancel\)/);
+  assert.match(page, /inert=\{showProjectHome \|\| showProjectSetup/);
+  assert.match(home, /From source plan to field release/);
+  assert.match(home, /Manual geometry stays manual/);
+  assert.match(home, /Today&apos;s coordination/i);
+  assert.match(home, /handleDialogKeyDown/);
+  assert.match(home, /onOpenProjectHub\(project\.id\)/);
+  assert.match(setup, /Guided setup · about 60 seconds/);
+  assert.match(setup, /Setup never draws, reroutes, resizes, reconnects, balances, or numbers ductwork/);
+  assert.match(setup, /400 CFM per ton/);
+  assert.match(setup, /"4\.5"/);
+  assert.match(setup, /handleDialogKeyDown/);
+  assert.match(cloud, /list_project_home_cards/);
+  assert.match(migration, /security invoker/);
+  assert.match(migration, /private\.is_project_member\(p\.id\)/);
+  assert.match(migration, /revoke all on function public\.list_project_home_cards\(\) from anon/);
+  assert.match(styles, /\.project-home-overlay/);
+  assert.match(styles, /\.project-setup-overlay/);
+  assert.match(styles, /\.project-home-notice/);
+  assert.match(styles, /grid-template-columns: minmax\(0, 1fr\) !important/);
+  assert.match(styles, /prefers-reduced-motion/);
+  assert.match(layout, /HVAC Plan Studio/);
+  assert.doesNotMatch(layout, /Starter Project/);
+});
+
 test("implements the Figma cloud dock, safe restore flow, and distinct terminal can icons", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const panel = await readFile(new URL("../app/CloudProjectsPanel.tsx", import.meta.url), "utf8");
