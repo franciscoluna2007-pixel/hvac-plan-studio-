@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, DragEvent, PointerEvent, WheelEvent as ReactWheelEvent, useCallback, useEffect, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, PointerEvent, WheelEvent as ReactWheelEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import { isDriveConfigured, pickPdfFromDrive } from "./googleDrive";
 import {
@@ -34,6 +34,7 @@ import {
   Route,
   Ruler,
   Save,
+  Scissors,
   Search,
   Settings,
   ShieldAlert,
@@ -85,6 +86,9 @@ const defaultVisibleLayers: Record<LayerId, boolean> = { supply: true, branch: t
 const defaultLockedLayers: Record<LayerId, boolean> = { supply: false, branch: false, return: false, fresh: false, notes: false };
 
 type Point = { x: number; y: number };
+type SnapKind = "endpoint" | "fitting port" | "equipment port" | "intersection" | "midpoint" | "nearest" | "grid";
+type SnapInfo = { point: Point; kind: SnapKind; label: string };
+type AlignmentGuide = { axis: "x" | "y"; value: number };
 type DrawType = "supply" | "branch" | "return" | "fresh";
 type SymbolKind = "diffuser" | "returnGrille" | "equipment" | "fan" | "damper" | "motorDamper" | "reducer" | "thermostat" | "smoke" | "airflow" | "note";
 const symbolTools: SymbolKind[] = ["diffuser", "returnGrille", "equipment", "fan", "damper", "motorDamper", "reducer", "thermostat", "smoke", "airflow", "note"];
@@ -106,13 +110,58 @@ const symbolPresets: SymbolPreset[] = [
   { id: "supply-round", category: "Supply air", kind: "diffuser", label: "ROUND DIFFUSER", size: "10", cfm: 175, variant: "round", elevation: "CEILING" },
   { id: "supply-slot", category: "Supply air", kind: "diffuser", label: "LINEAR SLOT", size: "2-SLOT", cfm: 150, variant: "slot", elevation: "CEILING" },
   { id: "supply-sidewall", category: "Supply air", kind: "diffuser", label: "SIDEWALL REGISTER", size: "12×6", cfm: 175, variant: "register", elevation: "HIGH WALL" },
+  { id: "supply-sidewall-14x6", category: "Supply air", kind: "diffuser", label: "WIDE SIDEWALL REGISTER", size: "14×6", cfm: 225, variant: "register", elevation: "HIGH WALL" },
+  { id: "supply-sidewall-10x6", category: "Supply air", kind: "diffuser", label: "SIDEWALL REGISTER", size: "10×6", cfm: 150, variant: "register", elevation: "HIGH WALL" },
+  { id: "supply-square-8", category: "Supply air", kind: "diffuser", label: "SMALL 4-WAY SUPPLY", size: "8×8", cfm: 100, variant: "4way", elevation: "CEILING" },
+  { id: "supply-square-10", category: "Supply air", kind: "diffuser", label: "4-WAY SUPPLY", size: "10×10", cfm: 150, variant: "4way", elevation: "CEILING" },
+  { id: "supply-square-14", category: "Supply air", kind: "diffuser", label: "LARGE 4-WAY SUPPLY", size: "14×14", cfm: 300, variant: "4way", elevation: "CEILING" },
+  { id: "supply-boot", category: "Supply air", kind: "diffuser", label: "REGISTER BOOT", size: "12×4", cfm: 125, variant: "boot", elevation: "HIGH WALL" },
   { id: "supply-floor", category: "Supply air", kind: "diffuser", label: "FLOOR REGISTER", size: "4×10", cfm: 100, variant: "floor", elevation: "FLOOR" },
+  { id: "supply-perforated", category: "Supply air", kind: "diffuser", label: "PERFORATED SUPPLY", size: "24×24", cfm: 300, variant: "perforated", elevation: "CEILING" },
+  { id: "supply-swirl", category: "Supply air", kind: "diffuser", label: "SWIRL DIFFUSER", size: "12×12", cfm: 250, variant: "swirl", elevation: "CEILING" },
+  { id: "supply-jet", category: "Supply air", kind: "diffuser", label: "JET NOZZLE", size: "10", cfm: 300, variant: "jet", elevation: "HIGH WALL" },
+  { id: "supply-curved-1way", category: "Supply air", kind: "diffuser", label: "1-WAY CURVED BLADE REGISTER", size: "12×6", cfm: 150, variant: "curved-1", elevation: "HIGH WALL" },
+  { id: "supply-curved-2way", category: "Supply air", kind: "diffuser", label: "2-WAY CURVED BLADE REGISTER", size: "12×6", cfm: 175, variant: "curved-2", elevation: "HIGH WALL" },
+  { id: "supply-curved-3way", category: "Supply air", kind: "diffuser", label: "3-WAY CURVED BLADE REGISTER", size: "12×12", cfm: 200, variant: "curved-3", elevation: "CEILING" },
+  { id: "supply-curved-4way", category: "Supply air", kind: "diffuser", label: "4-WAY CURVED BLADE REGISTER", size: "12×12", cfm: 225, variant: "curved-4", elevation: "CEILING" },
+  { id: "supply-single-deflection", category: "Supply air", kind: "diffuser", label: "SINGLE DEFLECTION GRILLE", size: "12×6", cfm: 175, variant: "single-deflection", elevation: "HIGH WALL" },
+  { id: "supply-double-deflection", category: "Supply air", kind: "diffuser", label: "DOUBLE DEFLECTION GRILLE", size: "12×6", cfm: 200, variant: "double-deflection", elevation: "HIGH WALL" },
+  { id: "supply-modular-1way", category: "Supply air", kind: "diffuser", label: "1-WAY MODULAR CORE DIFFUSER", size: "24×24", cfm: 275, variant: "modular-1", elevation: "CEILING" },
+  { id: "supply-modular-2way", category: "Supply air", kind: "diffuser", label: "2-WAY MODULAR CORE DIFFUSER", size: "24×24", cfm: 325, variant: "modular-2", elevation: "CEILING" },
+  { id: "supply-modular-3way", category: "Supply air", kind: "diffuser", label: "3-WAY MODULAR CORE DIFFUSER", size: "24×24", cfm: 350, variant: "modular-3", elevation: "CEILING" },
+  { id: "supply-modular-4way", category: "Supply air", kind: "diffuser", label: "4-WAY MODULAR CORE DIFFUSER", size: "24×24", cfm: 400, variant: "modular-4", elevation: "CEILING" },
+  { id: "supply-high-velocity", category: "Supply air", kind: "diffuser", label: "HIGH VELOCITY DIFFUSER", size: "12×12", cfm: 250, variant: "high-velocity", elevation: "CEILING" },
+  { id: "supply-plaque", category: "Supply air", kind: "diffuser", label: "PLAQUE FACE DIFFUSER", size: "24×24", cfm: 350, variant: "plaque", elevation: "CEILING" },
+  { id: "supply-cone", category: "Supply air", kind: "diffuser", label: "CONE DIFFUSER", size: "12×12", cfm: 250, variant: "cone", elevation: "CEILING" },
+  { id: "supply-tbar-round", category: "Supply air", kind: "diffuser", label: "T-BAR ROUND NECK DIFFUSER", size: "24×24", cfm: 350, variant: "tbar-round", elevation: "CEILING" },
+  { id: "supply-spiral-single", category: "Supply air", kind: "diffuser", label: "SPIRAL DUCT SINGLE DEFLECTION", size: "16×6", cfm: 250, variant: "spiral-single", elevation: "EXPOSED DUCT" },
+  { id: "supply-spiral-double", category: "Supply air", kind: "diffuser", label: "SPIRAL DUCT DOUBLE DEFLECTION", size: "16×6", cfm: 300, variant: "spiral-double", elevation: "EXPOSED DUCT" },
+  { id: "supply-baseboard", category: "Supply air", kind: "diffuser", label: "BASEBOARD SUPPLY REGISTER", size: "14×6", cfm: 150, variant: "baseboard-supply", elevation: "BASEBOARD" },
+  { id: "supply-toe-space", category: "Supply air", kind: "diffuser", label: "TOE SPACE SUPPLY REGISTER", size: "4×12", cfm: 75, variant: "toe-space", elevation: "TOE SPACE" },
+  { id: "supply-slot-1", category: "Supply air", kind: "diffuser", label: "1-SLOT LINEAR DIFFUSER", size: "1-SLOT", cfm: 100, variant: "slot-1", elevation: "CEILING" },
+  { id: "supply-slot-4", category: "Supply air", kind: "diffuser", label: "4-SLOT LINEAR DIFFUSER", size: "4-SLOT", cfm: 300, variant: "slot-4", elevation: "CEILING" },
   { id: "return-standard", category: "Return air", kind: "returnGrille", label: "RETURN GRILLE", size: "14×14", cfm: 400, variant: "grille", elevation: "CEILING" },
   { id: "return-filter", category: "Return air", kind: "returnGrille", label: "FILTER RETURN", size: "20×20", cfm: 800, variant: "filter", elevation: "CEILING" },
   { id: "return-eggcrate", category: "Return air", kind: "returnGrille", label: "EGGCRATE RETURN", size: "14×14", cfm: 400, variant: "eggcrate", elevation: "CEILING" },
   { id: "return-door", category: "Return air", kind: "returnGrille", label: "DOOR TRANSFER GRILLE", size: "12×12", cfm: 250, variant: "transfer", elevation: "HIGH WALL" },
+  { id: "return-highwall-14x6", category: "Return air", kind: "returnGrille", label: "HIGH-WALL RETURN", size: "14×6", cfm: 250, variant: "bar", elevation: "HIGH WALL" },
+  { id: "return-wide-20x12", category: "Return air", kind: "returnGrille", label: "WIDE RETURN GRILLE", size: "20×12", cfm: 600, variant: "grille", elevation: "HIGH WALL" },
+  { id: "return-floor-12x6", category: "Return air", kind: "returnGrille", label: "FLOOR RETURN", size: "12×6", cfm: 200, variant: "floor", elevation: "FLOOR" },
   { id: "return-jump", category: "Return air", kind: "returnGrille", label: "JUMP DUCT GRILLE", size: "12×12", cfm: 250, variant: "jump", elevation: "CEILING" },
+  { id: "return-perforated", category: "Return air", kind: "returnGrille", label: "PERFORATED RETURN", size: "24×24", cfm: 600, variant: "perforated", elevation: "CEILING" },
+  { id: "return-slot", category: "Return air", kind: "returnGrille", label: "LINEAR SLOT RETURN", size: "2-SLOT", cfm: 200, variant: "slot-return", elevation: "CEILING" },
+  { id: "return-fixed-bar", category: "Return air", kind: "returnGrille", label: "FIXED BAR RETURN GRILLE", size: "20×12", cfm: 600, variant: "fixed-bar", elevation: "HIGH WALL" },
+  { id: "return-filter-bar", category: "Return air", kind: "returnGrille", label: "FILTER BAR RETURN GRILLE", size: "20×20", cfm: 800, variant: "filter-bar", elevation: "HIGH WALL" },
+  { id: "return-baseboard", category: "Return air", kind: "returnGrille", label: "BASEBOARD RETURN GRILLE", size: "24×8", cfm: 350, variant: "baseboard-return", elevation: "BASEBOARD" },
+  { id: "return-toe-space", category: "Return air", kind: "returnGrille", label: "TOE SPACE RETURN GRILLE", size: "4×12", cfm: 100, variant: "toe-return", elevation: "TOE SPACE" },
+  { id: "return-heavy-floor", category: "Return air", kind: "returnGrille", label: "HEAVY DUTY FLOOR RETURN", size: "12×6", cfm: 250, variant: "heavy-floor", elevation: "FLOOR" },
+  { id: "return-tbar-eggcrate", category: "Return air", kind: "returnGrille", label: "T-BAR EGGCRATE RETURN", size: "24×24", cfm: 650, variant: "tbar-eggcrate", elevation: "CEILING" },
+  { id: "return-door-louver", category: "Return air", kind: "returnGrille", label: "DOOR LOUVER RETURN", size: "12×12", cfm: 250, variant: "door-louver", elevation: "DOOR" },
+  { id: "return-slot-1", category: "Return air", kind: "returnGrille", label: "1-SLOT LINEAR RETURN", size: "1-SLOT", cfm: 125, variant: "slot-return-1", elevation: "CEILING" },
+  { id: "return-slot-4", category: "Return air", kind: "returnGrille", label: "4-SLOT LINEAR RETURN", size: "4-SLOT", cfm: 350, variant: "slot-return-4", elevation: "CEILING" },
   { id: "equipment-airhandler", category: "Equipment", kind: "equipment", label: "SYSTEM 1 · 3 TON AHU", size: "3 TON", cfm: 1200, variant: "air-handler" },
+  { id: "equipment-vertical-airhandler", category: "Equipment", kind: "equipment", label: "VERTICAL AIR HANDLER · 3 TON", size: "3 TON", cfm: 1200, variant: "vertical-air-handler" },
+  { id: "equipment-vertical-furnace", category: "Equipment", kind: "equipment", label: "VERTICAL UPFLOW FURNACE · 3 TON", size: "3 TON", cfm: 1200, variant: "vertical-furnace" },
   { id: "equipment-furnace", category: "Equipment", kind: "equipment", label: "SYSTEM 1 · 3 TON FURNACE", size: "3 TON", cfm: 1200, variant: "furnace" },
   { id: "equipment-package", category: "Equipment", kind: "equipment", label: "SYSTEM 1 · 3 TON PACKAGE UNIT", size: "3 TON", cfm: 1200, variant: "package" },
   { id: "equipment-fancoil", category: "Equipment", kind: "equipment", label: "SYSTEM 1 · 3 TON FAN COIL", size: "3 TON", cfm: 1200, variant: "fan-coil" },
@@ -128,6 +177,12 @@ const symbolPresets: SymbolPreset[] = [
   { id: "equipment-boiler", category: "Equipment", kind: "equipment", label: "BOILER", size: "B-1", cfm: 0, variant: "boiler" },
   { id: "device-exhaust", category: "Air devices", kind: "fan", label: "EF-1", size: "EF-1", cfm: 80, variant: "exhaust", elevation: "CEILING" },
   { id: "device-inline", category: "Air devices", kind: "fan", label: "INLINE FAN", size: "IF-1", cfm: 150, variant: "inline", elevation: "ABOVE CEILING" },
+  { id: "device-roof-fan", category: "Air devices", kind: "fan", label: "ROOF EXHAUST FAN", size: "REF-1", cfm: 600, variant: "roof", elevation: "ROOF" },
+  { id: "device-wall-fan", category: "Air devices", kind: "fan", label: "WALL EXHAUST FAN", size: "WEF-1", cfm: 350, variant: "wall", elevation: "HIGH WALL" },
+  { id: "device-ceiling-fan", category: "Air devices", kind: "fan", label: "CEILING EXHAUST FAN", size: "CEF-1", cfm: 110, variant: "ceiling", elevation: "CEILING" },
+  { id: "device-centrifugal-fan", category: "Air devices", kind: "fan", label: "CENTRIFUGAL FAN", size: "CF-1", cfm: 1200, variant: "centrifugal", elevation: "FLOOR" },
+  { id: "device-cabinet-fan", category: "Air devices", kind: "fan", label: "CABINET SUPPLY FAN", size: "SF-1", cfm: 800, variant: "cabinet", elevation: "ABOVE CEILING" },
+  { id: "device-plenum-fan", category: "Air devices", kind: "fan", label: "PLENUM FAN", size: "PF-1", cfm: 1500, variant: "plenum", elevation: "MECHANICAL ROOM" },
   { id: "device-damper", category: "Air devices", kind: "damper", label: "VD · ACCESSIBLE", size: "VD", cfm: 0, variant: "volume" },
   { id: "device-fire-damper", category: "Air devices", kind: "damper", label: "FIRE DAMPER", size: "FD", cfm: 0, variant: "fire" },
   { id: "device-backdraft", category: "Air devices", kind: "damper", label: "BACKDRAFT DAMPER", size: "BDD", cfm: 0, variant: "backdraft" },
@@ -139,11 +194,472 @@ const symbolPresets: SymbolPreset[] = [
   { id: "control-note", category: "Controls & notes", kind: "note", label: "FIELD VERIFY BEFORE FABRICATION", size: "NOTE", cfm: 0, variant: "note" },
 ];
 const symbolCategories = ["Supply air", "Return air", "Equipment", "Air devices", "Controls & notes"] as const;
+
+function symbolFamily(preset: SymbolPreset) {
+  const variant = preset.variant;
+  if (preset.category === "Supply air") {
+    if (variant.startsWith("curved")) return "Curved blade registers";
+    if (variant.includes("deflection") || variant.startsWith("spiral")) return "Adjustable & spiral grilles";
+    if (variant.startsWith("slot")) return "Linear slot diffusers";
+    if (["modular-1", "modular-2", "modular-3", "modular-4", "high-velocity", "plaque", "cone", "tbar-round", "perforated", "round", "swirl"].includes(variant)) return "Ceiling diffusers";
+    return "Residential registers";
+  }
+  if (preset.category === "Return air") {
+    if (variant.includes("filter")) return "Filter returns";
+    if (variant.startsWith("slot-return")) return "Linear returns";
+    if (["eggcrate", "tbar-eggcrate", "perforated"].includes(variant)) return "Ceiling returns";
+    if (["baseboard-return", "toe-return", "floor", "heavy-floor", "transfer", "door-louver"].includes(variant)) return "Floor, door & baseboard";
+    return "Fixed bar & louvered returns";
+  }
+  if (preset.category === "Equipment") return "Equipment assemblies";
+  if (preset.kind === "fan") return "Fans";
+  if (["damper", "motorDamper", "reducer"].includes(preset.kind)) return "Dampers & fittings";
+  return "Controls & notes";
+}
+
+function symbolDimensions(size: string) {
+  const parts = size.replace(/"/g, "").split(/[x×]/i).map(Number).filter(Number.isFinite);
+  const ratio = parts.length > 1 ? Math.max(.35, Math.min(2.85, parts[0] / parts[1])) : 1;
+  const width = ratio >= 1 ? 24 * Math.sqrt(ratio) : 24;
+  const height = ratio >= 1 ? 24 / Math.sqrt(ratio) : 24 / ratio;
+  return {
+    width: Math.max(16, Math.min(42, width)),
+    height: Math.max(11, Math.min(34, height)),
+  };
+}
+
+function SymbolArtwork({ kind, variant = "", width = 24, height = 24 }: { kind: SymbolKind; variant?: string; width?: number; height?: number }) {
+  const x = -width / 2;
+  const y = -height / 2;
+  const verticals = Array.from({ length: Math.max(3, Math.min(7, Math.round(width / 5))) }, (_, index) =>
+    x + ((index + 1) * width) / (Math.max(3, Math.min(7, Math.round(width / 5))) + 1));
+  const horizontals = [-.3, 0, .3].map((position) => position * height);
+  const fanBlades = <path className="fan-blades" d="M 0 -2.5 C 9 -12 14 -3 6 2 M 2 1 C 6 14 -6 14 -6 5 M -2 1 C -14 -2 -9 -12 -2 -8" />;
+  const supplyArrows = (directions: string[]) => directions.map((direction) => {
+    const paths: Record<string, string> = {
+      up: "M 0 -3 L 0 -13 M -4 -9 L 0 -13 L 4 -9",
+      right: "M 3 0 L 13 0 M 9 -4 L 13 0 L 9 4",
+      down: "M 0 3 L 0 13 M -4 9 L 0 13 L 4 9",
+      left: "M -3 0 L -13 0 M -9 -4 L -13 0 L -9 4",
+    };
+    return <path className="air-pattern" key={direction} d={paths[direction]} />;
+  });
+
+  if (kind === "diffuser") {
+    if (variant === "round") return <>
+      <circle className="supply-face" cx="0" cy="0" r="11" />
+      <circle className="supply-detail" cx="0" cy="0" r="6.5" />
+      <path className="supply-detail" d="M -8 0 L 8 0 M 0 -8 L 0 8" />
+      {supplyArrows(["up", "right", "down", "left"])}
+    </>;
+    if (variant === "jet") return <>
+      <path className="supply-face" d="M -12 -8 L 4 -6 L 11 0 L 4 6 L -12 8 Z" />
+      <ellipse className="supply-detail" cx="5" cy="0" rx="6" ry="5" />
+      <path className="air-pattern" d="M 10 0 L 20 0 M 15 -4 L 20 0 L 15 4" />
+    </>;
+    if (variant.startsWith("curved-")) {
+      const count = Number(variant.split("-")[1]) || 1;
+      const directions = count === 1 ? ["right"] : count === 2 ? ["left", "right"] : count === 3 ? ["left", "right", "down"] : ["up", "right", "down", "left"];
+      return <>
+        <rect className="supply-face" x={x} y={y} width={width} height={height} rx="1.5" />
+        {[-6, -2, 2, 6].map((offset) => <path className="supply-detail curved-vane" key={offset} d={`M ${x + 3} ${offset - 2} Q 0 ${offset + 3} ${width / 2 - 3} ${offset - 2}`} />)}
+        <circle className="supply-detail curved-hub" cx="0" cy="0" r="2" />
+        {supplyArrows(directions)}
+      </>;
+    }
+    if (["single-deflection", "double-deflection"].includes(variant)) return <>
+      <rect className="supply-face" x={x} y={y} width={width} height={height} rx="1" />
+      {verticals.map((lineX, index) => <line className="supply-detail adjustable-vane" key={`v-${index}`} x1={lineX - 1.5} y1={y + 2} x2={lineX + 1.5} y2={height / 2 - 2} />)}
+      {variant === "double-deflection" && horizontals.map((lineY, index) => <line className="supply-detail adjustable-vane secondary" key={`h-${index}`} x1={x + 2} y1={lineY + 1} x2={width / 2 - 2} y2={lineY - 1} />)}
+      <path className="air-pattern" d={`M ${width / 2} 0 L ${width / 2 + 10} 0 M ${width / 2 + 6} -4 L ${width / 2 + 10} 0 L ${width / 2 + 6} 4`} />
+    </>;
+    if (variant.startsWith("modular-")) {
+      const count = Number(variant.split("-")[1]) || 4;
+      const directions = count === 1 ? ["down"] : count === 2 ? ["left", "right"] : count === 3 ? ["left", "right", "down"] : ["up", "right", "down", "left"];
+      return <>
+        <rect className="supply-face tbar-panel" x={x} y={y} width={width} height={height} rx="1" />
+        <path className="supply-detail modular-core" d={`M ${x + 4} ${y + 4} L 0 -2 L ${width / 2 - 4} ${y + 4} L 4 0 L ${width / 2 - 4} ${height / 2 - 4} L 0 2 L ${x + 4} ${height / 2 - 4} L -4 0 Z`} />
+        {supplyArrows(directions)}
+      </>;
+    }
+    if (variant === "high-velocity") return <>
+      <rect className="supply-face" x={x} y={y} width={width} height={height} rx="1" />
+      <rect className="supply-detail high-velocity-ring" x={x + 4} y={y + 4} width={width - 8} height={height - 8} rx="1" />
+      <rect className="supply-detail high-velocity-ring" x={x + 8} y={y + 8} width={width - 16} height={height - 16} rx="1" />
+      <circle className="supply-detail" cx="0" cy="0" r="2.2" />
+      {supplyArrows(["up", "right", "down", "left"])}
+    </>;
+    if (variant === "plaque") return <>
+      <rect className="supply-face tbar-panel" x={x} y={y} width={width} height={height} rx="1" />
+      <rect className="supply-detail plaque-face" x={x + 5} y={y + 5} width={width - 10} height={height - 10} rx="1" />
+      <path className="supply-detail" d={`M ${x + 5} ${y + 5} L ${x + 2} ${y + 2} M ${width / 2 - 5} ${y + 5} L ${width / 2 - 2} ${y + 2} M ${x + 5} ${height / 2 - 5} L ${x + 2} ${height / 2 - 2} M ${width / 2 - 5} ${height / 2 - 5} L ${width / 2 - 2} ${height / 2 - 2}`} />
+    </>;
+    if (variant === "cone") return <>
+      <rect className="supply-face" x={x} y={y} width={width} height={height} rx="1" />
+      <circle className="supply-detail cone-ring" cx="0" cy="0" r="9" />
+      <circle className="supply-detail cone-ring" cx="0" cy="0" r="4.5" />
+      <path className="supply-detail" d="M -6 -6 L 6 6 M 6 -6 L -6 6" />
+    </>;
+    if (variant === "tbar-round") return <>
+      <rect className="supply-face tbar-panel" x={x} y={y} width={width} height={height} rx="1" />
+      <circle className="supply-detail" cx="0" cy="0" r="9" />
+      <circle className="supply-detail" cx="0" cy="0" r="4" />
+      <path className="supply-detail" d={`M ${x + 3} 0 L -9 0 M 9 0 L ${width / 2 - 3} 0 M 0 ${y + 3} L 0 -9 M 0 9 L 0 ${height / 2 - 3}`} />
+    </>;
+    if (variant.startsWith("spiral-")) return <>
+      <path className="spiral-saddle supply-face" d={`M ${x} ${y + 3} Q 0 ${y - 4} ${width / 2} ${y + 3} L ${width / 2} ${height / 2} L ${x} ${height / 2} Z`} />
+      {verticals.map((lineX, index) => <line className="supply-detail adjustable-vane" key={`v-${index}`} x1={lineX - 1.5} y1={y + 3} x2={lineX + 1.5} y2={height / 2 - 2} />)}
+      {variant === "spiral-double" && <path className="supply-detail" d={`M ${x + 3} -1 L ${width / 2 - 3} 1 M ${x + 3} 4 L ${width / 2 - 3} 2`} />}
+      <path className="air-pattern" d={`M ${width / 2} 2 L ${width / 2 + 10} 2 M ${width / 2 + 6} -2 L ${width / 2 + 10} 2 L ${width / 2 + 6} 6`} />
+    </>;
+    if (variant === "baseboard-supply") return <>
+      <path className="baseboard-body supply-face" d={`M ${x} ${height / 2} L ${x + 4} ${y} L ${width / 2 - 4} ${y} L ${width / 2} ${height / 2} Z`} />
+      {horizontals.map((lineY, index) => <line className="supply-detail" key={index} x1={x + 5} y1={lineY} x2={width / 2 - 5} y2={lineY} />)}
+      <path className="air-pattern" d={`M 0 ${y} L 0 ${y - 10} M -4 ${y - 6} L 0 ${y - 10} L 4 ${y - 6}`} />
+    </>;
+    if (variant === "toe-space") return <>
+      <rect className="supply-face" x="-20" y="-5" width="40" height="10" rx="1" />
+      {[-12, -6, 0, 6, 12].map((lineX) => <line className="supply-detail" key={lineX} x1={lineX} y1="-3" x2={lineX} y2="3" />)}
+      <path className="air-pattern" d="M 0 -5 L 0 -15 M -4 -11 L 0 -15 L 4 -11" />
+    </>;
+    if (variant === "slot" || variant.startsWith("slot-")) {
+      const slotCount = variant === "slot" ? 2 : Math.max(1, Number(variant.split("-")[1]) || 1);
+      const slotLines = Array.from({ length: slotCount }, (_, index) => ((index + 1) * 12) / (slotCount + 1) - 6);
+      return <>
+      <rect className="supply-face" x="-19" y="-6" width="38" height="12" rx="1" />
+      {slotLines.map((lineY) => <line className="supply-detail slot-blade" key={lineY} x1="-15" y1={lineY} x2="15" y2={lineY} />)}
+      <path className="air-pattern" d="M -11 6 L -11 12 M -14 9 L -11 12 L -8 9 M 11 6 L 11 12 M 8 9 L 11 12 L 14 9" />
+      </>;
+    }
+    if (variant === "perforated") return <>
+      <rect className="supply-face" x={x} y={y} width={width} height={height} rx="1" />
+      {[-6, 0, 6].map((cx) => [-6, 0, 6].map((cy) => <circle className="perforation supply-detail" key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.15" />))}
+      {supplyArrows(["up", "right", "down", "left"])}
+    </>;
+    if (variant === "swirl") return <>
+      <rect className="supply-face" x={x} y={y} width={width} height={height} rx="1" />
+      <circle className="supply-detail" cx="0" cy="0" r="2.5" />
+      <path className="supply-detail" d="M 1 -2 C 9 -11 13 -5 8 0 M 2 1 C 10 7 5 12 0 8 M -1 2 C -9 11 -13 5 -8 0 M -2 -1 C -10 -7 -5 -12 0 -8" />
+    </>;
+    if (["register", "floor", "boot"].includes(variant)) return <>
+      {variant === "boot" && <path className="boot-body" d={`M ${x + 3} ${y} L ${x + 7} ${y - 7} L ${width / 2 - 7} ${y - 7} L ${width / 2 - 3} ${y}`} />}
+      <rect className="supply-face" x={x} y={y} width={width} height={height} rx={variant === "boot" ? 3 : 1} />
+      {variant === "floor"
+        ? verticals.map((lineX, index) => <line className="supply-detail floor-slat" key={index} x1={lineX - 2} y1={y + 2} x2={lineX + 2} y2={height / 2 - 2} />)
+        : horizontals.map((lineY, index) => <line className="supply-detail register-vane" key={index} x1={x + 3} y1={lineY} x2={width / 2 - 3} y2={lineY} />)}
+      {variant === "register" && <path className="air-pattern" d={`M ${width / 2} 0 L ${width / 2 + 9} 0 M ${width / 2 + 5} -4 L ${width / 2 + 9} 0 L ${width / 2 + 5} 4`} />}
+    </>;
+    const directions = variant === "1way" ? ["down"] : variant === "2way" ? ["left", "right"] : variant === "3way" ? ["left", "right", "down"] : ["up", "right", "down", "left"];
+    return <>
+      <rect className="supply-face" x={x} y={y} width={width} height={height} rx="1" />
+      <path className="supply-detail" d={`M ${x + 3} ${y + 3} L 0 0 L ${width / 2 - 3} ${y + 3} M ${width / 2 - 3} ${height / 2 - 3} L 0 0 L ${x + 3} ${height / 2 - 3}`} />
+      {supplyArrows(directions)}
+    </>;
+  }
+
+  if (kind === "returnGrille") {
+    if (variant.startsWith("slot-return")) {
+      const slotCount = variant === "slot-return" ? 2 : Math.max(1, Number(variant.split("-").at(-1)) || 1);
+      const slotLines = Array.from({ length: slotCount }, (_, index) => ((index + 1) * 12) / (slotCount + 1) - 6);
+      return <>
+        <rect className="return-face" x="-19" y="-6" width="38" height="12" rx="1" />
+        {slotLines.map((lineY) => <line className="return-detail slot-blade" key={lineY} x1="-15" y1={lineY} x2="15" y2={lineY} />)}
+        <path className="return-intake" d="M -11 -13 L -11 -7 M -14 -10 L -11 -7 L -8 -10 M 11 -13 L 11 -7 M 8 -10 L 11 -7 L 14 -10" />
+        <text className="return-badge" x="0" y="3" textAnchor="middle">R</text>
+      </>;
+    }
+    if (variant === "jump") return <>
+      <rect className="return-face" x="-18" y="-11" width="14" height="22" rx="1" />
+      <rect className="return-face" x="4" y="-11" width="14" height="22" rx="1" />
+      <path className="return-detail" d="M -15 -7 L -7 -7 M -15 -2 L -7 -2 M -15 3 L -7 3 M -15 8 L -7 8 M 7 -7 L 15 -7 M 7 -2 L 15 -2 M 7 3 L 15 3 M 7 8 L 15 8" />
+      <path className="return-intake" d="M -4 -4 C 0 -10 0 -10 4 -4 M -4 4 C 0 10 0 10 4 4" />
+    </>;
+    if (variant === "filter-bar") return <>
+      <rect className="return-face" x={x} y={y} width={width} height={height} rx="3" />
+      <rect className="filter-media" x={x + 3} y={y + 3} width={width - 6} height={height - 6} rx="1" />
+      {horizontals.map((lineY, index) => <line className="return-detail fixed-bar" key={index} x1={x + 4} y1={lineY - 1} x2={width / 2 - 4} y2={lineY + 1} />)}
+      <text className="return-badge" x="0" y="3" textAnchor="middle">F</text>
+    </>;
+    if (variant === "fixed-bar") return <>
+      <rect className="return-face" x={x} y={y} width={width} height={height} rx="1" />
+      {horizontals.map((lineY, index) => <line className="return-detail fixed-bar" key={index} x1={x + 3} y1={lineY - 1.5} x2={width / 2 - 3} y2={lineY + 1.5} />)}
+      <path className="return-intake" d={`M 0 ${y - 8} L 0 ${y - 2} M -4 ${y - 6} L 0 ${y - 2} L 4 ${y - 6}`} />
+      <text className="return-badge" x={width / 2 - 4} y={height / 2 - 3} textAnchor="middle">R</text>
+    </>;
+    if (variant === "tbar-eggcrate") return <>
+      <rect className="return-face tbar-panel" x={x} y={y} width={width} height={height} rx="1" />
+      <rect className="return-detail" x={x + 4} y={y + 4} width={width - 8} height={height - 8} rx=".5" />
+      {verticals.map((lineX, index) => <line className="return-detail" key={`v-${index}`} x1={lineX} y1={y + 5} x2={lineX} y2={height / 2 - 5} />)}
+      {horizontals.map((lineY, index) => <line className="return-detail" key={`h-${index}`} x1={x + 5} y1={lineY} x2={width / 2 - 5} y2={lineY} />)}
+      <text className="return-badge" x={width / 2 - 4} y={height / 2 - 3} textAnchor="middle">R</text>
+    </>;
+    if (variant === "door-louver") return <>
+      <rect className="return-face" x="-12" y="-18" width="24" height="36" rx="1" />
+      {[-12, -7, -2, 3, 8, 13].map((lineY) => <path className="return-detail door-louver" key={lineY} d={`M -9 ${lineY - 2} L 0 ${lineY + 1} L 9 ${lineY - 2}`} />)}
+      <path className="return-intake" d="M -19 0 L -13 0 M -17 -4 L -13 0 L -17 4" />
+      <text className="return-badge" x="0" y="3" textAnchor="middle">R</text>
+    </>;
+    if (["baseboard-return", "toe-return"].includes(variant)) return <>
+      {variant === "baseboard-return"
+        ? <path className="baseboard-body return-face" d={`M ${x} ${height / 2} L ${x + 4} ${y} L ${width / 2 - 4} ${y} L ${width / 2} ${height / 2} Z`} />
+        : <rect className="return-face" x="-20" y="-5" width="40" height="10" rx="1" />}
+      {variant === "baseboard-return"
+        ? horizontals.map((lineY, index) => <line className="return-detail" key={index} x1={x + 5} y1={lineY} x2={width / 2 - 5} y2={lineY} />)
+        : [-12, -6, 0, 6, 12].map((lineX) => <line className="return-detail" key={lineX} x1={lineX} y1="-3" x2={lineX} y2="3" />)}
+      <path className="return-intake" d={`M 0 ${y - 9} L 0 ${y - 2} M -4 ${y - 6} L 0 ${y - 2} L 4 ${y - 6}`} />
+      <text className="return-badge" x={width / 2 - 4} y={height / 2 - 3} textAnchor="middle">R</text>
+    </>;
+    if (variant === "heavy-floor") return <>
+      <rect className="return-face heavy-floor-frame" x={x} y={y} width={width} height={height} rx="1" />
+      {verticals.map((lineX, index) => <line className="return-detail heavy-floor-bar" key={`v-${index}`} x1={lineX - 2} y1={y + 2} x2={lineX + 2} y2={height / 2 - 2} />)}
+      <line className="return-detail heavy-floor-bar" x1={x + 2} y1="0" x2={width / 2 - 2} y2="0" />
+      <path className="return-intake" d={`M 0 ${y - 8} L 0 ${y - 2} M -4 ${y - 6} L 0 ${y - 2} L 4 ${y - 6}`} />
+      <text className="return-badge" x={width / 2 - 4} y={height / 2 - 3} textAnchor="middle">R</text>
+    </>;
+    return <>
+      <rect className="return-face" x={x} y={y} width={width} height={height} rx={variant === "filter" ? 3 : 1} />
+      {variant === "eggcrate" ? <>
+        {verticals.map((lineX, index) => <line className="return-detail" key={`v-${index}`} x1={lineX} y1={y + 2} x2={lineX} y2={height / 2 - 2} />)}
+        {horizontals.map((lineY, index) => <line className="return-detail" key={`h-${index}`} x1={x + 2} y1={lineY} x2={width / 2 - 2} y2={lineY} />)}
+      </> : variant === "filter" ? <>
+        <rect className="filter-media" x={x + 3} y={y + 3} width={width - 6} height={height - 6} rx="1" />
+        <path className="return-detail" d={`M ${x + 5} ${y + 5} L ${width / 2 - 5} ${height / 2 - 5} M ${width / 2 - 5} ${y + 5} L ${x + 5} ${height / 2 - 5}`} />
+        <text className="return-badge" x="0" y="3" textAnchor="middle">F</text>
+      </> : variant === "perforated" ? <>
+        {[-6, 0, 6].map((cx) => [-6, 0, 6].map((cy) => <circle className="perforation return-detail" key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.15" />))}
+      </> : variant === "transfer" ? <>
+        <path className="return-detail" d={`M ${x + 3} -5 L ${width / 2 - 3} -5 M ${x + 3} 0 L ${width / 2 - 3} 0 M ${x + 3} 5 L ${width / 2 - 3} 5`} />
+        <path className="return-intake" d="M -6 -9 L 0 -5 L 6 -9 M -6 9 L 0 5 L 6 9" />
+      </> : variant === "floor" ? verticals.map((lineX, index) =>
+        <line className="return-detail floor-slat" key={index} x1={lineX - 2} y1={y + 2} x2={lineX + 2} y2={height / 2 - 2} />
+      ) : horizontals.map((lineY, index) =>
+        <line className="return-detail return-louver" key={index} x1={x + 3} y1={lineY - 2} x2={width / 2 - 3} y2={lineY + 2} />
+      )}
+      {!["filter", "transfer"].includes(variant) && <text className="return-badge" x={width / 2 - 4} y={height / 2 - 3} textAnchor="middle">R</text>}
+      {["grille", "bar", "floor", "perforated"].includes(variant) && <path className="return-intake" d={`M 0 ${y - 8} L 0 ${y - 2} M -4 ${y - 6} L 0 ${y - 2} L 4 ${y - 6}`} />}
+    </>;
+  }
+
+  if (kind === "equipment") {
+    const horizontalUnit = (code: string, internals: "coil" | "flame" | "fan" | "split") => <>
+      <path className="return-plenum" d="M -37 -8 L -17 -11 L -17 11 L -37 8 Z" />
+      <rect className="equipment-body" x="-17" y="-13" width="34" height="26" rx="2" />
+      <path className="supply-plenum" d="M 17 -11 L 37 -8 L 37 8 L 17 11 Z" />
+      <path className="return-flow" d="M -33 0 L -20 0 M -24 -4 L -20 0 L -24 4" />
+      <path className="supply-flow" d="M 20 0 L 33 0 M 29 -4 L 33 0 L 29 4" />
+      {internals === "coil" && <path className="unit-detail" d="M -11 -8 L -2 -8 L -2 8 L -11 8 M 2 -8 L 12 -8 L 12 8 L 2 8 M 4 -6 L 10 6 M 10 -6 L 4 6" />}
+      {internals === "fan" && <><circle className="unit-fan" cx="-6" cy="0" r="7" />{fanBlades}<path className="unit-detail" d="M 5 -8 L 12 -8 L 12 8 L 5 8 M 7 -6 L 10 6" /></>}
+      {internals === "flame" && <path className="unit-detail flame" d="M -7 7 C -13 0 -5 -7 0 -10 C 1 -4 10 -1 7 7 C 4 13 -4 12 -7 7 Z M 5 -8 L 12 -8 L 12 8 L 5 8" />}
+      {internals === "split" && <path className="unit-detail" d="M -12 -8 L -1 -8 L -1 8 L -12 8 M 3 -8 L 12 -8 L 12 8 L 3 8 M 5 -5 L 10 5 M 10 -5 L 5 5" />}
+      <text className="plenum-code return-code" x="-28" y="3" textAnchor="middle">R</text>
+      <text className="plenum-code supply-code" x="28" y="3" textAnchor="middle">S</text>
+      <text className="equipment-code" x="0" y="4" textAnchor="middle">{code}</text>
+    </>;
+    const verticalUnit = (code: string, heat: boolean) => <>
+      <path className="supply-plenum vertical-plenum" d="M -10 -40 L 10 -40 L 14 -21 L -14 -21 Z" />
+      <rect className="equipment-body vertical-unit-body" x="-16" y="-21" width="32" height="42" rx="2" />
+      <path className="return-plenum vertical-plenum" d="M -14 21 L 14 21 L 10 40 L -10 40 Z" />
+      <path className="supply-flow vertical-flow" d="M 0 -23 L 0 -35 M -4 -31 L 0 -35 L 4 -31" />
+      <path className="return-flow vertical-flow" d="M 0 35 L 0 23 M -4 27 L 0 23 L 4 27" />
+      <path className="unit-detail vertical-coil" d="M -11 -16 L 11 -16 L 11 -4 L -11 -4 Z M -8 -14 L 8 -6 M 8 -14 L -8 -6" />
+      <circle className="unit-fan vertical-unit-fan" cx="0" cy="9" r="7" />
+      <path className="fan-blades vertical-unit-blades" d="M 0 6 C 7 0 11 7 5 10 M 2 10 C 5 18 -5 18 -5 12 M -2 10 C -11 8 -7 1 -1 4" />
+      {heat && <path className="unit-detail flame vertical-flame" d="M -5 18 C -9 13 -3 8 0 5 C 1 9 7 11 5 17 C 3 21 -3 21 -5 18 Z" />}
+      <text className="plenum-code supply-code" x="0" y="-27" textAnchor="middle">S</text>
+      <text className="plenum-code return-code" x="0" y="33" textAnchor="middle">R</text>
+      <text className="equipment-code vertical-unit-code" x="0" y="1" textAnchor="middle">{code}</text>
+    </>;
+    if (variant === "air-handler") return horizontalUnit("AHU", "coil");
+    if (variant === "vertical-air-handler") return verticalUnit("VAH", false);
+    if (variant === "vertical-furnace") return verticalUnit("VUF", true);
+    if (variant === "fan-coil") return horizontalUnit("FCU", "fan");
+    if (variant === "package") return horizontalUnit("PKG", "split");
+    if (variant === "furnace") return <>
+      <path className="supply-plenum" d="M -9 -36 L 9 -36 L 12 -16 L -12 -16 Z" />
+      <rect className="equipment-body" x="-14" y="-16" width="28" height="32" rx="2" />
+      <path className="return-plenum" d="M -12 16 L 12 16 L 9 36 L -9 36 Z" />
+      <path className="supply-flow" d="M 0 -18 L 0 -31 M -4 -27 L 0 -31 L 4 -27" />
+      <path className="return-flow" d="M 0 31 L 0 18 M -4 22 L 0 18 L 4 22" />
+      <path className="unit-detail flame" d="M -7 9 C -12 2 -4 -6 0 -10 C 1 -4 9 -1 7 8 C 4 13 -4 13 -7 9 Z" />
+      <text className="plenum-code supply-code" x="0" y="-23" textAnchor="middle">S</text>
+      <text className="plenum-code return-code" x="0" y="28" textAnchor="middle">R</text>
+      <text className="equipment-code" x="0" y="5" textAnchor="middle">FUR</text>
+    </>;
+    if (variant === "rtu") return <>
+      <rect className="roof-curb" x="-25" y="-17" width="50" height="34" rx="2" />
+      <rect className="equipment-body" x="-21" y="-13" width="42" height="26" rx="2" />
+      <path className="return-plenum" d="M -18 13 L -3 13 L -3 23 L -18 23 Z" />
+      <path className="supply-plenum" d="M 3 13 L 18 13 L 18 23 L 3 23 Z" />
+      <circle className="unit-fan" cx="10" cy="-1" r="7" />
+      <path className="unit-detail" d="M -17 -8 L -4 -8 L -4 8 L -17 8 M -14 -5 L -7 5 M -7 -5 L -14 5" />
+      <text className="plenum-code return-code" x="-10.5" y="20" textAnchor="middle">R</text>
+      <text className="plenum-code supply-code" x="10.5" y="20" textAnchor="middle">S</text>
+      <text className="equipment-code" x="10" y="3" textAnchor="middle">RTU</text>
+    </>;
+    if (variant === "makeup-air") return <>
+      <path className="outdoor-intake" d="M -38 -10 L -22 -10 L -17 0 L -22 10 L -38 10 Z" />
+      <rect className="equipment-body" x="-22" y="-12" width="38" height="24" rx="2" />
+      <path className="supply-plenum" d="M 16 -9 L 37 -6 L 37 6 L 16 9 Z" />
+      <path className="unit-detail" d="M -17 -7 L -7 -7 L -7 7 L -17 7 M -4 -7 L 3 -7 L 3 7 L -4 7" />
+      <path className="supply-flow" d="M 19 0 L 33 0 M 29 -4 L 33 0 L 29 4" />
+      <text className="equipment-code" x="9" y="4" textAnchor="middle">MAU</text>
+      <text className="oa-code" x="-29" y="3" textAnchor="middle">OA</text>
+      <text className="plenum-code supply-code" x="27" y="3" textAnchor="middle">S</text>
+    </>;
+    if (["heat-pump", "condenser"].includes(variant)) return <>
+      <rect className="outdoor-unit" x="-20" y="-20" width="40" height="40" rx="3" />
+      <circle className="condenser-ring" cx="0" cy="0" r="14" />
+      <circle className="unit-fan" cx="0" cy="0" r="2.5" />
+      {fanBlades}
+      <path className="coil-mark" d="M -16 -16 L -12 -12 M -8 -16 L -4 -12 M 0 -16 L 4 -12 M 8 -16 L 12 -12" />
+      <text className="equipment-code" x="0" y="4" textAnchor="middle">{variant === "heat-pump" ? "HP" : "CU"}</text>
+    </>;
+    if (variant === "mini-split") return <>
+      <rect className="mini-split-body" x="-25" y="-9" width="50" height="18" rx="6" />
+      <path className="unit-detail" d="M -19 1 L 19 1 M -15 5 C -10 10 -5 10 -2 5 M 2 5 C 7 10 12 10 16 5" />
+      <circle className="status-light" cx="17" cy="-4" r="1.5" />
+      <text className="equipment-code" x="-12" y="-2" textAnchor="middle">MS</text>
+    </>;
+    if (["erv", "hrv"].includes(variant)) return <>
+      <rect className="equipment-body" x="-22" y="-14" width="44" height="28" rx="2" />
+      <path className="return-plenum" d="M -34 -10 L -22 -10 M -34 8 L -22 8" />
+      <path className="supply-plenum" d="M 22 -8 L 34 -8 M 22 10 L 34 10" />
+      <path className="energy-wheel" d="M -12 -9 L 12 9 M -12 9 L 12 -9 M -5 -12 L 5 12" />
+      <path className="return-flow" d="M -32 -10 L -24 -10 M 24 10 L 32 10" />
+      <path className="supply-flow" d="M -24 8 L -32 8 M 32 -8 L 24 -8" />
+      <text className="equipment-code" x="0" y="4" textAnchor="middle">{variant === "hrv" ? "HRV" : "ERV"}</text>
+      <text className="stream-code return-code" x="-29" y="-2" textAnchor="middle">RA</text>
+      <text className="stream-code supply-code" x="29" y="2" textAnchor="middle">SA</text>
+    </>;
+    if (variant === "humidifier") return <>
+      <rect className="equipment-body utility-body" x="-16" y="-16" width="32" height="32" rx="5" />
+      <path className="water-mark" d="M 0 -11 C -9 0 -9 5 -9 8 C -9 15 9 15 9 8 C 9 3 5 -3 0 -11 Z M -5 7 C -2 11 3 11 5 7" />
+      <path className="steam-mark" d="M -8 -21 C -11 -17 -5 -15 -8 -11 M 0 -21 C -3 -17 3 -15 0 -11 M 8 -21 C 5 -17 11 -15 8 -11" />
+      <text className="equipment-code" x="0" y="5" textAnchor="middle">HUM</text>
+    </>;
+    if (variant === "dehumidifier") return <>
+      <rect className="equipment-body utility-body" x="-22" y="-12" width="44" height="24" rx="4" />
+      <circle className="unit-fan" cx="-10" cy="0" r="7" />
+      <path className="water-mark" d="M 8 -8 C 1 1 2 8 8 8 C 14 8 15 1 8 -8 Z" />
+      <path className="unit-detail" d="M 2 0 L 14 0" />
+      <text className="equipment-code" x="-10" y="4" textAnchor="middle">DH</text>
+    </>;
+    if (variant === "boiler") return <>
+      <circle className="boiler-body" cx="0" cy="0" r="17" />
+      <path className="unit-detail flame" d="M -8 8 C -13 1 -5 -8 0 -12 C 1 -5 10 -1 8 8 C 5 14 -5 14 -8 8 Z" />
+      <path className="pipe-mark" d="M -26 -6 L -17 -6 M 17 -6 L 26 -6 M -26 6 L -17 6 M 17 6 L 26 6" />
+      <text className="equipment-code" x="0" y="7" textAnchor="middle">B</text>
+    </>;
+    return horizontalUnit("UNIT", "split");
+  }
+
+  if (kind === "fan") {
+    if (variant === "inline") return <>
+      <path className="fan-duct" d="M -25 -8 L -13 -8 M -25 8 L -13 8 M 13 -8 L 25 -8 M 13 8 L 25 8" />
+      <path className="inline-housing" d="M -13 -10 L 13 -10 L 18 0 L 13 10 L -13 10 L -18 0 Z" />
+      <circle className="fan-ring" cx="0" cy="0" r="8" />{fanBlades}
+      <path className="fan-flow" d="M 18 0 L 27 0 M 23 -4 L 27 0 L 23 4" />
+    </>;
+    if (variant === "roof") return <>
+      <path className="roof-line" d="M -24 13 L 24 13 M -18 13 L -15 7 L 15 7 L 18 13" />
+      <path className="roof-cap" d="M -17 3 Q 0 -16 17 3 L 13 7 L -13 7 Z" />
+      <circle className="fan-ring" cx="0" cy="2" r="7" />{fanBlades}
+      <path className="exhaust-flow" d="M -8 -10 L -8 -19 M -12 -15 L -8 -19 L -4 -15 M 8 -10 L 8 -19 M 4 -15 L 8 -19 L 12 -15" />
+    </>;
+    if (variant === "wall") return <>
+      <rect className="fan-frame" x="-16" y="-16" width="32" height="32" rx="2" />
+      <path className="wall-louvers" d="M -13 -10 L 13 -10 M -13 -5 L 13 -5 M -13 0 L 13 0 M -13 5 L 13 5 M -13 10 L 13 10" />
+      <circle className="fan-ring" cx="0" cy="0" r="10" />{fanBlades}
+      <path className="fan-flow" d="M 17 0 L 26 0 M 22 -4 L 26 0 L 22 4" />
+    </>;
+    if (variant === "ceiling") return <>
+      <rect className="fan-frame" x="-16" y="-16" width="32" height="32" rx="2" />
+      <path className="ceiling-grille" d="M -12 -10 L 12 -10 M -12 -5 L 12 -5 M -12 0 L 12 0 M -12 5 L 12 5 M -12 10 L 12 10" />
+      <circle className="fan-ring" cx="0" cy="0" r="9" />{fanBlades}
+      <text className="fan-code" x="0" y="4" textAnchor="middle">CEF</text>
+    </>;
+    if (variant === "centrifugal") return <>
+      <path className="scroll-housing" d="M 13 7 C 8 16 -10 16 -16 5 C -23 -9 -9 -21 6 -15 C 15 -12 17 -3 13 7 L 24 7 L 24 -3 L 14 -3" />
+      <circle className="fan-ring" cx="-5" cy="0" r="8" />{fanBlades}
+      <path className="fan-flow" d="M 15 2 L 26 2 M 22 -2 L 26 2 L 22 6" />
+    </>;
+    if (variant === "cabinet") return <>
+      <rect className="fan-cabinet" x="-23" y="-13" width="46" height="26" rx="2" />
+      <circle className="fan-ring" cx="-8" cy="0" r="8" />{fanBlades}
+      <path className="fan-filter" d="M 5 -9 L 12 -9 L 12 9 L 5 9 M 7 -7 L 10 7" />
+      <path className="fan-flow supply-flow" d="M 14 0 L 28 0 M 24 -4 L 28 0 L 24 4" />
+      <text className="fan-code" x="18" y="-5" textAnchor="middle">SF</text>
+    </>;
+    if (variant === "plenum") return <>
+      <path className="plenum-chamber" d="M -25 -15 L 18 -15 L 25 -8 L 25 15 L -25 15 Z" />
+      <circle className="fan-ring" cx="-5" cy="0" r="10" />{fanBlades}
+      <path className="fan-flow supply-flow" d="M 7 0 L 28 0 M 24 -4 L 28 0 L 24 4" />
+      <text className="fan-code" x="16" y="-6" textAnchor="middle">PF</text>
+    </>;
+    return <>
+      <rect className="fan-frame" x="-15" y="-15" width="30" height="30" rx="2" />
+      <circle className="fan-ring" cx="0" cy="0" r="11" />{fanBlades}
+      <path className="exhaust-flow" d="M -6 -17 L -6 -24 M -10 -20 L -6 -24 L -2 -20 M 6 -17 L 6 -24 M 2 -20 L 6 -24 L 10 -20" />
+      <text className="fan-code" x="0" y="4" textAnchor="middle">EF</text>
+    </>;
+  }
+
+  if (kind === "damper") {
+    if (variant === "fire") return <>
+      <rect className="damper-frame fire-damper" x="-14" y="-9" width="28" height="18" />
+      <path className="damper-blade fire-blade" d="M -11 6 L 11 -6 M -7 7 L 7 -7 M -3 8 L 11 -6" />
+      <text className="damper-code" x="0" y="4" textAnchor="middle">FD</text>
+    </>;
+    if (variant === "backdraft") return <>
+      <rect className="damper-frame" x="-14" y="-9" width="28" height="18" />
+      <path className="damper-blade" d="M -11 -6 L 0 0 L -11 6 M 11 -6 L 0 0 L 11 6" />
+      <text className="damper-code" x="0" y="-11" textAnchor="middle">BDD</text>
+    </>;
+    return <>
+      <circle className="damper-frame" cx="0" cy="0" r="11" />
+      <path className="damper-blade" d="M -10 0 L 10 0 M -7 7 L 7 -7" />
+      <text className="damper-code" x="0" y="-13" textAnchor="middle">VD</text>
+    </>;
+  }
+  if (kind === "motorDamper") return <>
+    <rect className="motor-frame" x="-15" y="-8" width="30" height="16" rx="2" />
+    <path className="motor-blade" d="M -11 5 L 11 -5" />
+    <path className="actuator-link" d="M 0 -8 L 0 -15 L 10 -15" />
+    <rect className="actuator-box" x="8" y="-19" width="11" height="8" rx="1" />
+    <text className="motor-code" x="13.5" y="-13" textAnchor="middle">M</text>
+  </>;
+  if (kind === "reducer") return <>
+    <path className="transition-body" d="M -17 -11 L -17 11 L 17 6 L 17 -6 Z" />
+    <path className="transition-center" d="M -11 0 L 11 0" />
+    <text className="transition-code" x="0" y="-13" textAnchor="middle">RED</text>
+  </>;
+  if (kind === "thermostat") return <>
+    <rect className="control-body" x="-10" y="-13" width="20" height="26" rx="3" />
+    <rect className="control-screen" x="-6" y="-8" width="12" height="7" rx="1" />
+    <circle className="control-button" cx="0" cy="6" r="3" />
+    <text className="symbol-letter" x="0" y="-16" textAnchor="middle">T</text>
+  </>;
+  if (kind === "smoke") return <>
+    <rect className="detector-body" x="-14" y="-9" width="28" height="18" rx="2" />
+    <circle className="detector-sensor" cx="-4" cy="0" r="4" />
+    <path className="detector-probe" d="M 14 0 L 25 0 M 20 -4 L 25 0 L 20 4" />
+    <text className="detector-code" x="7" y="3" textAnchor="middle">SD</text>
+  </>;
+  if (kind === "airflow") return <path className="airflow-arrow" d="M -20 0 L 18 0 M 9 -8 L 18 0 L 9 8" />;
+  return <>
+    <path className="note-body" d="M -13 -12 L 7 -12 L 13 -6 L 13 12 L -13 12 Z M 7 -12 L 7 -6 L 13 -6" />
+    <path className="note-lines" d="M -8 -5 L 7 -5 M -8 0 L 8 0 M -8 5 L 3 5" />
+  </>;
+}
+
 type SymbolMeta = {
   kind: SymbolKind;
   label: string;
   rotation: number;
   variant?: string;
+  neckSize?: string;
+  connectedRunId?: string;
+  connectedEnd?: "start" | "end";
 };
 type MeasurementMeta = {
   feet: number;
@@ -174,13 +690,58 @@ type Drawing = {
   roomType?: "general" | "bedroom" | "bathroom" | "closet";
   elevation?: string;
 };
+type RoomAirflowPriority = "standard" | "high" | "low";
+type RoomAirflowTarget = {
+  supplyCfm: number;
+  returnCfm: number;
+  priority: RoomAirflowPriority;
+};
+type TerminalCfmProposal = {
+  id: string;
+  drawingId: string;
+  kind: "supply" | "return";
+  room: string;
+  label: string;
+  current: number;
+  proposed: number;
+  target: number;
+  terminalCount: number;
+  connected: boolean;
+};
+const primaryAirflowEquipmentVariants = new Set([
+  "air-handler",
+  "vertical-air-handler",
+  "vertical-furnace",
+  "furnace",
+  "package",
+  "fan-coil",
+  "rtu",
+]);
+const allowedResidentialFlexSizes = ["4", "6", "7", "8", "10", "12", "14", "16"];
+
+function isPrimaryAirflowEquipment(drawing?: Drawing) {
+  return Boolean(
+    drawing?.symbol?.kind === "equipment" &&
+    primaryAirflowEquipmentVariants.has(drawing.symbol.variant || "")
+  );
+}
 type DragState =
   | { kind: "point"; drawingId: string; pointIndex: number; before: Drawing[] }
   | { kind: "line"; drawingId: string; start: Point; original: Point[]; before: Drawing[] }
   | { kind: "fitting"; drawingId: string; start: Point; originalCenter: Point; originalPorts: Point[]; connectedIds: string[]; before: Drawing[] }
   | { kind: "symbol"; drawingId: string; before: Drawing[] }
   | { kind: "group"; start: Point; ids: string[]; originals: Record<string, Point[]>; before: Drawing[] };
-type PanState = { pointerId: number; startX: number; startY: number; scrollLeft: number; scrollTop: number; moved: boolean };
+type PanState = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  cameraX: number;
+  cameraY: number;
+  latestX: number;
+  latestY: number;
+  frameId: number | null;
+  moved: boolean;
+};
 
 type BranchPreview = {
   center: Point;
@@ -193,15 +754,44 @@ type BranchPreview = {
   matchedExisting?: boolean;
   mainRunId?: string;
   branchRunId?: string;
+  runIds?: string[];
+  mode?: "three-runs" | "split-trunk" | "attach-run";
+  candidateEndpoint?: Point;
+  candidateProjected?: Point;
+  candidateEndpointDistance?: number;
+};
+
+type ThreeRunBranchMatch = {
+  center: Point;
+  angle: number;
+  branchAngle: number;
+  side: 1 | -1;
+  style: "wye45" | "tee90";
+  ports: Array<{ drawing: Drawing; endpointIndex: number }>;
+};
+
+type BranchOpportunity = {
+  id: string;
+  center: Point;
+  angle: number;
+  branchAngle: number;
+  side: 1 | -1;
+  style: "wye45" | "tee90";
+  parentSize: string;
+  mainRunId: string;
+  branchRunId: string;
+  score: number;
 };
 
 type SavedProject = {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   fileName: string;
   drawings: Drawing[];
   savedAt: string;
+  pdfFingerprint?: string;
   scaleFeetPerUnit?: number;
   scaleLabel?: string;
+  scaleVerified?: boolean;
   systemNames?: Record<string, string>;
   showCfmLabels?: boolean;
   showLengthLabels?: boolean;
@@ -210,11 +800,152 @@ type SavedProject = {
   showGrid?: boolean;
   snapEnabled?: boolean;
   lockedLayers?: Partial<Record<LayerId, boolean>>;
+  supplyVelocityLimit?: number;
+  returnVelocityLimit?: number;
+  freshVelocityLimit?: number;
+  residentialFlexMax?: string;
+  fieldChecklist?: Record<string, boolean>;
+  fieldChecklistBySystem?: Record<string, Record<string, boolean>>;
+  materialWastePercent?: number;
+  commissioningBySystem?: Record<string, CommissioningRecord>;
+  punchItems?: PunchItem[];
+  rfiItems?: RfiItem[];
+  roomAirflowTargets?: Record<string, Record<string, RoomAirflowTarget>>;
+  reviewDecisionsBySystem?: Record<string, Record<string, ReviewDecision>>;
+  releaseRecords?: SystemReleaseRecord[];
+};
+
+type CommissioningRecord = {
+  model: string;
+  serial: string;
+  filterSize: string;
+  measuredCfm: string;
+  supplyStatic: string;
+  returnStatic: string;
+  ratedMaxStatic: string;
+  temperatureSplit: string;
+  technician: string;
+  date: string;
+  notes: string;
+  checklist: Record<string, boolean>;
+};
+
+type PunchItem = {
+  id: string;
+  systemId: string;
+  drawingId?: string;
+  title: string;
+  category: "Installation" | "Coordination" | "Airflow" | "Equipment" | "Closeout";
+  priority: "critical" | "normal" | "low";
+  assignedTo: string;
+  note: string;
+  status: "open" | "resolved";
+  createdAt: string;
+  resolvedAt?: string;
+};
+
+type RfiItem = {
+  id: string;
+  number: number;
+  systemId: string;
+  drawingId?: string;
+  subject: string;
+  category: "Coordination" | "Design" | "Equipment" | "Access" | "Change order";
+  priority: "critical" | "normal" | "low";
+  question: string;
+  proposedSolution: string;
+  assignedTo: string;
+  costImpact: string;
+  scheduleImpact: string;
+  response: string;
+  status: "draft" | "submitted" | "answered" | "approved" | "closed";
+  createdAt: string;
+  updatedAt: string;
+  approvalBy?: string;
+  approvedAt?: string;
+};
+
+type ValidationSeverity = "critical" | "warning" | "info";
+type ValidationIssue = {
+  id: string;
+  severity: ValidationSeverity;
+  title: string;
+  detail: string;
+  drawingId?: string;
+};
+type ReviewDecisionStatus = "accepted" | "rfi" | "punch";
+type ReviewDecision = {
+  issueId: string;
+  status: ReviewDecisionStatus;
+  reviewer: string;
+  note: string;
+  updatedAt: string;
+  linkedRecordId?: string;
+};
+type SystemReleaseRecord = {
+  id: string;
+  systemId: string;
+  revision: string;
+  releasedBy: string;
+  releasedAt: string;
+  note: string;
+  drawingSignature: string;
+  releaseSignature?: string;
+  checklistComplete: number;
+  acceptedIssueCount: number;
+  runCount: number;
+  designCfm: number;
+  pdfFingerprint?: string;
+  gateSnapshot?: Array<{ id: string; label: string; clear: boolean; detail: string }>;
+  checklistSnapshot?: Array<{ id: string; label: string; checked: boolean }>;
+  issueSnapshot?: Array<{ id: string; severity: ValidationSeverity; title: string; detail: string; disposition: string; reviewer: string; note: string }>;
+  rulesSnapshot?: {
+    scaleLabel: string;
+    scaleFeetPerUnit: number;
+    supplyVelocityLimit: number;
+    returnVelocityLimit: number;
+    freshVelocityLimit: number;
+    residentialFlexMax: string;
+  };
 };
 
 const STORAGE_PREFIX = "hvac-plan-studio:";
 const systems = Array.from({ length: 16 }, (_, index) => ({ id: `system-${index + 1}`, label: `System ${index + 1}` }));
 const defaultSystemNames = Object.fromEntries(systems.map((system) => [system.id, system.label]));
+const fieldChecklistItems = [
+  { id: "approved-plan", label: "Approved plan and latest revisions verified" },
+  { id: "equipment-access", label: "Equipment location and service clearance verified" },
+  { id: "elevations", label: "Duct elevations and ceiling conflicts coordinated" },
+  { id: "supports", label: "Hangers, supports, and flex routing reviewed" },
+  { id: "dampers", label: "Manual dampers and access locations confirmed" },
+  { id: "outside-air", label: "Fresh-air controls and motorized damper confirmed" },
+  { id: "photos", label: "Photo verification required before ceiling close-up" },
+  { id: "startup", label: "Startup, airflow, and final balance assigned" },
+] as const;
+const commissioningChecklistItems = [
+  { id: "electrical", label: "Electrical, disconnect, breaker, and controls verified" },
+  { id: "condensate", label: "Condensate, trap, slope, float protection, and drain verified" },
+  { id: "filter", label: "Correct filter installed and access confirmed" },
+  { id: "blower", label: "Blower setting and measured airflow recorded" },
+  { id: "thermostat", label: "Thermostat operation and system staging confirmed" },
+  { id: "dampers", label: "Manual dampers adjusted and final positions marked" },
+  { id: "photos", label: "Equipment, duct, controls, and above-ceiling photos captured" },
+  { id: "balance", label: "Final diffuser and return balance completed" },
+] as const;
+const emptyCommissioningRecord: CommissioningRecord = {
+  model: "",
+  serial: "",
+  filterSize: "",
+  measuredCfm: "",
+  supplyStatic: "",
+  returnStatic: "",
+  ratedMaxStatic: ".5",
+  temperatureSplit: "",
+  technician: "",
+  date: "",
+  notes: "",
+  checklist: {},
+};
 
 const drawingColors: Record<DrawType, string> = {
   supply: "#2b83ff",
@@ -229,14 +960,18 @@ export default function Home() {
   const canvasViewportRef = useRef<HTMLDivElement>(null);
   const planSheetRef = useRef<HTMLDivElement>(null);
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
+  const [pdfFingerprint, setPdfFingerprint] = useState("");
   const [fileName, setFileName] = useState("Untitled HVAC Plan");
   const [pageNumber, setPageNumber] = useState(1);
   const [zoom, setZoom] = useState(1);
+  const [camera, setCamera] = useState({ x: 0, y: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeTool, setActiveTool] = useState("select");
   const [symbolCategory, setSymbolCategory] = useState<(typeof symbolCategories)[number]>("Supply air");
   const [activePresetId, setActivePresetId] = useState("supply-4way");
+  const [symbolSearch, setSymbolSearch] = useState("");
+  const [placementRotation, setPlacementRotation] = useState(0);
   const [ductSize, setDuctSize] = useState("14");
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [undoStack, setUndoStack] = useState<Drawing[][]>([]);
@@ -247,24 +982,70 @@ export default function Home() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectionBox, setSelectionBox] = useState<{ start: Point; end: Point; additive: boolean } | null>(null);
   const [renderSize, setRenderSize] = useState({ width: 0, height: 0 });
+  const [renderedPageNumber, setRenderedPageNumber] = useState(0);
   const [hoverPoint, setHoverPoint] = useState<Point | null>(null);
   const [snapMarker, setSnapMarker] = useState<Point | null>(null);
+  const [snapInfo, setSnapInfo] = useState<SnapInfo | null>(null);
+  const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuide[]>([]);
   const [branchPreview, setBranchPreview] = useState<BranchPreview | null>(null);
+  const [pendingBranchFittingId, setPendingBranchFittingId] = useState<string | null>(null);
   const [symbolPreview, setSymbolPreview] = useState<{ kind: SymbolKind; point: Point } | null>(null);
   const [branchMessage, setBranchMessage] = useState("");
+  const [branchPlacementResult, setBranchPlacementResult] = useState<{ fittingId: string; message: string } | null>(null);
+  const [branchOpportunityCursor, setBranchOpportunityCursor] = useState(0);
   const [branchStyle, setBranchStyle] = useState<"auto" | "wye45" | "tee90">("auto");
   const [branchMatchChoices, setBranchMatchChoices] = useState<Record<string, string>>({});
   const [scaleFeetPerUnit, setScaleFeetPerUnit] = useState(1 / 24.3);
   const [scaleLabel, setScaleLabel] = useState('1/4" = 1\'-0"');
   const [scaleLocked, setScaleLocked] = useState(true);
+  const [scaleVerified, setScaleVerified] = useState(false);
   const [calibrating, setCalibrating] = useState(false);
   const [referenceFeet, setReferenceFeet] = useState("10");
   const [measureDraft, setMeasureDraft] = useState<Point[]>([]);
-  const [rightTab, setRightTab] = useState<"layers" | "rooms" | "network" | "takeoff" | "checks">("layers");
+  const [rightTab, setRightTab] = useState<"builder" | "layers" | "rooms" | "network" | "takeoff" | "field" | "checks">("builder");
+  const [balanceView, setBalanceView] = useState<"system" | "rooms" | "runs">("system");
   const [saveState, setSaveState] = useState<"saved" | "saving">("saved");
   const [showSizingReview, setShowSizingReview] = useState(false);
+  const [selectedSizingIds, setSelectedSizingIds] = useState<string[]>([]);
+  const [supplyVelocityLimit, setSupplyVelocityLimit] = useState(900);
+  const [returnVelocityLimit, setReturnVelocityLimit] = useState(700);
+  const [freshVelocityLimit, setFreshVelocityLimit] = useState(600);
+  const [residentialFlexMax, setResidentialFlexMax] = useState("16");
   const [showProgressionReview, setShowProgressionReview] = useState(true);
   const [showReducerReview, setShowReducerReview] = useState(true);
+  const [validationFilter, setValidationFilter] = useState<"all" | "critical" | "warning" | "info">("all");
+  const [validationCursor, setValidationCursor] = useState(0);
+  const [reviewView, setReviewView] = useState<"overview" | "issues" | "engineering">("overview");
+  const [reviewQueueFilter, setReviewQueueFilter] = useState<"open" | "accepted" | "all">("open");
+  const [showReviewMarkers, setShowReviewMarkers] = useState(true);
+  const [activeReviewIssueId, setActiveReviewIssueId] = useState<string | null>(null);
+  const [reviewerName, setReviewerName] = useState("");
+  const [reviewDecisionNote, setReviewDecisionNote] = useState("");
+  const [reviewDecisionsBySystem, setReviewDecisionsBySystem] = useState<Record<string, Record<string, ReviewDecision>>>({});
+  const [fieldView, setFieldView] = useState<"release" | "installer" | "coordination" | "startup">("release");
+  const [fieldChecklistBySystem, setFieldChecklistBySystem] = useState<Record<string, Record<string, boolean>>>({});
+  const [releaseRecords, setReleaseRecords] = useState<SystemReleaseRecord[]>([]);
+  const [releaseRevision, setReleaseRevision] = useState("");
+  const [releaseBy, setReleaseBy] = useState("");
+  const [releaseNote, setReleaseNote] = useState("");
+  const [materialWastePercent, setMaterialWastePercent] = useState(10);
+  const [commissioningBySystem, setCommissioningBySystem] = useState<Record<string, CommissioningRecord>>({});
+  const [punchItems, setPunchItems] = useState<PunchItem[]>([]);
+  const [punchTitle, setPunchTitle] = useState("");
+  const [punchCategory, setPunchCategory] = useState<PunchItem["category"]>("Installation");
+  const [punchPriority, setPunchPriority] = useState<PunchItem["priority"]>("normal");
+  const [punchAssignedTo, setPunchAssignedTo] = useState("");
+  const [punchNote, setPunchNote] = useState("");
+  const [rfiItems, setRfiItems] = useState<RfiItem[]>([]);
+  const [rfiSubject, setRfiSubject] = useState("");
+  const [rfiCategory, setRfiCategory] = useState<RfiItem["category"]>("Coordination");
+  const [rfiPriority, setRfiPriority] = useState<RfiItem["priority"]>("normal");
+  const [rfiQuestion, setRfiQuestion] = useState("");
+  const [rfiSolution, setRfiSolution] = useState("");
+  const [rfiAssignedTo, setRfiAssignedTo] = useState("");
+  const [rfiCostImpact, setRfiCostImpact] = useState("None identified");
+  const [rfiScheduleImpact, setRfiScheduleImpact] = useState("None identified");
+  const [projectSystemFilter, setProjectSystemFilter] = useState<"all" | "blocked" | "ready">("all");
   const [showSheetNavigator, setShowSheetNavigator] = useState(false);
   const [fieldMode, setFieldMode] = useState(false);
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
@@ -275,13 +1056,61 @@ export default function Home() {
   const [backgroundOpacity, setBackgroundOpacity] = useState(100);
   const [showGrid, setShowGrid] = useState(true);
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const [splitMode, setSplitMode] = useState(false);
   const [lockedLayers, setLockedLayers] = useState<Record<LayerId, boolean>>(defaultLockedLayers);
   const [activeSystem, setActiveSystem] = useState("system-1");
   const [systemNames, setSystemNames] = useState<Record<string, string>>(defaultSystemNames);
+  const [roomAirflowTargets, setRoomAirflowTargets] = useState<Record<string, Record<string, RoomAirflowTarget>>>({});
+  const [selectedCfmProposalIds, setSelectedCfmProposalIds] = useState<string[]>([]);
   const dragRef = useRef<DragState | null>(null);
   const panRef = useRef<PanState | null>(null);
-  const spacePanRef = useRef(false);
+  const pendingFocusRef = useRef<{ page: number; point: Point } | null>(null);
+  const zoomRef = useRef(zoom);
+  const cameraRef = useRef(camera);
   const clipboardRef = useRef<Drawing | null>(null);
+  const placementWheelAtRef = useRef(0);
+  const airflowNetworkModel = useMemo(() => calculateAirflowNetwork(), [drawings]);
+  const activeValidationIssues = useMemo(
+    () => validationIssues(),
+    [activeSystem, drawings, freshVelocityLimit, residentialFlexMax, returnVelocityLimit, scaleFeetPerUnit, supplyVelocityLimit, systemNames],
+  );
+  const activeReviewedIssueRows = useMemo(
+    () => reviewedIssueRows(activeValidationIssues),
+    [activeSystem, activeValidationIssues, punchItems, reviewDecisionsBySystem, rfiItems],
+  );
+  const activeReviewSummary = useMemo(
+    () => reviewSummary(activeReviewedIssueRows),
+    [activeReviewedIssueRows],
+  );
+  const activeValidationDashboard = useMemo(
+    () => validationDashboard(activeValidationIssues),
+    [activeSystem, activeValidationIssues, drawings, roomAirflowTargets],
+  );
+  const activeFieldConnections = useMemo(
+    () => buildFieldConnectionModel(activeSystem),
+    [activeSystem, drawings],
+  );
+  const activeFieldPackage = useMemo(
+    () => fieldPackageSummary(activeReviewSummary, activeFieldConnections),
+    [activeFieldConnections, activeReviewSummary, activeSystem, drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, supplyVelocityLimit],
+  );
+  const activeBuilderSummary = useMemo(
+    () => systemBuilderSummary(activeValidationDashboard, activeFieldPackage),
+    [activeFieldPackage, activeSystem, activeValidationDashboard, drawings, residentialFlexMax, returnVelocityLimit, supplyVelocityLimit],
+  );
+  const projectCommandSnapshot = useMemo(
+    () => rightTab === "field" ? projectCommandSummary() : null,
+    [activeFieldPackage, activeSystem, commissioningBySystem, drawings, fieldChecklistBySystem, punchItems, releaseRecords, reviewDecisionsBySystem, rfiItems, rightTab, scaleVerified],
+  );
+  const filteredProjectRowsSnapshot = useMemo(
+    () => {
+      const rows = projectCommandSnapshot?.rows || [];
+      if (projectSystemFilter === "ready") return rows.filter((row) => row.closeoutReady);
+      if (projectSystemFilter === "blocked") return rows.filter((row) => !row.closeoutReady);
+      return rows;
+    },
+    [projectCommandSnapshot, projectSystemFilter],
+  );
 
   useEffect(() => {
     setSelectedIds((current) => {
@@ -289,6 +1118,44 @@ export default function Home() {
       return current.includes(selectedId) ? current : [selectedId];
     });
   }, [selectedId]);
+
+  useEffect(() => {
+    if (activeTool === "branch") return;
+    setPendingBranchFittingId(null);
+    setBranchPreview(null);
+    setBranchPlacementResult(null);
+  }, [activeTool]);
+
+  useEffect(() => {
+    if (!branchPlacementResult) return;
+    const timer = window.setTimeout(() => {
+      setBranchPlacementResult(null);
+      if (activeTool === "branch") setBranchMessage("Branch pass continues · choose another trunk or jump to the next suggested junction");
+    }, 4500);
+    return () => window.clearTimeout(timer);
+  }, [activeTool, branchPlacementResult]);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  useEffect(() => {
+    cameraRef.current = camera;
+  }, [camera]);
+
+  useEffect(() => {
+    setReleaseRevision("");
+    setReleaseBy("");
+    setReleaseNote("");
+    setActiveReviewIssueId(null);
+    setReviewerName("");
+    setReviewDecisionNote("");
+  }, [activeSystem]);
+
+  useEffect(() => () => {
+    const pan = panRef.current;
+    if (pan && pan.frameId !== null) cancelAnimationFrame(pan.frameId);
+  }, []);
 
   function selectOnly(id: string | null) {
     setSelectedId(id);
@@ -358,11 +1225,47 @@ export default function Home() {
     return systemNames[systemId] || systems.find((system) => system.id === systemId)?.label || systemId;
   }
 
-  function restoreProject(name: string) {
+  function resetProjectWorkflowState() {
+    setScaleFeetPerUnit(1 / 24.3);
+    setScaleLabel('1/4" = 1\'-0"');
+    setScaleLocked(true);
+    setScaleVerified(false);
+    setSystemNames(defaultSystemNames);
+    setActiveSystem("system-1");
+    setShowCfmLabels(true);
+    setShowLengthLabels(true);
+    setVisibleLayers(defaultVisibleLayers);
+    setBackgroundOpacity(100);
+    setShowGrid(true);
+    setSnapEnabled(true);
+    setLockedLayers(defaultLockedLayers);
+    setSupplyVelocityLimit(900);
+    setReturnVelocityLimit(700);
+    setFreshVelocityLimit(600);
+    setResidentialFlexMax("16");
+    setMaterialWastePercent(10);
+    setFieldChecklistBySystem({});
+    setCommissioningBySystem({});
+    setPunchItems([]);
+    setRfiItems([]);
+    setRoomAirflowTargets({});
+    setReviewDecisionsBySystem({});
+    setReleaseRecords([]);
+    setSelectedCfmProposalIds([]);
+    setActiveReviewIssueId(null);
+    setReviewerName("");
+    setReviewDecisionNote("");
+    setReleaseRevision("");
+    setReleaseBy("");
+    setReleaseNote("");
+  }
+
+  function restoreProject(name: string, sourceFingerprint: string) {
     try {
       const stored = localStorage.getItem(`${STORAGE_PREFIX}${name.toLowerCase()}`);
       if (!stored) {
         setDrawings([]);
+        resetProjectWorkflowState();
         setUndoStack([]);
         setRedoStack([]);
         return;
@@ -372,6 +1275,12 @@ export default function Home() {
       setDrawings(synchronizeFittingSizes(restoredDrawings, restoredDrawings));
       setScaleFeetPerUnit(project.scaleFeetPerUnit || 1 / 24.3);
       setScaleLabel(project.scaleLabel || '1/4" = 1\'-0"');
+      setScaleLocked(true);
+      setScaleVerified(project.scaleVerified ?? false);
+      setCalibrating(false);
+      if (project.pdfFingerprint && project.pdfFingerprint !== sourceFingerprint) {
+        setBranchMessage("A revised PDF was detected. Existing markups were restored, but every prior field release is now stale");
+      }
       setSystemNames({ ...defaultSystemNames, ...(project.systemNames || {}) });
       setShowCfmLabels(project.showCfmLabels ?? true);
       setShowLengthLabels(project.showLengthLabels ?? true);
@@ -380,10 +1289,25 @@ export default function Home() {
       setShowGrid(project.showGrid ?? true);
       setSnapEnabled(project.snapEnabled ?? true);
       setLockedLayers({ ...defaultLockedLayers, ...(project.lockedLayers || {}) });
+      setSupplyVelocityLimit(project.supplyVelocityLimit ?? 900);
+      setReturnVelocityLimit(project.returnVelocityLimit ?? 700);
+      setFreshVelocityLimit(project.freshVelocityLimit ?? 600);
+      setResidentialFlexMax(project.residentialFlexMax || "16");
+      setFieldChecklistBySystem(project.fieldChecklistBySystem || (project.fieldChecklist ? { "system-1": project.fieldChecklist } : {}));
+      setMaterialWastePercent(project.materialWastePercent ?? 10);
+      setCommissioningBySystem(project.commissioningBySystem || {});
+      setPunchItems(project.punchItems || []);
+      setRfiItems(project.rfiItems || []);
+      setRoomAirflowTargets(project.roomAirflowTargets || {});
+      setReviewDecisionsBySystem(project.reviewDecisionsBySystem || {});
+      setReleaseRecords(project.releaseRecords || []);
+      setSelectedCfmProposalIds([]);
+      setActiveReviewIssueId(null);
       setUndoStack([]);
       setRedoStack([]);
     } catch {
       setDrawings([]);
+      resetProjectWorkflowState();
       setUndoStack([]);
       setRedoStack([]);
     }
@@ -399,13 +1323,15 @@ export default function Home() {
     setError("");
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
+      const sourceFingerprint = stableByteHash(bytes);
       const document = await pdfjsLib.getDocument({ data: bytes }).promise;
       const projectName = file.name.replace(/\.pdf$/i, "");
       setPdf(document);
+      setPdfFingerprint(sourceFingerprint);
       setFileName(projectName);
       setPageNumber(1);
       setZoom(1);
-      restoreProject(projectName);
+      restoreProject(projectName, sourceFingerprint);
     } catch {
       setError("This PDF could not be opened. Try another file.");
     } finally {
@@ -417,13 +1343,15 @@ export default function Home() {
     setLoading(true);
     setError("");
     try {
+      const sourceFingerprint = stableByteHash(bytes);
       const document = await pdfjsLib.getDocument({ data: bytes }).promise;
       const projectName = name.replace(/\.pdf$/i, "");
       setPdf(document);
+      setPdfFingerprint(sourceFingerprint);
       setFileName(projectName);
       setPageNumber(1);
       setZoom(1);
-      restoreProject(projectName);
+      restoreProject(projectName, sourceFingerprint);
     } catch {
       setError("This Drive PDF could not be opened.");
     } finally {
@@ -467,30 +1395,69 @@ export default function Home() {
       if (!context) return;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       await page.render({ canvasContext: context, viewport }).promise;
-      if (!cancelled) setRenderSize({ width: viewport.width, height: viewport.height });
+      if (!cancelled) {
+        setRenderSize({ width: viewport.width, height: viewport.height });
+        setRenderedPageNumber(pageNumber);
+      }
     };
     void render();
     return () => { cancelled = true; };
   }, [pdf, pageNumber]);
 
-  const zoomOut = () => setZoom((value) => Math.max(.35, +(value - .15).toFixed(2)));
-  const zoomIn = () => setZoom((value) => Math.min(3, +(value + .15).toFixed(2)));
+  useEffect(() => {
+    if (!pdf || !renderSize.width || !renderSize.height) return;
+    const frame = requestAnimationFrame(() => centerPlan());
+    return () => cancelAnimationFrame(frame);
+  }, [pdf, pageNumber, renderSize.width, renderSize.height]);
 
-  function centerPlan() {
-    requestAnimationFrame(() => requestAnimationFrame(() => {
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (!pending || pending.page !== pageNumber || renderedPageNumber !== pageNumber) return;
+    const frame = requestAnimationFrame(() => {
       const viewport = canvasViewportRef.current;
       if (!viewport) return;
-      viewport.scrollTo({
-        left: Math.max(0, (viewport.scrollWidth - viewport.clientWidth) / 2),
-        top: Math.max(0, (viewport.scrollHeight - viewport.clientHeight) / 2),
-        behavior: "smooth",
+      updateCamera({
+        x: viewport.clientWidth / 2 - pending.point.x * zoomRef.current,
+        y: viewport.clientHeight / 2 - pending.point.y * zoomRef.current,
       });
-    }));
+      pendingFocusRef.current = null;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pageNumber, renderedPageNumber, renderSize.width, renderSize.height]);
+
+  function updateCamera(next: { x: number; y: number }) {
+    cameraRef.current = next;
+    setCamera(next);
+  }
+
+  function zoomFromWorkspaceCenter(factor: number) {
+    const viewport = canvasViewportRef.current;
+    if (!viewport) return;
+    const bounds = viewport.getBoundingClientRect();
+    zoomAtPoint(
+      Math.max(.25, Math.min(8, +(zoomRef.current * factor).toFixed(3))),
+      bounds.left + bounds.width / 2,
+      bounds.top + bounds.height / 2,
+    );
+  }
+
+  const zoomOut = () => zoomFromWorkspaceCenter(1 / 1.18);
+  const zoomIn = () => zoomFromWorkspaceCenter(1.18);
+
+  function centerPlan(nextZoom = zoomRef.current) {
+    const viewport = canvasViewportRef.current;
+    if (!viewport || !renderSize.width || !renderSize.height) return;
+    updateCamera({
+      x: (viewport.clientWidth - renderSize.width * nextZoom) / 2,
+      y: (viewport.clientHeight - renderSize.height * nextZoom) / 2,
+    });
   }
 
   function applyViewportZoom(nextZoom: number) {
-    setZoom(Math.max(.35, Math.min(4, +nextZoom.toFixed(2))));
-    centerPlan();
+    const normalizedZoom = Math.max(.25, Math.min(8, +nextZoom.toFixed(3)));
+    zoomRef.current = normalizedZoom;
+    setZoom(normalizedZoom);
+    centerPlan(normalizedZoom);
   }
 
   function fitPage() {
@@ -509,32 +1476,42 @@ export default function Home() {
 
   function zoomAtPoint(nextZoom: number, clientX: number, clientY: number) {
     const viewport = canvasViewportRef.current;
-    const sheet = planSheetRef.current;
-    if (!viewport || !sheet || nextZoom === zoom) return;
-    const sheetBounds = sheet.getBoundingClientRect();
-    const xRatio = Math.max(0, Math.min(1, (clientX - sheetBounds.left) / Math.max(1, sheetBounds.width)));
-    const yRatio = Math.max(0, Math.min(1, (clientY - sheetBounds.top) / Math.max(1, sheetBounds.height)));
-    setZoom(nextZoom);
-    requestAnimationFrame(() => {
-      const nextSheet = planSheetRef.current?.getBoundingClientRect();
-      if (!nextSheet) return;
-      viewport.scrollLeft += nextSheet.left + nextSheet.width * xRatio - clientX;
-      viewport.scrollTop += nextSheet.top + nextSheet.height * yRatio - clientY;
+    if (!viewport || nextZoom === zoomRef.current) return;
+    const viewportBounds = viewport.getBoundingClientRect();
+    const localX = clientX - viewportBounds.left;
+    const localY = clientY - viewportBounds.top;
+    const currentZoom = zoomRef.current;
+    const planX = (localX - cameraRef.current.x) / currentZoom;
+    const planY = (localY - cameraRef.current.y) / currentZoom;
+    updateCamera({
+      x: localX - planX * nextZoom,
+      y: localY - planY * nextZoom,
     });
+    zoomRef.current = nextZoom;
+    setZoom(nextZoom);
   }
 
   function handleWheelZoom(event: ReactWheelEvent<HTMLDivElement>) {
     if (!pdf) return;
     event.preventDefault();
-    const direction = event.deltaY < 0 ? 1 : -1;
-    const step = event.ctrlKey ? .2 : .12;
-    const nextZoom = Math.max(.35, Math.min(4, +(zoom + direction * step).toFixed(2)));
+    if (symbolPreview && symbolTools.includes(activeTool as SymbolKind)) {
+      if (!event.deltaY) return;
+      const now = performance.now();
+      if (now - placementWheelAtRef.current < 55) return;
+      placementWheelAtRef.current = now;
+      const step = event.shiftKey ? 45 : 15;
+      const direction = event.deltaY > 0 ? 1 : -1;
+      setPlacementRotation((current) => (current + direction * step + 360) % 360);
+      return;
+    }
+    const delta = event.deltaMode === 1 ? event.deltaY * 18 : event.deltaY;
+    const sensitivity = event.ctrlKey ? .004 : .0018;
+    const nextZoom = Math.max(.25, Math.min(8, +(zoomRef.current * Math.exp(-delta * sensitivity)).toFixed(3)));
     zoomAtPoint(nextZoom, event.clientX, event.clientY);
   }
 
   function startPlanPan(event: PointerEvent<HTMLDivElement>) {
-    const panButton = event.button === 2 || (event.button === 0 && spacePanRef.current);
-    if (!pdf || !panButton || draft.length) return;
+    if (!pdf || event.button !== 2 || draft.length) return;
     const viewport = canvasViewportRef.current;
     if (!viewport) return;
     event.preventDefault();
@@ -543,8 +1520,11 @@ export default function Home() {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      scrollLeft: viewport.scrollLeft,
-      scrollTop: viewport.scrollTop,
+      cameraX: cameraRef.current.x,
+      cameraY: cameraRef.current.y,
+      latestX: event.clientX,
+      latestY: event.clientY,
+      frameId: null,
       moved: false,
     };
     viewport.classList.add("panning");
@@ -554,34 +1534,59 @@ export default function Home() {
     const pan = panRef.current;
     const viewport = canvasViewportRef.current;
     if (!pan || !viewport || pan.pointerId !== event.pointerId) return;
-    const dx = event.clientX - pan.startX;
-    const dy = event.clientY - pan.startY;
-    pan.moved ||= Math.hypot(dx, dy) > 3;
-    viewport.scrollLeft = pan.scrollLeft - dx;
-    viewport.scrollTop = pan.scrollTop - dy;
+    event.preventDefault();
+    pan.latestX = event.clientX;
+    pan.latestY = event.clientY;
+    pan.moved ||= Math.hypot(pan.latestX - pan.startX, pan.latestY - pan.startY) > 2;
+    if (pan.frameId !== null) return;
+    pan.frameId = requestAnimationFrame(() => {
+      const activePan = panRef.current;
+      if (!activePan || activePan.pointerId !== pan.pointerId) return;
+      activePan.frameId = null;
+      updateCamera({
+        x: activePan.cameraX + activePan.latestX - activePan.startX,
+        y: activePan.cameraY + activePan.latestY - activePan.startY,
+      });
+    });
   }
 
   function endPlanPan(event: PointerEvent<HTMLDivElement>) {
-    if (!panRef.current || panRef.current.pointerId !== event.pointerId) return;
-    canvasViewportRef.current?.classList.remove("panning");
+    const pan = panRef.current;
+    const viewport = canvasViewportRef.current;
+    if (!pan || !viewport || pan.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    if (pan.frameId !== null) {
+      cancelAnimationFrame(pan.frameId);
+      pan.frameId = null;
+    }
+    updateCamera({
+      x: pan.cameraX + event.clientX - pan.startX,
+      y: pan.cameraY + event.clientY - pan.startY,
+    });
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    viewport.classList.remove("panning");
     panRef.current = null;
   }
 
   function goToPage(page: number) {
     if (!pdf) return;
     setPageNumber(Math.max(1, Math.min(pdf.numPages, page)));
-    canvasViewportRef.current?.scrollTo({ left: 0, top: 0 });
+    requestAnimationFrame(() => centerPlan());
   }
 
   const saveProject = useCallback(() => {
     if (!pdf) return;
     const project: SavedProject = {
-      version: 1,
+      version: 3,
       fileName,
       drawings,
       savedAt: new Date().toISOString(),
+      pdfFingerprint,
       scaleFeetPerUnit,
       scaleLabel,
+      scaleVerified,
       systemNames,
       showCfmLabels,
       showLengthLabels,
@@ -590,10 +1595,22 @@ export default function Home() {
       showGrid,
       snapEnabled,
       lockedLayers,
+      supplyVelocityLimit,
+      returnVelocityLimit,
+      freshVelocityLimit,
+      residentialFlexMax,
+      fieldChecklistBySystem,
+      materialWastePercent,
+      commissioningBySystem,
+      punchItems,
+      rfiItems,
+      roomAirflowTargets,
+      reviewDecisionsBySystem,
+      releaseRecords,
     };
     localStorage.setItem(`${STORAGE_PREFIX}${fileName.toLowerCase()}`, JSON.stringify(project));
     setSaveState("saved");
-  }, [backgroundOpacity, drawings, fileName, lockedLayers, pdf, scaleFeetPerUnit, scaleLabel, showCfmLabels, showGrid, showLengthLabels, snapEnabled, systemNames, visibleLayers]);
+  }, [backgroundOpacity, commissioningBySystem, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdf, pdfFingerprint, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, showCfmLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, visibleLayers]);
 
   useEffect(() => {
     if (!pdf) return;
@@ -632,7 +1649,7 @@ export default function Home() {
   function nearestSupplySegment(point: Point) {
     let best: { point: Point; drawing: Drawing; segmentIndex: number; distance: number; angle: number; side: 1 | -1 } | null = null;
     for (const drawing of drawings) {
-      if (drawing.page !== pageNumber || drawing.type !== "supply" || drawing.fitting || drawingSystem(drawing) !== activeSystem) continue;
+      if (drawing.page !== pageNumber || drawing.type !== "supply" || drawing.fitting) continue;
       for (let index = 0; index < drawing.points.length - 1; index++) {
         const a = drawing.points[index];
         const b = drawing.points[index + 1];
@@ -640,7 +1657,9 @@ export default function Home() {
         const dy = b.y - a.y;
         const lengthSquared = dx * dx + dy * dy;
         if (!lengthSquared) continue;
-        const amount = Math.max(.08, Math.min(.92, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared));
+        const length = Math.sqrt(lengthSquared);
+        const margin = Math.min(.45, 24 / length);
+        const amount = Math.max(margin, Math.min(1 - margin, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared));
         const projected = { x: a.x + amount * dx, y: a.y + amount * dy };
         const distance = Math.hypot(point.x - projected.x, point.y - projected.y);
         const cross = dx * (point.y - projected.y) - dy * (point.x - projected.x);
@@ -656,7 +1675,7 @@ export default function Home() {
   function orientMainTowardAirflow<T extends NonNullable<ReturnType<typeof nearestSupplySegment>>>(target: T) {
     const equipment = drawings.filter((drawing) =>
       drawing.page === pageNumber &&
-      drawing.symbol?.kind === "equipment" &&
+      isPrimaryAirflowEquipment(drawing) &&
       drawingSystem(drawing) === activeSystem
     );
     if (!equipment.length) return { ...target, points: target.drawing.points, reversed: false };
@@ -678,6 +1697,8 @@ export default function Home() {
 
   function existingBranchRoute(center: Point, mainId: string, mainAngle: number) {
     let best: { drawing: Drawing; points: Point[]; angle: number; side: 1 | -1; distance: number } | null = null;
+    const main = drawings.find((drawing) => drawing.id === mainId);
+    const mainSystem = main ? drawingSystem(main) : activeSystem;
     for (const drawing of drawings) {
       if (
         drawing.id === mainId ||
@@ -685,7 +1706,7 @@ export default function Home() {
         drawing.type !== "supply" ||
         drawing.fitting ||
         drawing.symbol ||
-        drawingSystem(drawing) !== activeSystem
+        drawingSystem(drawing) !== mainSystem
       ) continue;
       for (let index = 0; index < drawing.points.length - 1; index++) {
         const a = drawing.points[index];
@@ -716,6 +1737,301 @@ export default function Home() {
       }
     }
     return best;
+  }
+
+  function branchOpportunities(): BranchOpportunity[] {
+    const supplyRuns = drawings.filter((drawing) =>
+      drawing.page === pageNumber &&
+      drawing.type === "supply" &&
+      !drawing.fitting &&
+      !drawing.symbol &&
+      drawing.points.length >= 2
+    );
+    const assignedRuns = new Set(drawings
+      .filter((drawing) => drawing.page === pageNumber && drawing.fitting)
+      .flatMap((drawing) => drawing.fitting?.connectedIds.filter(Boolean) || []));
+    const fittingCenters = drawings
+      .filter((drawing) => drawing.page === pageNumber && drawing.fitting)
+      .map((drawing) => drawing.points[0]);
+    const byPair = new Map<string, BranchOpportunity>();
+    const distanceLimit = 44 / zoom;
+
+    for (const main of supplyRuns) {
+      const mainLength = main.points.slice(1).reduce((total, point, index) =>
+        total + Math.hypot(point.x - main.points[index].x, point.y - main.points[index].y), 0);
+      for (let segmentIndex = 0; segmentIndex < main.points.length - 1; segmentIndex += 1) {
+        const a = main.points[segmentIndex];
+        const b = main.points[segmentIndex + 1];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const lengthSquared = dx * dx + dy * dy;
+        if (!lengthSquared) continue;
+        const segmentLength = Math.sqrt(lengthSquared);
+        const mainAngle = Math.atan2(dy, dx);
+        const edgeMargin = Math.min(.42, Math.max(.08, 18 / segmentLength));
+
+        for (const branch of supplyRuns) {
+          if (
+            branch.id === main.id ||
+            assignedRuns.has(branch.id) ||
+            drawingSystem(branch) !== drawingSystem(main)
+          ) continue;
+          const branchLength = branch.points.slice(1).reduce((total, point, index) =>
+            total + Math.hypot(point.x - branch.points[index].x, point.y - branch.points[index].y), 0);
+
+          for (const endpointIndex of [0, branch.points.length - 1]) {
+            const endpoint = branch.points[endpointIndex];
+            const amount = ((endpoint.x - a.x) * dx + (endpoint.y - a.y) * dy) / lengthSquared;
+            if (amount <= edgeMargin || amount >= 1 - edgeMargin) continue;
+            const center = { x: a.x + amount * dx, y: a.y + amount * dy };
+            const distance = Math.hypot(endpoint.x - center.x, endpoint.y - center.y);
+            if (distance > distanceLimit) continue;
+            if (fittingCenters.some((fittingCenter) => Math.hypot(fittingCenter.x - center.x, fittingCenter.y - center.y) < 32 / zoom)) continue;
+
+            const neighbor = endpointIndex === 0 ? branch.points[1] : branch.points[branch.points.length - 2];
+            const branchAngle = Math.atan2(neighbor.y - endpoint.y, neighbor.x - endpoint.x);
+            const divergence = Math.abs(Math.sin(branchAngle - mainAngle));
+            if (divergence < .22) continue;
+            const cross = Math.cos(mainAngle) * Math.sin(branchAngle) - Math.sin(mainAngle) * Math.cos(branchAngle);
+            const side = (cross >= 0 ? 1 : -1) as 1 | -1;
+            const style = branchStyle === "auto" ? automaticBranchStyle(mainAngle, branchAngle) : branchStyle;
+            const pairKey = [main.id, branch.id].sort().join(":");
+            const score = distance - divergence * 8 - (mainLength >= branchLength ? 4 : 0);
+            const opportunity: BranchOpportunity = {
+              id: `${main.id}:${branch.id}:${segmentIndex}:${endpointIndex}`,
+              center,
+              angle: mainAngle,
+              branchAngle,
+              side,
+              style,
+              parentSize: main.size,
+              mainRunId: main.id,
+              branchRunId: branch.id,
+              score,
+            };
+            const previous = byPair.get(pairKey);
+            if (!previous || opportunity.score < previous.score) byPair.set(pairKey, opportunity);
+          }
+        }
+      }
+    }
+
+    return [...byPair.values()]
+      .sort((left, right) => left.score - right.score)
+      .filter((opportunity, index, all) => !all.slice(0, index).some((previous) =>
+        Math.hypot(previous.center.x - opportunity.center.x, previous.center.y - opportunity.center.y) < 26 / zoom
+      ))
+      .slice(0, 24);
+  }
+
+  function focusNextBranchOpportunity(opportunities = branchOpportunities()) {
+    if (!opportunities.length) {
+      setBranchMessage("No obvious unconnected junctions found · you can still click any blue trunk manually");
+      return;
+    }
+    const index = branchOpportunityCursor % opportunities.length;
+    const opportunity = opportunities[index];
+    setBranchOpportunityCursor((index + 1) % opportunities.length);
+    setActiveTool("branch");
+    setSelectedId(null);
+    setPendingBranchFittingId(null);
+    setBranchPlacementResult(null);
+    setBranchPreview({
+      center: opportunity.center,
+      angle: opportunity.angle,
+      branchAngle: opportunity.branchAngle,
+      side: opportunity.side,
+      style: opportunity.style,
+      parentSize: opportunity.parentSize,
+      valid: true,
+      matchedExisting: true,
+      mainRunId: opportunity.mainRunId,
+      branchRunId: opportunity.branchRunId,
+      runIds: [opportunity.mainRunId, opportunity.branchRunId],
+      mode: "split-trunk",
+    });
+    setSnapMarker(opportunity.center);
+    setBranchMessage(`Suggested junction ${index + 1} of ${opportunities.length} · click the highlighted T/Y to confirm`);
+    const viewport = canvasViewportRef.current;
+    if (viewport) updateCamera({
+      x: viewport.clientWidth / 2 - opportunity.center.x * zoomRef.current,
+      y: viewport.clientHeight / 2 - opportunity.center.y * zoomRef.current,
+    });
+  }
+
+  function nearestAttachableSupplySegment(point: Point, fittingId: string) {
+    const fitting = drawings.find((drawing) => drawing.id === fittingId && drawing.fitting);
+    if (!fitting?.fitting) return null;
+    const connected = new Set(fitting.fitting.connectedIds.filter(Boolean));
+    let best: {
+      drawing: Drawing;
+      point: Point;
+      distance: number;
+      endpointIndex: number;
+      angle: number;
+      side: 1 | -1;
+    } | null = null;
+    for (const drawing of drawings) {
+      if (
+        drawing.page !== fitting.page ||
+        drawing.type !== "supply" ||
+        drawing.fitting ||
+        connected.has(drawing.id) ||
+        drawingSystem(drawing) !== drawingSystem(fitting) ||
+        drawing.points.length < 2
+      ) continue;
+      for (let index = 0; index < drawing.points.length - 1; index += 1) {
+        const a = drawing.points[index];
+        const b = drawing.points[index + 1];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const lengthSquared = dx * dx + dy * dy;
+        if (!lengthSquared) continue;
+        const amount = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared));
+        const projected = { x: a.x + amount * dx, y: a.y + amount * dy };
+        const distance = Math.hypot(point.x - projected.x, point.y - projected.y);
+        if (best && distance >= best.distance) continue;
+        const lastIndex = drawing.points.length - 1;
+        const endpointIndex = Math.hypot(drawing.points[0].x - fitting.points[0].x, drawing.points[0].y - fitting.points[0].y)
+          <= Math.hypot(drawing.points[lastIndex].x - fitting.points[0].x, drawing.points[lastIndex].y - fitting.points[0].y)
+          ? 0
+          : lastIndex;
+        const endpoint = drawing.points[endpointIndex];
+        const neighbor = endpointIndex === 0 ? drawing.points[1] : drawing.points[lastIndex - 1];
+        const angle = Math.atan2(neighbor.y - endpoint.y, neighbor.x - endpoint.x);
+        const cross = Math.cos(fitting.fitting.angle) * Math.sin(angle) - Math.sin(fitting.fitting.angle) * Math.cos(angle);
+        best = { drawing, point: projected, distance, endpointIndex, angle, side: cross >= 0 ? 1 : -1 };
+      }
+    }
+    return best;
+  }
+
+  function attachPendingBranchRun(point: Point) {
+    if (!pendingBranchFittingId) return false;
+    const fitting = drawings.find((drawing) => drawing.id === pendingBranchFittingId && drawing.fitting);
+    const candidate = nearestAttachableSupplySegment(point, pendingBranchFittingId);
+    if (!fitting?.fitting || !candidate || candidate.distance > 48 / zoom) {
+      setBranchMessage("Click directly on the blue run you want connected to the open branch port");
+      return true;
+    }
+    const resolvedStyle = branchStyle === "auto"
+      ? automaticBranchStyle(fitting.fitting.angle, candidate.angle)
+      : branchStyle;
+    const connectedIds = [...fitting.fitting.connectedIds];
+    connectedIds[2] = candidate.drawing.id;
+    const updatedFitting: Drawing = {
+      ...fitting,
+      size: `${fitting.fitting.upstreamSize}×${fitting.fitting.downstreamSize}×${candidate.drawing.size}`,
+      fitting: {
+        ...fitting.fitting,
+        style: resolvedStyle,
+        branchAngle: candidate.angle,
+        side: candidate.side,
+        branchSize: candidate.drawing.size,
+        connectedIds,
+      },
+    };
+    const branchPort = fittingPortPoints(updatedFitting)[2];
+    const connectedDrawings = drawings.map((drawing) => {
+      if (drawing.id === updatedFitting.id) return updatedFitting;
+      if (drawing.id !== candidate.drawing.id) return drawing;
+      return {
+        ...drawing,
+        points: drawing.points.map((existingPoint, index) => index === candidate.endpointIndex ? branchPort : existingPoint),
+      };
+    });
+    setHistory(connectedDrawings);
+    setSelectedId(updatedFitting.id);
+    setPendingBranchFittingId(null);
+    setBranchPreview(null);
+    setSnapMarker(null);
+    const completionMessage = `${resolvedStyle === "tee90" ? "90° tee" : "45° wye"} complete · 3 of 3 ports attached`;
+    setBranchMessage(completionMessage);
+    setBranchPlacementResult({ fittingId: updatedFitting.id, message: completionMessage });
+    return true;
+  }
+
+  function existingThreeRunJunction(point: Point): ThreeRunBranchMatch | null {
+    const radius = 62 / zoom;
+    const endpoints = drawings
+      .filter((drawing) =>
+        drawing.page === pageNumber &&
+        drawing.type === "supply" &&
+        !drawing.fitting &&
+        drawing.points.length >= 2
+      )
+      .flatMap((drawing) => [0, drawing.points.length - 1].map((endpointIndex) => {
+        const endpoint = drawing.points[endpointIndex];
+        const neighbor = endpointIndex === 0 ? drawing.points[1] : drawing.points[drawing.points.length - 2];
+        return {
+          drawing,
+          endpointIndex,
+          endpoint,
+          neighbor,
+          distance: Math.hypot(endpoint.x - point.x, endpoint.y - point.y),
+        };
+      }))
+      .filter((candidate) => candidate.distance <= radius)
+      .sort((a, b) => a.distance - b.distance);
+
+    const nearestByRun = [...new Map(endpoints.map((candidate) => [candidate.drawing.id, candidate])).values()].slice(0, 12);
+    if (nearestByRun.length < 3) return null;
+
+    let best: { a: typeof nearestByRun[number]; b: typeof nearestByRun[number]; c: typeof nearestByRun[number]; score: number } | null = null;
+    for (let aIndex = 0; aIndex < nearestByRun.length - 2; aIndex += 1) {
+      for (let bIndex = aIndex + 1; bIndex < nearestByRun.length - 1; bIndex += 1) {
+        const a = nearestByRun[aIndex];
+        const b = nearestByRun[bIndex];
+        const angleA = Math.atan2(a.neighbor.y - a.endpoint.y, a.neighbor.x - a.endpoint.x);
+        const angleB = Math.atan2(b.neighbor.y - b.endpoint.y, b.neighbor.x - b.endpoint.x);
+        const oppositeError = Math.abs(Math.PI - Math.abs(Math.atan2(Math.sin(angleA - angleB), Math.cos(angleA - angleB))));
+        if (oppositeError > Math.PI * .38) continue;
+        for (let cIndex = 0; cIndex < nearestByRun.length; cIndex += 1) {
+          if (cIndex === aIndex || cIndex === bIndex) continue;
+          const c = nearestByRun[cIndex];
+          if (drawingSystem(a.drawing) !== drawingSystem(b.drawing) || drawingSystem(a.drawing) !== drawingSystem(c.drawing)) continue;
+          const angleC = Math.atan2(c.neighbor.y - c.endpoint.y, c.neighbor.x - c.endpoint.x);
+          const divergence = Math.min(
+            Math.abs(Math.sin(angleC - angleA)),
+            Math.abs(Math.sin(angleC - angleB)),
+          );
+          if (divergence < .28) continue;
+          const score = a.distance + b.distance + c.distance + oppositeError * 28 - divergence * 12;
+          if (!best || score < best.score) best = { a, b, c, score };
+        }
+      }
+    }
+    if (!best) return null;
+
+    const center = {
+      x: (best.a.endpoint.x + best.b.endpoint.x + best.c.endpoint.x) / 3,
+      y: (best.a.endpoint.y + best.b.endpoint.y + best.c.endpoint.y) / 3,
+    };
+    const junctionSystem = drawingSystem(best.a.drawing);
+    const equipment = drawings.filter((drawing) =>
+      drawing.page === pageNumber &&
+      isPrimaryAirflowEquipment(drawing) &&
+      drawingSystem(drawing) === junctionSystem
+    );
+    const sourceDistance = (candidate: (typeof nearestByRun)[number]) => equipment.length
+      ? Math.min(...equipment.map((unit) => Math.hypot(candidate.neighbor.x - unit.points[0].x, candidate.neighbor.y - unit.points[0].y)))
+      : candidate.distance;
+    const upstream = sourceDistance(best.a) <= sourceDistance(best.b) ? best.a : best.b;
+    const downstream = upstream === best.a ? best.b : best.a;
+    const branch = best.c;
+    const upstreamDirection = Math.atan2(upstream.neighbor.y - upstream.endpoint.y, upstream.neighbor.x - upstream.endpoint.x);
+    const angle = upstreamDirection + Math.PI;
+    const branchAngle = Math.atan2(branch.neighbor.y - branch.endpoint.y, branch.neighbor.x - branch.endpoint.x);
+    const cross = Math.cos(angle) * Math.sin(branchAngle) - Math.sin(angle) * Math.cos(branchAngle);
+    const side: 1 | -1 = cross >= 0 ? 1 : -1;
+    return {
+      center,
+      angle,
+      branchAngle,
+      side,
+      style: branchStyle === "auto" ? automaticBranchStyle(angle, branchAngle) : branchStyle,
+      ports: [upstream, downstream, branch].map(({ drawing, endpointIndex }) => ({ drawing, endpointIndex })),
+    };
   }
 
   function steppedSize(parent: string, steps: number) {
@@ -974,7 +2290,7 @@ export default function Home() {
     return minimum;
   }
 
-  function airflowNetwork() {
+  function calculateAirflowNetwork() {
     const runs = drawings.filter((drawing) => ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting);
     const direct = new Map<string, number>();
     const terminalRun = new Map<string, string>();
@@ -982,26 +2298,32 @@ export default function Home() {
     const children = new Map<string, string[]>();
     for (const fitting of drawings.filter((drawing) => drawing.fitting)) {
       const [upstreamId, downstreamId, branchId] = fitting.fitting!.connectedIds;
-      children.set(upstreamId, [downstreamId, branchId]);
+      children.set(upstreamId, [...new Set([...(children.get(upstreamId) || []), downstreamId, branchId].filter(Boolean))]);
     }
     for (const symbol of drawings.filter((drawing) => drawing.symbol)) {
       const desiredType = symbol.symbol?.kind === "diffuser" ? ["supply"] : symbol.symbol?.kind === "returnGrille" ? ["return"] : [];
-      if (symbol.symbol?.kind === "equipment") {
-        const nearest = runs
-          .filter((run) => run.type === "supply" && drawingSystem(run) === drawingSystem(symbol))
-          .map((run) => ({ run, distance: pointToDrawingDistance(symbol.points[0], run) }))
-          .sort((a, b) => a.distance - b.distance)[0];
-        if (nearest && nearest.distance <= 24) equipmentRun.set(symbol.id, nearest.run.id);
+      if (isPrimaryAirflowEquipment(symbol)) {
+        const savedRun = runs.find((run) =>
+          run.id === symbol.symbol?.connectedRunId &&
+          run.page === symbol.page &&
+          run.type === "supply" &&
+          drawingSystem(run) === drawingSystem(symbol)
+        );
+        if (savedRun) {
+          equipmentRun.set(symbol.id, savedRun.id);
+        }
         continue;
       }
       if (!desiredType.length) continue;
-      const candidates = runs
-        .filter((run) => desiredType.includes(run.type) && drawingSystem(run) === drawingSystem(symbol))
-        .map((run) => ({ run, distance: pointToDrawingDistance(symbol.points[0], run) }))
-        .sort((a, b) => a.distance - b.distance);
-      if (candidates[0] && candidates[0].distance <= 24) {
-        terminalRun.set(symbol.id, candidates[0].run.id);
-        direct.set(candidates[0].run.id, (direct.get(candidates[0].run.id) || 0) + (symbol.cfm || 0));
+      const savedRun = runs.find((run) =>
+        run.id === symbol.symbol?.connectedRunId &&
+        run.page === symbol.page &&
+        desiredType.includes(run.type) &&
+        drawingSystem(run) === drawingSystem(symbol)
+      );
+      if (savedRun) {
+        terminalRun.set(symbol.id, savedRun.id);
+        direct.set(savedRun.id, (direct.get(savedRun.id) || 0) + (symbol.cfm || 0));
       }
     }
     const calculated = new Map<string, number>();
@@ -1015,6 +2337,10 @@ export default function Home() {
     };
     runs.forEach((run) => calculate(run.id));
     return { calculated, terminalRun, equipmentRun, children };
+  }
+
+  function airflowNetwork() {
+    return airflowNetworkModel;
   }
 
   function runAirflow(drawing: Drawing) {
@@ -1299,6 +2625,38 @@ export default function Home() {
     };
   }
 
+  function symbolNetworkTrace(symbol?: Drawing) {
+    const runIds = new Set<string>();
+    const fittingIds = new Set<string>();
+    const symbolIds = new Set<string>();
+    const empty = { runIds, fittingIds, symbolIds, totalCfm: 0, runCount: 0, fittingCount: 0, terminalCount: 0, sourceConnected: false };
+    if (!symbol?.symbol || (
+      !["diffuser", "returnGrille"].includes(symbol.symbol.kind) &&
+      !isPrimaryAirflowEquipment(symbol)
+    )) return empty;
+
+    const network = airflowNetwork();
+    const rootRunId = symbol.symbol.connectedRunId ||
+      (symbol.symbol.kind === "equipment" ? network.equipmentRun.get(symbol.id) : network.terminalRun.get(symbol.id));
+    const rootRun = drawings.find((drawing) => drawing.id === rootRunId);
+    if (!rootRun) {
+      symbolIds.add(symbol.id);
+      return empty;
+    }
+
+    const trace = ductNetworkTrace(rootRun);
+    const tracedSymbols = drawings.filter((drawing) => {
+      if (!drawing.symbol) return false;
+      const runId = isPrimaryAirflowEquipment(drawing)
+        ? network.equipmentRun.get(drawing.id)
+        : network.terminalRun.get(drawing.id);
+      return Boolean(runId && trace.runIds.has(runId));
+    });
+    tracedSymbols.forEach((drawing) => symbolIds.add(drawing.id));
+    symbolIds.add(symbol.id);
+    return { ...trace, symbolIds };
+  }
+
   function runAttachmentStatus(run?: Drawing) {
     if (!run || run.fitting || !["supply", "return", "fresh"].includes(run.type)) {
       return { attached: 0, detached: 0, nearbyOpen: 0 };
@@ -1326,7 +2684,7 @@ export default function Home() {
   function repairSelectedRunConnections() {
     const run = drawings.find((drawing) => drawing.id === selectedId && !drawing.fitting && ["supply", "return", "fresh"].includes(drawing.type));
     if (!run) return;
-    let next = drawings.map((drawing) => ({ ...drawing, points: drawing.points.map((point) => ({ ...point })), fitting: drawing.fitting ? { ...drawing.fitting, connectedIds: [...drawing.fitting.connectedIds] } : undefined }));
+    const next = drawings.map((drawing) => ({ ...drawing, points: drawing.points.map((point) => ({ ...point })), fitting: drawing.fitting ? { ...drawing.fitting, connectedIds: [...drawing.fitting.connectedIds] } : undefined }));
     let repaired = 0;
     const usedEndpoints = new Set<number>();
 
@@ -1380,9 +2738,14 @@ export default function Home() {
   }
 
   function recommendedDuctSize(cfm: number, type: Drawing["type"]) {
-    const sizes = ["4", "6", "7", "8", "10", "12", "14", "16"];
-    const maximumVelocity = type === "supply" ? 900 : 700;
-    return sizes.find((size) => velocityFpm(size, cfm) <= maximumVelocity) || "16";
+    const maximumSize = allowedResidentialFlexSizes.includes(residentialFlexMax) ? Number(residentialFlexMax) : 16;
+    const sizes = allowedResidentialFlexSizes.filter((size) => Number(size) <= maximumSize);
+    const maximumVelocity = type === "supply"
+      ? supplyVelocityLimit
+      : type === "return"
+        ? returnVelocityLimit
+        : freshVelocityLimit;
+    return sizes.find((size) => velocityFpm(size, cfm) <= maximumVelocity) || sizes.at(-1) || "16";
   }
 
   function sizingSuggestions() {
@@ -1391,13 +2754,22 @@ export default function Home() {
       .map((drawing) => {
         const cfm = runAirflow(drawing);
         const recommended = recommendedDuctSize(cfm, drawing.type);
+        const limit = drawing.type === "supply"
+          ? supplyVelocityLimit
+          : drawing.type === "return"
+            ? returnVelocityLimit
+            : freshVelocityLimit;
         return {
           id: drawing.id,
           type: drawing.type,
           current: drawing.size,
           recommended,
           cfm,
+          currentVelocity: velocityFpm(drawing.size, cfm),
           velocity: velocityFpm(recommended, cfm),
+          limit,
+          overCapacity: velocityFpm(recommended, cfm) > limit,
+          room: drawing.roomName?.trim() || "Unassigned route",
         };
       })
       .filter((suggestion) => suggestion.current !== suggestion.recommended);
@@ -1544,9 +2916,11 @@ export default function Home() {
   }
 
   function applySizingSuggestions() {
-    const proposed = new Map(sizingSuggestions().map((suggestion) => [suggestion.id, suggestion.recommended]));
+    const proposed = new Map(sizingSuggestions()
+      .filter((suggestion) => selectedSizingIds.includes(suggestion.id) && !suggestion.overCapacity)
+      .map((suggestion) => [suggestion.id, suggestion.recommended]));
     if (!proposed.size) {
-      setShowSizingReview(false);
+      setBranchMessage("Select at least one safe reviewed size change before applying");
       return;
     }
     const resized = drawings.map((drawing) => {
@@ -1565,15 +2939,26 @@ export default function Home() {
       return size ? { ...drawing, size } : drawing;
     });
     setHistory(synchronizeFittingSizes(resized, drawings));
+    setBranchMessage(`${proposed.size} reviewed duct size change${proposed.size === 1 ? "" : "s"} applied · Undo is available`);
+    setSelectedSizingIds([]);
     setShowSizingReview(false);
   }
 
+  function openSizingReview() {
+    setSelectedSizingIds([]);
+    setShowSizingReview(true);
+  }
+
+  function toggleSizingSuggestion(id: string) {
+    setSelectedSizingIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
   function designAirflow() {
-    const equipment = drawings.filter((drawing) => drawing.symbol?.kind === "equipment" && drawingSystem(drawing) === activeSystem);
-    const targetCfm = Math.max(0, ...equipment.map((drawing) => {
+    const equipment = drawings.filter((drawing) => isPrimaryAirflowEquipment(drawing) && drawingSystem(drawing) === activeSystem);
+    const targetCfm = equipment.reduce((total, drawing) => {
       const tons = Number(drawing.size.match(/[\d.]+/)?.[0] || 0);
-      return drawing.cfm || tons * 400;
-    }));
+      return total + (drawing.cfm || tons * 400);
+    }, 0);
     const supplyCfm = drawings
       .filter((drawing) => drawing.symbol?.kind === "diffuser" && drawingSystem(drawing) === activeSystem)
       .reduce((total, drawing) => total + (drawing.cfm || 0), 0);
@@ -1585,22 +2970,74 @@ export default function Home() {
     return { targetCfm, supplyCfm, returnCfm, difference, percent };
   }
 
+  function airflowSetupSummary() {
+    const airflow = designAirflow();
+    const network = airflowNetwork();
+    const equipment = drawings.filter((drawing) => isPrimaryAirflowEquipment(drawing) && drawingSystem(drawing) === activeSystem);
+    const primaryUnit = equipment.find((drawing) => network.equipmentRun.has(drawing.id)) || equipment[0];
+    const primaryTons = Number(primaryUnit?.size.match(/[\d.]+/)?.[0] || 0);
+    const supplyTerminals = drawings.filter((drawing) => drawing.symbol?.kind === "diffuser" && drawingSystem(drawing) === activeSystem);
+    const returnTerminals = drawings.filter((drawing) => drawing.symbol?.kind === "returnGrille" && drawingSystem(drawing) === activeSystem);
+    const connectedSupplyCfm = supplyTerminals
+      .filter((drawing) => network.terminalRun.has(drawing.id))
+      .reduce((total, drawing) => total + (drawing.cfm || 0), 0);
+    const connectedReturnCfm = returnTerminals
+      .filter((drawing) => network.terminalRun.has(drawing.id))
+      .reduce((total, drawing) => total + (drawing.cfm || 0), 0);
+    const maximumFlexSize = allowedResidentialFlexSizes.includes(residentialFlexMax) ? Number(residentialFlexMax) : 16;
+    const maxFlexSupplyCapacity = Math.round(Math.PI * Math.pow(maximumFlexSize / 12, 2) / 4 * supplyVelocityLimit);
+    const maxFlexReturnCapacity = Math.round(Math.PI * Math.pow(maximumFlexSize / 12, 2) / 4 * returnVelocityLimit);
+    const supplyPathCount = airflow.targetCfm ? Math.max(1, Math.ceil(airflow.targetCfm / Math.max(1, maxFlexSupplyCapacity))) : 0;
+    const returnPathCount = airflow.targetCfm ? Math.max(1, Math.ceil(airflow.targetCfm / Math.max(1, maxFlexReturnCapacity))) : 0;
+    const supplyGap = airflow.targetCfm - airflow.supplyCfm;
+    const returnGap = airflow.targetCfm - airflow.returnCfm;
+    const supplyPercent = airflow.targetCfm ? Math.round(airflow.supplyCfm / airflow.targetCfm * 100) : 0;
+    const returnPercent = airflow.targetCfm ? Math.round(airflow.returnCfm / airflow.targetCfm * 100) : 0;
+    return {
+      ...airflow,
+      equipment,
+      primaryUnit,
+      primaryTons,
+      maximumFlexSize,
+      supplyTerminals,
+      returnTerminals,
+      connectedSupplyCfm,
+      connectedReturnCfm,
+      connectedSupplyTerminals: supplyTerminals.filter((drawing) => network.terminalRun.has(drawing.id)).length,
+      connectedReturnTerminals: returnTerminals.filter((drawing) => network.terminalRun.has(drawing.id)).length,
+      supplyGap,
+      returnGap,
+      supplyPercent,
+      returnPercent,
+      maxFlexSupplyCapacity,
+      maxFlexReturnCapacity,
+      supplyPathCount,
+      returnPathCount,
+      averageSupplyTarget: supplyTerminals.length ? Math.round(airflow.targetCfm / supplyTerminals.length / 5) * 5 : 0,
+      averageReturnTarget: returnTerminals.length ? Math.round(airflow.targetCfm / returnTerminals.length / 5) * 5 : 0,
+      supplyBalanced: Boolean(airflow.targetCfm && Math.abs(supplyGap) <= Math.max(25, airflow.targetCfm * .1)),
+      returnBalanced: Boolean(airflow.targetCfm && Math.abs(returnGap) <= Math.max(50, airflow.targetCfm * .15)),
+    };
+  }
+
   function systemStats(systemId: string) {
     const scoped = drawings.filter((drawing) => drawingSystem(drawing) === systemId);
-    const equipment = scoped.filter((drawing) => drawing.symbol?.kind === "equipment");
+    const equipment = scoped.filter((drawing) => isPrimaryAirflowEquipment(drawing));
     const designCfm = equipment.reduce((total, drawing) => {
       const tons = Number(drawing.size.match(/[\d.]+/)?.[0] || 0);
       return total + (drawing.cfm || tons * 400);
     }, 0);
     const supplyCfm = scoped.filter((drawing) => drawing.symbol?.kind === "diffuser").reduce((total, drawing) => total + (drawing.cfm || 0), 0);
     const returnCfm = scoped.filter((drawing) => drawing.symbol?.kind === "returnGrille").reduce((total, drawing) => total + (drawing.cfm || 0), 0);
-    const balanced = designCfm > 0 && Math.abs(supplyCfm - designCfm) <= designCfm * .1;
+    const supplyBalanced = designCfm > 0 && Math.abs(supplyCfm - designCfm) <= designCfm * .1;
+    const returnBalanced = designCfm > 0 && returnCfm > 0 && Math.abs(returnCfm - designCfm) <= designCfm * .15;
+    const balanced = supplyBalanced && returnBalanced;
     return { objects: scoped.length, units: equipment.length, designCfm, supplyCfm, returnCfm, balanced };
   }
 
   function networkBalanceRows() {
     const network = airflowNetwork();
-    const equipment = drawings.filter((drawing) => drawing.symbol?.kind === "equipment" && drawingSystem(drawing) === activeSystem);
+    const equipment = drawings.filter((drawing) => isPrimaryAirflowEquipment(drawing) && drawingSystem(drawing) === activeSystem);
     const returnCfm = drawings
       .filter((drawing) => drawing.symbol?.kind === "returnGrille" && drawingSystem(drawing) === activeSystem)
       .reduce((total, drawing) => total + (drawing.cfm || 0), 0);
@@ -1740,24 +3177,185 @@ export default function Home() {
     };
   }
 
+  function allocateAirflowTotal(
+    totalCfm: number,
+    rows: Array<{ key: string; weight: number }>,
+  ) {
+    const allocations = new Map<string, number>();
+    if (!rows.length) return allocations;
+    const roundedTotal = Math.max(0, Math.round(totalCfm / 5) * 5);
+    const totalWeight = rows.reduce((total, row) => total + Math.max(.01, row.weight), 0);
+    const raw = rows.map((row) => {
+      const exact = roundedTotal * Math.max(.01, row.weight) / totalWeight;
+      const base = Math.floor(exact / 5) * 5;
+      return { ...row, exact, base, fraction: exact - base };
+    });
+    raw.forEach((row) => allocations.set(row.key, row.base));
+    let remainder = roundedTotal - raw.reduce((total, row) => total + row.base, 0);
+    const order = [...raw].sort((a, b) => b.fraction - a.fraction || a.key.localeCompare(b.key));
+    let cursor = 0;
+    while (remainder >= 5 && order.length) {
+      const row = order[cursor % order.length];
+      allocations.set(row.key, (allocations.get(row.key) || 0) + 5);
+      remainder -= 5;
+      cursor += 1;
+    }
+    return allocations;
+  }
+
+  function suggestedRoomAirflowTargets(
+    currentTargets = roomAirflowTargets[activeSystem] || {},
+  ) {
+    const rooms = roomSchedule();
+    const targetCfm = designAirflow().targetCfm || roomScheduleSummary().supplyCfm || roomScheduleSummary().returnCfm;
+    const multiplier = (priority: RoomAirflowPriority) => priority === "high" ? 1.25 : priority === "low" ? .8 : 1;
+    const priorities = new Map(rooms.map((room) => [
+      room.name.toLowerCase(),
+      currentTargets[room.name.toLowerCase()]?.priority || "standard" as RoomAirflowPriority,
+    ]));
+    const supply = allocateAirflowTotal(targetCfm, rooms
+      .filter((room) => room.diffusers > 0)
+      .map((room) => ({
+        key: room.name.toLowerCase(),
+        weight: (room.supplyCfm || room.diffusers * 100) * multiplier(priorities.get(room.name.toLowerCase()) || "standard"),
+      })));
+    const returns = allocateAirflowTotal(targetCfm, rooms
+      .filter((room) => room.returns > 0)
+      .map((room) => ({
+        key: room.name.toLowerCase(),
+        weight: (room.returnCfm || room.returns * 100) * multiplier(priorities.get(room.name.toLowerCase()) || "standard"),
+      })));
+    return Object.fromEntries(rooms.map((room) => {
+      const key = room.name.toLowerCase();
+      return [key, {
+        supplyCfm: supply.get(key) || 0,
+        returnCfm: returns.get(key) || 0,
+        priority: priorities.get(key) || "standard",
+      } satisfies RoomAirflowTarget];
+    }));
+  }
+
+  function activeRoomAirflowTargets() {
+    return roomAirflowTargets[activeSystem] || suggestedRoomAirflowTargets();
+  }
+
+  function openSystemBalanceWorkspace(view: "system" | "rooms" | "runs" = "system") {
+    if (!roomAirflowTargets[activeSystem] && roomSchedule().length) {
+      setRoomAirflowTargets((current) => ({
+        ...current,
+        [activeSystem]: suggestedRoomAirflowTargets(),
+      }));
+    }
+    setSelectedCfmProposalIds([]);
+    setBalanceView(view);
+    setRightTab("rooms");
+  }
+
+  function recalculateRoomAirflowTargets() {
+    const suggested = suggestedRoomAirflowTargets(roomAirflowTargets[activeSystem] || {});
+    setRoomAirflowTargets((current) => ({ ...current, [activeSystem]: suggested }));
+    setSelectedCfmProposalIds([]);
+    setBranchMessage(`${systemLabel(activeSystem)} room targets recalculated for review · no drawing CFM changed`);
+  }
+
+  function updateRoomAirflowTarget(roomName: string, changes: Partial<RoomAirflowTarget>) {
+    const key = roomName.toLowerCase();
+    const currentSystem = activeRoomAirflowTargets();
+    const currentTarget = currentSystem[key] || { supplyCfm: 0, returnCfm: 0, priority: "standard" as RoomAirflowPriority };
+    const nextTarget = {
+      ...currentTarget,
+      ...changes,
+      supplyCfm: Math.max(0, Number(changes.supplyCfm ?? currentTarget.supplyCfm) || 0),
+      returnCfm: Math.max(0, Number(changes.returnCfm ?? currentTarget.returnCfm) || 0),
+    };
+    setRoomAirflowTargets((current) => ({
+      ...current,
+      [activeSystem]: { ...currentSystem, [key]: nextTarget },
+    }));
+    setSelectedCfmProposalIds([]);
+  }
+
+  function terminalCfmProposals(targets = activeRoomAirflowTargets()): TerminalCfmProposal[] {
+    const network = airflowNetwork();
+    return roomSchedule().flatMap((room) => {
+      const roomKey = room.name.toLowerCase();
+      const target = targets[roomKey] || { supplyCfm: 0, returnCfm: 0, priority: "standard" as RoomAirflowPriority };
+      const supplyTerminals = drawings.filter((drawing) =>
+        drawingSystem(drawing) === activeSystem &&
+        drawing.roomName?.trim().toLowerCase() === roomKey &&
+        drawing.symbol?.kind === "diffuser"
+      );
+      const returnTerminals = drawings.filter((drawing) =>
+        drawingSystem(drawing) === activeSystem &&
+        drawing.roomName?.trim().toLowerCase() === roomKey &&
+        drawing.symbol?.kind === "returnGrille"
+      );
+      const build = (terminals: Drawing[], kind: "supply" | "return", total: number) => {
+        const split = allocateAirflowTotal(total, terminals.map((drawing) => ({ key: drawing.id, weight: 1 })));
+        return terminals.map((drawing) => ({
+          id: `${drawing.id}-cfm`,
+          drawingId: drawing.id,
+          kind,
+          room: room.name,
+          label: drawing.symbol?.label || (kind === "supply" ? "Supply diffuser" : "Return grille"),
+          current: drawing.cfm || 0,
+          proposed: split.get(drawing.id) || 0,
+          target: total,
+          terminalCount: terminals.length,
+          connected: network.terminalRun.has(drawing.id),
+        })).filter((proposal) => proposal.current !== proposal.proposed);
+      };
+      return [
+        ...build(supplyTerminals, "supply", target.supplyCfm),
+        ...build(returnTerminals, "return", target.returnCfm),
+      ];
+    });
+  }
+
+  function applySelectedCfmProposals() {
+    const proposals = terminalCfmProposals().filter((proposal) => selectedCfmProposalIds.includes(proposal.id));
+    if (!proposals.length) {
+      setBranchMessage("Select at least one reviewed terminal CFM change before applying");
+      return;
+    }
+    const proposed = new Map(proposals.map((proposal) => [proposal.drawingId, proposal.proposed]));
+    setHistory(drawings.map((drawing) => proposed.has(drawing.id) ? { ...drawing, cfm: proposed.get(drawing.id) } : drawing));
+    setSelectedCfmProposalIds([]);
+    setBranchMessage(`${proposals.length} reviewed terminal CFM change${proposals.length === 1 ? "" : "s"} applied in one undoable step · duct sizes were not changed`);
+  }
+
+  function selectRoomOnPlan(drawingIds: string[]) {
+    if (!drawingIds.length) return;
+    setSelectedIds(drawingIds);
+    setSelectedId(drawingIds[0]);
+    setActiveTool("select");
+  }
+
   function exportRoomScheduleCsv() {
     const rows = roomSchedule();
     if (!rows.length) return;
+    const targets = activeRoomAirflowTargets();
     const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
     const csv = [
-      ["System", "Room", "Type", "Supply CFM", "Return CFM", "Room Balance CFM", "Diffusers", "Return Grilles", "Return Path", "Missing CFM Entries"],
-      ...rows.map((room) => [
-        systemLabel(activeSystem),
-        room.name,
-        room.type || "general",
-        room.supplyCfm,
-        room.returnCfm,
-        room.balanceCfm,
-        room.diffusers,
-        room.returns,
-        room.needsReturn ? "REVIEW" : "OK",
-        room.missingCfm,
-      ]),
+      ["System", "Room", "Type", "Design Supply Target", "Scheduled Supply", "Supply Variance", "Design Return Target", "Scheduled Return", "Net Room Air", "Diffusers", "Return Grilles", "Return Path", "Missing CFM Entries"],
+      ...rows.map((room) => {
+        const target = targets[room.name.toLowerCase()] || { supplyCfm: 0, returnCfm: 0 };
+        return [
+          systemLabel(activeSystem),
+          room.name,
+          room.type || "general",
+          target.supplyCfm,
+          room.supplyCfm,
+          room.supplyCfm - target.supplyCfm,
+          target.returnCfm,
+          room.returnCfm,
+          room.balanceCfm,
+          room.diffusers,
+          room.returns,
+          room.needsReturn ? "REVIEW" : "OK",
+          room.missingCfm,
+        ];
+      }),
     ].map((row) => row.map(quote).join(",")).join("\n");
     const link = document.createElement("a");
     const objectUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -1767,10 +3365,28 @@ export default function Home() {
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
   }
 
-  function validationIssues() {
-    const issues: Array<{ severity: "critical" | "warning" | "info"; title: string; detail: string; drawingId?: string }> = [];
+  function stableTextHash(value: string) {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
+  function stableByteHash(value: Uint8Array) {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value[index];
+      hash = Math.imul(hash, 16777619);
+    }
+    return `${value.length.toString(36)}-${(hash >>> 0).toString(36)}`;
+  }
+
+  function validationIssues(): ValidationIssue[] {
+    const issues: Array<Omit<ValidationIssue, "id">> = [];
     const balance = designAirflow();
-    const equipment = drawings.filter((drawing) => drawing.symbol?.kind === "equipment" && drawingSystem(drawing) === activeSystem);
+    const equipment = drawings.filter((drawing) => isPrimaryAirflowEquipment(drawing) && drawingSystem(drawing) === activeSystem);
     const diffusers = drawings.filter((drawing) => drawing.symbol?.kind === "diffuser" && drawingSystem(drawing) === activeSystem);
     const returnGrilles = drawings.filter((drawing) => drawing.symbol?.kind === "returnGrille" && drawingSystem(drawing) === activeSystem);
     if (!equipment.length) issues.push({ severity: "critical", title: "Equipment missing", detail: "Place equipment and enter its design CFM." });
@@ -1786,7 +3402,7 @@ export default function Home() {
         detail: `${balance.supplyCfm} assigned vs ${balance.targetCfm} design CFM (${balance.difference > 0 ? "+" : ""}${balance.difference} CFM).`,
       });
     }
-    if (balance.targetCfm && balance.returnCfm && Math.abs(balance.returnCfm - balance.targetCfm) > balance.targetCfm * .1) {
+    if (balance.targetCfm && Math.abs(balance.returnCfm - balance.targetCfm) > balance.targetCfm * .1) {
       issues.push({ severity: "warning", title: "Return CFM needs review", detail: `${balance.returnCfm} return vs ${balance.targetCfm} design CFM.` });
     }
     for (const drawing of drawings) {
@@ -1794,7 +3410,11 @@ export default function Home() {
       if (!["supply", "return", "fresh"].includes(drawing.type) || drawing.fitting) continue;
       const cfm = runAirflow(drawing);
       const velocity = velocityFpm(drawing.size, cfm);
-      const highLimit = drawing.type === "supply" ? 900 : drawing.type === "return" ? 700 : 700;
+      const highLimit = drawing.type === "supply"
+        ? supplyVelocityLimit
+        : drawing.type === "return"
+          ? returnVelocityLimit
+          : freshVelocityLimit;
       const lowLimit = drawing.type === "supply" ? 400 : 300;
       if (velocity > highLimit) issues.push({
         severity: velocity > highLimit * 1.2 ? "critical" : "warning",
@@ -1825,6 +3445,13 @@ export default function Home() {
       });
     }
     for (const fitting of drawings.filter((drawing) => drawing.fitting && drawingSystem(drawing) === activeSystem)) {
+      const openPorts = ([0, 1, 2] as const).filter((port) => !fittingPortState(fitting, port).connected);
+      if (openPorts.length) issues.push({
+        severity: "warning",
+        title: "Branch fitting port open",
+        detail: `${openPorts.length} ${openPorts.length === 1 ? "port is" : "ports are"} missing or detached on this ${fitting.fitting?.style === "tee90" ? "tee" : "wye"}.`,
+        drawingId: fitting.id,
+      });
       ([0, 1, 2] as const).forEach((port) => {
         const state = fittingPortState(fitting, port);
         if (state.overloaded) issues.push({
@@ -1850,6 +3477,13 @@ export default function Home() {
     for (const grille of returnGrilles) {
       if (!airflowNetwork().terminalRun.has(grille.id)) issues.push({ severity: "warning", title: "Return grille disconnected", detail: `${grille.symbol?.label || "Return grille"} is not connected to a return run.`, drawingId: grille.id });
     }
+    const terminalsWithoutRooms = [...diffusers, ...returnGrilles].filter((drawing) => !drawing.roomName?.trim());
+    if (terminalsWithoutRooms.length) issues.push({
+      severity: "warning",
+      title: "Terminal room assignments missing",
+      detail: `${terminalsWithoutRooms.length} air device${terminalsWithoutRooms.length === 1 ? " needs" : "s need"} a room or area before field release.`,
+      drawingId: terminalsWithoutRooms[0].id,
+    });
     const activeRuns = drawings.filter((drawing) => drawingSystem(drawing) === activeSystem && ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting);
     const otherRuns = drawings.filter((drawing) => drawingSystem(drawing) !== activeSystem && ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting);
     const runsWithoutElevation = activeRuns.filter((drawing) => !drawing.elevation?.trim());
@@ -1860,15 +3494,18 @@ export default function Home() {
       drawingId: runsWithoutElevation[0].id,
     });
     for (const run of activeRuns) {
-      const touchesOtherSystem = run.points.some((point) => otherRuns.some((other) => other.points.some((otherPoint) => Math.hypot(point.x - otherPoint.x, point.y - otherPoint.y) < 2)));
+      const touchesOtherSystem = run.points.some((point) => otherRuns.some((other) =>
+        other.page === run.page &&
+        other.points.some((otherPoint) => Math.hypot(point.x - otherPoint.x, point.y - otherPoint.y) < 2)
+      ));
       if (touchesOtherSystem) issues.push({ severity: "critical", title: "Systems touch at a connection", detail: `${systemLabel(activeSystem)} contacts another system. Keep zones separated.`, drawingId: run.id });
     }
     for (const room of roomSchedule()) {
       if (room.type === "bedroom" && room.supplyCfm > 0 && room.returns === 0) {
-        issues.push({ severity: "warning", title: "Bedroom return path missing", detail: `${room.name} has ${room.supplyCfm} supply CFM but no assigned return. Verify door-closed pressure relief.` });
+        issues.push({ severity: "warning", title: "Bedroom return path missing", detail: `${room.name} has ${room.supplyCfm} supply CFM but no assigned return. Verify door-closed pressure relief.`, drawingId: room.drawingIds[0] });
       }
       if (room.type === "bedroom" && room.returns > 0 && room.returnCfm === 0) {
-        issues.push({ severity: "info", title: "Bedroom return CFM missing", detail: `${room.name} has a return grille without scheduled airflow.` });
+        issues.push({ severity: "info", title: "Bedroom return CFM missing", detail: `${room.name} has a return grille without scheduled airflow.`, drawingId: room.drawingIds[0] });
       }
     }
     const freshRuns = drawings.filter((drawing) => drawingSystem(drawing) === activeSystem && drawing.type === "fresh" && !drawing.fitting);
@@ -1877,55 +3514,1276 @@ export default function Home() {
     if (equipment.length && !drawings.some((drawing) => drawingSystem(drawing) === activeSystem && drawing.symbol?.kind === "thermostat")) {
       issues.push({ severity: "info", title: "Thermostat location not marked", detail: `Add the control point for ${systemLabel(activeSystem)} so the field team can coordinate wiring.` });
     }
-    return issues;
+    return issues.map((issue) => ({
+      ...issue,
+      id: `review-${stableTextHash([activeSystem, issue.title, issue.drawingId || "system", issue.detail].join("|"))}`,
+    }));
+  }
+
+  function issueCategory(title: string) {
+    const value = title.toLowerCase();
+    if (["disconnect", "connection", "fitting", "pulled away", "systems touch"].some((term) => value.includes(term))) return "Connections";
+    if (["return", "bedroom", "door-closed"].some((term) => value.includes(term))) return "Return paths";
+    if (["velocity", "friction", "pressure loss"].some((term) => value.includes(term))) return "Velocity & pressure";
+    if (["cfm", "balance", "airflow"].some((term) => value.includes(term))) return "Airflow";
+    return "Coordination";
+  }
+
+  function validationDashboard(issues = validationIssues()) {
+    const rooms = roomSchedule();
+    const suppliedBedrooms = rooms.filter((room) => room.type === "bedroom" && room.supplyCfm > 0);
+    const bedroomReturnRisks = suppliedBedrooms.filter((room) => room.needsReturn);
+    const counts = {
+      critical: issues.filter((issue) => issue.severity === "critical").length,
+      warning: issues.filter((issue) => issue.severity === "warning").length,
+      info: issues.filter((issue) => issue.severity === "info").length,
+    };
+    return {
+      issues,
+      counts,
+      score: Math.max(0, Math.min(100, 100 - counts.critical * 18 - counts.warning * 7 - counts.info * 2)),
+      connectionProblems: issues.filter((issue) => issueCategory(issue.title) === "Connections").length,
+      suppliedBedrooms,
+      bedroomReturnRisks,
+      returnDeficit: Math.max(0, designAirflow().targetCfm - designAirflow().returnCfm),
+    };
+  }
+
+  function activeFieldChecklist(systemId = activeSystem) {
+    return fieldChecklistBySystem[systemId] || {};
+  }
+
+  function updateFieldChecklist(id: string, checked: boolean) {
+    setFieldChecklistBySystem((current) => ({
+      ...current,
+      [activeSystem]: { ...(current[activeSystem] || {}), [id]: checked },
+    }));
+  }
+
+  function activeReviewDecisions(systemId = activeSystem) {
+    return reviewDecisionsBySystem[systemId] || {};
+  }
+
+  function reviewIssueReference(issue: ValidationIssue) {
+    return `REV-${issue.id.replace("review-", "").slice(-5).toUpperCase()}`;
+  }
+
+  function reviewIssueMarkerLabel(issue: ValidationIssue) {
+    return `${issue.severity === "critical" ? "C" : issue.severity === "warning" ? "W" : "I"}${issue.id.replace("review-", "").slice(-2).toUpperCase()}`;
+  }
+
+  function reviewedIssueRows(issues = validationIssues()) {
+    const decisions = activeReviewDecisions();
+    const severityOrder: Record<ValidationSeverity, number> = { critical: 0, warning: 1, info: 2 };
+    return issues
+      .map((issue) => {
+        const decision = decisions[issue.id];
+        const linkedRfi = decision?.status === "rfi" ? rfiItems.find((item) => item.id === decision.linkedRecordId) : undefined;
+        const linkedPunch = decision?.status === "punch" ? punchItems.find((item) => item.id === decision.linkedRecordId) : undefined;
+        const decisionComplete = decision?.status === "accepted" ||
+          (decision?.status === "rfi" && Boolean(linkedRfi && ["approved", "closed"].includes(linkedRfi.status))) ||
+          (decision?.status === "punch" && linkedPunch?.status === "resolved");
+        const resolvedByDecision = issue.severity !== "critical" && Boolean(decisionComplete);
+        return { issue, decision, resolvedByDecision };
+      })
+      .sort((a, b) =>
+        severityOrder[a.issue.severity] - severityOrder[b.issue.severity] ||
+        a.issue.title.localeCompare(b.issue.title)
+      );
+  }
+
+  function filteredReviewIssueRows(rows = reviewedIssueRows()) {
+    return rows.filter((row) => {
+      if (reviewQueueFilter === "open") return !row.resolvedByDecision;
+      if (reviewQueueFilter === "accepted") return row.resolvedByDecision;
+      return true;
+    });
+  }
+
+  function reviewSummary(rows = reviewedIssueRows()) {
+    const critical = rows.filter((row) => row.issue.severity === "critical").length;
+    const openWarnings = rows.filter((row) => row.issue.severity === "warning" && !row.resolvedByDecision).length;
+    const acceptedWarnings = rows.filter((row) => row.issue.severity === "warning" && row.resolvedByDecision).length;
+    const advisory = rows.filter((row) => row.issue.severity === "info").length;
+    return {
+      rows,
+      critical,
+      openWarnings,
+      acceptedWarnings,
+      advisory,
+      blockers: critical + openWarnings,
+    };
+  }
+
+  function focusDrawingOnPlan(drawingId: string) {
+    const drawing = drawings.find((candidate) => candidate.id === drawingId);
+    if (!drawing) return;
+    const point = drawing.points[Math.floor(drawing.points.length / 2)] || drawing.points[0];
+    if (!point) return;
+    setActiveSystem(drawingSystem(drawing));
+    setSelectedId(drawing.id);
+    setSelectedIds([drawing.id]);
+    setActiveTool("select");
+    if (drawing.page !== pageNumber || renderedPageNumber !== drawing.page) {
+      pendingFocusRef.current = { page: drawing.page, point };
+      setPageNumber(drawing.page);
+      return;
+    }
+    requestAnimationFrame(() => {
+      const viewport = canvasViewportRef.current;
+      if (!viewport) return;
+      updateCamera({
+        x: viewport.clientWidth / 2 - point.x * zoomRef.current,
+        y: viewport.clientHeight / 2 - point.y * zoomRef.current,
+      });
+    });
+  }
+
+  function focusReviewIssue(issue: ValidationIssue) {
+    setRightTab("checks");
+    setReviewView("issues");
+    setActiveReviewIssueId(issue.id);
+    setReviewerName(activeReviewDecisions()[issue.id]?.reviewer || "");
+    setReviewDecisionNote(activeReviewDecisions()[issue.id]?.note || "");
+    if (issue.drawingId) focusDrawingOnPlan(issue.drawingId);
+  }
+
+  function reviewIssueMarkers(rows = reviewedIssueRows()) {
+    if (!showReviewMarkers || rightTab !== "checks") return [];
+    const drawingOccurrences = new Map<string, number>();
+    return rows.flatMap((row) => {
+      if (!row.issue.drawingId) return [];
+      const drawing = drawings.find((candidate) => candidate.id === row.issue.drawingId && candidate.page === pageNumber);
+      if (!drawing) return [];
+      const point = drawing.points[Math.floor(drawing.points.length / 2)] || drawing.points[0];
+      if (!point) return [];
+      const occurrence = drawingOccurrences.get(drawing.id) || 0;
+      drawingOccurrences.set(drawing.id, occurrence + 1);
+      const radius = 18 + Math.floor(occurrence / 6) * 10;
+      const angle = -Math.PI / 4 + occurrence % 6 * Math.PI / 3;
+      return [{
+        ...row,
+        point,
+        offset: { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius },
+        reference: reviewIssueMarkerLabel(row.issue),
+      }];
+    });
+  }
+
+  function resolveReviewIssue(issue: ValidationIssue, status: ReviewDecisionStatus) {
+    if (!reviewerName.trim() || !reviewDecisionNote.trim()) {
+      setBranchMessage("Add the reviewer name and a decision note before recording this review");
+      return;
+    }
+    const now = new Date().toISOString();
+    const existingDecision = activeReviewDecisions()[issue.id];
+    let linkedRecordId: string | undefined;
+    if (status === "rfi") {
+      const linkedExistingRfi = existingDecision?.status === "rfi" ? rfiItems.find((item) => item.id === existingDecision.linkedRecordId) : undefined;
+      const existingRfi = linkedExistingRfi ||
+        rfiItems.find((item) => item.systemId === activeSystem && item.drawingId === issue.drawingId && item.subject === issue.title && !["approved", "closed"].includes(item.status));
+      if (existingRfi) {
+        linkedRecordId = existingRfi.id;
+        setRfiItems((current) => current.map((item) => item.id === existingRfi.id ? {
+          ...item,
+          proposedSolution: reviewDecisionNote.trim(),
+          assignedTo: reviewerName.trim(),
+          updatedAt: now,
+        } : item));
+      } else {
+        linkedRecordId = crypto.randomUUID();
+        const nextNumber = Math.max(0, ...rfiItems.map((item) => item.number)) + 1;
+        setRfiItems((current) => [...current, {
+          id: linkedRecordId!,
+          number: nextNumber,
+          systemId: activeSystem,
+          drawingId: issue.drawingId,
+          subject: issue.title,
+          category: issueCategory(issue.title) === "Connections" ? "Coordination" : "Design",
+          priority: issue.severity === "critical" ? "critical" : "normal",
+          question: issue.detail,
+          proposedSolution: reviewDecisionNote.trim(),
+          assignedTo: reviewerName.trim(),
+          costImpact: "Not evaluated",
+          scheduleImpact: "Not evaluated",
+          response: "",
+          status: "draft",
+          createdAt: now,
+          updatedAt: now,
+        }]);
+      }
+    }
+    if (status === "punch") {
+      const linkedExistingPunch = existingDecision?.status === "punch" ? punchItems.find((item) => item.id === existingDecision.linkedRecordId) : undefined;
+      const existingPunch = linkedExistingPunch ||
+        punchItems.find((item) => item.systemId === activeSystem && item.drawingId === issue.drawingId && item.title === issue.title && item.status === "open");
+      if (existingPunch) {
+        linkedRecordId = existingPunch.id;
+        setPunchItems((current) => current.map((item) => item.id === existingPunch.id ? {
+          ...item,
+          assignedTo: reviewerName.trim(),
+          note: reviewDecisionNote.trim(),
+        } : item));
+      } else {
+        linkedRecordId = crypto.randomUUID();
+        setPunchItems((current) => [...current, {
+          id: linkedRecordId!,
+          systemId: activeSystem,
+          drawingId: issue.drawingId,
+          title: issue.title,
+          category: issueCategory(issue.title) === "Airflow" ? "Airflow" : "Coordination",
+          priority: issue.severity === "critical" ? "critical" : "normal",
+          assignedTo: reviewerName.trim(),
+          note: reviewDecisionNote.trim(),
+          status: "open",
+          createdAt: now,
+        }]);
+      }
+    }
+    const decision: ReviewDecision = {
+      issueId: issue.id,
+      status,
+      reviewer: reviewerName.trim(),
+      note: reviewDecisionNote.trim(),
+      updatedAt: now,
+      linkedRecordId,
+    };
+    setReviewDecisionsBySystem((current) => ({
+      ...current,
+      [activeSystem]: { ...(current[activeSystem] || {}), [issue.id]: decision },
+    }));
+    setBranchMessage(issue.severity === "critical"
+      ? `${issue.title} was documented, but remains a release blocker until the drawing condition is fixed`
+      : `${issue.title} review decision recorded`);
+  }
+
+  function reopenReviewIssue(issueId: string) {
+    setReviewDecisionsBySystem((current) => {
+      const nextSystem = { ...(current[activeSystem] || {}) };
+      delete nextSystem[issueId];
+      return { ...current, [activeSystem]: nextSystem };
+    });
+    setReviewDecisionNote("");
+  }
+
+  function exportReviewLogCsv() {
+    const rows = activeReviewedIssueRows;
+    if (!rows.length) return;
+    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const csv = [
+      ["System", "Reference", "Severity", "Category", "Issue", "Detail", "Disposition", "Reviewer", "Decision Note", "Updated", "Plan Link"],
+      ...rows.map((row) => [
+        systemLabel(activeSystem),
+        reviewIssueReference(row.issue),
+        row.issue.severity,
+        issueCategory(row.issue.title),
+        row.issue.title,
+        row.issue.detail,
+        row.decision?.status || "open",
+        row.decision?.reviewer || "",
+        row.decision?.note || "",
+        row.decision ? new Date(row.decision.updatedAt).toLocaleString() : "",
+        row.issue.drawingId ? "Linked" : "System",
+      ]),
+    ].map((row) => row.map(quote).join(",")).join("\n");
+    const link = document.createElement("a");
+    const objectUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    link.href = objectUrl;
+    link.download = `${systemLabel(activeSystem).replaceAll(" ", "-").toLowerCase()}-review-log.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+
+  function systemDrawingSignature(systemId = activeSystem) {
+    const scopedDrawings = drawings
+      .filter((drawing) => drawingSystem(drawing) === systemId)
+      .slice()
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((drawing) => ({
+        id: drawing.id,
+        page: drawing.page,
+        type: drawing.type,
+        points: drawing.points,
+        size: drawing.size,
+        cfm: drawing.cfm || 0,
+        roomName: drawing.roomName || "",
+        roomType: drawing.roomType || "",
+        elevation: drawing.elevation || "",
+        fitting: drawing.fitting,
+        symbol: drawing.symbol,
+      }));
+    return stableTextHash(JSON.stringify({
+      drawings: scopedDrawings,
+      roomTargets: Object.entries(roomAirflowTargets[systemId] || {}).sort(([a], [b]) => a.localeCompare(b)),
+      pdfFingerprint,
+      scaleFeetPerUnit,
+      scaleLabel,
+      scaleVerified,
+      velocityRules: { supplyVelocityLimit, returnVelocityLimit, freshVelocityLimit, residentialFlexMax },
+    }));
+  }
+
+  function systemReleaseSignature(systemId = activeSystem) {
+    const reviewDecisions = Object.values(activeReviewDecisions(systemId))
+      .slice()
+      .sort((a, b) => a.issueId.localeCompare(b.issueId))
+      .map((decision) => ({
+        issueId: decision.issueId,
+        status: decision.status,
+        reviewer: decision.reviewer,
+        note: decision.note,
+        updatedAt: decision.updatedAt,
+      }));
+    const rfiState = rfiItems
+      .filter((item) => item.systemId === systemId)
+      .slice()
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((item) => ({ id: item.id, status: item.status, response: item.response, approvalBy: item.approvalBy || "", approvedAt: item.approvedAt || "", updatedAt: item.updatedAt }));
+    const punchState = punchItems
+      .filter((item) => item.systemId === systemId)
+      .slice()
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((item) => ({ id: item.id, priority: item.priority, status: item.status, resolvedAt: item.resolvedAt || "" }));
+    return stableTextHash(JSON.stringify({
+      drawingSignature: systemDrawingSignature(systemId),
+      checklist: fieldChecklistItems.map((item) => [item.id, Boolean(activeFieldChecklist(systemId)[item.id])]),
+      reviewDecisions,
+      rfiState,
+      punchState,
+    }));
+  }
+
+  function latestSystemRelease(systemId = activeSystem) {
+    return releaseRecords
+      .filter((record) => record.systemId === systemId)
+      .slice()
+      .sort((a, b) => b.releasedAt.localeCompare(a.releasedAt))[0];
+  }
+
+  function systemBuilderSummary(
+    audit = validationDashboard(),
+    packageSummary = fieldPackageSummary(),
+  ) {
+    const scoped = drawings.filter((drawing) => drawingSystem(drawing) === activeSystem);
+    const runs = scoped.filter((drawing) => ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting);
+    const fittings = scoped.filter((drawing) => drawing.fitting);
+    const devices = scoped.filter((drawing) =>
+      ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") ||
+      isPrimaryAirflowEquipment(drawing)
+    );
+    const connectedDevices = devices.filter((drawing) =>
+      drawing.symbol?.connectedRunId &&
+      drawings.some((candidate) => candidate.id === drawing.symbol?.connectedRunId)
+    );
+    const totalPorts = fittings.length * 3;
+    const healthyPorts = fittings.reduce((total, fitting) => {
+      const ports = fittingPortPoints(fitting);
+      return total + fitting.fitting!.connectedIds.filter((runId, port) => {
+        const run = drawings.find((drawing) => drawing.id === runId);
+        if (!run) return false;
+        return [run.points[0], run.points[run.points.length - 1]].some((point) =>
+          Math.hypot(point.x - ports[port].x, point.y - ports[port].y) < 2
+        );
+      }).length;
+    }, 0);
+    const sizing = sizingSuggestions();
+    const connectionPercent = devices.length || totalPorts
+      ? Math.round((connectedDevices.length + healthyPorts) / Math.max(1, devices.length + totalPorts) * 100)
+      : 0;
+    const sizingPercent = runs.length ? Math.round((runs.length - sizing.length) / runs.length * 100) : 0;
+    const packagePercent = packageSummary.ready
+      ? 100
+      : Math.max(0, 100 - packageSummary.critical * 25 - packageSummary.connectionProblems * 12 - packageSummary.missingElevation * 4);
+    const progress = Math.round((connectionPercent + sizingPercent + audit.score + packagePercent) / 4);
+    return {
+      runs,
+      fittings,
+      devices,
+      connectedDevices,
+      unconnectedDevices: devices.length - connectedDevices.length,
+      totalPorts,
+      healthyPorts,
+      brokenPorts: totalPorts - healthyPorts,
+      sizing,
+      audit,
+      packageSummary,
+      connectionPercent,
+      sizingPercent,
+      packagePercent,
+      progress,
+    };
+  }
+
+  function autoConnectActiveSystemDevices() {
+    const next = drawings.map((drawing) => ({
+      ...drawing,
+      points: drawing.points.map((point) => ({ ...point })),
+      symbol: drawing.symbol ? { ...drawing.symbol } : undefined,
+    }));
+    let connected = 0;
+    for (const device of next.filter((drawing) =>
+      drawingSystem(drawing) === activeSystem &&
+      (["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") || isPrimaryAirflowEquipment(drawing))
+    )) {
+      const desiredType = device.symbol!.kind === "returnGrille" ? "return" : "supply";
+      const candidates = next
+        .filter((drawing) =>
+          drawing.page === device.page &&
+          drawingSystem(drawing) === activeSystem &&
+          drawing.type === desiredType &&
+          !drawing.fitting &&
+          drawing.points.length > 1
+        )
+        .flatMap((run) => [
+          { run, endpoint: run.points[0], end: "start" as const },
+          { run, endpoint: run.points[run.points.length - 1], end: "end" as const },
+        ])
+        .map((candidate) => ({
+          ...candidate,
+          distance: Math.hypot(candidate.endpoint.x - device.points[0].x, candidate.endpoint.y - device.points[0].y),
+        }))
+        .sort((a, b) => a.distance - b.distance);
+      const nearest = candidates[0];
+      const maximumDistance = (device.symbol!.kind === "equipment" ? 90 : 70) / zoomRef.current;
+      if (!nearest || nearest.distance > maximumDistance) continue;
+      const alreadyConnected = device.symbol!.connectedRunId === nearest.run.id &&
+        device.symbol!.connectedEnd === nearest.end &&
+        nearest.distance < 2;
+      if (alreadyConnected) continue;
+      device.points = [{ ...nearest.endpoint }];
+      device.symbol = {
+        ...device.symbol!,
+        connectedRunId: nearest.run.id,
+        connectedEnd: nearest.end,
+      };
+      connected += 1;
+    }
+    if (!connected) {
+      setBranchMessage("No nearby equipment, supply cans, or return cans need connection");
+      return;
+    }
+    setHistory(next);
+    setBranchMessage(`${connected} nearby HVAC device${connected === 1 ? "" : "s"} connected · no duct runs were created or rerouted`);
+  }
+
+  function repairActiveSystemNetwork() {
+    let next = drawings;
+    for (const fitting of drawings.filter((drawing) => drawing.fitting && drawingSystem(drawing) === activeSystem)) {
+      next = reattachFittingIn(next, fitting.id).drawings;
+    }
+    if (JSON.stringify(next) === JSON.stringify(drawings)) {
+      setBranchMessage("All connected T/Y ports are already aligned");
+      return;
+    }
+    setHistory(next);
+    setBranchMessage(`${systemLabel(activeSystem)} repaired · existing runs snapped back to their saved fitting ports`);
+  }
+
+  function openSystemSizingWorkflow() {
+    openSizingReview();
+    setRightTab("checks");
+    setValidationFilter("all");
+  }
+
+  function openSystemAuditWorkflow() {
+    setRightTab("checks");
+    setReviewView("overview");
+    setValidationFilter("all");
+    selectNextValidationIssue();
+  }
+
+  function filteredValidationIssues() {
+    return validationFilter === "all"
+      ? activeValidationIssues
+      : activeValidationIssues.filter((issue) => issue.severity === validationFilter);
+  }
+
+  function selectNextValidationIssue() {
+    const selectable = activeReviewedIssueRows.filter((row) => !row.resolvedByDecision && row.issue.drawingId).map((row) => row.issue);
+    if (!selectable.length) return;
+    const index = validationCursor % selectable.length;
+    focusReviewIssue(selectable[index]);
+    setValidationCursor((index + 1) % selectable.length);
   }
 
   function buildTakeoff() {
     const ductTotals = new Map<string, { type: string; size: string; length: number }>();
     for (const drawing of drawings) {
-      if (!["supply", "return", "fresh"].includes(drawing.type) || drawing.fitting || drawing.symbol) continue;
+      if (drawingSystem(drawing) !== activeSystem || !["supply", "return", "fresh"].includes(drawing.type) || drawing.fitting || drawing.symbol) continue;
       const key = `${drawing.type}-${drawing.size}`;
       const current = ductTotals.get(key) || { type: drawing.type, size: drawing.size, length: 0 };
       current.length += drawingLengthFeet(drawing);
       ductTotals.set(key, current);
     }
-    const rows: Array<{ item: string; size: string; quantity: string; note: string }> = [];
+    const rows: Array<{ category: string; item: string; size: string; quantity: string; note: string }> = [];
     for (const total of [...ductTotals.values()].sort((a, b) => Number(b.size) - Number(a.size))) {
       const name = total.type === "supply" ? "Supply flex duct" : total.type === "return" ? "Return flex duct" : "Fresh-air duct";
-      const rolls = Math.max(1, Math.ceil(total.length / 25));
+      const orderLength = total.length * (1 + materialWastePercent / 100);
+      const rolls = Math.max(1, Math.ceil(orderLength / 25));
       rows.push({
+        category: "Duct",
         item: name,
         size: `${total.size}"`,
         quantity: `${total.length.toFixed(1)} LF`,
-        note: `${rolls} × 25-ft ${rolls === 1 ? "roll" : "rolls"}`,
+        note: `${rolls} × 25-ft ${rolls === 1 ? "box" : "boxes"} · includes ${materialWastePercent}% allowance`,
       });
     }
-    const count = (kind: SymbolKind) => drawings.filter((drawing) => drawing.symbol?.kind === kind).length;
-    const diffusers = count("diffuser");
-    const returnGrilles = count("returnGrille");
-    const equipment = count("equipment");
-    const fans = count("fan");
-    const dampers = count("damper");
-    const motorDampers = count("motorDamper");
-    const reducers = count("reducer");
-    const thermostats = count("thermostat");
-    const smokeDetectors = count("smoke");
-    const fittings = drawings.filter((drawing) => drawing.fitting).length;
-    if (fittings) rows.push({ item: "T/Y branch fitting", size: "Auto-sized", quantity: `${fittings} EA`, note: "Connected fitting" });
-    if (diffusers) {
-      rows.push({ item: "Supply diffuser", size: "Per plan", quantity: `${diffusers} EA`, note: "Field label governs" });
-      rows.push({ item: "Diffuser plenum box", size: "Per diffuser", quantity: `${diffusers} EA`, note: "One per diffuser" });
-    }
-    if (returnGrilles) rows.push({ item: "Return grille / box", size: "Per plan", quantity: `${returnGrilles} EA`, note: "Field label governs" });
-    if (equipment) rows.push({ item: "HVAC equipment", size: "Per plan", quantity: `${equipment} EA`, note: "Verify model/tonnage" });
-    if (fans) rows.push({ item: "Exhaust fan", size: "Per plan", quantity: `${fans} EA`, note: "Coordinate power/roof" });
-    if (dampers) rows.push({ item: "Volume balancing damper", size: "Per branch", quantity: `${dampers} EA`, note: "Keep accessible and label" });
-    if (motorDampers) rows.push({ item: "Motorized outside-air damper", size: "Per plan", quantity: `${motorDampers} EA`, note: "24V · normally closed · verify controls" });
-    if (reducers) rows.push({ item: "Reducer / transition", size: "Field measure", quantity: `${reducers} EA`, note: "Do not fabricate from plan only" });
-    if (thermostats) rows.push({ item: "Thermostat / wall control", size: "24V", quantity: `${thermostats} EA`, note: "Coordinate mounting height" });
-    if (smokeDetectors) rows.push({ item: "Duct smoke detector", size: "Per code", quantity: `${smokeDetectors} EA`, note: "Before first takeoff · maintain access" });
-    if (ductTotals.size) rows.push({ item: "Hangers, strap, sealant & mastic", size: "—", quantity: "1 LOT", note: "Field verify" });
+    const activeSymbols = drawings.filter((drawing) => drawingSystem(drawing) === activeSystem && drawing.symbol);
+    const groupedSymbols = new Map<string, { kind: SymbolKind; label: string; size: string; neckSize: string; variant: string; count: number }>();
+    activeSymbols.forEach((drawing) => {
+      const kind = drawing.symbol!.kind;
+      if (["airflow", "note"].includes(kind)) return;
+      const neckSize = drawing.symbol?.neckSize || (kind === "returnGrille" ? "12" : "8");
+      const key = `${kind}-${drawing.size}-${neckSize}-${drawing.symbol?.variant || "standard"}-${drawing.symbol?.label || kind}`;
+      const current = groupedSymbols.get(key) || {
+        kind,
+        label: drawing.symbol?.label || kind,
+        size: drawing.size || "Per plan",
+        neckSize,
+        variant: drawing.symbol?.variant || "standard",
+        count: 0,
+      };
+      current.count += 1;
+      groupedSymbols.set(key, current);
+    });
+    [...groupedSymbols.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.size.localeCompare(b.size)).forEach((group) => {
+      const category = ["diffuser", "returnGrille"].includes(group.kind) ? "Air devices" : group.kind === "equipment" ? "Equipment" : "Accessories";
+      rows.push({ category, item: group.label, size: group.size, quantity: `${group.count} EA`, note: `${group.variant.replaceAll("-", " ")} style · field label governs` });
+      if (group.kind === "diffuser") rows.push({ category: "Air devices", item: "Supply can / plenum box", size: `Ø${group.neckSize}" neck`, quantity: `${group.count} EA`, note: `${group.size} face · match ${group.label.toLowerCase()}` });
+      if (group.kind === "returnGrille") rows.push({ category: "Air devices", item: "Return can / box", size: `Ø${group.neckSize}" neck`, quantity: `${group.count} EA`, note: `${group.size} face · match ${group.label.toLowerCase()}` });
+    });
+    const fittingGroups = new Map<string, number>();
+    drawings.filter((drawing) => drawingSystem(drawing) === activeSystem && drawing.fitting).forEach((drawing) => {
+      const fitting = drawing.fitting!;
+      const size = `${fitting.upstreamSize}×${fitting.downstreamSize}×${fitting.branchSize}`;
+      const key = `${fitting.style === "tee90" ? "Tee" : "Wye"} ${size}`;
+      fittingGroups.set(key, (fittingGroups.get(key) || 0) + 1);
+    });
+    fittingGroups.forEach((count, key) => {
+      const [item, size] = key.split(" ");
+      rows.push({ category: "Fittings", item: `${item} branch fitting`, size, quantity: `${count} EA`, note: "Verify orientation before shop release" });
+    });
+    if (ductTotals.size) rows.push({ category: "Installation", item: "Hangers, strap, sealant, mastic & fasteners", size: "—", quantity: "1 LOT", note: "Field verify structure and support spacing" });
     return rows;
+  }
+
+  function materialSummary() {
+    const rows = buildTakeoff();
+    const flexBoxes = rows.filter((row) => row.item.includes("flex duct")).reduce((total, row) => total + (Number(row.note.match(/^(\d+)/)?.[1]) || 0), 0);
+    const deviceCount = rows.filter((row) => row.category === "Air devices" && !row.item.includes("can") && !row.item.includes("box")).reduce((total, row) => total + (Number(row.quantity.match(/^(\d+)/)?.[1]) || 0), 0);
+    const fittingCount = rows.filter((row) => row.category === "Fittings").reduce((total, row) => total + (Number(row.quantity.match(/^(\d+)/)?.[1]) || 0), 0);
+    const holds = activeValidationIssues.filter((issue) => issue.severity !== "info" && ["Coordination", "Connections"].includes(issueCategory(issue.title)));
+    return { flexBoxes, deviceCount, fittingCount, holds };
+  }
+
+  function exportPurchaseSheetCsv() {
+    const rows = buildTakeoff();
+    if (!rows.length) return;
+    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const csv = [
+      ["System", "Category", "Item", "Size", "Order Quantity", "Purchasing / Fabrication Note"],
+      ...rows.map((row) => [systemLabel(activeSystem), row.category, row.item, row.size, row.quantity, row.note]),
+    ].map((row) => row.map(quote).join(",")).join("\n");
+    const link = document.createElement("a");
+    const objectUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    link.href = objectUrl;
+    link.download = `${systemLabel(activeSystem).replaceAll(" ", "-").toLowerCase()}-purchase-sheet.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+
+  function buildFieldConnectionModel(systemId: string) {
+    const runs = drawings.filter((drawing) =>
+      drawingSystem(drawing) === systemId &&
+      ["supply", "return", "fresh"].includes(drawing.type) &&
+      !drawing.fitting &&
+      !drawing.symbol
+    );
+    const runById = new Map(runs.map((run) => [run.id, run]));
+    const adjacency = new Map(runs.map((run) => [run.id, new Set<string>()]));
+    const fittingProblems = new Set<string>();
+    const fittings = drawings.filter((drawing) => drawingSystem(drawing) === systemId && drawing.fitting);
+
+    fittings.forEach((fitting) => {
+      const ports = fittingPortPoints(fitting);
+      const validRunIds = fitting.fitting!.connectedIds.map((runId, port) => {
+        const run = runById.get(runId);
+        if (!run || run.page !== fitting.page || run.type !== "supply") return "";
+        const endpoints = [run.points[0], run.points[run.points.length - 1]];
+        return endpoints.some((point) => Math.hypot(point.x - ports[port].x, point.y - ports[port].y) < 2) ? run.id : "";
+      });
+      const valid = validRunIds.filter(Boolean);
+      if (valid.length !== 3) valid.forEach((runId) => fittingProblems.add(runId));
+      valid.forEach((runId) => {
+        valid.forEach((otherId) => {
+          if (otherId !== runId) adjacency.get(runId)?.add(otherId);
+        });
+      });
+    });
+
+    const validEquipmentLinks = new Set<string>();
+    const validSupplyTerminalLinks = new Set<string>();
+    const validReturnTerminalLinks = new Set<string>();
+    drawings.filter((drawing) => drawingSystem(drawing) === systemId && drawing.symbol?.connectedRunId).forEach((symbol) => {
+      const run = runById.get(symbol.symbol!.connectedRunId!);
+      if (!run || run.page !== symbol.page) return;
+      const expectedType = isPrimaryAirflowEquipment(symbol) || symbol.symbol?.kind === "diffuser"
+        ? "supply"
+        : symbol.symbol?.kind === "returnGrille"
+          ? "return"
+          : "";
+      if (!expectedType || run.type !== expectedType) return;
+      const point = symbol.points[0];
+      const physicallyAttached = [run.points[0], run.points[run.points.length - 1]].some((endpoint) =>
+        Math.hypot(endpoint.x - point.x, endpoint.y - point.y) < 2
+      );
+      if (!physicallyAttached) return;
+      if (isPrimaryAirflowEquipment(symbol)) validEquipmentLinks.add(run.id);
+      if (symbol.symbol?.kind === "diffuser") validSupplyTerminalLinks.add(run.id);
+      if (symbol.symbol?.kind === "returnGrille") validReturnTerminalLinks.add(run.id);
+    });
+
+    const result = new Map<string, { connected: boolean; detail: string }>();
+    const visited = new Set<string>();
+    runs.forEach((seed) => {
+      if (visited.has(seed.id)) return;
+      const component = new Set<string>();
+      const queue = [seed.id];
+      while (queue.length) {
+        const runId = queue.shift()!;
+        if (component.has(runId)) continue;
+        component.add(runId);
+        visited.add(runId);
+        adjacency.get(runId)?.forEach((nextId) => queue.push(nextId));
+      }
+      const componentRuns = [...component].map((runId) => runById.get(runId)!).filter(Boolean);
+      const hasFittingProblem = [...component].some((runId) => fittingProblems.has(runId));
+      const hasSource = [...component].some((runId) => validEquipmentLinks.has(runId));
+      const hasSupplyTerminal = [...component].some((runId) => validSupplyTerminalLinks.has(runId));
+      const hasReturnTerminal = [...component].some((runId) => validReturnTerminalLinks.has(runId));
+      const freshControls = drawings.filter((drawing) =>
+        drawingSystem(drawing) === systemId &&
+        drawing.symbol?.kind === "motorDamper" &&
+        componentRuns.some((run) => run.page === drawing.page && pointToDrawingDistance(drawing.points[0], run) <= 12)
+      ).length;
+      componentRuns.forEach((run) => {
+        const connected = !hasFittingProblem && (
+          run.type === "supply"
+            ? hasSource && hasSupplyTerminal
+            : run.type === "return"
+              ? hasReturnTerminal
+              : freshControls > 0
+        );
+        const detail = hasFittingProblem
+          ? "Open or detached T/Y port"
+          : run.type === "supply" && !hasSource
+            ? "No equipment source"
+            : run.type === "supply" && !hasSupplyTerminal
+              ? "No connected supply terminal"
+              : run.type === "return" && !hasReturnTerminal
+                ? "No connected return grille"
+                : run.type === "fresh" && !freshControls
+                  ? "No motorized OA damper on run"
+                  : "Verified";
+        result.set(run.id, { connected, detail });
+      });
+    });
+    return result;
+  }
+
+  function fieldRunSchedule(connectionModel = buildFieldConnectionModel(activeSystem)) {
+    return drawings
+      .filter((drawing) => drawingSystem(drawing) === activeSystem && ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting && !drawing.symbol)
+      .map((drawing) => {
+        const connection = connectionModel.get(drawing.id) || { connected: false, detail: "No verified path" };
+        return {
+          drawing,
+          type: drawing.type === "supply" ? "Supply" : drawing.type === "return" ? "Return" : "Fresh air",
+          size: `${drawing.size}"`,
+          length: drawingLengthFeet(drawing),
+          cfm: runAirflow(drawing),
+          room: drawing.roomName?.trim() || "Room not assigned",
+          elevation: drawing.elevation?.trim() || "EL VERIFY",
+          connected: connection.connected,
+          connectionDetail: connection.detail,
+        };
+      })
+      .sort((a, b) => a.type.localeCompare(b.type) || Number(b.drawing.size) - Number(a.drawing.size));
+  }
+
+  function fieldPackageSummary(
+    review = reviewSummary(),
+    connectionModel = buildFieldConnectionModel(activeSystem),
+  ) {
+    const runs = fieldRunSchedule(connectionModel);
+    const checklist = activeFieldChecklist();
+    const checklistComplete = fieldChecklistItems.filter((item) => checklist[item.id]).length;
+    const critical = review.critical;
+    const missingElevation = runs.filter((run) => run.elevation === "EL VERIFY").length;
+    const missingRoom = drawings.filter((drawing) =>
+      drawingSystem(drawing) === activeSystem &&
+      ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") &&
+      !drawing.roomName?.trim()
+    ).length;
+    const connectionProblems = runs.filter((run) => !run.connected).length;
+    const openRfis = activeRfiItems().filter((item) => !["approved", "closed"].includes(item.status)).length;
+    const openPunches = activePunchItems().filter((item) => item.status === "open").length;
+    const criticalPunches = activePunchItems().filter((item) => item.status === "open" && item.priority === "critical").length;
+    const gates = [
+      { id: "runs", label: "Duct runs drawn", clear: Boolean(runs.length), detail: runs.length ? `${runs.length} runs` : "No duct runs" },
+      { id: "critical", label: "Critical review issues fixed", clear: critical === 0, detail: critical ? `${critical} critical` : "Clear" },
+      { id: "warning", label: "Warnings reviewed", clear: review.openWarnings === 0, detail: review.openWarnings ? `${review.openWarnings} open` : review.acceptedWarnings ? `${review.acceptedWarnings} accepted` : "Clear" },
+      { id: "connections", label: "Saved connections verified", clear: connectionProblems === 0, detail: connectionProblems ? `${connectionProblems} review` : "Clear" },
+      { id: "elevations", label: "Elevations coordinated", clear: missingElevation === 0, detail: missingElevation ? `${missingElevation} missing` : "Clear" },
+      { id: "rooms", label: "Terminal rooms assigned", clear: missingRoom === 0, detail: missingRoom ? `${missingRoom} missing` : "Clear" },
+      { id: "scale", label: "Drawing scale verified", clear: scaleVerified, detail: scaleVerified ? scaleLabel : "Select a scale or calibrate" },
+      { id: "checklist", label: "Field checklist complete", clear: checklistComplete === fieldChecklistItems.length, detail: `${checklistComplete}/${fieldChecklistItems.length}` },
+      { id: "rfi", label: "RFIs approved or closed", clear: openRfis === 0, detail: openRfis ? `${openRfis} open` : "Clear" },
+      { id: "punch", label: "Critical punch items closed", clear: criticalPunches === 0, detail: criticalPunches ? `${criticalPunches} critical` : "Clear" },
+    ];
+    const gatesClear = gates.every((gate) => gate.clear);
+    const latestRelease = latestSystemRelease();
+    const signature = systemDrawingSignature();
+    const releaseSignature = systemReleaseSignature();
+    const signatureMatches = Boolean(latestRelease &&
+      latestRelease.drawingSignature === signature &&
+      latestRelease.releaseSignature === releaseSignature);
+    const released = Boolean(signatureMatches && gatesClear);
+    const stale = Boolean(latestRelease && (!signatureMatches || !gatesClear));
+    const status = stale ? "STALE" : released ? "RELEASED" : gatesClear ? "READY FOR APPROVAL" : "HOLD";
+    return {
+      runs,
+      checklistComplete,
+      critical,
+      openWarnings: review.openWarnings,
+      acceptedWarnings: review.acceptedWarnings,
+      missingElevation,
+      missingRoom,
+      connectionProblems,
+      openRfis,
+      openPunches,
+      criticalPunches,
+      gates,
+      gatesClear,
+      ready: gatesClear,
+      released,
+      stale,
+      status,
+      latestRelease,
+      signature,
+      releaseSignature,
+    };
+  }
+
+  function issueSystemRelease() {
+    const summary = activeFieldPackage;
+    if (!summary.gatesClear) {
+      setBranchMessage("Release is blocked. Clear every release gate first");
+      return;
+    }
+    if (!releaseRevision.trim() || !releaseBy.trim()) {
+      setBranchMessage("Add the revision and released-by name before issuing");
+      return;
+    }
+    if (summary.released && summary.latestRelease?.revision.toLowerCase() === releaseRevision.trim().toLowerCase()) {
+      setBranchMessage(`Revision ${summary.latestRelease.revision} is already the current field release`);
+      return;
+    }
+    const record: SystemReleaseRecord = {
+      id: crypto.randomUUID(),
+      systemId: activeSystem,
+      revision: releaseRevision.trim(),
+      releasedBy: releaseBy.trim(),
+      releasedAt: new Date().toISOString(),
+      note: releaseNote.trim(),
+      drawingSignature: summary.signature,
+      releaseSignature: summary.releaseSignature,
+      checklistComplete: summary.checklistComplete,
+      acceptedIssueCount: summary.acceptedWarnings,
+      runCount: summary.runs.length,
+      designCfm: designAirflow().targetCfm,
+      pdfFingerprint,
+      gateSnapshot: summary.gates.map((gate) => ({ ...gate })),
+      checklistSnapshot: fieldChecklistItems.map((item) => ({ ...item, checked: Boolean(activeFieldChecklist()[item.id]) })),
+      issueSnapshot: activeReviewedIssueRows.map((row) => ({
+        id: row.issue.id,
+        severity: row.issue.severity,
+        title: row.issue.title,
+        detail: row.issue.detail,
+        disposition: row.decision?.status || "open",
+        reviewer: row.decision?.reviewer || "",
+        note: row.decision?.note || "",
+      })),
+      rulesSnapshot: { scaleLabel, scaleFeetPerUnit, supplyVelocityLimit, returnVelocityLimit, freshVelocityLimit, residentialFlexMax },
+    };
+    setReleaseRecords((current) => [...current, record]);
+    setBranchMessage(`${systemLabel(activeSystem)} revision ${record.revision} released for field use`);
+    setReleaseNote("");
+  }
+
+  function exportReleaseManifestCsv() {
+    const summary = activeFieldPackage;
+    const releases = releaseRecords.filter((record) => record.systemId === activeSystem).sort((a, b) => b.releasedAt.localeCompare(a.releasedAt));
+    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const csv = [
+      ["HVAC FIELD RELEASE MANIFEST"],
+      ["System", systemLabel(activeSystem)],
+      ["Current status", summary.status],
+      ["Drawing signature", summary.signature],
+      ["Generated", new Date().toLocaleString()],
+      [],
+      ["Release Gate", "Status", "Detail"],
+      ...summary.gates.map((gate) => [gate.label, gate.clear ? "CLEAR" : "HOLD", gate.detail]),
+      [],
+      ["Revision", "Released By", "Released At", "Current Drawing", "Runs", "Design CFM", "Accepted Warnings", "Note"],
+      ...releases.map((record) => [
+        record.revision,
+        record.releasedBy,
+        new Date(record.releasedAt).toLocaleString(),
+        record.id === summary.latestRelease?.id && record.drawingSignature === summary.signature && record.releaseSignature === summary.releaseSignature ? "CURRENT" : "SUPERSEDED",
+        record.runCount,
+        record.designCfm,
+        record.acceptedIssueCount,
+        record.note,
+      ]),
+    ].map((row) => row.map(quote).join(",")).join("\n");
+    const link = document.createElement("a");
+    const objectUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    link.href = objectUrl;
+    link.download = `${systemLabel(activeSystem).replaceAll(" ", "-").toLowerCase()}-field-release-manifest.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+
+  function exportFieldRunScheduleCsv() {
+    const rows = activeFieldPackage.runs;
+    if (!rows.length) return;
+    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const csv = [
+      ["System", "Duct Type", "Size", "Length LF", "Calculated CFM", "Room / Area", "Elevation", "Connection Review"],
+      ...rows.map((run) => [
+        systemLabel(activeSystem),
+        run.type,
+        run.size,
+        run.length.toFixed(1),
+        run.cfm,
+        run.room,
+        run.elevation,
+        run.connected ? "CONNECTED" : "REVIEW",
+      ]),
+    ].map((row) => row.map(quote).join(",")).join("\n");
+    const link = document.createElement("a");
+    const objectUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    link.href = objectUrl;
+    link.download = `${systemLabel(activeSystem).replaceAll(" ", "-").toLowerCase()}-field-run-schedule.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+
+  function commissioningRecord(systemId = activeSystem) {
+    const record = commissioningBySystem[systemId];
+    return {
+      ...emptyCommissioningRecord,
+      ...record,
+      checklist: { ...(record?.checklist || {}) },
+    };
+  }
+
+  function activeCommissioningRecord() {
+    return commissioningRecord();
+  }
+
+  function updateCommissioningField(field: keyof Omit<CommissioningRecord, "checklist">, value: string) {
+    setCommissioningBySystem((current) => ({
+      ...current,
+      [activeSystem]: { ...emptyCommissioningRecord, ...current[activeSystem], [field]: value },
+    }));
+  }
+
+  function updateCommissioningCheck(id: string, checked: boolean) {
+    setCommissioningBySystem((current) => {
+      const record = { ...emptyCommissioningRecord, ...current[activeSystem] };
+      return { ...current, [activeSystem]: { ...record, checklist: { ...record.checklist, [id]: checked } } };
+    });
+  }
+
+  function commissioningSummary() {
+    const record = activeCommissioningRecord();
+    const totalStatic = Math.abs(Number(record.supplyStatic) || 0) + Math.abs(Number(record.returnStatic) || 0);
+    const ratedMax = Number(record.ratedMaxStatic) || 0;
+    const measuredCfm = Number(record.measuredCfm) || 0;
+    const designCfm = designAirflow().targetCfm;
+    const airflowPercent = designCfm ? Math.round(measuredCfm / designCfm * 100) : 0;
+    const checklistComplete = commissioningChecklistItems.filter((item) => record.checklist[item.id]).length;
+    const identityComplete = Boolean(record.model.trim() && record.serial.trim() && record.filterSize.trim() && record.technician.trim() && record.date);
+    const readingsComplete = measuredCfm > 0 &&
+      record.supplyStatic !== "" &&
+      record.returnStatic !== "" &&
+      ratedMax > 0 &&
+      record.temperatureSplit !== "";
+    const ready = checklistComplete === commissioningChecklistItems.length && identityComplete && readingsComplete && totalStatic <= ratedMax;
+    return { record, totalStatic, ratedMax, measuredCfm, designCfm, airflowPercent, checklistComplete, identityComplete, readingsComplete, ready };
+  }
+
+  function systemCommandStatus(systemId: string) {
+    const stats = systemStats(systemId);
+    const scoped = drawings.filter((drawing) => drawingSystem(drawing) === systemId);
+    const runs = scoped.filter((drawing) => ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting && !drawing.symbol);
+    const supplyTerminals = scoped.filter((drawing) => drawing.symbol?.kind === "diffuser").length;
+    const connectionModel = buildFieldConnectionModel(systemId);
+    const disconnectedRuns = runs.filter((drawing) => !connectionModel.get(drawing.id)?.connected).length;
+    const missingElevations = runs.filter((drawing) => !drawing.elevation?.trim()).length;
+    const missingRooms = scoped.filter((drawing) => ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") && !drawing.roomName?.trim()).length;
+    const releaseChecklist = activeFieldChecklist(systemId);
+    const releaseChecklistComplete = fieldChecklistItems.filter((item) => releaseChecklist[item.id]).length;
+    const record = commissioningRecord(systemId);
+    const checklistComplete = commissioningChecklistItems.filter((item) => record.checklist[item.id]).length;
+    const totalStatic = Math.abs(Number(record.supplyStatic) || 0) + Math.abs(Number(record.returnStatic) || 0);
+    const ratedMax = Number(record.ratedMaxStatic) || 0;
+    const measuredCfm = Number(record.measuredCfm) || 0;
+    const identityComplete = Boolean(record.model.trim() && record.serial.trim() && record.filterSize.trim() && record.technician.trim() && record.date);
+    const readingsComplete = measuredCfm > 0 &&
+      record.supplyStatic !== "" &&
+      record.returnStatic !== "" &&
+      ratedMax > 0 &&
+      record.temperatureSplit !== "";
+    const commissioned = checklistComplete === commissioningChecklistItems.length && identityComplete && readingsComplete && totalStatic <= ratedMax;
+    const openPunches = punchItems.filter((item) => item.systemId === systemId && item.status === "open");
+    const openRfis = rfiItems.filter((item) => item.systemId === systemId && !["approved", "closed"].includes(item.status));
+    const criticalPunches = openPunches.filter((item) => item.priority === "critical").length;
+    const designReady = stats.units > 0 && supplyTerminals > 0 && stats.balanced && disconnectedRuns === 0;
+    const activePackage = systemId === activeSystem ? activeFieldPackage : null;
+    const releaseGatesClear = activePackage
+      ? activePackage.gatesClear
+      : designReady &&
+        runs.length > 0 &&
+        missingElevations === 0 &&
+        missingRooms === 0 &&
+        scaleVerified &&
+        releaseChecklistComplete === fieldChecklistItems.length &&
+        openRfis.length === 0 &&
+        criticalPunches === 0;
+    const latestRelease = latestSystemRelease(systemId);
+    const releaseStale = Boolean(latestRelease && (
+      latestRelease.drawingSignature !== systemDrawingSignature(systemId) ||
+      latestRelease.releaseSignature !== systemReleaseSignature(systemId) ||
+      !releaseGatesClear
+    ));
+    const fieldReady = Boolean(releaseGatesClear && latestRelease && !releaseStale);
+    const closeoutReady = fieldReady && commissioned && openPunches.length === 0 && openRfis.length === 0;
+    const blockers: string[] = [];
+    if (!stats.units) blockers.push("equipment");
+    if (!supplyTerminals) blockers.push("supply outlets");
+    if (stats.units && supplyTerminals && !stats.balanced) blockers.push("airflow balance");
+    if (disconnectedRuns) blockers.push(`${disconnectedRuns} connection${disconnectedRuns === 1 ? "" : "s"}`);
+    if (missingElevations) blockers.push(`${missingElevations} elevation${missingElevations === 1 ? "" : "s"}`);
+    if (missingRooms) blockers.push(`${missingRooms} room assignment${missingRooms === 1 ? "" : "s"}`);
+    if (releaseChecklistComplete !== fieldChecklistItems.length) blockers.push(`field checklist ${releaseChecklistComplete}/${fieldChecklistItems.length}`);
+    if (releaseStale) blockers.push("stale field release");
+    else if (releaseGatesClear && !latestRelease) blockers.push("field approval");
+    if (!commissioned) blockers.push("commissioning");
+    if (openPunches.length) blockers.push(`${openPunches.length} punch item${openPunches.length === 1 ? "" : "s"}`);
+    if (openRfis.length) blockers.push(`${openRfis.length} open RFI${openRfis.length === 1 ? "" : "s"}`);
+    const completedStages = Number(designReady) + Number(releaseGatesClear) + Number(fieldReady) + Number(commissioned) + Number(closeoutReady);
+    return {
+      systemId,
+      stats,
+      runs: runs.length,
+      supplyTerminals,
+      disconnectedRuns,
+      missingElevations,
+      missingRooms,
+      releaseChecklistComplete,
+      releaseGatesClear,
+      releaseStale,
+      commissioned,
+      openPunches: openPunches.length,
+      criticalPunches,
+      openRfis: openRfis.length,
+      designReady,
+      fieldReady,
+      closeoutReady,
+      blockers,
+      progress: Math.round(completedStages / 5 * 100),
+    };
+  }
+
+  function projectCommandRows() {
+    return systems
+      .map((system) => ({ ...system, ...systemCommandStatus(system.id) }))
+      .filter((system) => system.stats.objects > 0);
+  }
+
+  function projectCommandSummary() {
+    const rows = projectCommandRows();
+    const designReady = rows.filter((row) => row.designReady).length;
+    const fieldReady = rows.filter((row) => row.fieldReady).length;
+    const commissioned = rows.filter((row) => row.commissioned).length;
+    const closeoutReady = rows.filter((row) => row.closeoutReady).length;
+    const openPunches = rows.reduce((total, row) => total + row.openPunches, 0);
+    const openRfis = rows.reduce((total, row) => total + row.openRfis, 0);
+    const progress = rows.length ? Math.round(rows.reduce((total, row) => total + row.progress, 0) / rows.length) : 0;
+    return { rows, designReady, fieldReady, commissioned, closeoutReady, openPunches, openRfis, progress };
+  }
+
+  function openSystemFromCommandCenter(systemId: string) {
+    setActiveSystem(systemId);
+    setSelectedId(null);
+    setSelectedIds([]);
+    setRightTab("field");
+  }
+
+  function openReleaseGate(gateId: string) {
+    if (["critical", "warning", "connections", "rooms"].includes(gateId)) {
+      setReviewQueueFilter("open");
+      setReviewView("issues");
+      setRightTab("checks");
+      return;
+    }
+    if (gateId === "runs" || gateId === "elevations") {
+      setFieldView("installer");
+      setRightTab("field");
+      return;
+    }
+    if (gateId === "rfi" || gateId === "punch") {
+      setFieldView("coordination");
+      setRightTab("field");
+      return;
+    }
+    if (gateId === "scale") {
+      setRightPanelOpen(false);
+      setBranchMessage("Choose a drawing scale in the canvas toolbar or calibrate from a known distance");
+      return;
+    }
+    setFieldView("release");
+    setRightTab("field");
+  }
+
+  function exportProjectStatusCsv() {
+    const rows = projectCommandRows();
+    if (!rows.length) return;
+    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const csv = [
+      ["System", "Objects", "Design CFM", "Supply CFM", "Return CFM", "Design", "Field Release", "Commissioning", "Open RFI", "Open Punch", "Critical Punch", "Closeout", "Blocking Items"],
+      ...rows.map((row) => [
+        systemLabel(row.systemId),
+        row.stats.objects,
+        row.stats.designCfm,
+        row.stats.supplyCfm,
+        row.stats.returnCfm,
+        row.designReady ? "READY" : "HOLD",
+        row.fieldReady ? "READY" : "HOLD",
+        row.commissioned ? "COMPLETE" : "OPEN",
+        row.openRfis,
+        row.openPunches,
+        row.criticalPunches,
+        row.closeoutReady ? "READY" : "HOLD",
+        row.blockers.join("; ") || "None",
+      ]),
+    ].map((row) => row.map(quote).join(",")).join("\n");
+    const link = document.createElement("a");
+    const objectUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    link.href = objectUrl;
+    link.download = "hvac-project-command-center.csv";
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+
+  function exportCommissioningCsv() {
+    const summary = commissioningSummary();
+    const record = summary.record;
+    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const rows = [
+      ["System", systemLabel(activeSystem)],
+      ["Equipment model", record.model],
+      ["Serial", record.serial],
+      ["Filter size", record.filterSize],
+      ["Measured airflow CFM", record.measuredCfm],
+      ["Design airflow CFM", summary.designCfm],
+      ["Supply static in. w.g.", record.supplyStatic],
+      ["Return static in. w.g.", record.returnStatic],
+      ["Total external static in. w.g.", summary.totalStatic.toFixed(2)],
+      ["Rated maximum static in. w.g.", record.ratedMaxStatic],
+      ["Temperature split °F", record.temperatureSplit],
+      ["Technician", record.technician],
+      ["Date", record.date],
+      ["Notes", record.notes],
+      ...commissioningChecklistItems.map((item) => [item.label, record.checklist[item.id] ? "COMPLETE" : "OPEN"]),
+    ];
+    const csv = rows.map((row) => row.map(quote).join(",")).join("\n");
+    const link = document.createElement("a");
+    const objectUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    link.href = objectUrl;
+    link.download = `${systemLabel(activeSystem).replaceAll(" ", "-").toLowerCase()}-commissioning-record.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+
+  function activePunchItems() {
+    return punchItems
+      .filter((item) => item.systemId === activeSystem)
+      .sort((a, b) => {
+        const statusOrder = Number(a.status === "resolved") - Number(b.status === "resolved");
+        const priorityOrder = { critical: 0, normal: 1, low: 2 };
+        return statusOrder || priorityOrder[a.priority] - priorityOrder[b.priority] || b.createdAt.localeCompare(a.createdAt);
+      });
+  }
+
+  function selectedObjectDescription() {
+    const drawing = drawings.find((item) => item.id === selectedId);
+    if (!drawing) return "No drawing object linked";
+    if (drawing.symbol) return `${drawing.symbol.label} · ${drawing.size || "Per plan"}`;
+    if (drawing.fitting) return `${drawing.fitting.style === "tee90" ? "Tee" : "Wye"} · ${drawing.fitting.upstreamSize}×${drawing.fitting.downstreamSize}×${drawing.fitting.branchSize}`;
+    return `${drawing.type.toUpperCase()} · ${drawing.size}" · ${drawing.roomName?.trim() || "Room unassigned"}`;
+  }
+
+  function createPunchItem() {
+    if (!punchTitle.trim()) return;
+    const item: PunchItem = {
+      id: crypto.randomUUID(),
+      systemId: activeSystem,
+      drawingId: selectedId || undefined,
+      title: punchTitle.trim(),
+      category: punchCategory,
+      priority: punchPriority,
+      assignedTo: punchAssignedTo.trim(),
+      note: punchNote.trim(),
+      status: "open",
+      createdAt: new Date().toISOString(),
+    };
+    setPunchItems((current) => [...current, item]);
+    setPunchTitle("");
+    setPunchNote("");
+  }
+
+  function togglePunchStatus(id: string) {
+    setPunchItems((current) => current.map((item) => item.id === id ? {
+      ...item,
+      status: item.status === "open" ? "resolved" : "open",
+      resolvedAt: item.status === "open" ? new Date().toISOString() : undefined,
+    } : item));
+  }
+
+  function exportPunchListCsv() {
+    const items = activePunchItems();
+    if (!items.length) return;
+    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const csv = [
+      ["System", "Status", "Priority", "Category", "Issue", "Assigned To", "Drawing Link", "Note", "Created", "Resolved"],
+      ...items.map((item) => [
+        systemLabel(activeSystem),
+        item.status,
+        item.priority,
+        item.category,
+        item.title,
+        item.assignedTo || "Unassigned",
+        item.drawingId ? "Linked" : "Not linked",
+        item.note,
+        new Date(item.createdAt).toLocaleDateString(),
+        item.resolvedAt ? new Date(item.resolvedAt).toLocaleDateString() : "",
+      ]),
+    ].map((row) => row.map(quote).join(",")).join("\n");
+    const link = document.createElement("a");
+    const objectUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    link.href = objectUrl;
+    link.download = `${systemLabel(activeSystem).replaceAll(" ", "-").toLowerCase()}-punch-list.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+
+  function activeRfiItems() {
+    const statusOrder: Record<RfiItem["status"], number> = { submitted: 0, answered: 1, draft: 2, approved: 3, closed: 4 };
+    const priorityOrder = { critical: 0, normal: 1, low: 2 };
+    return rfiItems
+      .filter((item) => item.systemId === activeSystem)
+      .sort((a, b) => statusOrder[a.status] - statusOrder[b.status] || priorityOrder[a.priority] - priorityOrder[b.priority] || b.createdAt.localeCompare(a.createdAt));
+  }
+
+  function createRfiItem() {
+    if (!rfiSubject.trim() || !rfiQuestion.trim()) return;
+    const now = new Date().toISOString();
+    const nextNumber = Math.max(0, ...rfiItems.map((item) => item.number)) + 1;
+    const item: RfiItem = {
+      id: crypto.randomUUID(),
+      number: nextNumber,
+      systemId: activeSystem,
+      drawingId: selectedId || undefined,
+      subject: rfiSubject.trim(),
+      category: rfiCategory,
+      priority: rfiPriority,
+      question: rfiQuestion.trim(),
+      proposedSolution: rfiSolution.trim(),
+      assignedTo: rfiAssignedTo.trim(),
+      costImpact: rfiCostImpact.trim() || "Not evaluated",
+      scheduleImpact: rfiScheduleImpact.trim() || "Not evaluated",
+      response: "",
+      status: "draft",
+      createdAt: now,
+      updatedAt: now,
+    };
+    setRfiItems((current) => [...current, item]);
+    setRfiSubject("");
+    setRfiQuestion("");
+    setRfiSolution("");
+  }
+
+  function updateRfiItem(id: string, patch: Partial<Pick<RfiItem, "status" | "response" | "approvalBy">>) {
+    const now = new Date().toISOString();
+    setRfiItems((current) => current.map((item) => {
+      if (item.id !== id) return item;
+      const next = { ...item, ...patch, updatedAt: now };
+      const approvalContentChanged =
+        (patch.response !== undefined && patch.response !== item.response) ||
+        (patch.approvalBy !== undefined && patch.approvalBy !== item.approvalBy);
+      if (approvalContentChanged && ["approved", "closed"].includes(item.status)) {
+        next.status = "answered";
+        next.approvedAt = undefined;
+      }
+      if (patch.status === "approved") {
+        if (!next.response.trim() || !next.approvalBy?.trim()) return item;
+        next.approvedAt = item.approvedAt || now;
+      } else if (patch.status === "closed") {
+        if (!item.approvedAt) return item;
+        next.approvedAt = item.approvedAt;
+      } else if (patch.status) {
+        next.approvedAt = undefined;
+      }
+      return next;
+    }));
+  }
+
+  function exportRfiLogCsv() {
+    const items = rfiItems.slice().sort((a, b) => a.number - b.number);
+    if (!items.length) return;
+    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const csv = [
+      ["RFI", "System", "Status", "Priority", "Category", "Subject", "Question / Conflict", "Proposed Solution", "Assigned To", "Cost Impact", "Schedule Impact", "Response / Approval", "Approved By", "Approved At", "Plan Link", "Created", "Updated"],
+      ...items.map((item) => [
+        `RFI-${String(item.number).padStart(3, "0")}`,
+        systemLabel(item.systemId),
+        item.status,
+        item.priority,
+        item.category,
+        item.subject,
+        item.question,
+        item.proposedSolution,
+        item.assignedTo || "Unassigned",
+        item.costImpact,
+        item.scheduleImpact,
+        item.response,
+        item.approvalBy || "",
+        item.approvedAt ? new Date(item.approvedAt).toLocaleString() : "",
+        item.drawingId ? "Linked" : "General",
+        new Date(item.createdAt).toLocaleDateString(),
+        new Date(item.updatedAt).toLocaleDateString(),
+      ]),
+    ].map((row) => row.map(quote).join(",")).join("\n");
+    const link = document.createElement("a");
+    const objectUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    link.href = objectUrl;
+    link.download = "hvac-project-rfi-change-log.csv";
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
   }
 
   function applyScalePreset(label: string) {
@@ -1938,11 +4796,60 @@ export default function Home() {
     setScaleFeetPerUnit(1 / (unitsPerFoot[label] || 24.3));
     setScaleLabel(label);
     setScaleLocked(true);
+    setScaleVerified(true);
     setCalibrating(false);
     setMeasureDraft([]);
   }
 
   function placeSmartBranch(point: Point) {
+    setBranchPlacementResult(null);
+    if (attachPendingBranchRun(point)) return;
+    const threeRunMatch = existingThreeRunJunction(point);
+    if (threeRunMatch) {
+      const [upstreamMatch, downstreamMatch, branchMatch] = threeRunMatch.ports;
+      const fittingId = crypto.randomUUID();
+      const temporaryFitting: Drawing = {
+        id: fittingId,
+        type: "branch",
+        points: [threeRunMatch.center],
+        size: `${upstreamMatch.drawing.size}×${downstreamMatch.drawing.size}×${branchMatch.drawing.size}`,
+        page: pageNumber,
+        systemId: drawingSystem(upstreamMatch.drawing),
+        elevation: upstreamMatch.drawing.elevation,
+        fitting: {
+          kind: "ty",
+          style: threeRunMatch.style,
+          angle: threeRunMatch.angle,
+          branchAngle: threeRunMatch.branchAngle,
+          side: threeRunMatch.side,
+          upstreamSize: upstreamMatch.drawing.size,
+          downstreamSize: downstreamMatch.drawing.size,
+          branchSize: branchMatch.drawing.size,
+          connectedIds: threeRunMatch.ports.map((match) => match.drawing.id),
+        },
+      };
+      const ports = fittingPortPoints(temporaryFitting);
+      const endpointAssignments = new Map(threeRunMatch.ports.map((match, port) => [
+        match.drawing.id,
+        { endpointIndex: match.endpointIndex, point: ports[port] },
+      ]));
+      const connectedRuns = drawings.map((drawing) => {
+        const assignment = endpointAssignments.get(drawing.id);
+        if (!assignment) return drawing;
+        return {
+          ...drawing,
+          points: drawing.points.map((existingPoint, index) => index === assignment.endpointIndex ? assignment.point : existingPoint),
+        };
+      });
+      setHistory([...connectedRuns, temporaryFitting]);
+      setActiveSystem(drawingSystem(upstreamMatch.drawing));
+      setSelectedId(fittingId);
+      const completionMessage = `${threeRunMatch.style === "tee90" ? "90° tee" : "45° wye"} complete · 3 separate runs attached to Ports 1, 2 and 3`;
+      setBranchMessage(completionMessage);
+      setBranchPlacementResult({ fittingId, message: completionMessage });
+      return;
+    }
+
     const rawTarget = nearestSupplySegment(point);
     if (!rawTarget || rawTarget.distance > 42 / zoom) {
       setBranchMessage("Move closer to a blue supply run");
@@ -1952,16 +4859,13 @@ export default function Home() {
 
     const center = target.point;
     const matchedRoute = existingBranchRoute(center, target.drawing.id, target.angle);
-    if (!matchedRoute) {
-      setBranchMessage("No crossing route found · move the fitting closer to both existing runs");
-      return;
-    }
     const downstreamSize = steppedSize(target.drawing.size, 1);
-    const branchSize = matchedRoute.drawing.size;
+    const branchSize = matchedRoute?.drawing.size || steppedSize(target.drawing.size, 2);
     const downstreamId = crypto.randomUUID();
     const fittingId = crypto.randomUUID();
-    const fittingSide = matchedRoute.side;
-    const branchAngle = matchedRoute.angle;
+    const fittingSide = matchedRoute?.side || target.side;
+    const defaultBranchOffset = branchStyle === "tee90" ? Math.PI / 2 : Math.PI / 4;
+    const branchAngle = matchedRoute?.angle ?? target.angle + fittingSide * defaultBranchOffset;
     const resolvedStyle = branchStyle === "auto" ? automaticBranchStyle(target.angle, branchAngle) : branchStyle;
     const temporaryFitting: Drawing = {
       id: "branch-port-preview",
@@ -1997,10 +4901,10 @@ export default function Home() {
       size: downstreamSize,
       cfm: defaultCfm(downstreamSize),
     };
-    const branchRun: Drawing = {
+    const branchRun: Drawing | null = matchedRoute ? {
       ...matchedRoute.drawing,
       points: cleanPoints([branchPort, ...matchedRoute.points.slice(1)]),
-    };
+    } : null;
     const fitting: Drawing = {
       id: fittingId,
       type: "branch",
@@ -2018,18 +4922,27 @@ export default function Home() {
         upstreamSize: target.drawing.size,
         downstreamSize,
         branchSize,
-        connectedIds: [upstream.id, downstream.id, branchRun.id],
+        connectedIds: [upstream.id, downstream.id, branchRun?.id || ""],
       },
     };
     setHistory([
-      ...drawings.filter((drawing) => drawing.id !== target.drawing.id && drawing.id !== matchedRoute.drawing.id),
+      ...drawings.filter((drawing) => drawing.id !== target.drawing.id && drawing.id !== matchedRoute?.drawing.id),
       upstream,
       downstream,
-      branchRun,
+      ...(branchRun ? [branchRun] : []),
       fitting,
     ]);
+    setActiveSystem(drawingSystem(target.drawing));
     setSelectedId(fittingId);
-    setBranchMessage(`${resolvedStyle === "tee90" ? "90° tee" : "45° wye"} inserted · 3 existing runs connected`);
+    if (branchRun) {
+      const completionMessage = `${resolvedStyle === "tee90" ? "90° tee" : "45° wye"} complete · trunk split and 3 of 3 ports attached`;
+      setBranchMessage(completionMessage);
+      setBranchPlacementResult({ fittingId, message: completionMessage });
+    } else {
+      setPendingBranchFittingId(fittingId);
+      setBranchPlacementResult(null);
+      setBranchMessage("Trunk split and fitting placed · now click any blue branch run to attach Port 3");
+    }
   }
 
   function updateFittingPortSize(port: 0 | 1 | 2, size: string) {
@@ -2062,11 +4975,53 @@ export default function Home() {
     setHistory(synchronizeFittingSizes(resized, drawings));
   }
 
+  function assignSelectedFittingPort(port: 0 | 1 | 2, runId: string) {
+    const fitting = drawings.find((drawing) => drawing.id === selectedId && drawing.fitting);
+    const run = drawings.find((drawing) => drawing.id === runId && drawing.type === "supply" && !drawing.fitting);
+    if (!fitting?.fitting || !run) return;
+    if (fitting.fitting.connectedIds.some((connectedId, index) => index !== port && connectedId === runId)) {
+      setBranchMessage("That run is already assigned to another fitting port");
+      return;
+    }
+    const portPoint = fittingPortPoints(fitting)[port];
+    const firstDistance = Math.hypot(run.points[0].x - portPoint.x, run.points[0].y - portPoint.y);
+    const lastIndex = run.points.length - 1;
+    const lastDistance = Math.hypot(run.points[lastIndex].x - portPoint.x, run.points[lastIndex].y - portPoint.y);
+    const endpointIndex = firstDistance <= lastDistance ? 0 : lastIndex;
+    const keys = ["upstreamSize", "downstreamSize", "branchSize"] as const;
+    const connectedIds = [...fitting.fitting.connectedIds];
+    connectedIds[port] = run.id;
+    const updatedFitting: Drawing = {
+      ...fitting,
+      size: [0, 1, 2].map((index) => index === port ? run.size : [
+        fitting.fitting!.upstreamSize,
+        fitting.fitting!.downstreamSize,
+        fitting.fitting!.branchSize,
+      ][index]).join("×"),
+      fitting: {
+        ...fitting.fitting,
+        connectedIds,
+        [keys[port]]: run.size,
+      },
+    };
+    const updatedPort = fittingPortPoints(updatedFitting)[port];
+    const next = drawings.map((drawing) => {
+      if (drawing.id === fitting.id) return updatedFitting;
+      if (drawing.id !== run.id) return drawing;
+      return {
+        ...drawing,
+        points: drawing.points.map((point, index) => index === endpointIndex ? updatedPort : point),
+      };
+    });
+    setHistory(next);
+    setBranchMessage(`Existing ${run.size}″ run assigned to Port ${port + 1} · route preserved`);
+  }
+
   function fittingPortState(fitting: Drawing, port: 0 | 1 | 2) {
     const run = drawings.find((drawing) => drawing.id === fitting.fitting?.connectedIds[port]);
     if (!run) return { connected: false, overloaded: false, cfm: 0, recommended: "" };
     const portPoint = fittingPortPoints(fitting)[port];
-    const connected = run.points.some((point) => Math.hypot(point.x - portPoint.x, point.y - portPoint.y) < 2);
+    const connected = [run.points[0], run.points[run.points.length - 1]].some((point) => Math.hypot(point.x - portPoint.x, point.y - portPoint.y) < 2);
     const cfm = runAirflow(run);
     const recommended = recommendedDuctSize(cfm, "supply");
     return { connected, overloaded: Number(recommended) > Number(run.size), cfm, recommended };
@@ -2184,38 +5139,83 @@ export default function Home() {
       symbol: {
         kind,
         label: selectedDefaults.label,
-        rotation: 0,
+        rotation: placementRotation,
         variant: preset?.variant,
+        neckSize: ["diffuser", "returnGrille"].includes(kind) ? (kind === "returnGrille" ? "12" : "8") : undefined,
       },
     };
     setHistory([...drawings, symbol]);
     setSelectedId(symbol.id);
   }
 
-  function snapPoint(point: Point, ignoredId?: string) {
-    if (!snapEnabled) return point;
-    const nearbyFitting = drawings
-      .filter((drawing) => drawing.page === pageNumber && drawing.id !== ignoredId && drawing.fitting)
-      .map((drawing) => ({ point: drawing.points[0], distance: Math.hypot(point.x - drawing.points[0].x, point.y - drawing.points[0].y) }))
-      .sort((a, b) => a.distance - b.distance)[0];
-    if (nearbyFitting && nearbyFitting.distance <= 26 / zoom) return nearbyFitting.point;
-    let closestVertex: Point | null = null;
-    let vertexDistance = Infinity;
-    for (const drawing of drawings) {
-      if (drawing.page !== pageNumber || drawing.id === ignoredId) continue;
-      for (const vertex of drawing.points) {
-        const distance = Math.hypot(point.x - vertex.x, point.y - vertex.y);
-        if (distance < vertexDistance) {
-          closestVertex = vertex;
-          vertexDistance = distance;
-        }
+  function segmentIntersection(a: Point, b: Point, c: Point, d: Point) {
+    const denominator = (a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x);
+    if (Math.abs(denominator) < .001) return null;
+    const t = ((a.x - c.x) * (c.y - d.y) - (a.y - c.y) * (c.x - d.x)) / denominator;
+    const u = -((a.x - b.x) * (a.y - c.y) - (a.y - b.y) * (a.x - c.x)) / denominator;
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1
+      ? { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) }
+      : null;
+  }
+
+  function snapResult(point: Point, ignoredId?: string): SnapInfo | null {
+    if (!snapEnabled) return null;
+    const tolerance = 16 / zoom;
+    const candidates: Array<SnapInfo & { priority: number; distance: number }> = [];
+    const pageDrawings = drawings.filter((drawing) => drawing.page === pageNumber && drawing.id !== ignoredId);
+    const add = (candidate: Point, kind: SnapKind, label: string, priority: number, limit = tolerance) => {
+      const distance = Math.hypot(point.x - candidate.x, point.y - candidate.y);
+      if (distance <= limit) candidates.push({ point: candidate, kind, label, priority, distance });
+    };
+    pageDrawings.forEach((drawing) => {
+      if (drawing.fitting) {
+        fittingPortPoints(drawing).forEach((port) => add(port, "fitting port", "PORT", 0, 24 / zoom));
+        return;
+      }
+      if (isPrimaryAirflowEquipment(drawing)) add(drawing.points[0], "equipment port", "EQUIPMENT", 1, 22 / zoom);
+      drawing.points.forEach((vertex, index) => add(vertex, "endpoint", index === 0 || index === drawing.points.length - 1 ? "ENDPOINT" : "VERTEX", 2));
+      drawing.points.slice(0, -1).forEach((vertex, index) => {
+        const next = drawing.points[index + 1];
+        add({ x: (vertex.x + next.x) / 2, y: (vertex.y + next.y) / 2 }, "midpoint", "MIDPOINT", 4);
+      });
+    });
+    const runSegments = pageDrawings.filter((drawing) => !drawing.fitting && !drawing.symbol && drawing.points.length > 1)
+      .flatMap((drawing) => drawing.points.slice(0, -1).map((a, index) => ({ drawingId: drawing.id, a, b: drawing.points[index + 1] })));
+    for (let first = 0; first < runSegments.length; first++) {
+      for (let second = first + 1; second < runSegments.length; second++) {
+        if (runSegments[first].drawingId === runSegments[second].drawingId) continue;
+        const crossing = segmentIntersection(runSegments[first].a, runSegments[first].b, runSegments[second].a, runSegments[second].b);
+        if (crossing) add(crossing, "intersection", "INTERSECTION", 3);
       }
     }
-    if (closestVertex && vertexDistance <= 14 / zoom) return closestVertex;
     const nearest = nearestSegment(point, ignoredId);
-    if (nearest && nearest.distance <= 14 / zoom) return nearest.point;
+    if (nearest) add(nearest.point, "nearest", "NEAREST", 5);
     const gridPoint = { x: Math.round(point.x / 10) * 10, y: Math.round(point.y / 10) * 10 };
-    return Math.hypot(point.x - gridPoint.x, point.y - gridPoint.y) <= 5 / zoom ? gridPoint : point;
+    add(gridPoint, "grid", "GRID", 6, 6 / zoom);
+    candidates.sort((a, b) => a.priority - b.priority || a.distance - b.distance);
+    return candidates[0] || null;
+  }
+
+  function snapPoint(point: Point, ignoredId?: string) {
+    return snapResult(point, ignoredId)?.point || point;
+  }
+
+  function guidesFor(point: Point, ignoredId?: string) {
+    const threshold = 7 / zoom;
+    let closestX: { value: number; distance: number } | null = null;
+    let closestY: { value: number; distance: number } | null = null;
+    drawings.filter((drawing) => drawing.page === pageNumber && drawing.id !== ignoredId).forEach((drawing) => {
+      drawing.points.forEach((vertex) => {
+        const dx = Math.abs(vertex.x - point.x);
+        const dy = Math.abs(vertex.y - point.y);
+        if (dx <= threshold && (!closestX || dx < closestX.distance)) closestX = { value: vertex.x, distance: dx };
+        if (dy <= threshold && (!closestY || dy < closestY.distance)) closestY = { value: vertex.y, distance: dy };
+      });
+    });
+    return [
+      ...(closestX ? [{ axis: "x" as const, value: closestX.value }] : []),
+      ...(closestY ? [{ axis: "y" as const, value: closestY.value }] : []),
+    ];
   }
 
   function constrainToDraftAngle(origin: Point, point: Point) {
@@ -2291,6 +5291,130 @@ export default function Home() {
     setSnapMarker(null);
   }
 
+  function extendSelectedRun(fromStart: boolean) {
+    const run = drawings.find((drawing) => drawing.id === selectedId && !drawing.fitting && !drawing.symbol && ["supply", "return", "fresh"].includes(drawing.type));
+    if (!run || drawingLocked(run)) return;
+    const endpoint = fromStart ? run.points[0] : run.points[run.points.length - 1];
+    setActiveTool(run.type);
+    setActiveSystem(drawingSystem(run));
+    setDuctSize(run.size);
+    setDraft([endpoint]);
+    setContinuingRunId(run.id);
+    setSplitMode(false);
+    setBranchMessage(`Extending ${fromStart ? "start" : "end"} of ${run.size}″ ${run.type} run · right-click to finish`);
+  }
+
+  function splitRunAtPoint(drawing: Drawing, rawPoint: Point) {
+    if (drawing.points.length < 2 || drawingLocked(drawing)) return;
+    let best: { point: Point; segmentIndex: number; distance: number } | null = null;
+    drawing.points.slice(0, -1).forEach((a, segmentIndex) => {
+      const b = drawing.points[segmentIndex + 1];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const lengthSquared = dx * dx + dy * dy;
+      const amount = lengthSquared ? Math.max(0, Math.min(1, ((rawPoint.x - a.x) * dx + (rawPoint.y - a.y) * dy) / lengthSquared)) : 0;
+      const point = { x: a.x + amount * dx, y: a.y + amount * dy };
+      const distance = Math.hypot(rawPoint.x - point.x, rawPoint.y - point.y);
+      if (!best || distance < best.distance) best = { point, segmentIndex, distance };
+    });
+    if (!best) return;
+    const first = drawing.points[0];
+    const last = drawing.points[drawing.points.length - 1];
+    if (Math.min(Math.hypot(best.point.x - first.x, best.point.y - first.y), Math.hypot(best.point.x - last.x, best.point.y - last.y)) < 10 / zoom) {
+      setBranchMessage("Move farther from the endpoint to split this run");
+      return;
+    }
+    const secondId = crypto.randomUUID();
+    const firstRun = { ...drawing, points: cleanPoints([...drawing.points.slice(0, best.segmentIndex + 1), best.point]) };
+    const secondRun = { ...structuredClone(drawing), id: secondId, points: cleanPoints([best.point, ...drawing.points.slice(best.segmentIndex + 1)]) };
+    const updated = drawings.flatMap((item) => {
+      if (item.id === drawing.id) return [firstRun, secondRun];
+      if (item.symbol?.connectedRunId === drawing.id) {
+        return [{
+          ...item,
+          symbol: {
+            ...item.symbol,
+            connectedRunId: item.symbol.connectedEnd === "end" ? secondId : drawing.id,
+          },
+        }];
+      }
+      if (!item.fitting?.connectedIds.includes(drawing.id)) return [item];
+      const ports = fittingPortPoints(item);
+      const connectedIds = item.fitting.connectedIds.map((id, portIndex) => {
+        if (id !== drawing.id) return id;
+        const firstDistance = Math.hypot(first.x - ports[portIndex].x, first.y - ports[portIndex].y);
+        const lastDistance = Math.hypot(last.x - ports[portIndex].x, last.y - ports[portIndex].y);
+        return lastDistance < firstDistance ? secondId : drawing.id;
+      });
+      return [{ ...item, fitting: { ...item.fitting, connectedIds } }];
+    });
+    setHistory(updated);
+    setSelectedIds([drawing.id, secondId]);
+    setSelectedId(secondId);
+    setSplitMode(false);
+    setBranchMessage("Run split into 2 editable sections · connected T/Y ports preserved");
+  }
+
+  function joinSelectedRuns() {
+    const runs = drawings.filter((drawing) => selectedIds.includes(drawing.id) && !drawing.fitting && !drawing.symbol && ["supply", "return", "fresh"].includes(drawing.type));
+    if (runs.length !== 2) {
+      setBranchMessage("Select exactly 2 duct runs to join");
+      return;
+    }
+    const [firstRun, secondRun] = runs;
+    if (firstRun.type !== secondRun.type || drawingSystem(firstRun) !== drawingSystem(secondRun)) {
+      setBranchMessage("Runs must be the same duct type and HVAC system");
+      return;
+    }
+    const orientations = [
+      { a: firstRun.points, b: secondRun.points },
+      { a: [...firstRun.points].reverse(), b: secondRun.points },
+      { a: firstRun.points, b: [...secondRun.points].reverse() },
+      { a: [...firstRun.points].reverse(), b: [...secondRun.points].reverse() },
+    ].map((option) => ({
+      ...option,
+      distance: Math.hypot(option.a.at(-1)!.x - option.b[0].x, option.a.at(-1)!.y - option.b[0].y),
+    })).sort((a, b) => a.distance - b.distance);
+    const best = orientations[0];
+    if (best.distance > 36 / zoom) {
+      setBranchMessage("Move the run endpoints closer before joining");
+      return;
+    }
+    const joined: Drawing = {
+      ...firstRun,
+      size: firstRun.size,
+      cfm: Math.max(firstRun.cfm || 0, secondRun.cfm || 0),
+      points: cleanPoints([...best.a, ...best.b]),
+    };
+    const updated = drawings.filter((drawing) => drawing.id !== secondRun.id).map((drawing) => {
+      if (drawing.id === firstRun.id) return joined;
+      if (drawing.symbol?.connectedRunId === firstRun.id || drawing.symbol?.connectedRunId === secondRun.id) {
+        const startDistance = Math.hypot(drawing.points[0].x - joined.points[0].x, drawing.points[0].y - joined.points[0].y);
+        const joinedEnd = joined.points[joined.points.length - 1];
+        const endDistance = Math.hypot(drawing.points[0].x - joinedEnd.x, drawing.points[0].y - joinedEnd.y);
+        return {
+          ...drawing,
+          symbol: {
+            ...drawing.symbol,
+            connectedRunId: firstRun.id,
+            connectedEnd: startDistance <= endDistance ? "start" : "end",
+          },
+        };
+      }
+      if (!drawing.fitting?.connectedIds.includes(secondRun.id)) return drawing;
+      return {
+        ...drawing,
+        fitting: {
+          ...drawing.fitting,
+          connectedIds: drawing.fitting.connectedIds.map((id) => id === secondRun.id ? firstRun.id : id),
+        },
+      };
+    });
+    setHistory(synchronizeFittingSizes(updated, drawings));
+    selectOnly(firstRun.id);
+    setBranchMessage(`2 ${firstRun.type} runs joined · T/Y relationships transferred`);
+  }
+
   function continueFittingOutlet(port: 1 | 2) {
     const fitting = drawings.find((drawing) => drawing.id === selectedId && drawing.fitting);
     if (!fitting?.fitting) return;
@@ -2321,7 +5445,7 @@ export default function Home() {
   }
 
   function handleDrawingClick(event: PointerEvent<SVGSVGElement>) {
-    if (event.button !== 0 || spacePanRef.current) return;
+    if (event.button !== 0 || panRef.current) return;
     const rawPoint = canvasPoint(event);
     if (calibrating) {
       const point = snapPoint(rawPoint);
@@ -2335,6 +5459,7 @@ export default function Home() {
         setScaleFeetPerUnit(feet / distance);
         setScaleLabel(`Calibrated · ${feet} ft reference`);
         setScaleLocked(true);
+        setScaleVerified(true);
         setCalibrating(false);
         setMeasureDraft([]);
       }
@@ -2367,12 +5492,6 @@ export default function Home() {
       }
       return;
     }
-    if (calibrating || activeTool === "measure") {
-      const point = snapPoint(raw);
-      setHoverPoint(point);
-      setSnapMarker(point.x !== raw.x || point.y !== raw.y ? point : null);
-      return;
-    }
     if (activeTool === "branch") {
       placeSmartBranch(rawPoint);
       return;
@@ -2397,6 +5516,9 @@ export default function Home() {
     setRedoStack((redo) => [...redo, drawings]);
     setDrawings(previous);
     setUndoStack((stack) => stack.slice(0, -1));
+    setPendingBranchFittingId(null);
+    setBranchPreview(null);
+    setBranchPlacementResult(null);
     setSelectedId(null);
   }
 
@@ -2406,13 +5528,19 @@ export default function Home() {
     setUndoStack((stack) => [...stack, drawings]);
     setDrawings(next);
     setRedoStack((stack) => stack.slice(0, -1));
+    setPendingBranchFittingId(null);
+    setBranchPreview(null);
+    setBranchPlacementResult(null);
   }
 
   function deleteSelected() {
     if (!selectedId) return;
     if (selectedIds.length > 1) {
       const ids = connectedSelection(selectedIds).filter((id) => !drawingLocked(drawings.find((drawing) => drawing.id === id)));
-      setHistory(drawings.filter((drawing) => !ids.includes(drawing.id)));
+      setHistory(drawings.filter((drawing) => !ids.includes(drawing.id)).map((drawing) =>
+        drawing.symbol?.connectedRunId && ids.includes(drawing.symbol.connectedRunId)
+          ? { ...drawing, symbol: { ...drawing.symbol, connectedRunId: undefined, connectedEnd: undefined } }
+          : drawing));
       selectOnly(null);
       setBranchMessage(`${ids.length} connected objects deleted · undo restores the full group`);
       return;
@@ -2423,7 +5551,10 @@ export default function Home() {
       removeFittingAndHeal(selected);
       return;
     }
-    setHistory(drawings.filter((drawing) => drawing.id !== selectedId));
+    setHistory(drawings.filter((drawing) => drawing.id !== selectedId).map((drawing) =>
+      drawing.symbol?.connectedRunId === selectedId
+        ? { ...drawing, symbol: { ...drawing.symbol, connectedRunId: undefined, connectedEnd: undefined } }
+        : drawing));
     setSelectedId(null);
   }
 
@@ -2453,14 +5584,18 @@ export default function Home() {
       size: fitting.fitting.upstreamSize,
       cfm: upstream.cfm || defaultCfm(fitting.fitting.upstreamSize),
     };
-    setHistory([
-      ...drawings.filter((drawing) =>
+    const retained = drawings.filter((drawing) =>
         drawing.id !== fitting.id &&
         drawing.id !== upstreamId &&
         drawing.id !== downstreamId
-      ),
-      healedMain,
-    ]);
+      ).map((drawing) => {
+        if (!drawing.symbol?.connectedRunId || ![upstreamId, downstreamId].includes(drawing.symbol.connectedRunId)) return drawing;
+        const healedEnd = healedMain.points[healedMain.points.length - 1];
+        const startDistance = Math.hypot(drawing.points[0].x - healedMain.points[0].x, drawing.points[0].y - healedMain.points[0].y);
+        const endDistance = Math.hypot(drawing.points[0].x - healedEnd.x, drawing.points[0].y - healedEnd.y);
+        return { ...drawing, symbol: { ...drawing.symbol, connectedRunId: healedMain.id, connectedEnd: startDistance <= endDistance ? "start" as const : "end" as const } };
+      });
+    setHistory([...retained, healedMain]);
     setSelectedId(branchId);
     setActiveTool("select");
     setBranchMessage("Fitting removed · main run healed · branch route kept for reinsertion");
@@ -2479,6 +5614,7 @@ export default function Home() {
       id: crypto.randomUUID(),
       page: pageNumber,
       points: copied.points.map((point) => ({ x: point.x + 18, y: point.y + 18 })),
+      symbol: copied.symbol ? { ...structuredClone(copied.symbol), connectedRunId: undefined, connectedEnd: undefined } : undefined,
     };
     setHistory([...drawings, pasted]);
     setSelectedId(pasted.id);
@@ -2499,6 +5635,11 @@ export default function Home() {
           ...structuredClone(drawing.fitting),
           connectedIds: drawing.fitting.connectedIds.map((id) => idMap.get(id) || id),
         } : undefined,
+        symbol: drawing.symbol ? {
+          ...structuredClone(drawing.symbol),
+          connectedRunId: drawing.symbol.connectedRunId ? idMap.get(drawing.symbol.connectedRunId) : undefined,
+          connectedEnd: drawing.symbol.connectedRunId && idMap.get(drawing.symbol.connectedRunId) ? drawing.symbol.connectedEnd : undefined,
+        } : undefined,
       }));
       setHistory([...drawings, ...duplicates]);
       const nextIds = duplicates.map((drawing) => drawing.id);
@@ -2514,6 +5655,7 @@ export default function Home() {
       id: crypto.randomUUID(),
       page: pageNumber,
       points: selected.points.map((point) => ({ x: point.x + 18, y: point.y + 18 })),
+      symbol: selected.symbol ? { ...structuredClone(selected.symbol), connectedRunId: undefined, connectedEnd: undefined } : undefined,
     };
     clipboardRef.current = structuredClone(duplicate);
     setHistory([...drawings, duplicate]);
@@ -2593,13 +5735,39 @@ export default function Home() {
       return {
         ...drawing,
         size: `${tons} TON`,
-        cfm: Math.round(tons * 400),
+        cfm: isPrimaryAirflowEquipment(drawing) ? Math.round(tons * 400) : drawing.cfm,
         symbol: {
           ...drawing.symbol,
           label: `${systemLabel(drawingSystem(drawing)).toUpperCase()} · ${tons} TON`,
         },
       };
     }));
+  }
+
+  function updateActiveSystemTonnage(tons: number) {
+    if (!Number.isFinite(tons)) return;
+    const network = airflowNetwork();
+    const units = drawings.filter((drawing) => isPrimaryAirflowEquipment(drawing) && drawingSystem(drawing) === activeSystem);
+    const unit = units.find((drawing) => network.equipmentRun.has(drawing.id)) || units[0];
+    if (!unit) {
+      setBranchMessage(`Place an equipment symbol for ${systemLabel(activeSystem)} before setting tonnage`);
+      return;
+    }
+    const targetCfm = Math.round(tons * 400);
+    setHistory(drawings.map((drawing) => {
+      if (drawing.id !== unit.id || drawing.symbol?.kind !== "equipment") return drawing;
+      return {
+        ...drawing,
+        size: `${tons} TON`,
+        cfm: targetCfm,
+        symbol: {
+          ...drawing.symbol,
+          label: `${systemLabel(activeSystem).toUpperCase()} · ${tons} TON`,
+        },
+      };
+    }));
+    setSelectedId(unit.id);
+    setBranchMessage(`${systemLabel(activeSystem)} set to ${tons} ton · ${targetCfm} CFM design airflow · review only, no duct sizes changed`);
   }
 
   function updateSelectedSystem(systemId: string) {
@@ -2633,14 +5801,174 @@ export default function Home() {
         : drawing));
   }
 
+  function updateSelectedCanDimension(axis: 0 | 1, value: string) {
+    const selected = drawings.find((drawing) => drawing.id === selectedId && ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || ""));
+    if (!selected) return;
+    const current = selected.size.replace(/"/g, "").split(/[x×]/i);
+    const dimensions = current.length > 1 ? current : ["12", "12"];
+    dimensions[axis] = value;
+    setHistory(drawings.map((drawing) => drawing.id === selected.id ? { ...drawing, size: `${dimensions[0]}×${dimensions[1]}` } : drawing));
+  }
+
+  function applySelectedCanPreset(presetId: string) {
+    const selected = drawings.find((drawing) => drawing.id === selectedId);
+    const preset = symbolPresets.find((item) => item.id === presetId && item.kind === selected?.symbol?.kind);
+    if (!selected?.symbol || !preset) return;
+    setHistory(drawings.map((drawing) => drawing.id === selected.id ? {
+      ...drawing,
+      size: preset.size,
+      cfm: preset.cfm,
+      elevation: preset.elevation || drawing.elevation,
+      symbol: { ...drawing.symbol!, label: preset.label, variant: preset.variant },
+    } : drawing));
+  }
+
+  function terminalConnection(selected?: Drawing) {
+    if (!selected?.symbol || !["diffuser", "returnGrille"].includes(selected.symbol.kind)) return null;
+    const desiredType = selected.symbol.kind === "diffuser" ? "supply" : "return";
+    if (selected.symbol.connectedRunId) {
+      const run = drawings.find((drawing) =>
+        drawing.id === selected.symbol?.connectedRunId &&
+        drawing.page === selected.page &&
+        drawing.type === desiredType &&
+        !drawing.fitting &&
+        drawingSystem(drawing) === drawingSystem(selected)
+      );
+      if (run) {
+        const endpoint = selected.symbol.connectedEnd === "start" ? run.points[0] : run.points[run.points.length - 1];
+        return { run, endpoint, distance: Math.hypot(endpoint.x - selected.points[0].x, endpoint.y - selected.points[0].y), end: selected.symbol.connectedEnd || "end" as const, saved: true };
+      }
+    }
+    let best: { run: Drawing; endpoint: Point; distance: number; end: "start" | "end"; saved: boolean } | null = null;
+    drawings.filter((drawing) => drawing.page === selected.page && drawing.type === desiredType && !drawing.fitting && drawingSystem(drawing) === drawingSystem(selected)).forEach((run) => {
+      ([{ endpoint: run.points[0], end: "start" as const }, { endpoint: run.points[run.points.length - 1], end: "end" as const }]).forEach(({ endpoint, end }) => {
+        const distance = Math.hypot(endpoint.x - selected.points[0].x, endpoint.y - selected.points[0].y);
+        if (!best || distance < best.distance) best = { run, endpoint, distance, end, saved: false };
+      });
+    });
+    return best;
+  }
+
+  function equipmentConnection(selected?: Drawing) {
+    if (!isPrimaryAirflowEquipment(selected)) return null;
+    if (selected.symbol.connectedRunId) {
+      const run = drawings.find((drawing) =>
+        drawing.id === selected.symbol?.connectedRunId &&
+        drawing.page === selected.page &&
+        drawing.type === "supply" &&
+        !drawing.fitting &&
+        drawingSystem(drawing) === drawingSystem(selected)
+      );
+      if (run) {
+        const endpoint = selected.symbol.connectedEnd === "start" ? run.points[0] : run.points[run.points.length - 1];
+        return { run, endpoint, distance: Math.hypot(endpoint.x - selected.points[0].x, endpoint.y - selected.points[0].y), end: selected.symbol.connectedEnd || "start" as const, saved: true };
+      }
+    }
+    let best: { run: Drawing; endpoint: Point; distance: number; end: "start" | "end"; saved: boolean } | null = null;
+    drawings.filter((drawing) =>
+      drawing.page === selected.page &&
+      drawing.type === "supply" &&
+      !drawing.fitting &&
+      drawingSystem(drawing) === drawingSystem(selected)
+    ).forEach((run) => {
+      ([{ endpoint: run.points[0], end: "start" as const }, { endpoint: run.points[run.points.length - 1], end: "end" as const }]).forEach(({ endpoint, end }) => {
+        const distance = Math.hypot(endpoint.x - selected.points[0].x, endpoint.y - selected.points[0].y);
+        if (!best || distance < best.distance) best = { run, endpoint, distance, end, saved: false };
+      });
+    });
+    return best;
+  }
+
+  function attachSelectedCanToRun() {
+    const selected = drawings.find((drawing) => drawing.id === selectedId);
+    const connection = terminalConnection(selected);
+    if (!selected || !connection || connection.distance > 70 / zoom) {
+      setBranchMessage("Move the can closer to a matching duct endpoint, then attach");
+      return;
+    }
+    setHistory(drawings.map((drawing) => drawing.id === selected.id ? {
+      ...drawing,
+      points: [{ ...connection.endpoint }],
+      symbol: { ...drawing.symbol!, connectedRunId: connection.run.id, connectedEnd: connection.end },
+    } : drawing));
+    setBranchMessage(`${selected.symbol?.kind === "diffuser" ? "Supply can" : "Return can"} attached to ${connection.run.size}″ ${connection.run.type} run`);
+  }
+
+  function detachSelectedCan() {
+    const selected = drawings.find((drawing) => drawing.id === selectedId && drawing.symbol?.connectedRunId);
+    if (!selected?.symbol) return;
+    setHistory(drawings.map((drawing) => drawing.id === selected.id ? {
+      ...drawing,
+      symbol: { ...drawing.symbol!, connectedRunId: undefined, connectedEnd: undefined },
+    } : drawing));
+    setBranchMessage("Can detached · duct and can remain in place for manual editing");
+  }
+
+  function attachSelectedEquipmentToRun() {
+    const selected = drawings.find((drawing) => drawing.id === selectedId);
+    const connection = equipmentConnection(selected);
+    if (!selected || !connection || connection.distance > 90 / zoom) {
+      setBranchMessage("Move the unit closer to a supply trunk endpoint, then attach");
+      return;
+    }
+    setHistory(drawings.map((drawing) => drawing.id === selected.id ? {
+      ...drawing,
+      points: [{ ...connection.endpoint }],
+      symbol: { ...drawing.symbol!, connectedRunId: connection.run.id, connectedEnd: connection.end },
+    } : drawing));
+    setBranchMessage(`Unit attached to ${connection.run.size}″ supply trunk · live system path saved`);
+  }
+
+  function detachSelectedEquipment() {
+    const selected = drawings.find((drawing) => drawing.id === selectedId && drawing.symbol?.kind === "equipment");
+    if (!selected?.symbol?.connectedRunId) return;
+    setHistory(drawings.map((drawing) => drawing.id === selected.id ? {
+      ...drawing,
+      symbol: { ...drawing.symbol!, connectedRunId: undefined, connectedEnd: undefined },
+    } : drawing));
+    setBranchMessage("Unit detached · trunk and equipment remain in place for manual editing");
+  }
+
+  function syncConnectedTerminals(current: Drawing[], runIds?: string[]) {
+    const runs = new Map(current.filter((drawing) => !drawing.fitting && !drawing.symbol).map((drawing) => [drawing.id, drawing]));
+    return current.map((drawing) => {
+      const runId = drawing.symbol?.connectedRunId;
+      if (!runId || (runIds && !runIds.includes(runId))) return drawing;
+      const run = runs.get(runId);
+      if (!run) return { ...drawing, symbol: { ...drawing.symbol!, connectedRunId: undefined, connectedEnd: undefined } };
+      const endpoint = drawing.symbol?.connectedEnd === "start" ? run.points[0] : run.points[run.points.length - 1];
+      return { ...drawing, points: [{ ...endpoint }] };
+    });
+  }
+
   function rotateSelectedSymbol(delta: number) {
     const selected = drawings.find((drawing) => drawing.id === selectedId);
     if (!selected?.symbol) return;
     updateSelectedSymbol({ rotation: (selected.symbol.rotation + delta + 360) % 360 });
   }
 
+  function nudgeSelection(dx: number, dy: number) {
+    if (!selectedIds.length) return;
+    const fittingSelected = selectedIds.some((id) => drawings.find((drawing) => drawing.id === id)?.fitting);
+    const ids = fittingSelected ? connectedSelection(selectedIds) : selectedIds;
+    const movable = ids.filter((id) => !drawingLocked(drawings.find((drawing) => drawing.id === id)));
+    if (!movable.length) return;
+    let moved = drawings.map((drawing) => movable.includes(drawing.id)
+      ? { ...drawing, points: drawing.points.map((point) => ({ x: point.x + dx, y: point.y + dy })) }
+      : drawing);
+    movable.forEach((id) => {
+      const drawing = moved.find((item) => item.id === id);
+      if (drawing && !drawing.fitting && !drawing.symbol && drawing.type !== "measurement") {
+        moved = repairFittingsAfterRunEdit(moved, id).drawings;
+      }
+    });
+    moved = syncConnectedTerminals(moved, movable);
+    setHistory(moved);
+    setBranchMessage(`Nudged ${movable.length} object${movable.length === 1 ? "" : "s"} · ${Math.hypot(dx, dy).toFixed(0)} plan units`);
+  }
+
   function startPointDrag(event: PointerEvent<SVGCircleElement>, drawingId: string, pointIndex: number) {
-    if (activeTool !== "select" || event.button !== 0 || spacePanRef.current || drawingLocked(drawings.find((drawing) => drawing.id === drawingId))) return;
+    if (activeTool !== "select" || event.button !== 0 || drawingLocked(drawings.find((drawing) => drawing.id === drawingId))) return;
     event.stopPropagation();
     if (event.shiftKey) {
       toggleSelection(drawingId);
@@ -2656,9 +5984,29 @@ export default function Home() {
     setActiveSystem(drawingSystem(drawings.find((drawing) => drawing.id === drawingId)));
   }
 
-  function startLineDrag(event: PointerEvent<SVGPathElement>, drawing: Drawing) {
-    if (activeTool !== "select" || event.button !== 0 || spacePanRef.current || drawingLocked(drawing)) return;
+  function startMidpointStretch(event: PointerEvent<SVGCircleElement>, drawingId: string, segmentIndex: number) {
+    const drawing = drawings.find((item) => item.id === drawingId);
+    if (activeTool !== "select" || event.button !== 0 || !drawing || drawingLocked(drawing)) return;
     event.stopPropagation();
+    const a = drawing.points[segmentIndex];
+    const b = drawing.points[segmentIndex + 1];
+    const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const nextPoints = [...drawing.points.slice(0, segmentIndex + 1), midpoint, ...drawing.points.slice(segmentIndex + 1)];
+    event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
+    dragRef.current = { kind: "point", drawingId, pointIndex: segmentIndex + 1, before: drawings };
+    setDrawings((current) => current.map((item) => item.id === drawingId ? { ...item, points: nextPoints } : item));
+    selectOnly(drawingId);
+    setActiveSystem(drawingSystem(drawing));
+    setBranchMessage("Stretch grip inserted · drag to shape the run");
+  }
+
+  function startLineDrag(event: PointerEvent<SVGPathElement>, drawing: Drawing) {
+    if (activeTool !== "select" || event.button !== 0 || drawingLocked(drawing)) return;
+    event.stopPropagation();
+    if (splitMode) {
+      splitRunAtPoint(drawing, canvasPoint(event as unknown as PointerEvent<SVGSVGElement>));
+      return;
+    }
     if (event.shiftKey) {
       toggleSelection(drawing.id);
       return;
@@ -2674,7 +6022,7 @@ export default function Home() {
   }
 
   function startFittingDrag(event: PointerEvent<SVGGElement>, drawing: Drawing) {
-    if (activeTool !== "select" || !drawing.fitting || event.button !== 0 || spacePanRef.current || drawingLocked(drawing)) return;
+    if (activeTool !== "select" || !drawing.fitting || event.button !== 0 || drawingLocked(drawing)) return;
     event.stopPropagation();
     if (event.shiftKey) {
       toggleSelection(drawing.id);
@@ -2699,7 +6047,7 @@ export default function Home() {
   }
 
   function startSymbolDrag(event: PointerEvent<SVGGElement>, drawing: Drawing) {
-    if (activeTool !== "select" || !drawing.symbol || event.button !== 0 || spacePanRef.current || drawingLocked(drawing)) return;
+    if (activeTool !== "select" || !drawing.symbol || event.button !== 0 || drawingLocked(drawing)) return;
     event.stopPropagation();
     if (event.shiftKey) {
       toggleSelection(drawing.id);
@@ -2745,18 +6093,27 @@ export default function Home() {
     }
     if (drag) {
       if (drag.kind === "point") {
-        const point = snapPoint(raw, drag.drawingId);
+        const result = snapResult(raw, drag.drawingId);
+        const point = result?.point || raw;
         setSnapMarker(point.x !== raw.x || point.y !== raw.y ? point : null);
-        setDrawings((current) => current.map((drawing) => drawing.id === drag.drawingId
-          ? { ...drawing, points: drawing.points.map((oldPoint, index) => index === drag.pointIndex ? point : oldPoint) }
-          : drawing));
+        setSnapInfo(result);
+        setAlignmentGuides(guidesFor(point, drag.drawingId));
+        setDrawings((current) => {
+          const moved = current.map((drawing) => drawing.id === drag.drawingId
+            ? { ...drawing, points: drawing.points.map((oldPoint, index) => index === drag.pointIndex ? point : oldPoint) }
+            : drawing);
+          return syncConnectedTerminals(moved, [drag.drawingId]);
+        });
       } else {
         if (drag.kind === "line") {
           const dx = raw.x - drag.start.x;
           const dy = raw.y - drag.start.y;
-          setDrawings((current) => current.map((drawing) => drawing.id === drag.drawingId
-            ? { ...drawing, points: drag.original.map((point) => ({ x: point.x + dx, y: point.y + dy })) }
-            : drawing));
+          setDrawings((current) => {
+            const moved = current.map((drawing) => drawing.id === drag.drawingId
+              ? { ...drawing, points: drag.original.map((point) => ({ x: point.x + dx, y: point.y + dy })) }
+              : drawing);
+            return syncConnectedTerminals(moved, [drag.drawingId]);
+          });
         } else if (drag.kind === "fitting") {
           const nextCenter = raw;
           setDrawings((current) => current.map((drawing) => {
@@ -2783,24 +6140,102 @@ export default function Home() {
             };
           }));
         } else if (drag.kind === "symbol") {
-          const nextPoint = snapPoint(raw, drag.drawingId);
+          const result = snapResult(raw, drag.drawingId);
+          const nextPoint = result?.point || raw;
           setSnapMarker(nextPoint.x !== raw.x || nextPoint.y !== raw.y ? nextPoint : null);
-          setDrawings((current) => current.map((drawing) =>
-            drawing.id === drag.drawingId ? { ...drawing, points: [nextPoint] } : drawing));
+          setSnapInfo(result);
+          setAlignmentGuides(guidesFor(nextPoint, drag.drawingId));
+          setDrawings((current) => {
+            const movedSymbol = current.find((drawing) => drawing.id === drag.drawingId);
+            const runId = movedSymbol?.symbol?.connectedRunId;
+            const connectedEnd = movedSymbol?.symbol?.connectedEnd;
+            return current.map((drawing) => {
+              if (drawing.id === drag.drawingId) return { ...drawing, points: [nextPoint] };
+              if (drawing.id !== runId) return drawing;
+              const endpointIndex = connectedEnd === "start" ? 0 : drawing.points.length - 1;
+              return { ...drawing, points: drawing.points.map((point, index) => index === endpointIndex ? nextPoint : point) };
+            });
+          });
         } else if (drag.kind === "group") {
           const dx = raw.x - drag.start.x;
           const dy = raw.y - drag.start.y;
-          setDrawings((current) => current.map((drawing) => {
+          setDrawings((current) => {
+            const moved = current.map((drawing) => {
             const original = drag.originals[drawing.id];
             return original
               ? { ...drawing, points: original.map((point) => ({ x: point.x + dx, y: point.y + dy })) }
               : drawing;
-          }));
+            });
+            return syncConnectedTerminals(moved, drag.ids);
+          });
         }
       }
       return;
     }
     if (activeTool === "branch") {
+      if (pendingBranchFittingId) {
+        const fitting = drawings.find((drawing) => drawing.id === pendingBranchFittingId && drawing.fitting);
+        const candidate = nearestAttachableSupplySegment(raw, pendingBranchFittingId);
+        if (!fitting?.fitting) {
+          setPendingBranchFittingId(null);
+          setBranchPreview(null);
+          return;
+        }
+        const candidateReady = Boolean(candidate && candidate.distance <= 48 / zoom);
+        const branchAngle = candidateReady ? candidate!.angle : fitting.fitting.branchAngle;
+        const side = candidateReady ? candidate!.side : fitting.fitting.side;
+        const style = candidateReady && branchStyle === "auto"
+          ? automaticBranchStyle(fitting.fitting.angle, candidate!.angle)
+          : branchStyle === "auto" ? fitting.fitting.style : branchStyle;
+        setBranchPreview({
+          center: fitting.points[0],
+          angle: fitting.fitting.angle,
+          branchAngle,
+          side,
+          style,
+          parentSize: fitting.fitting.upstreamSize,
+          valid: candidateReady,
+          matchedExisting: candidateReady,
+          mainRunId: fitting.fitting.connectedIds[0],
+          branchRunId: candidateReady ? candidate!.drawing.id : undefined,
+          runIds: fitting.fitting.connectedIds.filter(Boolean),
+          mode: "attach-run",
+          candidateEndpoint: candidateReady ? candidate!.drawing.points[candidate!.endpointIndex] : undefined,
+          candidateProjected: candidateReady ? candidate!.point : undefined,
+          candidateEndpointDistance: candidateReady
+            ? Math.hypot(
+              candidate!.drawing.points[candidate!.endpointIndex].x - fitting.points[0].x,
+              candidate!.drawing.points[candidate!.endpointIndex].y - fitting.points[0].y,
+            )
+            : undefined,
+        });
+        setSnapMarker(candidateReady ? candidate!.point : null);
+        setBranchMessage(candidateReady
+          ? `Run selected · click to attach ${candidate!.drawing.size}″ duct to open Port 3`
+          : "Fitting placed · click directly on any blue branch run to finish");
+        return;
+      }
+      const threeRunMatch = existingThreeRunJunction(raw);
+      if (threeRunMatch) {
+        const runIds = threeRunMatch.ports.map((match) => match.drawing.id);
+        setBranchPreview({
+          center: threeRunMatch.center,
+          angle: threeRunMatch.angle,
+          branchAngle: threeRunMatch.branchAngle,
+          side: threeRunMatch.side,
+          style: threeRunMatch.style,
+          parentSize: threeRunMatch.ports[0].drawing.size,
+          valid: true,
+          matchedExisting: true,
+          mainRunId: runIds[0],
+          branchRunId: runIds[2],
+          runIds,
+          mode: "three-runs",
+        });
+        setSnapMarker(threeRunMatch.center);
+        setBranchMessage("3 separate run endpoints found · click to connect Ports 1, 2 and 3");
+        return;
+      }
       const rawTarget = nearestSupplySegment(raw);
       if (rawTarget && rawTarget.distance <= 42 / zoom) {
         const target = orientMainTowardAirflow(rawTarget);
@@ -2815,15 +6250,17 @@ export default function Home() {
           side: matchedRoute?.side || target.side,
           style: previewStyle,
           parentSize: target.drawing.size,
-          valid: Boolean(matchedRoute),
+          valid: true,
           matchedExisting: Boolean(matchedRoute),
           mainRunId: target.drawing.id,
           branchRunId: matchedRoute?.drawing.id,
+          runIds: [target.drawing.id, ...(matchedRoute ? [matchedRoute.drawing.id] : [])],
+          mode: "split-trunk",
         });
         setSnapMarker(target.point);
         setBranchMessage(matchedRoute
           ? "3-run connection found · click to insert fitting"
-          : "Main run found · move closer to the crossing branch route");
+          : "Main run found · click to split it and place the fitting anywhere");
       } else {
         setBranchPreview(null);
         setSnapMarker(null);
@@ -2832,16 +6269,22 @@ export default function Home() {
       return;
     }
     if (symbolTools.includes(activeTool as SymbolKind)) {
-      const point = snapPoint(raw);
+      const result = snapResult(raw);
+      const point = result?.point || raw;
       setSymbolPreview({ kind: activeTool as SymbolKind, point });
       setSnapMarker(point.x !== raw.x || point.y !== raw.y ? point : null);
+      setSnapInfo(result);
+      setAlignmentGuides(guidesFor(point));
       return;
     }
     if (["supply", "return", "fresh"].includes(activeTool)) {
-      let point = snapPoint(raw);
+      const result = snapResult(raw);
+      let point = result?.point || raw;
       if (event.shiftKey && draft.length) point = constrainToDraftAngle(draft[draft.length - 1], point);
       setHoverPoint(point);
       setSnapMarker(point.x !== raw.x || point.y !== raw.y ? point : null);
+      setSnapInfo(result);
+      setAlignmentGuides(guidesFor(point));
     }
   }
 
@@ -2853,12 +6296,14 @@ export default function Home() {
       const maxY = Math.max(selectionBox.start.y, selectionBox.end.y);
       const isClick = maxX - minX < 3 && maxY - minY < 3;
       if (!isClick) {
+        const crossing = selectionBox.end.x < selectionBox.start.x;
         const hits = drawings.filter((drawing) => {
           if (drawing.page !== pageNumber || drawingLocked(drawing)) return false;
           const xs = drawing.points.map((point) => point.x);
           const ys = drawing.points.map((point) => point.y);
-          return Math.max(...xs) >= minX && Math.min(...xs) <= maxX
-            && Math.max(...ys) >= minY && Math.min(...ys) <= maxY;
+          return crossing
+            ? Math.max(...xs) >= minX && Math.min(...xs) <= maxX && Math.max(...ys) >= minY && Math.min(...ys) <= maxY
+            : Math.min(...xs) >= minX && Math.max(...xs) <= maxX && Math.min(...ys) >= minY && Math.max(...ys) <= maxY;
         }).map((drawing) => drawing.id);
         const next = selectionBox.additive ? [...new Set([...selectedIds, ...hits])] : hits;
         setSelectedIds(next);
@@ -2885,21 +6330,81 @@ export default function Home() {
         if (result.repaired) {
           setBranchMessage(`${result.repaired} nearby fitting${result.repaired === 1 ? "" : "s"} automatically reattached`);
         }
-        return result.drawings;
+        return syncConnectedTerminals(result.drawings, [drag.drawingId]);
+      });
+    } else if (drag.kind === "symbol") {
+      setDrawings((current) => {
+        const symbol = current.find((drawing) => drawing.id === drag.drawingId);
+        const runId = symbol?.symbol?.connectedRunId;
+        if (!runId) return current;
+        const result = repairFittingsAfterRunEdit(current, runId);
+        return syncConnectedTerminals(result.drawings, [runId]);
       });
     }
     dragRef.current = null;
     setSnapMarker(null);
+    setSnapInfo(null);
+    setAlignmentGuides([]);
   }
 
   function renderSymbol(drawing: Drawing, preview = false) {
     if (!drawing.symbol) return null;
     const center = drawing.points[0];
     const { kind, label, rotation, variant } = drawing.symbol;
-    const displayLabel = kind === "returnGrille" ? drawing.size.replace(/x/g, "×") : label;
+    const formattedSize = drawing.size.replace(/x/g, "×");
+    const displayLabel = kind === "returnGrille"
+      ? `${formattedSize} RETURN`
+      : kind === "diffuser"
+        ? `${formattedSize} SUPPLY`
+        : label;
     const selected = isSelected(drawing.id);
+    const sizeParts = drawing.size.replace(/"/g, "").split(/[x×]/i).map(Number).filter(Number.isFinite);
+    const canRatio = sizeParts.length > 1 ? Math.max(.35, Math.min(2.85, sizeParts[0] / sizeParts[1])) : 1;
+    const canWidth = canRatio >= 1 ? 24 * Math.sqrt(canRatio) : 24;
+    const canHeight = canRatio >= 1 ? 24 / Math.sqrt(canRatio) : 24 / canRatio;
+    const symbolWidth = Math.max(16, Math.min(42, canWidth));
+    const symbolHeight = Math.max(11, Math.min(34, canHeight));
+    const grilleLines = Array.from({ length: Math.max(3, Math.min(8, Math.round(symbolWidth / 5))) }, (_, index) =>
+      -symbolWidth / 2 + ((index + 1) * symbolWidth) / (Math.max(3, Math.min(8, Math.round(symbolWidth / 5))) + 1));
+    const artworkClass = `hvac-symbol symbol-${kind} variant-${variant || "standard"} ${drawing.symbol.connectedRunId ? "terminal-linked" : ""} ${activeTraceSymbolIds.has(drawing.id) ? "traced-symbol" : ""} ${preview ? "symbol-preview" : ""} ${selected ? "selected-symbol" : ""}`;
+    const verticalEquipment = kind === "equipment" && ["vertical-air-handler", "vertical-furnace"].includes(variant || "");
+    const labelY = kind === "equipment"
+      ? verticalEquipment ? -52 : -44
+      : kind === "fan"
+        ? -31
+        : kind === "airflow"
+          ? -12
+          : ["diffuser", "returnGrille"].includes(kind)
+            ? -symbolHeight / 2 - 10
+            : -22;
+    const elevationY = kind === "equipment"
+      ? verticalEquipment ? 54 : 46
+      : kind === "fan"
+        ? 34
+        : ["diffuser", "returnGrille"].includes(kind)
+          ? symbolHeight / 2 + 12
+          : 27;
+    const interactionRadius = kind === "equipment" ? verticalEquipment ? 47 : 43 : kind === "fan" ? 31 : 25;
+    if (variant !== "__legacy") return <g
+      className={artworkClass}
+      transform={`translate(${center.x} ${center.y}) rotate(${rotation})`}
+      onPointerDown={preview ? undefined : (event) => startSymbolDrag(event, drawing)}
+    >
+      <circle className="symbol-hit" cx="0" cy="0" r={interactionRadius} />
+      <SymbolArtwork kind={kind} variant={variant} width={symbolWidth} height={symbolHeight} />
+      {["diffuser", "returnGrille"].includes(kind) && <>
+        <circle className="can-neck-point" cx="0" cy="0" r="3.5" />
+        {drawing.symbol.connectedRunId && <circle className="terminal-link-ring" cx="0" cy="0" r="6" />}
+        {selected && <text className="can-neck-label" x="6" y="4">Ø{drawing.symbol.neckSize || "8"} NECK</text>}
+      </>}
+      <text className="symbol-label" x="0" y={labelY} textAnchor="middle">{displayLabel}</text>
+      {drawing.elevation && <text className="symbol-elevation" x="0" y={elevationY} textAnchor="middle">EL {drawing.elevation}</text>}
+      {selected && <circle className="rotation-ring" cx="0" cy="0" r={interactionRadius} />}
+    </g>;
+
+    // Compatibility renderer for any deliberately imported legacy symbol variant.
     return <g
-      className={`hvac-symbol symbol-${kind} ${preview ? "symbol-preview" : ""} ${selected ? "selected-symbol" : ""}`}
+      className={`hvac-symbol symbol-${kind} ${drawing.symbol.connectedRunId ? "terminal-linked" : ""} ${activeTraceSymbolIds.has(drawing.id) ? "traced-symbol" : ""} ${preview ? "symbol-preview" : ""} ${selected ? "selected-symbol" : ""}`}
       transform={`translate(${center.x} ${center.y}) rotate(${rotation})`}
       onPointerDown={preview ? undefined : (event) => startSymbolDrag(event, drawing)}
     >
@@ -2908,13 +6413,29 @@ export default function Home() {
         <circle cx="0" cy="0" r="11" /><circle cx="0" cy="0" r="6" /><path d="M -8 0 L 8 0 M 0 -8 L 0 8" />
       </> : kind === "diffuser" && variant === "slot" ? <>
         <rect x="-18" y="-6" width="36" height="12" rx="1" /><path d="M -14 -2 L 14 -2 M -14 2 L 14 2" />
+      </> : kind === "diffuser" && ["register", "floor", "boot"].includes(variant || "") ? <>
+        <rect x={-symbolWidth / 2} y={-symbolHeight / 2} width={symbolWidth} height={symbolHeight} rx={variant === "boot" ? 4 : 1} />
+        {grilleLines.map((lineX, index) => <line key={index} x1={lineX} y1={-symbolHeight / 2 + 3} x2={lineX} y2={symbolHeight / 2 - 3} />)}
+        {variant === "boot" && <path d={`M ${-symbolWidth / 2 + 2} ${symbolHeight / 2} L ${-symbolWidth / 2 + 6} ${symbolHeight / 2 + 5} L ${symbolWidth / 2 - 6} ${symbolHeight / 2 + 5} L ${symbolWidth / 2 - 2} ${symbolHeight / 2}`} />}
       </> : kind === "diffuser" && <>
-        <rect x="-10" y="-10" width="20" height="20" rx="1" />
-        <path d={variant === "1way" ? "M -8 6 L 8 -6 M -8 2 L 4 -7" : variant === "2way" ? "M -8 7 L 8 -7 M 8 7 L -8 -7" : variant === "3way" ? "M -8 7 L 8 -7 M 8 7 L -8 -7 M 0 -9 L 0 9" : "M -7 -7 L 7 7 M 7 -7 L -7 7 M 0 -9 L 0 9 M -9 0 L 9 0"} />
+        <rect x={-symbolWidth / 2} y={-symbolHeight / 2} width={symbolWidth} height={symbolHeight} rx="1" />
+        <path d={variant === "1way" ? `M ${-symbolWidth / 2 + 3} ${symbolHeight / 2 - 3} L ${symbolWidth / 2 - 3} ${-symbolHeight / 2 + 3}` : variant === "2way" ? `M ${-symbolWidth / 2 + 3} ${symbolHeight / 2 - 3} L ${symbolWidth / 2 - 3} ${-symbolHeight / 2 + 3} M ${symbolWidth / 2 - 3} ${symbolHeight / 2 - 3} L ${-symbolWidth / 2 + 3} ${-symbolHeight / 2 + 3}` : variant === "3way" ? `M ${-symbolWidth / 2 + 3} ${symbolHeight / 2 - 3} L ${symbolWidth / 2 - 3} ${-symbolHeight / 2 + 3} M ${symbolWidth / 2 - 3} ${symbolHeight / 2 - 3} L ${-symbolWidth / 2 + 3} ${-symbolHeight / 2 + 3} M 0 ${-symbolHeight / 2 + 2} L 0 ${symbolHeight / 2 - 2}` : `M ${-symbolWidth / 2 + 3} ${-symbolHeight / 2 + 3} L ${symbolWidth / 2 - 3} ${symbolHeight / 2 - 3} M ${symbolWidth / 2 - 3} ${-symbolHeight / 2 + 3} L ${-symbolWidth / 2 + 3} ${symbolHeight / 2 - 3} M 0 ${-symbolHeight / 2 + 2} L 0 ${symbolHeight / 2 - 2} M ${-symbolWidth / 2 + 2} 0 L ${symbolWidth / 2 - 2} 0`} />
       </>}
       {kind === "returnGrille" && <>
-        <rect x="-15" y="-10" width="30" height="20" rx="1" />
-        <path d="M -11 -7 L -11 7 M -6 -7 L -6 7 M -1 -7 L -1 7 M 4 -7 L 4 7 M 9 -7 L 9 7" />
+        <rect x={-symbolWidth / 2} y={-symbolHeight / 2} width={symbolWidth} height={symbolHeight} rx={variant === "filter" ? 3 : 1} />
+        {variant === "eggcrate"
+          ? <>{grilleLines.map((lineX, index) => <line key={`v-${index}`} x1={lineX} y1={-symbolHeight / 2 + 2} x2={lineX} y2={symbolHeight / 2 - 2} />)}{[-.25, 0, .25].map((amount, index) => <line key={`h-${index}`} x1={-symbolWidth / 2 + 2} y1={amount * symbolHeight} x2={symbolWidth / 2 - 2} y2={amount * symbolHeight} />)}</>
+          : variant === "transfer"
+            ? <path d={`M ${-symbolWidth / 2 + 3} ${-symbolHeight / 4} L ${symbolWidth / 2 - 3} ${-symbolHeight / 4} M ${-symbolWidth / 2 + 3} ${symbolHeight / 4} L ${symbolWidth / 2 - 3} ${symbolHeight / 4}`} />
+            : variant === "floor"
+              ? grilleLines.map((lineX, index) => <line key={index} x1={lineX} y1={-symbolHeight / 2 + 2} x2={lineX + 3} y2={symbolHeight / 2 - 2} />)
+              : grilleLines.map((lineX, index) => <line key={index} x1={lineX} y1={-symbolHeight / 2 + 3} x2={lineX} y2={symbolHeight / 2 - 3} />)}
+        {variant === "filter" && <rect x={-symbolWidth / 2 + 3} y={-symbolHeight / 2 + 3} width={symbolWidth - 6} height={symbolHeight - 6} rx="1" />}
+      </>}
+      {["diffuser", "returnGrille"].includes(kind) && <>
+        <circle className="can-neck-point" cx="0" cy="0" r="3.5" />
+        {drawing.symbol.connectedRunId && <circle className="terminal-link-ring" cx="0" cy="0" r="6" />}
+        {selected && <text className="can-neck-label" x="6" y="4">Ø{drawing.symbol.neckSize || "8"} NECK</text>}
       </>}
       {kind === "equipment" && variant === "furnace" ? <>
         <rect x="-18" y="-15" width="36" height="30" rx="2" />
@@ -2994,8 +6515,8 @@ export default function Home() {
         <rect x="-11" y="-10" width="22" height="20" rx="2" />
         <path d="M -7 -5 L 7 -5 M -7 0 L 7 0 M -7 5 L 3 5" />
       </>}
-      <text className="symbol-label" x="0" y={kind === "equipment" ? -27 : kind === "airflow" ? -10 : -16} textAnchor="middle">{displayLabel}</text>
-      {drawing.elevation && <text className="symbol-elevation" x="0" y={kind === "equipment" ? 29 : 21} textAnchor="middle">EL {drawing.elevation}</text>}
+      <text className="symbol-label" x="0" y={kind === "equipment" ? -27 : kind === "airflow" ? -10 : ["diffuser", "returnGrille"].includes(kind) ? -symbolHeight / 2 - 7 : -16} textAnchor="middle">{displayLabel}</text>
+      {drawing.elevation && <text className="symbol-elevation" x="0" y={kind === "equipment" ? 29 : ["diffuser", "returnGrille"].includes(kind) ? symbolHeight / 2 + 10 : 21} textAnchor="middle">EL {drawing.elevation}</text>}
       {selected && <circle className="rotation-ring" cx="0" cy="0" r="23" />}
     </g>;
   }
@@ -3005,19 +6526,17 @@ export default function Home() {
       const target = event.target as HTMLElement | null;
       if (target?.matches("input, select, textarea")) return;
       const key = event.key.toLowerCase();
-      if (event.code === "Space") {
-        event.preventDefault();
-        spacePanRef.current = true;
-        canvasViewportRef.current?.classList.add("pan-ready");
-      }
       if (event.key === "Escape") {
         setDraft([]);
         setContinuingRunId(null);
+        setPendingBranchFittingId(null);
+        setBranchPreview(null);
         setHoverPoint(null);
         setSnapMarker(null);
         setMeasureDraft([]);
         setCalibrating(false);
         setShowSheetNavigator(false);
+        setSplitMode(false);
         selectOnly(null);
       }
       if (event.key === "Delete" || event.key === "Backspace") deleteSelected();
@@ -3051,6 +6570,14 @@ export default function Home() {
       }
       if (event.key === "[") rotateSelectedSymbol(-15);
       if (event.key === "]") rotateSelectedSymbol(15);
+      if (selectedIds.length && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+        event.preventDefault();
+        const step = event.shiftKey ? 10 : 1;
+        nudgeSelection(
+          event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0,
+          event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0,
+        );
+      }
       if (!event.ctrlKey && !event.metaKey && key === "v") setActiveTool("select");
       const toolShortcut: Record<string, string> = {
         s: "supply",
@@ -3083,16 +6610,9 @@ export default function Home() {
         goToPage(pdf.numPages);
       }
     };
-    const onKeyUp = (event: KeyboardEvent) => {
-      if (event.code !== "Space") return;
-      spacePanRef.current = false;
-      canvasViewportRef.current?.classList.remove("pan-ready");
-    };
     window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
     };
   });
 
@@ -3104,16 +6624,35 @@ export default function Home() {
   const branchRepairPreview = branchNetworkRepairPreview(selectedFitting);
   const runTrace = ductNetworkTrace(selectedRun);
   const runAttachment = runAttachmentStatus(selectedRun);
-  const activeTrace = selectedFitting ? branchTrace : runTrace;
+  const symbolTrace = symbolNetworkTrace(selectedDrawing?.symbol ? selectedDrawing : undefined);
+  const activeTrace = selectedFitting ? branchTrace : selectedRun ? runTrace : symbolTrace;
+  const activeTraceSymbolIds = "symbolIds" in activeTrace ? activeTrace.symbolIds : new Set<string>();
+  const activeAirflowSetup = airflowSetupSummary();
+  const branchOpportunityList = activeTool === "branch" ? branchOpportunities() : [];
+  const pageBranchFittings = drawings.filter((drawing) => drawing.page === pageNumber && drawing.fitting);
+  const openBranchPorts = pageBranchFittings.reduce((total, fitting) =>
+    total + Math.max(0, 3 - (fitting.fitting?.connectedIds.filter(Boolean).length || 0)), 0);
   const liveDraftPoints = [...draft, ...(hoverPoint ? [hoverPoint] : [])];
   const liveDraftFeet = liveDraftPoints.length > 1
     ? liveDraftPoints.slice(1).reduce((total, point, index) => total + Math.hypot(point.x - liveDraftPoints[index].x, point.y - liveDraftPoints[index].y), 0) * scaleFeetPerUnit
     : 0;
   const liveDraftCfm = defaultCfm(ductSize);
   const liveDraftVelocity = velocityFpm(ductSize, liveDraftCfm);
+  const activeReviewRow = rightTab === "checks" ? activeReviewedIssueRows.find((row) => row.issue.id === activeReviewIssueId) : undefined;
+  const activeProjectCommand = projectCommandSnapshot || {
+    rows: [],
+    designReady: 0,
+    fieldReady: 0,
+    commissioned: 0,
+    closeoutReady: 0,
+    openPunches: 0,
+    openRfis: 0,
+    progress: 0,
+  };
+  const activeFieldRuns = activeFieldPackage.runs;
 
   return (
-    <main className={`app-shell ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"}`}>
+    <main className={`app-shell ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${["rooms", "checks", "field"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""}`}>
       <header className="topbar">
         <div className="brand">
           <div className="brand-mark"><Wind size={23} strokeWidth={2.4} /></div>
@@ -3172,7 +6711,7 @@ export default function Home() {
           </div>
           <div className="tool-list">
             {tools.filter(({ id }) => ["select", "supply", "branch", "return", "fresh"].includes(id)).map(({ id, label, icon: Icon, tone }) => (
-              <button className={`tool ${activeTool === id ? "active" : ""}`} key={label} onClick={() => { finishDrawing(); setActiveTool(id); setSelectedId(null); setBranchPreview(null); setSymbolPreview(null); }}>
+              <button className={`tool ${activeTool === id ? "active" : ""}`} key={label} onClick={() => { finishDrawing(); setActiveTool(id); setSelectedId(null); setPendingBranchFittingId(null); setBranchPreview(null); setSymbolPreview(null); }}>
                 <span className={`tool-icon ${tone || ""}`}><Icon size={19} /></span>
                 <span>{label}</span>
                 {activeTool === id && <kbd>{id === "select" ? "V" : "●"}</kbd>}
@@ -3187,11 +6726,20 @@ export default function Home() {
                   <option value="tee90">90° Tee branch</option>
                 </select>
               </label>
-              <button className="branch-arm" onClick={() => { finishDrawing(); setActiveTool("branch"); setSelectedId(null); }}>
+              <button className="branch-arm" onClick={() => { finishDrawing(); setActiveTool("branch"); setSelectedId(null); setPendingBranchFittingId(null); setBranchPreview(null); }}>
                 <span className={`mini-fitting ${branchStyle === "auto" ? "wye45" : branchStyle}`}><i /><i /><i /></span>
-                Find routes and insert fitting
+                Place fitting on any supply run
               </button>
-              <small>Draw complete routes first. Fittings reconnect automatically after endpoint or run changes; select one for manual repair.</small>
+              {pendingBranchFittingId && <div className="branch-link-step">
+                <b>STEP 2 · PICK THE BRANCH RUN</b>
+                <span>Click anywhere on the blue run that should connect to Port 3.</span>
+                <button onClick={() => {
+                  setPendingBranchFittingId(null);
+                  setBranchPreview(null);
+                  setBranchMessage("Fitting kept with Port 3 open · select it later to reattach");
+                }}>Leave Port 3 open for now</button>
+              </div>}
+              <small>Draw every run first. Click anywhere on a blue trunk to split it and place the fitting. If Port 3 stays open, click any blue branch run next to attach it—no perfect crossing required.</small>
             </div>
             <div className="symbol-library">
               <div className="library-title"><Sparkles size={14} /><span>HVAC SYMBOL LIBRARY</span><b>{symbolPresets.length}+ presets</b></div>
@@ -3201,17 +6749,91 @@ export default function Home() {
                   const first = symbolPresets.find((preset) => preset.category === category)!;
                   setSymbolCategory(category);
                   setActivePresetId(first.id);
+                  setSymbolSearch("");
+                  setPlacementRotation(0);
                 }}>
                   {symbolCategories.map((category) => <option key={category}>{category}</option>)}
                 </select>
               </label>
+              <label>Find a symbol
+                <input
+                  className="symbol-catalog-search"
+                  value={symbolSearch}
+                  onChange={(event) => setSymbolSearch(event.target.value)}
+                  placeholder="Search name, size or family…"
+                />
+              </label>
               <label>Symbol
-                <select value={activePresetId} onChange={(event) => setActivePresetId(event.target.value)}>
-                  {symbolPresets.filter((preset) => preset.category === symbolCategory).map((preset) => (
-                    <option key={preset.id} value={preset.id}>{preset.label} · {preset.size}</option>
+                <select value={activePresetId} onChange={(event) => {
+                  setActivePresetId(event.target.value);
+                  setPlacementRotation(0);
+                }}>
+                  {Array.from(new Set(symbolPresets.filter((preset) => preset.category === symbolCategory).map(symbolFamily))).map((family) => (
+                    <optgroup key={family} label={family}>
+                      {symbolPresets.filter((preset) => preset.category === symbolCategory && symbolFamily(preset) === family).map((preset) => (
+                        <option key={preset.id} value={preset.id}>{preset.label} · {preset.size}</option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               </label>
+              {(() => {
+                const preset = symbolPresets.find((item) => item.id === activePresetId) || symbolPresets[0];
+                const dimensions = symbolDimensions(preset.size);
+                const query = symbolSearch.trim().toLowerCase();
+                const visiblePresets = symbolPresets.filter((item) =>
+                  item.category === symbolCategory
+                  && (!query || `${item.label} ${item.size} ${symbolFamily(item)} ${item.variant}`.toLowerCase().includes(query)));
+                const airflowKey = preset.kind === "diffuser"
+                  ? "BLUE · SUPPLY / DISCHARGE"
+                  : preset.kind === "returnGrille"
+                    ? "RED · RETURN / INTAKE"
+                    : preset.kind === "equipment"
+                      ? "RED RETURN · BLUE SUPPLY"
+                      : preset.kind === "fan"
+                        ? `${preset.variant.replace(/-/g, " ").toUpperCase()} FAN`
+                        : preset.category.toUpperCase();
+                return <>
+                  <div className="symbol-catalog-grid" role="list" aria-label={`${symbolCategory} symbol catalog`}>
+                    {visiblePresets.map((item) => {
+                      const itemDimensions = symbolDimensions(item.size);
+                      return <button
+                        type="button"
+                        role="listitem"
+                        key={item.id}
+                        className={`symbol-catalog-card ${item.id === activePresetId ? "selected" : ""}`}
+                        title={`${item.label} · ${item.size} · ${symbolFamily(item)}`}
+                        onClick={() => {
+                          setActivePresetId(item.id);
+                          setPlacementRotation(0);
+                        }}
+                      >
+                        <svg viewBox="-30 -27 60 54" aria-hidden="true">
+                          <g className={`hvac-symbol symbol-${item.kind} variant-${item.variant}`}>
+                            <SymbolArtwork kind={item.kind} variant={item.variant} width={itemDimensions.width} height={itemDimensions.height} />
+                          </g>
+                        </svg>
+                        <span>{item.label.replace(/ · .+$/, "")}</span>
+                        <small>{item.size}</small>
+                      </button>;
+                    })}
+                    {!visiblePresets.length && <div className="symbol-catalog-empty">No symbols match “{symbolSearch}”.</div>}
+                  </div>
+                  <div className={`symbol-library-preview preview-${preset.kind}`}>
+                    <svg viewBox="-48 -44 96 88" role="img" aria-label={`${preset.label} symbol preview at ${placementRotation} degrees`}>
+                      <g transform={`rotate(${placementRotation})`} className={`hvac-symbol symbol-${preset.kind} variant-${preset.variant}`}>
+                        <SymbolArtwork kind={preset.kind} variant={preset.variant} width={dimensions.width} height={dimensions.height} />
+                      </g>
+                    </svg>
+                    <div>
+                      <strong>{preset.label}</strong>
+                      <span>{preset.size}{preset.cfm ? ` · ${preset.cfm.toLocaleString()} CFM` : ""}</span>
+                      <small>{airflowKey}</small>
+                      <b className="placement-rotation-badge">PLACEMENT ANGLE · {placementRotation}°</b>
+                    </div>
+                  </div>
+                </>;
+              })()}
               <button className={`place-symbol ${symbolTools.includes(activeTool as SymbolKind) ? "active" : ""}`} onClick={() => {
                 const preset = symbolPresets.find((item) => item.id === activePresetId)!;
                 finishDrawing();
@@ -3223,7 +6845,7 @@ export default function Home() {
                 <Grid3X3 size={16} />
                 Place {symbolPresets.find((preset) => preset.id === activePresetId)?.label}
               </button>
-              <small>Choose a family, then a field-ready symbol. Size, CFM and elevation remain editable after placement.</small>
+              <small>Choose a catalog family, move the preview onto the plan, then use the wheel to rotate 15°. Hold Shift for 45°. Click to place.</small>
             </div>
             {tools.filter(({ id }) => id === "measure").map(({ id, label, icon: Icon, tone }) => (
               <button className={`tool ${activeTool === id ? "active" : ""}`} key={label} onClick={() => { finishDrawing(); setActiveTool(id); setSelectedId(null); }}>
@@ -3242,6 +6864,74 @@ export default function Home() {
                   onChange={(event) => updateSelectedSymbol({ label: event.target.value })}
                 />
               </label>
+              {["diffuser", "returnGrille"].includes(selectedDrawing?.symbol?.kind || "") && <div className="smart-can-editor">
+                <div className="smart-can-heading">
+                  <span>SMART CAN EDITOR</span>
+                  <b>{selectedDrawing?.symbol?.kind === "diffuser" ? "SUPPLY" : "RETURN"}</b>
+                </div>
+                <label>Can style
+                  <select
+                    value={symbolPresets.find((preset) => preset.kind === selectedDrawing?.symbol?.kind && preset.size === selectedDrawing?.size && preset.variant === selectedDrawing?.symbol?.variant)?.id || ""}
+                    onChange={(event) => event.target.value && applySelectedCanPreset(event.target.value)}
+                  >
+                    <option value="">Custom style / size</option>
+                    {symbolPresets.filter((preset) => preset.kind === selectedDrawing?.symbol?.kind).map((preset) =>
+                      <option key={preset.id} value={preset.id}>{preset.label} · {preset.size}</option>)}
+                  </select>
+                </label>
+                <div className="can-dimension-grid">
+                  <label>Width
+                    <select
+                      value={selectedDrawing?.size.split(/[x×]/i)[0] || "12"}
+                      onChange={(event) => updateSelectedCanDimension(0, event.target.value)}
+                    >
+                      {["4", "6", "8", "10", "12", "14", "16", "18", "20", "24", "30"].map((size) => <option key={size}>{size}</option>)}
+                    </select>
+                  </label>
+                  <label>Height
+                    <select
+                      value={selectedDrawing?.size.split(/[x×]/i)[1] || selectedDrawing?.size.split(/[x×]/i)[0] || "12"}
+                      onChange={(event) => updateSelectedCanDimension(1, event.target.value)}
+                    >
+                      {["4", "6", "8", "10", "12", "14", "16", "18", "20", "24", "30"].map((size) => <option key={size}>{size}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <label>Face pattern
+                  <select value={selectedDrawing?.symbol?.variant || "grille"} onChange={(event) => updateSelectedSymbol({ variant: event.target.value })}>
+                    {selectedDrawing?.symbol?.kind === "diffuser" ? <>
+                      <option value="4way">4-way</option><option value="3way">3-way</option><option value="2way">2-way</option><option value="1way">1-way</option>
+                      <option value="register">Sidewall register</option><option value="slot">Linear slot</option><option value="round">Round diffuser</option><option value="boot">Register boot</option><option value="floor">Floor register</option>
+                    </> : <>
+                      <option value="grille">Standard grille</option><option value="filter">Filter grille</option><option value="eggcrate">Eggcrate</option>
+                      <option value="transfer">Transfer grille</option><option value="bar">Bar grille</option><option value="floor">Floor return</option>
+                    </>}
+                  </select>
+                </label>
+                <div className="can-dimension-grid">
+                  <label>Neck
+                    <select value={selectedDrawing?.symbol?.neckSize || "8"} onChange={(event) => updateSelectedSymbol({ neckSize: event.target.value })}>
+                      {["4", "5", "6", "7", "8", "10", "12", "14", "16"].map((size) => <option key={size} value={size}>Ø{size}&quot;</option>)}
+                    </select>
+                  </label>
+                  <label>Mounting
+                    <select value={selectedDrawing?.elevation || "CEILING"} onChange={(event) => updateSelectedElevation(event.target.value)}>
+                      <option>CEILING</option><option>HIGH WALL</option><option>LOW WALL</option><option>FLOOR</option>
+                    </select>
+                  </label>
+                </div>
+                {(() => {
+                  const connection = terminalConnection(selectedDrawing);
+                  const attached = Boolean(connection?.saved);
+                  return <div className={`can-connection ${attached ? "connected" : ""}`}>
+                    <div><span>LIVE DUCT CONNECTION</span><strong>{attached ? `Linked · ${connection?.run.size}″ ${connection?.run.type} · ${connection?.end}` : connection ? `${(connection.distance * scaleFeetPerUnit).toFixed(1)} ft from nearest endpoint` : "No matching run found"}</strong></div>
+                    {attached
+                      ? <button onClick={detachSelectedCan}>Detach</button>
+                      : <button disabled={!connection} onClick={attachSelectedCanToRun}>Attach nearest</button>}
+                  </div>;
+                })()}
+                <small>Attachment is manual. Once linked, moving either object keeps the duct endpoint and can together; Detach releases both in place.</small>
+              </div>}
               <label>Rotation
                 <div className="rotation-controls">
                   <button onClick={() => rotateSelectedSymbol(-15)}>−15°</button>
@@ -3249,7 +6939,7 @@ export default function Home() {
                   <button onClick={() => rotateSelectedSymbol(15)}>+15°</button>
                 </div>
               </label>
-              {drawings.find((drawing) => drawing.id === selectedId)?.symbol?.kind === "equipment" && <label>Equipment size
+              {isPrimaryAirflowEquipment(selectedDrawing) && <label>Primary equipment size
                 <select
                   value={Number(drawings.find((drawing) => drawing.id === selectedId)?.size.match(/[\d.]+/)?.[0] || 3)}
                   onChange={(event) => updateEquipmentTonnage(Number(event.target.value))}
@@ -3257,7 +6947,28 @@ export default function Home() {
                   {[1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5].map((tons) => <option key={tons} value={tons}>{tons} ton · {tons * 400} CFM</option>)}
                 </select>
               </label>}
-              {["diffuser", "returnGrille", "equipment", "fan"].includes(drawings.find((drawing) => drawing.id === selectedId)?.symbol?.kind || "") && <label>Scheduled airflow (CFM)
+              {isPrimaryAirflowEquipment(selectedDrawing) && (() => {
+                const connection = equipmentConnection(selectedDrawing);
+                const attached = Boolean(connection?.saved);
+                return <div className={`can-connection equipment-connection ${attached ? "connected" : ""}`}>
+                  <div>
+                    <span>LIVE SUPPLY TRUNK CONNECTION</span>
+                    <strong>{attached
+                      ? `Linked · ${connection?.run.size}″ supply · ${connection?.end}`
+                      : connection
+                        ? `${(connection.distance * scaleFeetPerUnit).toFixed(1)} ft from nearest trunk endpoint`
+                        : "No supply trunk found"}</strong>
+                  </div>
+                  {attached
+                    ? <button onClick={detachSelectedEquipment}>Detach</button>
+                    : <button disabled={!connection} onClick={attachSelectedEquipmentToRun}>Attach trunk</button>}
+                </div>;
+              })()}
+              {selectedDrawing?.symbol?.kind === "equipment" && !isPrimaryAirflowEquipment(selectedDrawing) && <div className="auxiliary-equipment-note">
+                <strong>REFERENCE EQUIPMENT</strong>
+                <span>This symbol is excluded from indoor design airflow and does not connect to the supply trunk.</span>
+              </div>}
+              {(["diffuser", "returnGrille", "fan"].includes(selectedDrawing?.symbol?.kind || "") || isPrimaryAirflowEquipment(selectedDrawing)) && <label>Scheduled airflow (CFM)
                 <input
                   className="property-input"
                   type="number"
@@ -3267,6 +6978,16 @@ export default function Home() {
                   onChange={(event) => updateSelectedCfm(Number(event.target.value))}
                 />
               </label>}
+              {(["diffuser", "returnGrille"].includes(selectedDrawing?.symbol?.kind || "") || isPrimaryAirflowEquipment(selectedDrawing)) && <div className={`symbol-network-summary ${symbolTrace.runCount ? "connected" : "disconnected"}`}>
+                <div>
+                  <span>COMPLETE SYSTEM PATH</span>
+                  <b>{symbolTrace.runCount ? "● TRACE ACTIVE" : "● NOT CONNECTED"}</b>
+                </div>
+                <strong>{symbolTrace.runCount} runs · {symbolTrace.fittingCount} T/Y · {symbolTrace.terminalCount} terminals</strong>
+                <small>{symbolTrace.runCount
+                  ? "The full connected path is highlighted on the plan."
+                  : "Attach this object manually to include it in the airflow network."}</small>
+              </div>}
             </> : drawings.find((drawing) => drawing.id === selectedId)?.fitting ? <div className="fitting-properties">
               <div className="fitting-property-title"><DraftingCompass size={14} /><span>3-RUN FITTING</span><b>{drawings.find((drawing) => drawing.id === selectedId)?.fitting?.style === "tee90" ? "90° TEE" : "45° WYE"}</b></div>
               <div className="network-trace-summary">
@@ -3318,9 +7039,17 @@ export default function Home() {
                   const selected = drawings.find((drawing) => drawing.id === selectedId)!;
                   reshapeSelectedFitting(selected.fitting?.style || "wye45", selected.fitting?.side === 1 ? -1 : 1);
                 }}>Flip left / right</button>
-                <button onClick={rebalanceSelectedFitting}>Auto-split CFM</button>
-                <button className="network-size-action" onClick={autoSizeSelectedBranchNetwork}>Auto-size connected network</button>
+                <button onClick={() => { openSystemBalanceWorkspace("rooms"); setBranchMessage("Review terminal CFM proposals before applying any airflow changes"); }}>Review CFM split</button>
+                <button className="network-size-action" onClick={openSystemSizingWorkflow}>Review connected sizes</button>
                 <button className="reattach-action" onClick={reattachSelectedFitting}>Reattach nearby runs</button>
+                <button className="reattach-action" onClick={() => {
+                  const fitting = drawings.find((drawing) => drawing.id === selectedId && drawing.fitting);
+                  if (!fitting) return;
+                  setPendingBranchFittingId(fitting.id);
+                  setActiveTool("branch");
+                  setBranchPreview(null);
+                  setBranchMessage("Click anywhere on the blue run you want attached to Port 3");
+                }}>Pick Port 3 run on plan</button>
                 <button
                   className="remove-fitting-action"
                   onClick={() => {
@@ -3336,11 +7065,28 @@ export default function Home() {
               {(["Upstream / inlet", "Outlet A / straight", "Outlet B / branch"] as const).map((label, port) => {
                 const fitting = drawings.find((drawing) => drawing.id === selectedId)!.fitting!;
                 const value = [fitting.upstreamSize, fitting.downstreamSize, fitting.branchSize][port];
-                return <label key={label}>{label}
-                  <select value={value} onChange={(event) => updateFittingPortSize(port as 0 | 1 | 2, event.target.value)}>
-                    {["16", "14", "12", "10", "8", "7", "6", "4"].map((size) => <option key={size}>{size}</option>)}
-                  </select>
-                </label>;
+                const connectedRunId = fitting.connectedIds[port];
+                const compatibleRuns = drawings.filter((drawing) =>
+                  drawing.page === pageNumber &&
+                  drawing.type === "supply" &&
+                  !drawing.fitting &&
+                  drawingSystem(drawing) === drawingSystem(drawings.find((item) => item.id === selectedId)!)
+                );
+                return <div className="fitting-port-editor" key={label}>
+                  <label>{label} size
+                    <select value={value} onChange={(event) => updateFittingPortSize(port as 0 | 1 | 2, event.target.value)}>
+                      {["16", "14", "12", "10", "8", "7", "6", "4"].map((size) => <option key={size}>{size}</option>)}
+                    </select>
+                  </label>
+                  <label>Connected existing run
+                    <select value={connectedRunId || ""} onChange={(event) => assignSelectedFittingPort(port as 0 | 1 | 2, event.target.value)}>
+                      <option value="">Choose nearby run…</option>
+                      {compatibleRuns.map((run) => <option key={run.id} value={run.id}>
+                        {run.size}&quot; · {run.roomName?.trim() || run.elevation?.trim() || "Unassigned route"}
+                      </option>)}
+                    </select>
+                  </label>
+                </div>;
               })}
               <div className="port-status">
                 {([0, 1, 2] as const).map((port) => {
@@ -3452,7 +7198,7 @@ export default function Home() {
             {!leftPanelOpen && <button className="panel-restore" onClick={() => setLeftPanelOpen(true)}><PanelLeftClose size={16} /> Tools</button>}
             <button onClick={() => setActiveTool("select")}><MousePointer2 size={16} /> {activeTool === "select" ? "Select" : tools.find((tool) => tool.id === activeTool)?.label}</button>
             <span className="divider" />
-            <button aria-label="Pan drawing" title="Right-click and drag anywhere on the plan"><Hand size={16} /> Right-drag pan</button>
+            <button className={activeTool === "select" ? "active" : ""} aria-label="Pan drawing" title="Right-click and drag anywhere to pan the plan. Left-click stays reserved for drawing and selecting." onClick={() => setActiveTool("select")}><Hand size={16} /> Grab plan</button>
             <button aria-label="Zoom out" onClick={zoomOut} disabled={!pdf}><ZoomOut size={17} /></button>
             <strong>{Math.round(zoom * 100)}%</strong>
             <button aria-label="Zoom in" onClick={zoomIn} disabled={!pdf}><ZoomIn size={17} /></button>
@@ -3469,7 +7215,7 @@ export default function Home() {
               className={`precision-toggle ${snapEnabled ? "active" : ""}`}
               onClick={() => setSnapEnabled((enabled) => !enabled)}
               aria-pressed={snapEnabled}
-              title="Snap to endpoints, duct segments, and grid points"
+              title="Precision snap: fitting and equipment ports, endpoints, intersections, midpoints, segments, and grid"
             ><CircleDot size={14} /> Snap</button>
             <button
               className={`display-toggle ${showCfmLabels ? "active" : ""}`}
@@ -3511,18 +7257,19 @@ export default function Home() {
               <select
                 className="scale-select"
                 aria-label="Drawing scale"
-                value={scaleLabel.startsWith("Calibrated") ? "custom" : scaleLabel}
+                value={scaleVerified ? (scaleLabel.startsWith("Calibrated") ? "custom" : scaleLabel) : ""}
                 onChange={(event) => event.target.value !== "custom" && applyScalePreset(event.target.value)}
               >
-                <option value={'1/8" = 1\'-0"'}>1/8" = 1'-0"</option>
-                <option value={'3/16" = 1\'-0"'}>3/16" = 1'-0"</option>
-                <option value={'1/4" = 1\'-0"'}>1/4" = 1'-0"</option>
-                <option value={'1/2" = 1\'-0"'}>1/2" = 1'-0"</option>
+                <option value="" disabled>Choose scale…</option>
+                <option value={'1/8" = 1\'-0"'}>{'1/8" = 1\'-0"'}</option>
+                <option value={'3/16" = 1\'-0"'}>{'3/16" = 1\'-0"'}</option>
+                <option value={'1/4" = 1\'-0"'}>{'1/4" = 1\'-0"'}</option>
+                <option value={'1/2" = 1\'-0"'}>{'1/2" = 1\'-0"'}</option>
                 <option value="custom">Custom calibrated</option>
               </select>
               {calibrating && <input className="reference-input" aria-label="Known distance in feet" type="number" min="1" value={referenceFeet} onChange={(event) => setReferenceFeet(event.target.value)} />}
               <button className={calibrating ? "calibrate active" : "calibrate"} onClick={() => { setCalibrating((value) => !value); setMeasureDraft([]); }}>
-                {calibrating ? `${referenceFeet} ft · pick 2 points` : scaleLocked ? "Calibrate" : "Set scale"}
+                {calibrating ? `${referenceFeet} ft · pick 2 points` : scaleVerified ? "Recalibrate" : "Calibrate"}
               </button>
             </div>
             {!rightPanelOpen && <button className="panel-restore" onClick={() => setRightPanelOpen(true)}>Inspector <PanelRightClose size={16} /></button>}
@@ -3555,6 +7302,10 @@ export default function Home() {
               </select>}
               {selectedDrawing?.symbol && <button onClick={() => rotateSelectedSymbol(-15)}>−15°</button>}
               {selectedDrawing?.symbol && <button onClick={() => rotateSelectedSymbol(15)}>+15°</button>}
+              {selectedRun && selectedIds.length === 1 && <button title="Continue drawing from the first endpoint" onClick={() => extendSelectedRun(true)}><Route size={15} /> Extend A</button>}
+              {selectedRun && selectedIds.length === 1 && <button title="Continue drawing from the last endpoint" onClick={() => extendSelectedRun(false)}><Route size={15} /> Extend B</button>}
+              {selectedRun && selectedIds.length === 1 && <button className={splitMode ? "active" : ""} title="Click the selected run where it should split" onClick={() => { setActiveTool("select"); setSplitMode((enabled) => !enabled); }}><Scissors size={15} /> Split</button>}
+              {selectedIds.length === 2 && <button title="Join the two nearest compatible run endpoints" onClick={joinSelectedRuns}><Route size={15} /> Join runs</button>}
               <button title="Mirror selection" onClick={mirrorSelectedHorizontal}><FlipHorizontal2 size={15} /> Mirror</button>
               <button title="Duplicate selection" onClick={duplicateSelected}><Copy size={15} /> Duplicate</button>
               <button className="danger" title="Delete selection" onClick={deleteSelected}><Trash2 size={15} /></button>
@@ -3565,6 +7316,61 @@ export default function Home() {
               <strong>{ductSize}&quot; · {liveDraftFeet.toFixed(1)} LF</strong>
               <b>{liveDraftCfm} CFM · {liveDraftVelocity} FPM</b>
               <small>Left-click direction · Shift locks angle · Right-click finishes</small>
+            </div>}
+            {pdf && activeTool === "branch" && <div className={`branch-workflow-hud ${pendingBranchFittingId ? "awaiting-branch" : ""} ${branchPlacementResult ? "complete" : ""}`} aria-live="polite">
+              <div className="branch-workflow-heading">
+                <span><DraftingCompass size={14} /> SMART T/Y</span>
+                <b>{branchPlacementResult ? "3 / 3 CONNECTED" : pendingBranchFittingId ? "PORT 3 OPEN" : "READY"}</b>
+              </div>
+              <div className="branch-workflow-steps">
+                {[
+                  { number: 1, label: "Pick trunk", state: pendingBranchFittingId || branchPlacementResult ? "done" : "active" },
+                  { number: 2, label: "Split + place", state: pendingBranchFittingId || branchPlacementResult ? "done" : branchPreview?.mainRunId ? "active" : "next" },
+                  { number: 3, label: "Attach Port 3", state: branchPlacementResult ? "done" : pendingBranchFittingId ? "active" : "next" },
+                ].map((step) => <div className={`branch-workflow-step ${step.state}`} key={step.number}>
+                  <i>{step.state === "done" ? <CheckCircle2 size={13} /> : step.number}</i>
+                  <span>{step.label}</span>
+                </div>)}
+              </div>
+              <div className="branch-pass-summary">
+                <span><b>{pageBranchFittings.length}</b> fittings on sheet</span>
+                <span className={openBranchPorts ? "warning" : ""}><b>{openBranchPorts}</b> open Port 3</span>
+                <span className={branchOpportunityList.length ? "ready" : ""}><b>{branchOpportunityList.length}</b> suggested next</span>
+              </div>
+              <strong className="branch-workflow-message">{branchPlacementResult?.message || branchMessage || "Move over a blue supply trunk, then click where the fitting belongs."}</strong>
+              {!pendingBranchFittingId && !branchPlacementResult && <div className="branch-workflow-actions">
+                <button
+                  className="primary"
+                  disabled={!branchOpportunityList.length}
+                  onClick={() => focusNextBranchOpportunity(branchOpportunityList)}
+                >Find next suggested T/Y</button>
+                <small>Suggestions only highlight likely junctions. You confirm every fitting.</small>
+              </div>}
+              {pendingBranchFittingId && <div className="branch-workflow-actions">
+                <button onClick={() => {
+                  setPendingBranchFittingId(null);
+                  setBranchPreview(null);
+                  setBranchMessage("Fitting kept with Port 3 open · select it later to reattach");
+                }}>Leave Port 3 open</button>
+                <button className="danger" onClick={undo}><Undo2 size={13} /> Undo fitting</button>
+              </div>}
+              {branchPlacementResult && <div className="branch-workflow-actions">
+                <button
+                  className="primary"
+                  disabled={!branchOpportunityList.length}
+                  onClick={() => focusNextBranchOpportunity(branchOpportunityList)}
+                >Next suggested T/Y</button>
+                <button onClick={() => {
+                  const fitting = drawings.find((drawing) => drawing.id === branchPlacementResult.fittingId && drawing.fitting);
+                  if (!fitting) return;
+                  setPendingBranchFittingId(fitting.id);
+                  setSelectedId(fitting.id);
+                  setBranchPlacementResult(null);
+                  setBranchPreview(null);
+                  setBranchMessage("Choose a different blue run · the selected endpoint will move to Port 3");
+                }}>Change Port 3</button>
+                <button className="danger" onClick={undo}><Undo2 size={13} /> Undo connection</button>
+              </div>}
             </div>}
             {pdf && showSheetNavigator && <div className="sheet-navigator" role="dialog" aria-label="PDF sheet navigator">
               <div className="sheet-navigator-heading">
@@ -3590,7 +7396,7 @@ export default function Home() {
               <div className="sheet-navigator-footer">Tip: Page Up / Page Down changes sheets · Home / End jumps to the first or last page.</div>
             </div>}
             {pdf ? (
-              <div className="pdf-stage">
+              <div className="pdf-stage" style={{ transform: `translate3d(${camera.x}px, ${camera.y}px, 0)` }}>
                 <div ref={planSheetRef} className="plan-sheet" style={{ width: renderSize.width * zoom, height: renderSize.height * zoom }}>
                   <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} style={{ opacity: backgroundOpacity / 100 }} />
                   <svg
@@ -3600,7 +7406,7 @@ export default function Home() {
                     onPointerMove={handlePointerMove}
                     onPointerUp={endDrag}
                     onPointerCancel={endDrag}
-                    onPointerLeave={() => { if (!dragRef.current) { setHoverPoint(null); setSnapMarker(null); setBranchPreview(null); setSymbolPreview(null); } }}
+                    onPointerLeave={() => { if (!dragRef.current) { setHoverPoint(null); setSnapMarker(null); setSnapInfo(null); setAlignmentGuides([]); setBranchPreview(null); setSymbolPreview(null); } }}
                     onContextMenu={(event) => event.preventDefault()}
                   >
                     {drawings.filter((drawing) => {
@@ -3646,7 +7452,7 @@ export default function Home() {
                         const portStates = ([0, 1, 2] as const).map((port) => fittingPortState(drawing, port));
                         return <g
                           key={drawing.id}
-                          className={`branch-fitting ${activeTrace.fittingIds.has(drawing.id) ? "traced-fitting" : ""} ${isSelected(drawing.id) ? "selected-fitting" : ""}`}
+                          className={`branch-fitting ${activeTrace.fittingIds.has(drawing.id) ? "traced-fitting" : ""} ${isSelected(drawing.id) ? "selected-fitting" : ""} ${branchPlacementResult?.fittingId === drawing.id ? "connection-confirmed" : ""}`}
                           onPointerDown={(event) => startFittingDrag(event, drawing)}
                         >
                           <circle className="fitting-hit" cx={center.x} cy={center.y} r="22" />
@@ -3658,21 +7464,23 @@ export default function Home() {
                             key={`flow-${index}`}
                             d={`M ${arrow.left.x} ${arrow.left.y} L ${arrow.tip.x} ${arrow.tip.y} L ${arrow.right.x} ${arrow.right.y}`}
                           />)}
-                          {[inlet, outlet, branchPort].map((port, index) => <g className={portStates[index].overloaded ? "overloaded-port" : ""} key={index}>
-                            <circle className="fitting-port" cx={port.x} cy={port.y} r="4.2" />
-                            <text className="port-number" x={port.x} y={port.y + 2.4} textAnchor="middle">{index + 1}</text>
-                            <text className="fitting-port-size" x={port.x} y={port.y - 7} textAnchor="middle">{portSizes[index]}&quot;</text>
-                            {showCfmLabels && <text className="fitting-port-cfm" x={port.x} y={port.y + 12} textAnchor="middle">{portStates[index].cfm} CFM</text>}
+                          {[inlet, outlet, branchPort].map((port, index) => <g className={`${portStates[index].connected ? "connected-port" : "disconnected-port"} ${portStates[index].overloaded ? "overloaded-port" : ""}`} key={index}>
+                            <circle className="fitting-port" cx={port.x} cy={port.y} r="5.8" />
+                            <text className="port-number" x={port.x} y={port.y + 2.7} textAnchor="middle">{index + 1}</text>
+                            <text className="fitting-port-size" x={port.x} y={port.y - 9} textAnchor="middle">{portSizes[index]}&quot;</text>
+                            {showCfmLabels && <text className="fitting-port-cfm" x={port.x} y={port.y + 14} textAnchor="middle">{portStates[index].cfm} CFM</text>}
+                            {(isSelected(drawing.id) || activeTool === "branch") && <text className="port-role" x={port.x} y={port.y + (showCfmLabels ? 23 : 15)} textAnchor="middle">{["IN", "OUT", "BRANCH"][index]}</text>}
                           </g>)}
                           <circle className="fitting-core" cx={center.x} cy={center.y} r="5.5" />
                           <text className="fitting-label" x={branchPort.x + 9} y={branchPort.y - 7}>{drawing.fitting.style === "tee90" ? "TEE" : "WYE"} · {drawing.size}{drawing.elevation ? ` · EL ${drawing.elevation}` : ""}</text>
+                          {branchPlacementResult?.fittingId === drawing.id && <text className="connection-confirmed-label" x={center.x} y={center.y - 30} textAnchor="middle">✓ 3 / 3 CONNECTED</text>}
                         </g>;
                       }
                       const path = drawing.points.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
                       const middle = drawing.points[Math.floor(drawing.points.length / 2)];
                       const branchCandidateClass = branchPreview?.mainRunId === drawing.id
                         ? "branch-candidate-main"
-                        : branchPreview?.branchRunId === drawing.id
+                        : branchPreview?.runIds?.includes(drawing.id) || branchPreview?.branchRunId === drawing.id
                           ? "branch-candidate-route"
                           : "";
                       return <g key={drawing.id} className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${isSelected(drawing.id) ? "selected-drawing" : ""} ${branchCandidateClass}`.trim()} onPointerDown={(event) => {
@@ -3683,7 +7491,7 @@ export default function Home() {
                         <path className="hit-line" d={path} onPointerDown={(event) => startLineDrag(event, drawing)} />
                         <path className="duct-line" d={path} stroke={drawingColors[drawing.type as DrawType]} />
                         {drawing.points.map((point, index) => <circle
-                          className={isSelected(drawing.id) ? "edit-handle" : ""}
+                          className={isSelected(drawing.id) ? `edit-handle ${index === 0 || index === drawing.points.length - 1 ? "endpoint-grip" : "vertex-grip"}` : ""}
                           key={index}
                           cx={point.x}
                           cy={point.y}
@@ -3691,21 +7499,55 @@ export default function Home() {
                           fill={drawingColors[drawing.type as DrawType]}
                           onPointerDown={(event) => startPointDrag(event, drawing.id, index)}
                         />)}
+                        {isSelected(drawing.id) && drawing.points.slice(0, -1).map((point, index) => {
+                          const next = drawing.points[index + 1];
+                          return <circle
+                            className="midpoint-grip"
+                            key={`mid-${index}`}
+                            cx={(point.x + next.x) / 2}
+                            cy={(point.y + next.y) / 2}
+                            r="4"
+                            onPointerDown={(event) => startMidpointStretch(event, drawing.id, index)}
+                          />;
+                        })}
                         <text x={middle.x + 8} y={middle.y - 8}>
-                          {drawing.size}"
+                          {drawing.size}&quot;
                           {showLengthLabels ? ` · ${drawingLengthFeet(drawing).toFixed(1)} LF` : ""}
                           {showCfmLabels ? ` · ${runAirflow(drawing)} CFM${airflowNetwork().calculated.get(drawing.id) ? " AUTO" : ""}` : ""}
                           {drawing.elevation ? ` · EL ${drawing.elevation}` : ""}
                         </text>
                       </g>;
                     })}
-                    {selectionBox && <rect
-                      className="selection-box"
-                      x={Math.min(selectionBox.start.x, selectionBox.end.x)}
-                      y={Math.min(selectionBox.start.y, selectionBox.end.y)}
-                      width={Math.abs(selectionBox.end.x - selectionBox.start.x)}
-                      height={Math.abs(selectionBox.end.y - selectionBox.start.y)}
-                    />}
+                    {reviewIssueMarkers(activeReviewedIssueRows).map((marker) => <g
+                      className={`review-marker ${marker.issue.severity} ${marker.resolvedByDecision ? "accepted" : ""} ${marker.issue.id === activeReviewIssueId ? "active" : ""}`}
+                      key={`marker-${marker.issue.id}`}
+                      transform={`translate(${marker.point.x + marker.offset.x / Math.max(.1, zoom)} ${marker.point.y + marker.offset.y / Math.max(.1, zoom)}) scale(${1 / Math.max(.1, zoom)})`}
+                      onPointerDown={(event) => {
+                        if (event.button !== 0) return;
+                        event.stopPropagation();
+                        focusReviewIssue(marker.issue);
+                      }}
+                    >
+                      <title>{marker.issue.title}: {marker.issue.detail}</title>
+                      <path d="M 0 -10 L 9 7 L -9 7 Z" />
+                      <circle cx="0" cy="0" r="7" />
+                      <text x="0" y="2.5" textAnchor="middle">{marker.reference}</text>
+                    </g>)}
+                    {selectionBox && <g className={`selection-box ${selectionBox.end.x < selectionBox.start.x ? "crossing" : "window"}`}>
+                      <rect
+                        x={Math.min(selectionBox.start.x, selectionBox.end.x)}
+                        y={Math.min(selectionBox.start.y, selectionBox.end.y)}
+                        width={Math.abs(selectionBox.end.x - selectionBox.start.x)}
+                        height={Math.abs(selectionBox.end.y - selectionBox.start.y)}
+                      />
+                      <text
+                        x={Math.min(selectionBox.start.x, selectionBox.end.x) + 6}
+                        y={Math.min(selectionBox.start.y, selectionBox.end.y) - 7}
+                      >{selectionBox.end.x < selectionBox.start.x ? "CROSSING" : "WINDOW"}</text>
+                    </g>}
+                    {alignmentGuides.map((guide, index) => guide.axis === "x"
+                      ? <line key={`guide-${index}`} className="alignment-guide" x1={guide.value} y1={0} x2={guide.value} y2={renderSize.height} />
+                      : <line key={`guide-${index}`} className="alignment-guide" x1={0} y1={guide.value} x2={renderSize.width} y2={guide.value} />)}
                     {(branchRepairPreview.detached.length > 0 || branchRepairPreview.missing.length > 0) && <g className="network-repair-preview">
                       {branchRepairPreview.detached.map((gap) => <g key={gap.id}>
                         <path d={`M ${gap.endpoint.x} ${gap.endpoint.y} L ${gap.portPoint.x} ${gap.portPoint.y}`} />
@@ -3731,6 +7573,11 @@ export default function Home() {
                         {calibrating ? `${referenceFeet} FT REFERENCE` : `${(Math.hypot(hoverPoint.x - measureDraft[0].x, hoverPoint.y - measureDraft[0].y) * scaleFeetPerUnit).toFixed(1)} FT`}
                       </text>
                     </g>}
+                    {activeTool === "branch" && !pendingBranchFittingId && branchOpportunityList.slice(0, 8).map((opportunity, index) => <g className="branch-opportunity-marker" key={opportunity.id}>
+                      <circle cx={opportunity.center.x} cy={opportunity.center.y} r="10" />
+                      <text x={opportunity.center.x} y={opportunity.center.y + 2.8} textAnchor="middle">{index + 1}</text>
+                      {index === 0 && <text className="branch-opportunity-label" x={opportunity.center.x + 14} y={opportunity.center.y - 12}>SUGGESTED T/Y</text>}
+                    </g>)}
                     {branchPreview && (() => {
                       const center = branchPreview.center;
                       const previewStyle = branchPreview.style || "wye45";
@@ -3739,16 +7586,36 @@ export default function Home() {
                       const outlet = { x: center.x + Math.cos(branchPreview.angle) * 13, y: center.y + Math.sin(branchPreview.angle) * 13 };
                       const branchPort = { x: center.x + Math.cos(branchAxis) * 18, y: center.y + Math.sin(branchAxis) * 18 };
                       return <g className={`branch-preview ${branchPreview.valid ? "" : "invalid"}`}>
+                        {branchPreview.mode === "attach-run" && branchPreview.candidateEndpoint && <>
+                          <path className="candidate-endpoint-guide" d={`M ${branchPreview.candidateEndpoint.x} ${branchPreview.candidateEndpoint.y} L ${branchPort.x} ${branchPort.y}`} />
+                          <circle className="candidate-endpoint" cx={branchPreview.candidateEndpoint.x} cy={branchPreview.candidateEndpoint.y} r="7" />
+                          <text className="candidate-endpoint-label" x={branchPreview.candidateEndpoint.x + 10} y={branchPreview.candidateEndpoint.y - 9}>
+                            THIS END MOVES TO PORT 3{branchPreview.candidateEndpointDistance ? ` · ${(branchPreview.candidateEndpointDistance * scaleFeetPerUnit).toFixed(1)} FT` : ""}
+                          </text>
+                        </>}
                         <circle cx={center.x} cy={center.y} r="22" />
                         <path d={`M ${inlet.x} ${inlet.y} L ${center.x} ${center.y} L ${outlet.x} ${outlet.y} M ${center.x} ${center.y} L ${branchPort.x} ${branchPort.y}`} />
-                        {[inlet, outlet, branchPort].map((port, index) => <circle
-                          key={index}
-                          className={`preview-port ${branchPreview.valid ? "ready" : index < 2 ? "ready" : "missing"}`}
-                          cx={port.x}
-                          cy={port.y}
-                          r="4.5"
-                        />)}
-                        <text x={branchPort.x + 7} y={branchPort.y - 6}>{branchPreview.matchedExisting ? `READY · ${previewStyle === "tee90" ? "TEE" : "WYE"} · 3 RUNS` : "BRANCH RUN NEEDED"} · {branchPreview.parentSize}×{steppedSize(branchPreview.parentSize, 1)}×{steppedSize(branchPreview.parentSize, 2)}</text>
+                        {[inlet, outlet, branchPort].map((port, index) => <g key={index}>
+                          <circle
+                            className={`preview-port ${index < 2 || branchPreview.matchedExisting ? "ready" : "missing"}`}
+                            cx={port.x}
+                            cy={port.y}
+                            r="6"
+                          />
+                          <text className="preview-port-number" x={port.x} y={port.y + 2.8} textAnchor="middle">{index + 1}</text>
+                          <text className="preview-port-role" x={port.x} y={port.y + 16} textAnchor="middle">{["IN", "OUT", "BRANCH"][index]}</text>
+                        </g>)}
+                        {branchPreview.mode === "split-trunk" && <text className="preview-trunk-label" x={center.x} y={center.y - 29} textAnchor="middle">TRUNK TO SPLIT</text>}
+                        {branchPreview.mode === "attach-run" && branchPreview.branchRunId && branchPreview.candidateProjected && <text className="preview-run-label" x={branchPreview.candidateProjected.x} y={branchPreview.candidateProjected.y - 13} textAnchor="middle">BRANCH RUN SELECTED</text>}
+                        <text x={branchPort.x + 7} y={branchPort.y - 6}>
+                          {branchPreview.mode === "attach-run"
+                            ? branchPreview.matchedExisting
+                              ? `CLICK TO ATTACH · ${previewStyle === "tee90" ? "TEE" : "WYE"}`
+                              : "SELECT ANY BLUE BRANCH RUN"
+                            : branchPreview.matchedExisting
+                              ? `READY · ${previewStyle === "tee90" ? "TEE" : "WYE"} · ${branchPreview.mode === "three-runs" ? "3 SEPARATE RUNS" : "TRUNK + BRANCH"}`
+                              : "PLACE HERE · PORT 3 STAYS OPEN"} · {branchPreview.parentSize}×{steppedSize(branchPreview.parentSize, 1)}×{steppedSize(branchPreview.parentSize, 2)}
+                        </text>
                       </g>;
                     })()}
                     {symbolPreview && renderSymbol({
@@ -3759,7 +7626,7 @@ export default function Home() {
                       page: pageNumber,
                       symbol: {
                         kind: symbolPreview.kind,
-                        rotation: 0,
+                        rotation: placementRotation,
                         variant: symbolPresets.find((preset) => preset.id === activePresetId && preset.kind === symbolPreview.kind)?.variant,
                         label: symbolPresets.find((preset) => preset.id === activePresetId && preset.kind === symbolPreview.kind)?.label || {
                           diffuser: "12×12 SUPPLY",
@@ -3769,7 +7636,11 @@ export default function Home() {
                         }[symbolPreview.kind],
                       },
                     }, true)}
-                    {snapMarker && <g className="snap-marker"><circle cx={snapMarker.x} cy={snapMarker.y} r="9" /><path d={`M ${snapMarker.x - 5} ${snapMarker.y} L ${snapMarker.x + 5} ${snapMarker.y} M ${snapMarker.x} ${snapMarker.y - 5} L ${snapMarker.x} ${snapMarker.y + 5}`} /></g>}
+                    {snapMarker && <g className={`snap-marker snap-${snapInfo?.kind.replace(" ", "-") || "point"}`}>
+                      <circle cx={snapMarker.x} cy={snapMarker.y} r="9" />
+                      <path d={`M ${snapMarker.x - 5} ${snapMarker.y} L ${snapMarker.x + 5} ${snapMarker.y} M ${snapMarker.x} ${snapMarker.y - 5} L ${snapMarker.x} ${snapMarker.y + 5}`} />
+                      {snapInfo && <text x={snapMarker.x + 13} y={snapMarker.y - 11}>{snapInfo.label}</text>}
+                    </g>}
                   </svg>
                 </div>
               </div>
@@ -3789,15 +7660,123 @@ export default function Home() {
         </section>
 
         <aside className="right-panel">
-          <div className="right-tabs">
-            <button className={rightTab === "layers" ? "active" : ""} onClick={() => setRightTab("layers")}>Layers</button>
-            <button className={rightTab === "rooms" ? "active" : ""} onClick={() => setRightTab("rooms")}>Rooms</button>
-            <button className={rightTab === "network" ? "active" : ""} onClick={() => setRightTab("network")}>Network</button>
-            <button className={rightTab === "takeoff" ? "active" : ""} onClick={() => setRightTab("takeoff")}>Takeoff</button>
-            <button className={rightTab === "checks" ? "active" : ""} onClick={() => setRightTab("checks")}>Checks</button>
+          <div className="right-tabs" role="tablist" aria-label="HVAC workspace panels">
+            <button role="tab" aria-selected={rightTab === "builder"} className={rightTab === "builder" ? "active" : ""} onClick={() => setRightTab("builder")}>Builder</button>
+            <button role="tab" aria-selected={rightTab === "layers"} className={rightTab === "layers" ? "active" : ""} onClick={() => setRightTab("layers")}>Layers</button>
+            <button role="tab" aria-selected={rightTab === "rooms"} className={rightTab === "rooms" ? "active" : ""} onClick={() => openSystemBalanceWorkspace("system")}>Balance</button>
+            <button role="tab" aria-selected={rightTab === "takeoff"} className={rightTab === "takeoff" ? "active" : ""} onClick={() => setRightTab("takeoff")}>Takeoff</button>
+            <button role="tab" aria-selected={rightTab === "checks"} className={rightTab === "checks" ? "active" : ""} onClick={() => setRightTab("checks")}>Review</button>
+            <button role="tab" aria-selected={rightTab === "field"} className={rightTab === "field" ? "active" : ""} onClick={() => setRightTab("field")}>Field</button>
             <button className="right-collapse" aria-label="Collapse inspector" onClick={() => setRightPanelOpen(false)}><PanelRightClose size={15} /></button>
           </div>
-          {rightTab === "layers" ? <>
+          {rightTab === "builder" ? <div className="system-builder-panel">
+            <div className="builder-hero">
+              <div className="builder-hero-heading">
+                <span><Sparkles size={17} /></span>
+                <div><strong>SMART SYSTEM BUILDER</strong><small>{systemLabel(activeSystem)} · lines first, fittings second, cans last</small></div>
+                <b>{activeBuilderSummary.progress}%</b>
+              </div>
+              <div className="builder-progress"><i style={{ width: `${activeBuilderSummary.progress}%` }} /></div>
+              <div className="builder-stage-strip">
+                <span className={activeBuilderSummary.runs.length ? "complete" : "active"}><b>1</b> Runs</span>
+                <span className={activeBuilderSummary.fittings.length ? "complete" : activeBuilderSummary.runs.length ? "active" : ""}><b>2</b> T/Y</span>
+                <span className={activeBuilderSummary.devices.length ? "complete" : activeBuilderSummary.fittings.length ? "active" : ""}><b>3</b> Cans</span>
+                <span className={activeBuilderSummary.audit.counts.critical === 0 && activeBuilderSummary.runs.length ? "complete" : activeBuilderSummary.devices.length ? "active" : ""}><b>4</b> Review</span>
+              </div>
+            </div>
+
+            <div className="builder-metrics">
+              <div><span>Runs</span><strong>{activeBuilderSummary.runs.length}</strong></div>
+              <div><span>T/Y fittings</span><strong>{activeBuilderSummary.fittings.length}</strong></div>
+              <div className={activeBuilderSummary.unconnectedDevices ? "attention" : "good"}><span>Open devices</span><strong>{activeBuilderSummary.unconnectedDevices}</strong></div>
+              <div className={activeBuilderSummary.brokenPorts ? "attention" : "good"}><span>Broken ports</span><strong>{activeBuilderSummary.brokenPorts}</strong></div>
+              <div className={activeBuilderSummary.sizing.length ? "attention" : "good"}><span>Size reviews</span><strong>{activeBuilderSummary.sizing.length}</strong></div>
+              <div className={activeBuilderSummary.audit.counts.critical ? "critical" : "good"}><span>Critical</span><strong>{activeBuilderSummary.audit.counts.critical}</strong></div>
+            </div>
+
+            <div className="builder-workflow">
+              <div className={`builder-action-card ${activeBuilderSummary.unconnectedDevices || activeBuilderSummary.brokenPorts ? "attention" : "complete"}`}>
+                <div className="builder-action-icon"><Route size={17} /></div>
+                <span><i>STEP 1</i><strong>Connect &amp; repair the system</strong><small>Snaps nearby equipment, supply cans, and return cans to existing run endpoints. Repairs saved T/Y ports without creating branch stubs or rerouting ductwork.</small></span>
+                <div className="builder-action-buttons">
+                  <button disabled={!activeBuilderSummary.unconnectedDevices} onClick={autoConnectActiveSystemDevices}>Connect nearby</button>
+                  <button disabled={!activeBuilderSummary.brokenPorts} onClick={repairActiveSystemNetwork}>Repair all ports</button>
+                </div>
+              </div>
+
+              <div className={`builder-action-card ${activeBuilderSummary.sizing.length ? "attention" : "complete"}`}>
+                <div className="builder-action-icon"><Gauge size={17} /></div>
+                <span><i>STEP 2</i><strong>Calculate CFM &amp; review duct sizes</strong><small>Propagates terminal airflow through connected T/Y fittings and prepares safe size recommendations using your velocity limits and 16″ residential maximum.</small></span>
+                <div className={`system-airflow-setup ${!activeAirflowSetup.primaryUnit ? "missing-unit" : ""}`}>
+                  <div className="airflow-setup-heading">
+                    <span><Wind size={15} /><strong>SYSTEM AIRFLOW SETUP</strong></span>
+                    <b>{activeAirflowSetup.primaryUnit ? `${activeAirflowSetup.targetCfm} CFM` : "UNIT REQUIRED"}</b>
+                  </div>
+                  <label>Primary equipment tonnage · 400 CFM per ton
+                    <select
+                      aria-label="Active system equipment tonnage"
+                      value={activeAirflowSetup.primaryTons || 3}
+                      disabled={!activeAirflowSetup.primaryUnit}
+                      onChange={(event) => updateActiveSystemTonnage(Number(event.target.value))}
+                    >
+                      {[1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5].map((tons) => <option key={tons} value={tons}>{tons} ton · {tons * 400} CFM</option>)}
+                    </select>
+                  </label>
+                  {activeAirflowSetup.primaryUnit ? <>
+                    <div className="airflow-balance-grid">
+                      <div className={activeAirflowSetup.supplyBalanced ? "good" : "attention"}>
+                        <span>Supply scheduled</span>
+                        <strong>{activeAirflowSetup.supplyCfm} CFM</strong>
+                        <small>{activeAirflowSetup.supplyGap > 0 ? `${activeAirflowSetup.supplyGap} CFM remaining` : activeAirflowSetup.supplyGap < 0 ? `${Math.abs(activeAirflowSetup.supplyGap)} CFM over` : "Target matched"}</small>
+                      </div>
+                      <div className={activeAirflowSetup.returnBalanced ? "good" : "attention"}>
+                        <span>Return scheduled</span>
+                        <strong>{activeAirflowSetup.returnCfm} CFM</strong>
+                        <small>{activeAirflowSetup.returnGap > 0 ? `${activeAirflowSetup.returnGap} CFM remaining` : activeAirflowSetup.returnGap < 0 ? `${Math.abs(activeAirflowSetup.returnGap)} CFM over` : "Target matched"}</small>
+                      </div>
+                    </div>
+                    <div className="airflow-progress-row">
+                      <span>Supply <b>{activeAirflowSetup.supplyPercent}%</b><i><em style={{ width: `${Math.min(100, Math.max(0, activeAirflowSetup.supplyPercent))}%` }} /></i></span>
+                      <span>Return <b>{activeAirflowSetup.returnPercent}%</b><i><em style={{ width: `${Math.min(100, Math.max(0, activeAirflowSetup.returnPercent))}%` }} /></i></span>
+                    </div>
+                    <div className="airflow-field-guidance">
+                      <span><b>{activeAirflowSetup.connectedSupplyTerminals}/{activeAirflowSetup.supplyTerminals.length}</b> supply cans connected · {activeAirflowSetup.connectedSupplyCfm} CFM connected</span>
+                      <span><b>{activeAirflowSetup.connectedReturnTerminals}/{activeAirflowSetup.returnTerminals.length}</b> return cans connected · {activeAirflowSetup.connectedReturnCfm} CFM connected</span>
+                      <span><b>{activeAirflowSetup.supplyPathCount}</b> parallel {activeAirflowSetup.maximumFlexSize}″ supply path{activeAirflowSetup.supplyPathCount === 1 ? "" : "s"} at ≤{supplyVelocityLimit} FPM</span>
+                      <span><b>{activeAirflowSetup.returnPathCount}</b> parallel {activeAirflowSetup.maximumFlexSize}″ return path{activeAirflowSetup.returnPathCount === 1 ? "" : "s"} at ≤{returnVelocityLimit} FPM</span>
+                    </div>
+                    <p>Even-division values are coordination checks—not room-load calculations. Keep room CFM manual and review every size change below.</p>
+                  </> : <p>Place an equipment symbol in {systemLabel(activeSystem)}, then choose 1–5 tons here to establish design airflow.</p>}
+                </div>
+                <div className="builder-action-stats"><b>{activeAirflowSetup.targetCfm}</b> design · <b>{activeAirflowSetup.supplyCfm}</b> supply · <b>{activeAirflowSetup.returnCfm}</b> return CFM</div>
+                <div className="builder-action-buttons">
+                  <button disabled={!activeAirflowSetup.primaryUnit} onClick={() => openSystemBalanceWorkspace("rooms")}>Open room balancing</button>
+                  <button disabled={!activeBuilderSummary.runs.length} onClick={openSystemSizingWorkflow}>Review duct sizes</button>
+                </div>
+              </div>
+
+              <div className={`builder-action-card ${activeBuilderSummary.audit.counts.critical ? "critical" : activeBuilderSummary.audit.counts.warning ? "attention" : "complete"}`}>
+                <div className="builder-action-icon"><ShieldAlert size={17} /></div>
+                <span><i>STEP 3</i><strong>Run the HVAC plan audit</strong><small>Checks disconnected cans, airflow balance, velocity, size progression, return paths, elevations, fresh air, controls, and accidental zone connections.</small></span>
+                <div className="builder-audit-strip">
+                  <b>{activeBuilderSummary.audit.score} score</b>
+                  <span>{activeBuilderSummary.audit.counts.critical} critical</span>
+                  <span>{activeBuilderSummary.audit.counts.warning} warnings</span>
+                </div>
+                <button className="builder-primary-action" onClick={openSystemAuditWorkflow}>Open audit &amp; select first issue</button>
+              </div>
+
+              <div className={`builder-action-card ${activeBuilderSummary.packageSummary.ready ? "complete" : "attention"}`}>
+                <div className="builder-action-icon"><FileText size={17} /></div>
+                <span><i>STEP 4</i><strong>Prepare the field package</strong><small>Creates the run schedule, material takeoff, flex-box quantities, fabrication holds, field checklist, room airflow schedule, RFIs, and printable installation package.</small></span>
+                <div className="builder-action-buttons">
+                  <button onClick={() => setRightTab("takeoff")}>Open takeoff</button>
+                  <button onClick={() => setRightTab("field")}>Field package</button>
+                </div>
+              </div>
+            </div>
+            <div className="builder-safety-note"><ShieldAlert size={13} /><span><strong>You stay in control.</strong> Connections and repairs happen only when you press a button. Size changes still require individual approval and remain undoable. No automatic run numbering, rerouting, branch stubs, or balancing dampers.</span></div>
+          </div> : rightTab === "layers" ? <>
             <div className="search"><Search size={15} /><input aria-label="Search layers" placeholder="Search layers" /></div>
             <div className="background-control">
               <div><strong>PLAN BACKGROUND</strong><b>{backgroundOpacity}%</b></div>
@@ -3853,7 +7832,7 @@ export default function Home() {
                 <div><dt>Supply diffusers</dt><dd>{drawings.filter((drawing) => drawing.symbol?.kind === "diffuser" && drawingSystem(drawing) === activeSystem).length}</dd></div>
                 <div><dt>Returns</dt><dd>{drawings.filter((drawing) => drawing.type === "return" && drawingSystem(drawing) === activeSystem).length}</dd></div>
                 <div><dt>Return grilles</dt><dd>{drawings.filter((drawing) => drawing.symbol?.kind === "returnGrille" && drawingSystem(drawing) === activeSystem).length}</dd></div>
-                <div><dt>Equipment</dt><dd>{drawings.filter((drawing) => drawing.symbol?.kind === "equipment" && drawingSystem(drawing) === activeSystem).length}</dd></div>
+                <div><dt>Indoor airflow units</dt><dd>{drawings.filter((drawing) => isPrimaryAirflowEquipment(drawing) && drawingSystem(drawing) === activeSystem).length}</dd></div>
                 <div><dt>Total duct length</dt><dd>{drawings.filter((drawing) => ["supply", "return", "fresh"].includes(drawing.type) && drawingSystem(drawing) === activeSystem).reduce((total, drawing) => total + drawingLengthFeet(drawing), 0).toFixed(1)} LF</dd></div>
                 <div><dt>System airflow</dt><dd>{Math.max(0, ...drawings.filter((drawing) => drawing.type === "supply" && drawingSystem(drawing) === activeSystem).map((drawing) => runAirflow(drawing)))} CFM</dd></div>
                 <div><dt>Connected terminals</dt><dd>{drawings.filter((drawing) => ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") && drawingSystem(drawing) === activeSystem && airflowNetwork().terminalRun.has(drawing.id)).length}</dd></div>
@@ -3876,46 +7855,149 @@ export default function Home() {
                 })}
               </div>
             </div>
-          </> : rightTab === "rooms" ? <div className="rooms-panel">
-            <div className="checks-heading">
-              <div><strong>ROOM AIRFLOW SCHEDULE</strong><small>{systemLabel(activeSystem)} · comfort review</small></div>
-              <span className="check-pill clear">{roomSchedule().length}</span>
-            </div>
-            <div className="room-schedule-actions">
-              <button disabled={!roomSchedule().length} onClick={() => window.print()}>Print / PDF</button>
-              <button disabled={!roomSchedule().length} onClick={exportRoomScheduleCsv}>Export CSV</button>
-            </div>
-            <div className="room-summary-grid">
-              <div><span>Supply</span><strong>{roomScheduleSummary().supplyCfm} CFM</strong></div>
-              <div><span>Return</span><strong>{roomScheduleSummary().returnCfm} CFM</strong></div>
-              <div className={roomScheduleSummary().bedrooms === roomScheduleSummary().bedroomsWithReturn ? "good" : "attention"}>
-                <span>Bedroom returns</span>
-                <strong>{roomScheduleSummary().bedroomsWithReturn}/{roomScheduleSummary().bedrooms}</strong>
+          </> : rightTab === "rooms" ? <div className="balance-workspace">
+            <div className="balance-workspace-header">
+              <div>
+                <strong>SYSTEM BALANCING WORKSPACE</strong>
+                <small>{systemLabel(activeSystem)} · review first, apply once</small>
               </div>
-              <div className={roomScheduleSummary().missingCfm ? "attention" : "good"}>
-                <span>Missing CFM</span><strong>{roomScheduleSummary().missingCfm}</strong>
-              </div>
+              <span className={`check-pill ${activeAirflowSetup.supplyBalanced && activeAirflowSetup.returnBalanced ? "clear" : "warning"}`}>
+                {activeAirflowSetup.targetCfm ? activeAirflowSetup.supplyBalanced && activeAirflowSetup.returnBalanced ? "READY" : "REVIEW" : "NO UNIT"}
+              </span>
             </div>
-            {roomSchedule().length ? <div className="room-list">
-              {roomSchedule().map((room) => <button
-                className={`room-row ${room.needsReturn ? "needs-return" : ""}`}
-                key={room.name}
-                onClick={() => { setSelectedId(room.drawingIds[0] || null); setActiveTool("select"); }}
-                title={`Select ${room.name} on the plan`}
-              >
-                <div className="room-row-heading"><strong>{room.name}</strong><span>{room.type}</span></div>
-                <div className="room-airflow-grid">
-                  <div><span>Supply</span><b>{room.supplyCfm} CFM</b><small>{room.diffusers} diffusers</small></div>
-                  <div><span>Return</span><b>{room.returnCfm} CFM</b><small>{room.returns} grilles</small></div>
-                  <div className={`room-balance ${Math.abs(room.balanceCfm) <= Math.max(25, room.supplyCfm * .1) ? "good" : "attention"}`}>
-                    <span>Room balance</span><b>{room.balanceCfm > 0 ? "+" : ""}{room.balanceCfm} CFM</b><small>Supply minus return</small>
+            <div className="balance-view-tabs" role="tablist" aria-label="Balance workspace views">
+              {(["system", "rooms", "runs"] as const).map((view) => <button
+                role="tab"
+                aria-selected={balanceView === view}
+                className={balanceView === view ? "active" : ""}
+                key={view}
+                onClick={() => setBalanceView(view)}
+              >{view === "system" ? "System" : view === "rooms" ? "Rooms" : "Runs"}</button>)}
+            </div>
+
+            {balanceView === "system" ? <>
+              <div className="balance-system-hero">
+                <span><Wind size={18} /></span>
+                <div><small>DESIGN AIRFLOW</small><strong>{activeAirflowSetup.targetCfm} CFM</strong><p>{activeAirflowSetup.equipment.length} indoor airflow source{activeAirflowSetup.equipment.length === 1 ? "" : "s"} · 400 CFM/ton</p></div>
+                <button disabled={!activeAirflowSetup.primaryUnit} onClick={() => { setSelectedId(activeAirflowSetup.primaryUnit?.id || null); setActiveTool("select"); }}>Select unit</button>
+              </div>
+              <div className="balance-system-grid">
+                <div className={activeAirflowSetup.supplyBalanced ? "good" : "attention"}><span>Supply scheduled</span><strong>{activeAirflowSetup.supplyCfm}</strong><small>{activeAirflowSetup.supplyGap > 0 ? `${activeAirflowSetup.supplyGap} remaining` : activeAirflowSetup.supplyGap < 0 ? `${Math.abs(activeAirflowSetup.supplyGap)} over` : "Target matched"}</small></div>
+                <div className={activeAirflowSetup.returnBalanced ? "good" : "attention"}><span>Return scheduled</span><strong>{activeAirflowSetup.returnCfm}</strong><small>{activeAirflowSetup.returnGap > 0 ? `${activeAirflowSetup.returnGap} remaining` : activeAirflowSetup.returnGap < 0 ? `${Math.abs(activeAirflowSetup.returnGap)} over` : "Target matched"}</small></div>
+                <div><span>Supply connected</span><strong>{activeAirflowSetup.connectedSupplyCfm}</strong><small>{activeAirflowSetup.connectedSupplyTerminals}/{activeAirflowSetup.supplyTerminals.length} cans</small></div>
+                <div><span>Return connected</span><strong>{activeAirflowSetup.connectedReturnCfm}</strong><small>{activeAirflowSetup.connectedReturnTerminals}/{activeAirflowSetup.returnTerminals.length} grilles</small></div>
+              </div>
+              <div className="balance-capacity-note">
+                <b>{activeAirflowSetup.maximumFlexSize}″ MAX RESIDENTIAL FLEX</b>
+                <span>{activeAirflowSetup.supplyPathCount} supply path{activeAirflowSetup.supplyPathCount === 1 ? "" : "s"} at ≤{supplyVelocityLimit} FPM</span>
+                <span>{activeAirflowSetup.returnPathCount} return path{activeAirflowSetup.returnPathCount === 1 ? "" : "s"} at ≤{returnVelocityLimit} FPM</span>
+              </div>
+              {networkBalanceRows().length ? <div className="network-balance-list compact">
+                {networkBalanceRows().map((row) => <div className={`network-balance-card ${row.balanced ? "balanced" : "attention"}`} key={row.unit.id}>
+                  <button className="network-unit-heading" onClick={() => { setSelectedId(row.unit.id); setActiveTool("select"); }}>
+                    <span><strong>{row.unit.symbol?.label || "HVAC EQUIPMENT"}</strong><small>{row.rootRunId ? `${row.runCount} runs · ${row.fittingCount} fittings · ${row.terminalCount} connected supplies` : "Supply trunk not connected"}</small></span>
+                    <b>{row.balanced ? "SUPPLY OK" : row.rootRunId ? "REVIEW" : "DISCONNECTED"}</b>
+                  </button>
+                  <div className="network-airflow-grid">
+                    <div><span>Unit design</span><strong>{row.designCfm} CFM</strong></div>
+                    <div><span>Connected supply</span><strong>{row.assignedCfm} CFM</strong></div>
+                    <div className={Math.abs(row.remainingCfm) <= Math.max(25, row.designCfm * .1) ? "good" : "attention"}><span>Remaining</span><strong>{row.remainingCfm > 0 ? "+" : ""}{row.remainingCfm} CFM</strong></div>
+                    <div><span>System return total</span><strong>{row.returnCfm} CFM</strong></div>
                   </div>
+                  <div className="network-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.percent}>
+                    <i style={{ width: `${Math.min(100, Math.max(0, row.percent))}%` }} /><span>{row.percent}% assigned</span>
+                  </div>
+                  <div className="network-problem-grid">
+                    <span className={row.detachedPorts ? "warning" : "clear"}>{row.detachedPorts} detached</span>
+                    <span className={row.missingPorts ? "warning" : "clear"}>{row.missingPorts} missing</span>
+                    <span className={row.overloadedPorts ? "warning" : "clear"}>{row.overloadedPorts} undersized</span>
+                    <span className={row.progressionCount ? "warning" : "clear"}>{row.progressionCount} progression</span>
+                  </div>
+                </div>)}
+              </div> : <div className="empty-takeoff">Place an indoor airflow unit and connect its supply trunk to build the system network.</div>}
+              <div className="balance-workspace-note">System return is shown once as a system total. A return is never assigned to an individual unit unless you explicitly separate it into another system.</div>
+            </> : balanceView === "rooms" ? <>
+              <div className="balance-toolbar">
+                <button disabled={!roomSchedule().length || !activeAirflowSetup.targetCfm} onClick={recalculateRoomAirflowTargets}><Sparkles size={12} /> Recalculate targets</button>
+                <button disabled={!roomSchedule().length} onClick={exportRoomScheduleCsv}><Save size={12} /> Export CSV</button>
+              </div>
+              <div className="room-summary-grid balance-summary">
+                <div><span>Design</span><strong>{activeAirflowSetup.targetCfm} CFM</strong></div>
+                <div><span>Scheduled</span><strong>{roomScheduleSummary().supplyCfm} CFM</strong></div>
+                <div className={roomScheduleSummary().bedrooms === roomScheduleSummary().bedroomsWithReturn ? "good" : "attention"}><span>Bedroom returns</span><strong>{roomScheduleSummary().bedroomsWithReturn}/{roomScheduleSummary().bedrooms}</strong></div>
+                <div className={terminalCfmProposals().length ? "attention" : "good"}><span>Pending CFM</span><strong>{terminalCfmProposals().length}</strong></div>
+              </div>
+              {roomSchedule().length ? <div className="balance-room-list">
+                {roomSchedule().map((room) => {
+                  const target = activeRoomAirflowTargets()[room.name.toLowerCase()] || { supplyCfm: 0, returnCfm: 0, priority: "standard" as RoomAirflowPriority };
+                  const supplyVariance = room.supplyCfm - target.supplyCfm;
+                  const returnVariance = room.returnCfm - target.returnCfm;
+                  const connectedIds = room.drawingIds.filter((id) => airflowNetwork().terminalRun.has(id));
+                  return <article className={`balance-room-card ${room.needsReturn ? "needs-return" : ""}`} key={room.name}>
+                    <div className="balance-room-heading">
+                      <span><strong>{room.name}</strong><small>{room.type} · {connectedIds.length}/{room.diffusers + room.returns} terminals connected</small></span>
+                      <button onClick={() => selectRoomOnPlan(room.drawingIds)}>Show room</button>
+                    </div>
+                    <div className="balance-room-current">
+                      <span><small>Supply scheduled</small><b>{room.supplyCfm} CFM</b><em className={supplyVariance ? "attention" : "good"}>{supplyVariance > 0 ? "+" : ""}{supplyVariance} vs target</em></span>
+                      <span><small>Return scheduled</small><b>{room.returnCfm} CFM</b><em className={returnVariance ? "attention" : "good"}>{returnVariance > 0 ? "+" : ""}{returnVariance} vs target</em></span>
+                      <span><small>Net room air</small><b>{room.balanceCfm > 0 ? "+" : ""}{room.balanceCfm} CFM</b><em>Supply minus return</em></span>
+                    </div>
+                    <div className="balance-room-targets">
+                      <label>Supply target<input aria-label={`${room.name} supply target CFM`} type="number" min="0" step="5" value={target.supplyCfm} onChange={(event) => updateRoomAirflowTarget(room.name, { supplyCfm: Number(event.target.value) })} /></label>
+                      <label>Return target<input aria-label={`${room.name} return target CFM`} type="number" min="0" step="5" value={target.returnCfm} disabled={!room.returns} onChange={(event) => updateRoomAirflowTarget(room.name, { returnCfm: Number(event.target.value) })} /></label>
+                      <label>Comfort priority<select aria-label={`${room.name} comfort priority`} value={target.priority} onChange={(event) => updateRoomAirflowTarget(room.name, { priority: event.target.value as RoomAirflowPriority })}><option value="standard">Standard</option><option value="high">High load / glass</option><option value="low">Low load</option></select></label>
+                    </div>
+                    {room.needsReturn && <p><AlertTriangle size={12} /> Bedroom has supply air but no dedicated return grille. Add one or field-verify a transfer path.</p>}
+                    {!room.diffusers && <p><AlertTriangle size={12} /> No supply diffuser is assigned to this room.</p>}
+                  </article>;
+                })}
+              </div> : <div className="empty-takeoff">Assign room names to supply diffusers and return grilles to build room targets.</div>}
+              <div className="cfm-review-tray">
+                <div className="cfm-review-heading"><span><strong>REVIEWED CFM CHANGES</strong><small>Equal splits are proposals—not room-load calculations</small></span><b>{selectedCfmProposalIds.length}/{terminalCfmProposals().length}</b></div>
+                <div className="cfm-review-actions">
+                  <button disabled={!terminalCfmProposals().length} onClick={() => setSelectedCfmProposalIds(terminalCfmProposals().map((proposal) => proposal.id))}>Select all</button>
+                  <button disabled={!selectedCfmProposalIds.length} onClick={() => setSelectedCfmProposalIds([])}>Clear</button>
                 </div>
-                {room.needsReturn && <p><AlertTriangle size={12} /> Add or verify a return path for door-closed comfort.</p>}
-                {!!room.missingCfm && <p><CircleDot size={12} /> {room.missingCfm} terminal{room.missingCfm === 1 ? "" : "s"} need scheduled CFM.</p>}
-              </button>)}
-            </div> : <div className="empty-takeoff">Select a diffuser, return, or duct and enter its room name to build the room schedule.</div>}
-            <div className="takeoff-note">Click a room to select its first assigned plan object. Room balance is a coordination indicator—not a room-load calculation. Final airflow still requires field balancing.</div>
+                {terminalCfmProposals().length ? <div className="cfm-proposal-list">
+                  {terminalCfmProposals().map((proposal) => <div className={!proposal.connected ? "disconnected" : ""} key={proposal.id}>
+                    <input aria-label={`Approve ${proposal.room} ${proposal.label} CFM change`} type="checkbox" checked={selectedCfmProposalIds.includes(proposal.id)} onChange={() => setSelectedCfmProposalIds((current) => current.includes(proposal.id) ? current.filter((id) => id !== proposal.id) : [...current, proposal.id])} />
+                    <button onClick={() => { setSelectedId(proposal.drawingId); setActiveTool("select"); }}>
+                      <span><strong>{proposal.room} · {proposal.kind}</strong><small>{proposal.label} · {proposal.connected ? "connected" : "connect before release"}</small></span>
+                      <b>{proposal.current} → {proposal.proposed}</b>
+                    </button>
+                  </div>)}
+                </div> : <div className="cfm-review-clear"><CheckCircle2 size={16} /> Scheduled terminal CFM matches the room targets.</div>}
+                <button className="apply-cfm-proposals" disabled={!selectedCfmProposalIds.length} onClick={applySelectedCfmProposals}>Apply {selectedCfmProposalIds.length} selected CFM change{selectedCfmProposalIds.length === 1 ? "" : "s"} · one Undo</button>
+              </div>
+              <div className="balance-workspace-note">Targets are coordination values you can edit. Final room airflow still requires load review, equipment data, field balancing, and your approval.</div>
+            </> : <>
+              <div className="balance-toolbar">
+                <button disabled={!sizingSuggestions().some((suggestion) => !suggestion.overCapacity)} onClick={() => setSelectedSizingIds(sizingSuggestions().filter((suggestion) => !suggestion.overCapacity).map((suggestion) => suggestion.id))}>Select safe sizes</button>
+                <button disabled={!selectedSizingIds.length} onClick={() => setSelectedSizingIds([])}>Clear</button>
+              </div>
+              <div className="run-review-rules">
+                <span><b>{residentialFlexMax}″</b> maximum residential flex</span>
+                <span><b>{supplyVelocityLimit}</b> supply FPM limit</span>
+                <span><b>{returnVelocityLimit}</b> return FPM limit</span>
+              </div>
+              {sizingSuggestions().length ? <div className="balance-run-list">
+                {sizingSuggestions().map((suggestion) => <div className={`balance-run-row ${suggestion.overCapacity ? "over-capacity" : ""}`} key={suggestion.id}>
+                  <input aria-label={`Approve ${suggestion.room} duct size change`} type="checkbox" disabled={suggestion.overCapacity} checked={selectedSizingIds.includes(suggestion.id)} onChange={() => toggleSizingSuggestion(suggestion.id)} />
+                  <button onClick={() => { setSelectedId(suggestion.id); setActiveTool("select"); }}>
+                    <span><strong>{suggestion.room} · {suggestion.type.toUpperCase()}</strong><small>{suggestion.cfm} CFM · {suggestion.currentVelocity} FPM now · {suggestion.velocity} FPM proposed</small></span>
+                    <b>{suggestion.current}″ → {suggestion.recommended}″</b>
+                  </button>
+                  {suggestion.overCapacity && <p>Over the {suggestion.limit} FPM limit even at {residentialFlexMax}″. Add a parallel path or revise the design manually.</p>}
+                </div>)}
+              </div> : <div className="cfm-review-clear"><CheckCircle2 size={17} /> All connected runs match the current sizing rules.</div>}
+              <button className="balance-apply-sizes" disabled={!selectedSizingIds.length} onClick={applySizingSuggestions}>Apply {selectedSizingIds.length} approved size change{selectedSizingIds.length === 1 ? "" : "s"} · one Undo</button>
+              <div className={`progression-summary ${sizeProgressionIssues().length ? "attention" : "good"}`}>
+                <span><strong>{sizeProgressionIssues().length} progression review{sizeProgressionIssues().length === 1 ? "" : "s"}</strong><small>Keep reductions gradual—such as 14×12×10 → 12×10×10 → 10×8×8.</small></span>
+                <button onClick={openSystemSizingWorkflow}>Full sizing checks</button>
+              </div>
+              <div className="balance-workspace-note">Existing and recommended sizes are shown together. Nothing resizes until you check rows and press Apply; over-capacity runs are blocked.</div>
+            </>}
           </div> : rightTab === "network" ? <div className="network-balance-panel">
             <div className="checks-heading">
               <div><strong>NETWORK BALANCE</strong><small>{systemLabel(activeSystem)} · connected airflow</small></div>
@@ -3967,38 +8049,459 @@ export default function Home() {
             <div className="takeoff-note">Review-only. The panel follows connected runs and T/Y relationships; it never changes duct sizes, routes, CFM, or fittings automatically.</div>
           </div> : rightTab === "takeoff" ? <div className="takeoff-panel">
             <div className="takeoff-heading">
-              <div><strong>LIVE MATERIALS</strong><small>{buildTakeoff().length} line items</small></div>
+              <div><strong>MATERIAL &amp; PREFAB</strong><small>{systemLabel(activeSystem)} · {buildTakeoff().length} line items</small></div>
               <button onClick={() => window.print()}>Print / PDF</button>
             </div>
+            <div className="material-controls">
+              <label>Material allowance
+                <select value={materialWastePercent} onChange={(event) => setMaterialWastePercent(Number(event.target.value))}>
+                  {[0, 5, 10, 15, 20].map((value) => <option value={value} key={value}>{value}% waste</option>)}
+                </select>
+              </label>
+              <button disabled={!buildTakeoff().length} onClick={exportPurchaseSheetCsv}><Save size={13} /> Purchase CSV</button>
+            </div>
+            <div className="material-summary-grid">
+              <div><span>25-ft flex boxes</span><strong>{materialSummary().flexBoxes}</strong></div>
+              <div><span>Air devices</span><strong>{materialSummary().deviceCount}</strong></div>
+              <div><span>T/Y fittings</span><strong>{materialSummary().fittingCount}</strong></div>
+              <div className={materialSummary().holds.length ? "attention" : "good"}><span>Fabrication holds</span><strong>{materialSummary().holds.length}</strong></div>
+            </div>
+            {materialSummary().holds.length > 0 && <div className="fabrication-holds">
+              <div><ShieldAlert size={15} /><span><strong>DO NOT FABRICATE YET</strong><small>Resolve these coordination items first</small></span></div>
+              {materialSummary().holds.slice(0, 5).map((issue, index) => <button key={`${issue.title}-hold-${index}`} onClick={() => issue.drawingId && focusDrawingOnPlan(issue.drawingId)}>
+                <AlertTriangle size={11} /><span><strong>{issue.title}</strong><small>{issue.detail}</small></span>
+              </button>)}
+            </div>}
             {buildTakeoff().length ? <div className="takeoff-list">
               {buildTakeoff().map((row, index) => <div className="takeoff-row" key={`${row.item}-${row.size}-${index}`}>
-                <div><strong>{row.item}</strong><small>{row.size} · {row.note}</small></div>
+                <div><i>{row.category}</i><strong>{row.item}</strong><small>{row.size} · {row.note}</small></div>
                 <b>{row.quantity}</b>
               </div>)}
             </div> : <div className="empty-takeoff">Draw ductwork or place HVAC symbols to build the takeoff.</div>}
-            <div className="takeoff-note">Quantities are based on the current calibrated drawing. Field-verify routing, offsets, clearances, and fabricated dimensions before ordering.</div>
-          </div> : <div className="checks-panel">
+            <div className="takeoff-note">One 25-ft flex box is ordered for every 25 feet or portion thereof after the selected allowance. Measure twice and field-verify offsets, elevations, access, and fabricated dimensions before shop release.</div>
+          </div> : rightTab === "field" ? <div className="field-package-panel">
+            <div className="workspace-panel-hero">
+              <div><ShieldAlert size={18} /><span><strong>FIELD RELEASE CENTER</strong><small>{systemLabel(activeSystem)} · installer package, coordination, and closeout</small></span></div>
+              <b className={activeFieldPackage.stale ? "stale" : activeFieldPackage.released ? "released" : activeFieldPackage.gatesClear ? "ready" : "hold"}>{activeFieldPackage.status}</b>
+            </div>
+            <nav className="workspace-subtabs" role="tablist" aria-label="Field workflow">
+              <button role="tab" aria-selected={fieldView === "release"} className={fieldView === "release" ? "active" : ""} onClick={() => setFieldView("release")}>Release</button>
+              <button role="tab" aria-selected={fieldView === "installer"} className={fieldView === "installer" ? "active" : ""} onClick={() => setFieldView("installer")}>Installer</button>
+              <button role="tab" aria-selected={fieldView === "coordination"} className={fieldView === "coordination" ? "active" : ""} onClick={() => setFieldView("coordination")}>RFI &amp; Punch</button>
+              <button role="tab" aria-selected={fieldView === "startup"} className={fieldView === "startup" ? "active" : ""} onClick={() => setFieldView("startup")}>Startup</button>
+            </nav>
+            {fieldView === "release" && <>
+            <div className="project-command-center">
+              <div className="command-center-heading">
+                <div><strong>16-SYSTEM PROJECT COMMAND CENTER</strong><small>Whole-project readiness · select a system to continue work</small></div>
+                <b>{activeProjectCommand.progress}%</b>
+              </div>
+              <div className="command-center-progress"><i style={{ width: `${activeProjectCommand.progress}%` }} /></div>
+              <div className="command-center-metrics">
+                <span><b>{activeProjectCommand.rows.length}</b> Active</span>
+                <span><b>{activeProjectCommand.designReady}</b> Design</span>
+                <span><b>{activeProjectCommand.fieldReady}</b> Field</span>
+                <span><b>{activeProjectCommand.commissioned}</b> Commissioned</span>
+                <span className={activeProjectCommand.openRfis ? "attention" : ""}><b>{activeProjectCommand.openRfis}</b> RFI</span>
+                <span className={activeProjectCommand.openPunches ? "attention" : ""}><b>{activeProjectCommand.openPunches}</b> Punch</span>
+                <span className={activeProjectCommand.closeoutReady === activeProjectCommand.rows.length && activeProjectCommand.rows.length ? "complete" : ""}><b>{activeProjectCommand.closeoutReady}</b> Closed</span>
+              </div>
+              <div className="command-center-controls">
+                <div>
+                  {(["all", "blocked", "ready"] as const).map((filter) => <button className={projectSystemFilter === filter ? "active" : ""} key={filter} onClick={() => setProjectSystemFilter(filter)}>{filter}</button>)}
+                </div>
+                <button disabled={!activeProjectCommand.rows.length} onClick={exportProjectStatusCsv}><Save size={11} /> Project CSV</button>
+              </div>
+              {filteredProjectRowsSnapshot.length ? <div className="command-system-list">
+                {filteredProjectRowsSnapshot.map((system) => <button className={`${system.closeoutReady ? "ready" : "blocked"} ${activeSystem === system.id ? "active" : ""}`} key={system.id} onClick={() => openSystemFromCommandCenter(system.id)}>
+                  <b className="command-system-number">S{system.id.replace("system-", "")}</b>
+                  <span>
+                    <strong>{systemLabel(system.id)}</strong>
+                    <small>{system.stats.designCfm || 0} design CFM · {system.runs} runs · {system.supplyTerminals} outlets</small>
+                    <i>{system.blockers.length ? system.blockers.join(" · ") : "All closeout gates complete"}</i>
+                  </span>
+                  <em>
+                    <b>{system.progress}%</b>
+                    <small>{system.closeoutReady ? "CLOSED" : system.fieldReady ? "FIELD" : system.designReady ? "DESIGN" : "HOLD"}</small>
+                  </em>
+                </button>)}
+              </div> : <div className="command-center-empty">{projectSystemFilter === "all" ? "Place equipment and ductwork to activate a system." : `No ${projectSystemFilter} systems in this project.`}</div>}
+              <p>Review-only command center. It reports saved drawing and closeout status; it never reroutes, resizes, reconnects, renumbers, or moves your work.</p>
+            </div>
             <div className="checks-heading">
-              <div><strong>AIRFLOW BALANCE</strong><small>Live design-intent checks</small></div>
-              <span className={`check-pill ${validationIssues().some((issue) => issue.severity === "critical") ? "critical" : validationIssues().length ? "warning" : "clear"}`}>
-                {validationIssues().filter((issue) => issue.severity !== "info").length || "Clear"}
+              <div><strong>FIELD INSTALLATION PACKAGE</strong><small>{systemLabel(activeSystem)} · controlled release</small></div>
+              <span className={`check-pill ${activeFieldPackage.stale ? "critical" : activeFieldPackage.released ? "clear" : activeFieldPackage.gatesClear ? "warning" : activeFieldPackage.critical ? "critical" : "warning"}`}>
+                {activeFieldPackage.status}
               </span>
+            </div>
+            <div className={`field-release-card ${activeFieldPackage.stale ? "stale" : activeFieldPackage.released ? "ready" : activeFieldPackage.gatesClear ? "approval" : "hold"}`}>
+              <div>{activeFieldPackage.released ? <CheckCircle2 size={23} /> : <ShieldAlert size={23} />}</div>
+              <span>
+                <strong>{activeFieldPackage.stale ? "Release package changed after issue" : activeFieldPackage.released ? `Released revision ${activeFieldPackage.latestRelease?.revision}` : activeFieldPackage.gatesClear ? "Ready for named approval" : "Hold for coordination"}</strong>
+                <small>{activeFieldPackage.stale ? "Re-run the review and issue a new revision before field use." : activeFieldPackage.released ? `${activeFieldPackage.latestRelease?.releasedBy} · ${new Date(activeFieldPackage.latestRelease!.releasedAt).toLocaleString()}` : activeFieldPackage.gatesClear ? "Enter the revision and approver below. Nothing is issued automatically." : "Clear every open gate before release."}</small>
+              </span>
+            </div>
+            <div className="field-package-actions">
+              <button onClick={() => window.print()}><FileText size={13} /> Print package</button>
+              <button disabled={!activeFieldRuns.length} onClick={exportFieldRunScheduleCsv}><Save size={13} /> Run CSV</button>
+              <button onClick={exportReleaseManifestCsv}><Save size={13} /> Release CSV</button>
+            </div>
+            <div className="release-gate-list">
+              {activeFieldPackage.gates.map((gate) => <button className={gate.clear ? "clear" : "hold"} key={gate.id} onClick={() => openReleaseGate(gate.id)}>
+                {gate.clear ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
+                <span><strong>{gate.label}</strong><small>{gate.detail}</small></span>
+                <b>{gate.clear ? "CLEAR" : "HOLD"}</b>
+              </button>)}
+            </div>
+            <div className="field-checklist-card">
+              <div className="field-section-heading"><strong>FIELD RELEASE CHECKLIST</strong><span>{activeFieldPackage.checklistComplete}/{fieldChecklistItems.length}</span></div>
+              {fieldChecklistItems.map((item) => <label key={item.id}>
+                <input type="checkbox" checked={Boolean(activeFieldChecklist()[item.id])} onChange={(event) => updateFieldChecklist(item.id, event.target.checked)} />
+                <span>{item.label}</span>
+              </label>)}
+              <p>Checklist status is saved separately for this system. It records coordination only and never changes the drawing.</p>
+            </div>
+            <div className="release-approval-card">
+              <div className="field-section-heading"><strong>ISSUE CONTROLLED FIELD REVISION</strong><span>MANUAL APPROVAL</span></div>
+              <div className="release-approval-fields">
+                <label>Revision<input value={releaseRevision} onChange={(event) => setReleaseRevision(event.target.value)} placeholder="A, B, IFC-1…" /></label>
+                <label>Released by<input value={releaseBy} onChange={(event) => setReleaseBy(event.target.value)} placeholder="Name / initials" /></label>
+                <label className="wide">Release note<textarea value={releaseNote} onChange={(event) => setReleaseNote(event.target.value)} placeholder="Scope, approved exceptions, and installer instructions…" /></label>
+              </div>
+              <button disabled={!activeFieldPackage.gatesClear || !releaseRevision.trim() || !releaseBy.trim() || Boolean(activeFieldPackage.released && activeFieldPackage.latestRelease?.revision.toLowerCase() === releaseRevision.trim().toLowerCase())} onClick={issueSystemRelease}>
+                {activeFieldPackage.stale ? "Issue updated revision" : "Issue for field use"}
+              </button>
+              <p>Every release stores a drawing fingerprint. Any later duct, fitting, equipment, airflow, room, scale, or rule change marks it stale.</p>
+              {releaseRecords.filter((record) => record.systemId === activeSystem).length > 0 && <div className="release-history">
+                {releaseRecords.filter((record) => record.systemId === activeSystem).slice().sort((a, b) => b.releasedAt.localeCompare(a.releasedAt)).map((record) => {
+                  const current = record.id === activeFieldPackage.latestRelease?.id && record.drawingSignature === activeFieldPackage.signature && record.releaseSignature === activeFieldPackage.releaseSignature && activeFieldPackage.gatesClear;
+                  return <div className={current ? "current" : "superseded"} key={record.id}>
+                  <b>REV {record.revision}</b>
+                  <span><strong>{record.releasedBy}</strong><small>{new Date(record.releasedAt).toLocaleString()} · {record.runCount} runs · {record.designCfm} CFM · {record.gateSnapshot?.filter((gate) => gate.clear).length ?? 0}/{record.gateSnapshot?.length ?? 0} gates</small></span>
+                  <em>{current ? "CURRENT" : "SUPERSEDED"}</em>
+                </div>;
+                })}
+              </div>}
+            </div>
+            </>}
+            {fieldView === "coordination" && <div className="rfi-card">
+              <div className="field-section-heading"><strong>FIELD RFI &amp; CHANGE LOG</strong><span>{activeRfiItems().filter((item) => !["approved", "closed"].includes(item.status)).length} OPEN</span></div>
+              <div className="rfi-summary">
+                <span><b>{rfiItems.length}</b> Project RFIs</span>
+                <span><b>{rfiItems.filter((item) => item.status === "submitted").length}</b> Waiting</span>
+                <span><b>{rfiItems.filter((item) => item.status === "approved").length}</b> Approved</span>
+              </div>
+              <div className={`punch-link ${selectedId ? "linked" : ""}`}><CircleDot size={12} /><span><strong>{selectedId ? "RFI linked to selected plan object" : "RFI applies to the active system"}</strong><small>{selectedObjectDescription()}</small></span></div>
+              <div className="rfi-form">
+                <label className="wide">RFI subject<input value={rfiSubject} onChange={(event) => setRfiSubject(event.target.value)} placeholder="Example: Supply run conflicts with structural beam" /></label>
+                <label>Category<select value={rfiCategory} onChange={(event) => setRfiCategory(event.target.value as RfiItem["category"])}>{["Coordination", "Design", "Equipment", "Access", "Change order"].map((value) => <option key={value}>{value}</option>)}</select></label>
+                <label>Priority<select value={rfiPriority} onChange={(event) => setRfiPriority(event.target.value as RfiItem["priority"])}><option value="critical">Critical</option><option value="normal">Normal</option><option value="low">Low</option></select></label>
+                <label className="wide">Question / field conflict<textarea value={rfiQuestion} onChange={(event) => setRfiQuestion(event.target.value)} placeholder="Describe the condition, location, dimensions, and why work cannot proceed as shown…" /></label>
+                <label className="wide">Proposed solution<textarea value={rfiSolution} onChange={(event) => setRfiSolution(event.target.value)} placeholder="Describe the field-preferred solution for review. Nothing changes until approved." /></label>
+                <label className="wide">Assigned to<input value={rfiAssignedTo} onChange={(event) => setRfiAssignedTo(event.target.value)} placeholder="Architect, engineer, GC, owner…" /></label>
+                <label>Cost impact<input value={rfiCostImpact} onChange={(event) => setRfiCostImpact(event.target.value)} placeholder="None / TBD / amount" /></label>
+                <label>Schedule impact<input value={rfiScheduleImpact} onChange={(event) => setRfiScheduleImpact(event.target.value)} placeholder="None / days / TBD" /></label>
+              </div>
+              <div className="rfi-actions">
+                <button disabled={!rfiSubject.trim() || !rfiQuestion.trim()} onClick={createRfiItem}>Create draft RFI</button>
+                <button disabled={!rfiItems.length} onClick={exportRfiLogCsv}><Save size={12} /> Project RFI CSV</button>
+              </div>
+              {activeRfiItems().length ? <div className="rfi-list">
+                {activeRfiItems().map((item) => <div className={`rfi-row ${item.priority} ${item.status}`} key={item.id}>
+                  <button className="rfi-select" disabled={!item.drawingId} onClick={() => {
+                    if (!item.drawingId) return;
+                    focusDrawingOnPlan(item.drawingId);
+                  }}>
+                    <b>RFI-{String(item.number).padStart(3, "0")}</b>
+                    <span><i>{item.category} · {item.priority}</i><strong>{item.subject}</strong><small>{item.question}</small></span>
+                    <em>{item.drawingId ? "PLAN" : "GENERAL"}</em>
+                  </button>
+                  <div className="rfi-impact"><span>Cost: {item.costImpact}</span><span>Schedule: {item.scheduleImpact}</span></div>
+                  <textarea value={item.response} onChange={(event) => updateRfiItem(item.id, { response: event.target.value })} placeholder="Record architect, engineer, GC, or owner response…" />
+                  <input className="rfi-approval-by" value={item.approvalBy || ""} onChange={(event) => updateRfiItem(item.id, { approvalBy: event.target.value })} placeholder="Response / approval by (name)" />
+                  <select value={item.status} onChange={(event) => updateRfiItem(item.id, { status: event.target.value as RfiItem["status"] })}>
+                    <option value="draft">Draft</option>
+                    <option value="submitted">Submitted</option>
+                    <option value="answered">Answered</option>
+                    <option value="approved" disabled={!item.response.trim() || !item.approvalBy?.trim()}>Approved · response + name required</option>
+                    <option value="closed" disabled={!item.approvedAt}>Closed · approval required</option>
+                  </select>
+                  {item.approvedAt && <small className="rfi-approved-at">Approved by {item.approvalBy || "—"} · {new Date(item.approvedAt).toLocaleString()}</small>}
+                </div>)}
+              </div> : <div className="punch-empty">No RFIs recorded for this system.</div>}
+              <p>Approval status is a manual record. An approved RFI documents authorization but never changes, moves, reconnects, resizes, or renumbers the plan.</p>
+            </div>}
+            {fieldView === "startup" && <div className={`commissioning-card ${commissioningSummary().ready ? "ready" : "open"}`}>
+              <div className="field-section-heading"><strong>STARTUP, BALANCING &amp; COMMISSIONING</strong><span>{commissioningSummary().ready ? "COMPLETE" : `${commissioningSummary().checklistComplete}/${commissioningChecklistItems.length}`}</span></div>
+              <div className="commissioning-status">
+                <Gauge size={19} />
+                <span><strong>{commissioningSummary().ready ? "System closeout complete" : "Measured closeout required"}</strong><small>{commissioningSummary().totalStatic.toFixed(2)} in. w.g. total static · {commissioningSummary().airflowPercent}% of design airflow</small></span>
+              </div>
+              <div className="commissioning-fields equipment-fields">
+                <label>Equipment model<input value={activeCommissioningRecord().model} onChange={(event) => updateCommissioningField("model", event.target.value)} placeholder="Model number" /></label>
+                <label>Serial number<input value={activeCommissioningRecord().serial} onChange={(event) => updateCommissioningField("serial", event.target.value)} placeholder="Serial number" /></label>
+                <label>Filter size<input value={activeCommissioningRecord().filterSize} onChange={(event) => updateCommissioningField("filterSize", event.target.value)} placeholder="20×25×1" /></label>
+                <label>Measured airflow<input type="number" value={activeCommissioningRecord().measuredCfm} onChange={(event) => updateCommissioningField("measuredCfm", event.target.value)} placeholder="CFM" /></label>
+              </div>
+              <div className="commissioning-fields reading-fields">
+                <label>Supply static<input type="number" step=".01" value={activeCommissioningRecord().supplyStatic} onChange={(event) => updateCommissioningField("supplyStatic", event.target.value)} placeholder="in. w.g." /></label>
+                <label>Return static<input type="number" step=".01" value={activeCommissioningRecord().returnStatic} onChange={(event) => updateCommissioningField("returnStatic", event.target.value)} placeholder="in. w.g." /></label>
+                <label>Rated max static<input type="number" step=".01" value={activeCommissioningRecord().ratedMaxStatic} onChange={(event) => updateCommissioningField("ratedMaxStatic", event.target.value)} placeholder=".50" /></label>
+                <label>Temperature split<input type="number" step=".1" value={activeCommissioningRecord().temperatureSplit} onChange={(event) => updateCommissioningField("temperatureSplit", event.target.value)} placeholder="°F" /></label>
+              </div>
+              {commissioningSummary().ratedMax > 0 && commissioningSummary().totalStatic > commissioningSummary().ratedMax && <div className="commissioning-warning"><AlertTriangle size={13} /> Measured total static exceeds the entered equipment maximum. Review filter, coil, duct, grilles, and blower setup.</div>}
+              <div className="commissioning-fields closeout-fields">
+                <label>Technician<input value={activeCommissioningRecord().technician} onChange={(event) => updateCommissioningField("technician", event.target.value)} placeholder="Name" /></label>
+                <label>Date<input type="date" value={activeCommissioningRecord().date} onChange={(event) => updateCommissioningField("date", event.target.value)} /></label>
+              </div>
+              <div className="commissioning-checklist">
+                {commissioningChecklistItems.map((item) => <label key={item.id}>
+                  <input type="checkbox" checked={Boolean(activeCommissioningRecord().checklist[item.id])} onChange={(event) => updateCommissioningCheck(item.id, event.target.checked)} />
+                  <span>{item.label}</span>
+                </label>)}
+              </div>
+              <label className="commissioning-notes">Closeout notes<textarea value={activeCommissioningRecord().notes} onChange={(event) => updateCommissioningField("notes", event.target.value)} placeholder="Record adjustments, punch items, and field conditions…" /></label>
+              <button className="commissioning-export" onClick={exportCommissioningCsv}><Save size={13} /> Export commissioning CSV</button>
+              <p>Compare measured values with the equipment manufacturer’s approved data. This record does not alter the design drawing.</p>
+            </div>}
+            {fieldView === "coordination" && <div className="punch-card">
+              <div className="field-section-heading"><strong>FIELD PUNCH LIST &amp; AS-BUILT TRACKER</strong><span>{activePunchItems().filter((item) => item.status === "open").length} OPEN</span></div>
+              <div className="punch-summary">
+                <span><b>{activePunchItems().filter((item) => item.status === "open").length}</b> Open</span>
+                <span><b>{activePunchItems().filter((item) => item.priority === "critical" && item.status === "open").length}</b> Critical</span>
+                <span><b>{activePunchItems().filter((item) => item.status === "resolved").length}</b> Resolved</span>
+              </div>
+              <div className={`punch-link ${selectedId ? "linked" : ""}`}><CircleDot size={12} /><span><strong>{selectedId ? "Linked to selected drawing object" : "Create as a general system issue"}</strong><small>{selectedObjectDescription()}</small></span></div>
+              <div className="punch-form">
+                <label className="wide">Issue description<input value={punchTitle} onChange={(event) => setPunchTitle(event.target.value)} placeholder="Example: Raise return run above light conflict" /></label>
+                <label>Category<select value={punchCategory} onChange={(event) => setPunchCategory(event.target.value as PunchItem["category"])}>{["Installation", "Coordination", "Airflow", "Equipment", "Closeout"].map((value) => <option key={value}>{value}</option>)}</select></label>
+                <label>Priority<select value={punchPriority} onChange={(event) => setPunchPriority(event.target.value as PunchItem["priority"])}><option value="critical">Critical</option><option value="normal">Normal</option><option value="low">Low</option></select></label>
+                <label className="wide">Assigned to<input value={punchAssignedTo} onChange={(event) => setPunchAssignedTo(event.target.value)} placeholder="Crew, technician, GC, shop…" /></label>
+                <label className="wide">Field / as-built note<textarea value={punchNote} onChange={(event) => setPunchNote(event.target.value)} placeholder="Record the field condition, approved change, or closeout requirement…" /></label>
+              </div>
+              <div className="punch-actions">
+                <button disabled={!punchTitle.trim()} onClick={createPunchItem}>Add field issue</button>
+                <button disabled={!activePunchItems().length} onClick={exportPunchListCsv}><Save size={12} /> Export CSV</button>
+              </div>
+              {activePunchItems().length ? <div className="punch-list">
+                {activePunchItems().map((item) => <div className={`punch-row ${item.priority} ${item.status}`} key={item.id}>
+                  <button className="punch-select" disabled={!item.drawingId} onClick={() => {
+                    if (!item.drawingId) return;
+                    focusDrawingOnPlan(item.drawingId);
+                  }}>
+                    <span><i>{item.category} · {item.priority}</i><strong>{item.title}</strong><small>{item.assignedTo || "Unassigned"} · {new Date(item.createdAt).toLocaleDateString()}{item.note ? ` · ${item.note}` : ""}</small></span>
+                    <b>{item.drawingId ? "PLAN" : "GENERAL"}</b>
+                  </button>
+                  <button className="punch-status" onClick={() => togglePunchStatus(item.id)}>{item.status === "open" ? "Mark resolved" : "Reopen issue"}</button>
+                </div>)}
+              </div> : <div className="punch-empty">No field issues recorded for this system.</div>}
+              <p>As-built and punch records are manual. Resolving an issue never moves, resizes, reconnects, or renumbers drawing objects.</p>
+            </div>}
+            {fieldView === "installer" && <div className="installer-workspace">
+            <div className="installer-summary-card">
+              <div><Route size={19} /><span><strong>INSTALLER RUN BOOK</strong><small>Tap any run to jump directly to it on the plan</small></span></div>
+              <dl>
+                <div><dt>Runs</dt><dd>{activeFieldRuns.length}</dd></div>
+                <div><dt>Length</dt><dd>{activeFieldRuns.reduce((total, run) => total + run.length, 0).toFixed(1)} LF</dd></div>
+                <div><dt>Connection holds</dt><dd>{activeFieldPackage.connectionProblems}</dd></div>
+                <div><dt>Elevation holds</dt><dd>{activeFieldPackage.missingElevation}</dd></div>
+              </dl>
+              <div className="field-package-actions installer-actions">
+                <button onClick={() => window.print()}><FileText size={13} /> Print installer package</button>
+                <button disabled={!activeFieldRuns.length} onClick={exportFieldRunScheduleCsv}><Save size={13} /> Run CSV</button>
+              </div>
+            </div>
+            <div className="field-run-card">
+              <div className="field-section-heading"><strong>INSTALL RUN SCHEDULE</strong><span>{activeFieldRuns.length} runs</span></div>
+              {activeFieldRuns.length ? <div className="field-run-list">
+                {activeFieldRuns.map((run) => <button key={run.drawing.id} onClick={() => focusDrawingOnPlan(run.drawing.id)}>
+                  <i className={run.drawing.type} />
+                  <span><strong>{run.size} {run.type} · {run.room}</strong><small>{run.length.toFixed(1)} LF · {run.cfm} CFM · {run.elevation}</small></span>
+                  <b className={run.connected ? "connected" : "review"}>{run.connected ? "OK" : "REVIEW"}</b>
+                </button>)}
+              </div> : <div className="empty-takeoff">Draw duct runs to build the installer schedule.</div>}
+            </div>
+            <div className="installer-material-card">
+              <div className="field-section-heading"><strong>ORDER &amp; PREFAB SUMMARY</strong><span>{buildTakeoff().length} ITEMS</span></div>
+              {buildTakeoff().slice(0, 12).map((row, index) => <div key={`${row.item}-installer-${index}`}><span><strong>{row.item}</strong><small>{row.size} · {row.note}</small></span><b>{row.quantity}</b></div>)}
+              <button onClick={() => setRightTab("takeoff")}>Open full material takeoff</button>
+            </div>
+            </div>}
+            <div className="takeoff-note">Field package is a coordination aid. Approved plans, code, inspector comments, equipment instructions, and actual site conditions govern installation.</div>
+          </div> : <div className="checks-panel">
+            <div className="workspace-panel-hero review">
+              <div><ShieldAlert size={18} /><span><strong>SMART PLAN REVIEW</strong><small>{systemLabel(activeSystem)} · prioritized HVAC QA with plan links</small></span></div>
+              <b className={activeReviewSummary.critical ? "critical" : activeReviewSummary.openWarnings ? "hold" : "ready"}>{activeReviewSummary.blockers ? `${activeReviewSummary.blockers} OPEN` : "REVIEWED"}</b>
+            </div>
+            <nav className="workspace-subtabs" role="tablist" aria-label="Plan review views">
+              <button role="tab" aria-selected={reviewView === "overview"} className={reviewView === "overview" ? "active" : ""} onClick={() => setReviewView("overview")}>Overview</button>
+              <button role="tab" aria-selected={reviewView === "issues"} className={reviewView === "issues" ? "active" : ""} onClick={() => setReviewView("issues")}>Issues</button>
+              <button role="tab" aria-selected={reviewView === "engineering"} className={reviewView === "engineering" ? "active" : ""} onClick={() => setReviewView("engineering")}>Engineering</button>
+            </nav>
+            {reviewView === "overview" && <div className="review-overview">
+              <div className="review-metric-grid">
+                <button className={activeReviewSummary.critical ? "critical" : "clear"} onClick={() => { setReviewQueueFilter("open"); setReviewView("issues"); }}><span>Critical blockers</span><strong>{activeReviewSummary.critical}</strong><small>Must be fixed on the plan</small></button>
+                <button className={activeReviewSummary.openWarnings ? "warning" : "clear"} onClick={() => { setReviewQueueFilter("open"); setReviewView("issues"); }}><span>Open warnings</span><strong>{activeReviewSummary.openWarnings}</strong><small>Review or document</small></button>
+                <button className="accepted" onClick={() => { setReviewQueueFilter("accepted"); setReviewView("issues"); }}><span>Decisions recorded</span><strong>{activeReviewSummary.acceptedWarnings}</strong><small>Named reviewer + note</small></button>
+                <button className="advisory" onClick={() => { setReviewQueueFilter("all"); setReviewView("issues"); }}><span>Advisories</span><strong>{activeReviewSummary.advisory}</strong><small>Non-blocking guidance</small></button>
+              </div>
+              <div className={`review-next-card ${activeReviewSummary.blockers ? "open" : "clear"}`}>
+                <div>{activeReviewSummary.blockers ? <AlertTriangle size={21} /> : <CheckCircle2 size={21} />}<span><strong>{activeReviewSummary.blockers ? "Next review action" : "Plan review is clear"}</strong><small>{activeReviewSummary.blockers ? "Work the queue in severity order. Critical conditions cannot be waived." : "No unresolved critical issues or warnings remain."}</small></span></div>
+                <button disabled={!activeReviewedIssueRows.some((row) => !row.resolvedByDecision && row.issue.drawingId)} onClick={selectNextValidationIssue}>Jump to next issue</button>
+              </div>
+              <div className="review-control-row">
+                <label><input type="checkbox" checked={showReviewMarkers} onChange={(event) => setShowReviewMarkers(event.target.checked)} /> Show plan issue markers</label>
+                <button disabled={!activeReviewedIssueRows.length} onClick={exportReviewLogCsv}><Save size={13} /> Review CSV</button>
+              </div>
+              <div className="review-release-readiness">
+                <div className="field-section-heading"><strong>FIELD RELEASE READINESS</strong><span>{activeFieldPackage.status}</span></div>
+                {activeFieldPackage.gates.map((gate) => <button className={gate.clear ? "clear" : "hold"} key={`review-${gate.id}`} onClick={() => openReleaseGate(gate.id)}>
+                  {gate.clear ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                  <span><strong>{gate.label}</strong><small>{gate.detail}</small></span>
+                </button>)}
+                <button className="open-release-center" onClick={() => { setRightTab("field"); setFieldView("release"); }}>Open field release center</button>
+              </div>
+              <div className="review-safety-note"><ShieldAlert size={15} /><span><strong>Manual approval stays in control.</strong><small>The review finds and organizes conditions. It never moves, reconnects, resizes, reroutes, renumbers, or releases anything by itself.</small></span></div>
+            </div>}
+            {reviewView === "issues" && <div className="review-issues-workspace">
+              <div className="review-queue-controls">
+                <div>
+                  {(["open", "accepted", "all"] as const).map((filter) => <button className={reviewQueueFilter === filter ? "active" : ""} key={filter} onClick={() => setReviewQueueFilter(filter)}>
+                    {filter === "open" ? `Open ${activeReviewSummary.blockers + activeReviewSummary.advisory}` : filter === "accepted" ? `Decided ${activeReviewSummary.acceptedWarnings}` : `All ${activeReviewedIssueRows.length}`}
+                  </button>)}
+                </div>
+                <label><input type="checkbox" checked={showReviewMarkers} onChange={(event) => setShowReviewMarkers(event.target.checked)} /> Markers</label>
+              </div>
+              <div className="review-queue-list">
+                {filteredReviewIssueRows(activeReviewedIssueRows).length ? filteredReviewIssueRows(activeReviewedIssueRows).map((row) => {
+                  return <button className={`review-queue-row ${row.issue.severity} ${row.resolvedByDecision ? "accepted" : ""} ${activeReviewIssueId === row.issue.id ? "active" : ""}`} key={row.issue.id} onClick={() => focusReviewIssue(row.issue)}>
+                    <b>{reviewIssueReference(row.issue)}</b>
+                    {row.issue.severity === "info" ? <CircleDot size={15} /> : <AlertTriangle size={15} />}
+                    <span><i>{issueCategory(row.issue.title)} · {row.issue.severity}</i><strong>{row.issue.title}</strong><small>{row.issue.detail}</small></span>
+                    <em>{row.decision ? `${row.decision.status.toUpperCase()}${row.resolvedByDecision ? "" : " · PENDING"}` : row.issue.drawingId ? "PLAN" : "SYSTEM"}</em>
+                  </button>;
+                }) : <div className="checks-clear"><CheckCircle2 size={24} /><strong>No issues in this queue</strong><span>Choose another queue or continue to release review.</span></div>}
+              </div>
+              {activeReviewRow && <div className={`review-decision-card ${activeReviewRow.issue.severity}`}>
+                <div className="review-decision-heading">
+                  <span><i>{activeReviewRow.issue.severity}</i><strong>{activeReviewRow.issue.title}</strong><small>{activeReviewRow.issue.detail}</small></span>
+                  {activeReviewRow.issue.drawingId && <button onClick={() => focusDrawingOnPlan(activeReviewRow.issue.drawingId!)}>Show on plan</button>}
+                </div>
+                {activeReviewRow.issue.severity === "critical" && <div className="critical-policy"><ShieldAlert size={14} /> Critical issues stay open until the drawing condition is fixed. An RFI or punch item documents the problem but does not waive it.</div>}
+                <label>Reviewer / responsible person<input value={reviewerName} onChange={(event) => setReviewerName(event.target.value)} placeholder="Name or initials" /></label>
+                <label>Decision, field condition, or proposed action<textarea value={reviewDecisionNote} onChange={(event) => setReviewDecisionNote(event.target.value)} placeholder="Record what was verified, accepted, or sent for coordination…" /></label>
+                <div className="review-decision-actions">
+                  {activeReviewRow.issue.severity !== "critical" && <button disabled={!reviewerName.trim() || !reviewDecisionNote.trim()} onClick={() => resolveReviewIssue(activeReviewRow.issue, "accepted")}>Accept with note</button>}
+                  <button disabled={!reviewerName.trim() || !reviewDecisionNote.trim()} onClick={() => resolveReviewIssue(activeReviewRow.issue, "rfi")}>Create RFI</button>
+                  <button disabled={!reviewerName.trim() || !reviewDecisionNote.trim()} onClick={() => resolveReviewIssue(activeReviewRow.issue, "punch")}>Add punch item</button>
+                  {activeReviewRow.decision && <button className="reopen" onClick={() => reopenReviewIssue(activeReviewRow.issue.id)}>Reopen review</button>}
+                </div>
+                {activeReviewRow.decision && <div className={`recorded-decision ${activeReviewRow.resolvedByDecision ? "complete" : "pending"}`}>
+                  {activeReviewRow.resolvedByDecision ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+                  <span>
+                    <strong>{activeReviewRow.decision.status.toUpperCase()} · {activeReviewRow.resolvedByDecision ? "REVIEW COMPLETE" : "PENDING CLOSEOUT"} · {activeReviewRow.decision.reviewer}</strong>
+                    <small>{activeReviewRow.decision.note} · {new Date(activeReviewRow.decision.updatedAt).toLocaleString()}</small>
+                  </span>
+                </div>}
+              </div>}
+            </div>}
+            {reviewView === "engineering" && <>
+            <div className="checks-heading">
+              <div><strong>ENGINEERING REVIEW</strong><small>Airflow, pressure, sizing, and return-path checks</small></div>
+              <span className={`check-pill ${activeValidationIssues.some((issue) => issue.severity === "critical") ? "critical" : activeValidationIssues.length ? "warning" : "clear"}`}>
+                {activeValidationIssues.filter((issue) => issue.severity !== "info").length || "Clear"}
+              </span>
+            </div>
+            <div className={`readiness-card ${activeValidationDashboard.counts.critical ? "critical" : activeValidationDashboard.counts.warning ? "warning" : "clear"}`}>
+              <div className="readiness-score">
+                <strong>{activeValidationDashboard.score}</strong>
+                <span>FIELD<br />READINESS</span>
+              </div>
+              <div className="readiness-summary">
+                <strong>{activeValidationDashboard.counts.critical ? "Critical review required" : activeValidationDashboard.counts.warning ? "Coordination items remain" : "Ready for field review"}</strong>
+                <small>Review-only score. Your drawing is never changed automatically.</small>
+              </div>
+              <div className="readiness-metrics">
+                <span><b>{activeValidationDashboard.counts.critical}</b> Critical</span>
+                <span><b>{activeValidationDashboard.counts.warning}</b> Warnings</span>
+                <span><b>{activeValidationDashboard.connectionProblems}</b> Connections</span>
+                <span><b>{activeValidationDashboard.bedroomReturnRisks.length}</b> Bedroom risks</span>
+              </div>
+              <button onClick={selectNextValidationIssue} disabled={!activeValidationIssues.some((issue) => issue.drawingId)}>
+                Select next drawing problem
+              </button>
+            </div>
+            <div className={`return-path-card ${activeValidationDashboard.bedroomReturnRisks.length || activeValidationDashboard.returnDeficit ? "attention" : "good"}`}>
+              <div><Route size={16} /><span><strong>RETURN &amp; DOOR-CLOSED PRESSURE</strong><small>Bedroom return-path field review</small></span></div>
+              <div className="return-path-grid">
+                <span><b>{activeValidationDashboard.suppliedBedrooms.length}</b> Supplied bedrooms</span>
+                <span><b>{activeValidationDashboard.suppliedBedrooms.length - activeValidationDashboard.bedroomReturnRisks.length}</b> With return path</span>
+                <span><b>{activeValidationDashboard.bedroomReturnRisks.length}</b> Need review</span>
+                <span><b>{activeValidationDashboard.returnDeficit}</b> Return CFM short</span>
+              </div>
+              {activeValidationDashboard.bedroomReturnRisks.length ? <div className="return-risk-list">
+                {activeValidationDashboard.bedroomReturnRisks.map((room) => <button key={room.name} onClick={() => {
+                  const drawingId = room.drawingIds[0];
+                  if (drawingId) {
+                    setSelectedId(drawingId);
+                    setSelectedIds([drawingId]);
+                    setActiveTool("select");
+                  }
+                }}><AlertTriangle size={12} /><span><strong>{room.name}</strong><small>{room.supplyCfm} supply CFM · no assigned return path</small></span></button>)}
+              </div> : <p>Every supplied bedroom with room data has an assigned return path. Verify transfer paths and pressure in the field.</p>}
             </div>
             <div className="auto-size-card">
               <div><Sparkles size={16} /><span><strong>SMART DUCT SIZING</strong><small>Calculated CFM · your residential size rules</small></span></div>
-              <button onClick={() => setShowSizingReview((visible) => !visible)}>
+              <div className="sizing-controls">
+                <label>Supply max
+                  <select value={supplyVelocityLimit} onChange={(event) => setSupplyVelocityLimit(Number(event.target.value))}>
+                    {[700, 750, 800, 850, 900, 950].map((value) => <option key={value} value={value}>{value} FPM</option>)}
+                  </select>
+                </label>
+                <label>Return max
+                  <select value={returnVelocityLimit} onChange={(event) => setReturnVelocityLimit(Number(event.target.value))}>
+                    {[500, 550, 600, 650, 700, 750].map((value) => <option key={value} value={value}>{value} FPM</option>)}
+                  </select>
+                </label>
+                <label>Fresh-air max
+                  <select value={freshVelocityLimit} onChange={(event) => setFreshVelocityLimit(Number(event.target.value))}>
+                    {[400, 450, 500, 550, 600, 650].map((value) => <option key={value} value={value}>{value} FPM</option>)}
+                  </select>
+                </label>
+                <label>Flex maximum
+                  <select value={residentialFlexMax} onChange={(event) => setResidentialFlexMax(event.target.value)}>
+                    {["12", "14", "16"].map((value) => <option key={value} value={value}>{value}&quot;</option>)}
+                  </select>
+                </label>
+              </div>
+              <button onClick={() => showSizingReview ? setShowSizingReview(false) : openSizingReview()}>
                 {showSizingReview ? "Close review" : `Review ${sizingSuggestions().length} changes`}
               </button>
               {showSizingReview && <div className="sizing-review">
                 {sizingSuggestions().length ? <>
-                  <div className="sizing-rule">16″ maximum flex · Supply ≤900 FPM · Return ≤700 FPM</div>
-                  {sizingSuggestions().map((suggestion) => <button key={suggestion.id} onClick={() => { setSelectedId(suggestion.id); setActiveTool("select"); }}>
-                    <span><strong>{suggestion.type.toUpperCase()} · {suggestion.cfm} CFM</strong><small>{suggestion.current}″ existing → {suggestion.recommended}″ recommended</small></span>
-                    <b>{suggestion.velocity} FPM</b>
-                  </button>)}
-                  <button className="apply-sizing" onClick={applySizingSuggestions}>Apply {sizingSuggestions().length} reviewed changes</button>
+                  <div className="sizing-rule">{residentialFlexMax}″ maximum flex · Supply ≤{supplyVelocityLimit} FPM · Return ≤{returnVelocityLimit} FPM</div>
+                  {sizingSuggestions().map((suggestion) => <div className={`sizing-suggestion ${suggestion.overCapacity ? "over-capacity" : ""}`} key={suggestion.id}>
+                    <input
+                      aria-label={`Approve ${suggestion.current} inch to ${suggestion.recommended} inch change`}
+                      type="checkbox"
+                      checked={selectedSizingIds.includes(suggestion.id)}
+                      disabled={suggestion.overCapacity}
+                      onChange={() => toggleSizingSuggestion(suggestion.id)}
+                    />
+                    <button onClick={() => { setSelectedId(suggestion.id); setActiveTool("select"); }}>
+                      <span>
+                        <strong>{suggestion.type.toUpperCase()} · {suggestion.cfm} CFM · {suggestion.room}</strong>
+                        <small>{suggestion.current}″ existing → {suggestion.recommended}″ recommended · {suggestion.currentVelocity} → {suggestion.velocity} FPM</small>
+                      </span>
+                      <b>{suggestion.overCapacity ? `OVER ${suggestion.limit}` : `${suggestion.velocity} FPM`}</b>
+                    </button>
+                  </div>)}
+                  <button className="apply-sizing" onClick={applySizingSuggestions} disabled={!selectedSizingIds.length}>
+                    Apply {selectedSizingIds.filter((id) => sizingSuggestions().some((suggestion) => suggestion.id === id && !suggestion.overCapacity)).length} approved changes
+                  </button>
                 </> : <div className="sizing-clear"><CheckCircle2 size={17} /> Connected runs already match the sizing rules.</div>}
               </div>}
+              <p className="sizing-safety-note">Recommendations are advisory. Only checked rows change, every apply is one undoable action, and over-capacity runs are never applied.</p>
             </div>
             <div className="reducer-review-card">
               <div><DraftingCompass size={16} /><span><strong>MANUAL REDUCER RECOMMENDATIONS</strong><small>Approve each transition individually</small></span></div>
@@ -4052,8 +8555,10 @@ export default function Home() {
             </div>
             <div className="velocity-guide">
               <strong>RESIDENTIAL DESIGN GUIDE</strong>
-              <span>Supply main 700–900 FPM</span>
-              <span>Return main 500–700 FPM</span>
+              <span>Supply maximum {supplyVelocityLimit} FPM</span>
+              <span>Return maximum {returnVelocityLimit} FPM</span>
+              <span>Fresh-air maximum {freshVelocityLimit} FPM</span>
+              <span>Residential flex maximum {residentialFlexMax}&quot;</span>
               <span>Flex friction target ≤0.10 in. w.g./100 ft</span>
             </div>
             <div className={`pressure-card ${pressureSummary().highestDrop > .15 ? "attention" : "good"}`}>
@@ -4068,21 +8573,31 @@ export default function Home() {
               </button>}
               <p>Planning estimate only. Final available static pressure requires equipment data, filters, coils, grilles, fittings, and field measurements.</p>
             </div>
+            <div className="issue-filters" aria-label="Filter design issues">
+              {(["all", "critical", "warning", "info"] as const).map((filter) => <button
+                className={validationFilter === filter ? "active" : ""}
+                key={filter}
+                onClick={() => setValidationFilter(filter)}
+              >
+                {filter === "all" ? `All ${activeValidationIssues.length}` : `${filter === "warning" ? "Warnings" : filter[0].toUpperCase() + filter.slice(1)} ${activeValidationIssues.filter((issue) => issue.severity === filter).length}`}
+              </button>)}
+            </div>
             <div className="issue-list">
-              {validationIssues().length ? validationIssues().map((issue, index) => (
+              {filteredValidationIssues().length ? filteredValidationIssues().map((issue, index) => (
                 <button
                   className={`issue-row ${issue.severity}`}
                   key={`${issue.title}-${index}`}
-                  onClick={() => issue.drawingId && (setSelectedId(issue.drawingId), setActiveTool("select"))}
+                  onClick={() => focusReviewIssue(issue)}
                 >
                   {issue.severity === "info" ? <CircleDot size={15} /> : <AlertTriangle size={15} />}
-                  <span><strong>{issue.title}</strong><small>{issue.detail}</small></span>
+                  <span><i>{issueCategory(issue.title)}</i><strong>{issue.title}</strong><small>{issue.detail}</small></span>
                 </button>
-              )) : <div className="checks-clear"><CheckCircle2 size={24} /><strong>Plan checks clear</strong><span>Airflow is balanced within ±10% and no velocity warnings were found.</span></div>}
+              )) : <div className="checks-clear"><CheckCircle2 size={24} /><strong>{activeValidationIssues.length ? "No issues in this filter" : "Plan checks clear"}</strong><span>{activeValidationIssues.length ? "Choose another severity to continue the review." : "Airflow is balanced within ±10% and no velocity warnings were found."}</span></div>}
             </div>
             <div className="takeoff-note">Design-intent review only. Engineering objects and scheduled values govern. Field verify before fabrication and final balance.</div>
+            </>}
           </div>}
-          <div className="status-card"><span className="pulse" /><div><strong>{calibrating && pdf ? "Scale calibration" : activeTool === "measure" && pdf ? "Measurement tool" : symbolTools.includes(activeTool as SymbolKind) && pdf ? "HVAC symbol placement" : activeTool === "branch" && pdf ? "Smart T/Y placement" : continuingRunId ? "Extending connected branch run" : draft.length ? "Drawing in progress" : pdf ? "Construction plan loaded" : "Drawing engine ready"}</strong><small>{calibrating && pdf ? `Pick two points exactly ${referenceFeet} ft apart` : activeTool === "measure" && pdf ? "Pick two points to place a field dimension" : symbolTools.includes(activeTool as SymbolKind) && pdf ? "One click places · V selects · [ ] rotates" : activeTool === "branch" && pdf ? branchMessage || "Move over a blue supply run · one click places the fitting" : continuingRunId ? "Left-click: add route points · Shift: lock 45°/90° · Right-click: finish on the same run" : draft.length ? "Left-click: add point · Shift: lock 45°/90° · Right-click: finish · Esc: cancel" : pdf ? `${pdf.numPages} page PDF · ${drawings.length} drawing objects` : "Upload a plan to start drafting"}</small></div></div>
+          <div className="status-card"><span className="pulse" /><div><strong>{splitMode ? "Split run mode" : calibrating && pdf ? "Scale calibration" : activeTool === "measure" && pdf ? "Measurement tool" : symbolTools.includes(activeTool as SymbolKind) && pdf ? "HVAC symbol placement" : activeTool === "branch" && pdf ? pendingBranchFittingId ? "Choose branch run" : "Smart T/Y placement" : continuingRunId ? "Extending connected branch run" : draft.length ? "Drawing in progress" : pdf ? "Construction plan loaded" : "Drawing engine ready"}</strong><small>{splitMode ? "Click the duct centerline where you want two editable sections · Esc cancels" : calibrating && pdf ? `Pick two points exactly ${referenceFeet} ft apart` : activeTool === "measure" && pdf ? "Pick two points to place a field dimension" : symbolTools.includes(activeTool as SymbolKind) && pdf ? `Wheel rotates preview · Shift+wheel 45° · ${placementRotation}° · click places` : activeTool === "branch" && pdf ? branchMessage || "Click anywhere on a blue supply run · trunk splits automatically" : continuingRunId ? "Left-click: add route points · Shift: lock 45°/90° · Right-click: finish on the same run" : draft.length ? "Left-click: add point · Shift: lock 45°/90° · Right-click: finish · Esc: cancel" : pdf ? `${pdf.numPages} page PDF · ${drawings.length} drawing objects` : "Upload a plan to start drafting"}</small></div></div>
         </aside>
       </section>
 
@@ -4092,10 +8607,10 @@ export default function Home() {
           <span>Approximate quantities · field verify before ordering</span>
         </div>
         <table>
-          <thead><tr><th>Item</th><th>Size</th><th>Quantity</th><th>Field note</th></tr></thead>
+          <thead><tr><th>Category</th><th>Item</th><th>Size</th><th>Quantity</th><th>Field note</th></tr></thead>
           <tbody>
             {buildTakeoff().map((row, index) => <tr key={`${row.item}-print-${index}`}>
-              <td>{row.item}</td><td>{row.size}</td><td>{row.quantity}</td><td>{row.note}</td>
+              <td>{row.category}</td><td>{row.item}</td><td>{row.size}</td><td>{row.quantity}</td><td>{row.note}</td>
             </tr>)}
           </tbody>
         </table>
@@ -4114,9 +8629,81 @@ export default function Home() {
             <span>Assigned return: {designAirflow().returnCfm} CFM</span>
             <span>Duct elevations assigned: {drawings.filter((drawing) => drawingSystem(drawing) === activeSystem && ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting && drawing.elevation?.trim()).length} of {drawings.filter((drawing) => drawingSystem(drawing) === activeSystem && ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting).length}</span>
           </div>
-          {validationIssues().filter((issue) => issue.severity !== "info").map((issue, index) => <span key={`${issue.title}-print-${index}`}>• {issue.title}: {issue.detail}</span>)}
-          {!validationIssues().filter((issue) => issue.severity !== "info").length && <span>✓ No critical airflow or velocity issues detected.</span>}
+          {activeReviewedIssueRows.filter((row) => row.issue.severity !== "info").map((row, index) => <span key={`${row.issue.title}-print-${index}`}>• {row.issue.title}: {row.issue.detail}{row.decision ? ` · ${row.issue.severity === "critical" ? "DOCUMENTED / STILL BLOCKING" : row.resolvedByDecision ? row.decision.status.toUpperCase() : `${row.decision.status.toUpperCase()} / PENDING`} by ${row.decision.reviewer}` : ""}</span>)}
+          {!activeReviewedIssueRows.filter((row) => row.issue.severity !== "info").length && <span>✓ No critical airflow or velocity issues detected.</span>}
         </div>
+        <div className="print-field-package">
+          <div className="print-section-heading">
+            <strong>FIELD INSTALLATION RELEASE · {systemLabel(activeSystem)}</strong>
+            <span>{activeFieldPackage.status}</span>
+          </div>
+          <div className="print-release-certificate">
+            <span>Revision: <b>{activeFieldPackage.latestRelease?.revision || "NOT ISSUED"}</b></span>
+            <span>Released by: <b>{activeFieldPackage.latestRelease?.releasedBy || "—"}</b></span>
+            <span>Released: <b>{activeFieldPackage.latestRelease ? new Date(activeFieldPackage.latestRelease.releasedAt).toLocaleString() : "—"}</b></span>
+            <span>Drawing fingerprint: <b>{activeFieldPackage.signature}</b></span>
+          </div>
+          <div className="print-release-summary">
+            <span>Critical issues: <b>{activeFieldPackage.critical}</b></span>
+            <span>Open warnings: <b>{activeFieldPackage.openWarnings}</b></span>
+            <span>Connection problems: <b>{activeFieldPackage.connectionProblems}</b></span>
+            <span>Missing elevations: <b>{activeFieldPackage.missingElevation}</b></span>
+            <span>Checklist: <b>{activeFieldPackage.checklistComplete}/{fieldChecklistItems.length}</b></span>
+          </div>
+          <div className="print-field-checklist">
+            {fieldChecklistItems.map((item) => <span key={`${item.id}-print`}>{activeFieldChecklist()[item.id] ? "☑" : "☐"} {item.label}</span>)}
+          </div>
+          {activeFieldRuns.length > 0 && <table>
+            <thead><tr><th>Duct type</th><th>Size</th><th>Length</th><th>CFM</th><th>Room / area</th><th>Elevation</th><th>Connection</th></tr></thead>
+            <tbody>{activeFieldRuns.map((run) => <tr key={`${run.drawing.id}-field-print`}>
+              <td>{run.type}</td><td>{run.size}</td><td>{run.length.toFixed(1)} LF</td><td>{run.cfm}</td><td>{run.room}</td><td>{run.elevation}</td><td>{run.connected ? "OK" : "REVIEW"}</td>
+            </tr>)}</tbody>
+          </table>}
+        </div>
+        {activeRfiItems().length > 0 && <div className="print-rfi-list">
+          <div className="print-section-heading">
+            <strong>RFI &amp; CHANGE LOG · {systemLabel(activeSystem)}</strong>
+            <span>{activeRfiItems().filter((item) => !["approved", "closed"].includes(item.status)).length} OPEN</span>
+          </div>
+          <table>
+            <thead><tr><th>RFI</th><th>Status</th><th>Priority</th><th>Subject</th><th>Question</th><th>Proposed / response</th><th>Approved by</th></tr></thead>
+            <tbody>{activeRfiItems().map((item) => <tr key={`${item.id}-rfi-print`}>
+              <td>RFI-{String(item.number).padStart(3, "0")}</td><td>{item.status}</td><td>{item.priority}</td><td>{item.subject}</td><td>{item.question}</td><td>{item.response || item.proposedSolution || "—"}</td><td>{item.approvalBy || "—"}{item.approvedAt ? ` · ${new Date(item.approvedAt).toLocaleDateString()}` : ""}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>}
+        <div className="print-commissioning">
+          <div className="print-section-heading">
+            <strong>STARTUP, BALANCING &amp; COMMISSIONING · {systemLabel(activeSystem)}</strong>
+            <span>{commissioningSummary().ready ? "COMPLETE" : "OPEN"}</span>
+          </div>
+          <div className="print-release-summary">
+            <span>Model: <b>{activeCommissioningRecord().model || "—"}</b></span>
+            <span>Serial: <b>{activeCommissioningRecord().serial || "—"}</b></span>
+            <span>Filter: <b>{activeCommissioningRecord().filterSize || "—"}</b></span>
+            <span>Technician: <b>{activeCommissioningRecord().technician || "—"}</b></span>
+            <span>Measured airflow: <b>{activeCommissioningRecord().measuredCfm || "—"} CFM</b></span>
+            <span>Total static: <b>{commissioningSummary().totalStatic.toFixed(2)} in. w.g.</b></span>
+            <span>Rated maximum: <b>{activeCommissioningRecord().ratedMaxStatic || "—"} in. w.g.</b></span>
+            <span>Temperature split: <b>{activeCommissioningRecord().temperatureSplit || "—"}°F</b></span>
+          </div>
+          <div className="print-field-checklist">
+            {commissioningChecklistItems.map((item) => <span key={`${item.id}-commissioning-print`}>{activeCommissioningRecord().checklist[item.id] ? "☑" : "☐"} {item.label}</span>)}
+          </div>
+          {activeCommissioningRecord().notes && <div className="print-commissioning-notes"><b>Closeout notes:</b> {activeCommissioningRecord().notes}</div>}
+        </div>
+        {activePunchItems().length > 0 && <div className="print-punch-list">
+          <div className="print-section-heading">
+            <strong>FIELD PUNCH LIST &amp; AS-BUILT RECORD · {systemLabel(activeSystem)}</strong>
+            <span>{activePunchItems().filter((item) => item.status === "open").length} OPEN · {activePunchItems().filter((item) => item.status === "resolved").length} RESOLVED</span>
+          </div>
+          <table>
+            <thead><tr><th>Status</th><th>Priority</th><th>Category</th><th>Issue</th><th>Assigned</th><th>Plan link</th><th>Field / as-built note</th></tr></thead>
+            <tbody>{activePunchItems().map((item) => <tr key={`${item.id}-punch-print`}>
+              <td>{item.status}</td><td>{item.priority}</td><td>{item.category}</td><td>{item.title}</td><td>{item.assignedTo || "Unassigned"}</td><td>{item.drawingId ? "Linked" : "General"}</td><td>{item.note || "—"}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>}
         {roomSchedule().length > 0 && <>
           <div className="print-section-heading room-print-heading">
             <strong>ROOM AIRFLOW SCHEDULE · {systemLabel(activeSystem)}</strong>
@@ -4143,9 +8730,9 @@ export default function Home() {
 
       <footer>
         <span><i className="online" /> Ready</span>
-        <span>{selectedIds.length ? `${selectedIds.length} object${selectedIds.length === 1 ? "" : "s"} selected · Shift-click adds · Ctrl+D duplicates` : "0 objects selected · drag a box to select"}</span>
+        <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor"}</span>
         <span><Ruler size={11} /> {scaleLabel}</span>
-        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · HVAC Plan Studio v0.2.0</span>
+        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · Stable Right-Click Navigation v3.1</span>
       </footer>
     </main>
   );
