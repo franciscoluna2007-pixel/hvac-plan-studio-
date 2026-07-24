@@ -123,7 +123,7 @@ test("controls fitting text, connects equipment at plenums, and repositions plan
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  assert.match(source, /const \[showFittingLabels, setShowFittingLabels\] = useState\(true\)/);
+  assert.match(source, /const \[showFittingLabels, setShowFittingLabels\] = useState\(false\)/);
   assert.match(source, /Show or hide T\/Y fitting names and three-size labels/);
   assert.match(source, /<DraftingCompass size=\{14\} \/> T\/Y Text/);
   assert.match(source, /\{showFittingLabels && <text/);
@@ -144,6 +144,61 @@ test("controls fitting text, connects equipment at plenums, and repositions plan
   assert.doesNotMatch(source, /className="symbol-elevation"/);
   assert.match(styles, /\.drawing-layer text\.run-label/);
   assert.match(styles, /\.hvac-symbol \.equipment-plenum-port/);
+});
+
+test("ships v98 System Completion Mode with field-readable defaults", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const workflow = await readFile(new URL("../app/workflowEngine.ts", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(workflow, /export function buildSystemWorkflow/);
+  assert.match(workflow, /"runs"[\s\S]*"branches"[\s\S]*"connections"[\s\S]*"airflow"[\s\S]*"review"[\s\S]*"release"/);
+  assert.match(page, /NEXT SAFE ACTION/);
+  assert.match(page, /Continue system/);
+  assert.match(page, /className="field-workflow-hud"/);
+  assert.match(page, /workflowSummary:/);
+  assert.match(page, /const \[showCfmLabels, setShowCfmLabels\] = useState\(false\)/);
+  assert.match(page, /const \[showLengthLabels, setShowLengthLabels\] = useState\(false\)/);
+  assert.match(styles, /--blue: #2f80ff/);
+  assert.match(styles, /--red: #f0525a/);
+  assert.match(styles, /--green: #35c98b/);
+  assert.match(styles, /--yellow: #f7b733/);
+  assert.match(styles, /--cyan: #2ccce4/);
+});
+
+test("verifies Google Drive packages against immutable cloud revisions", async () => {
+  const panel = await readFile(new URL("../app/CloudProjectsPanel.tsx", import.meta.url), "utf8");
+  const cloud = await readFile(new URL("../app/cloudProjects.ts", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../supabase/migrations/20260724120000_system_completion_and_verified_drive_sync.sql", import.meta.url), "utf8");
+
+  assert.match(panel, /SYSTEM COMPLETION MODE · V98/);
+  assert.match(panel, /snapshot: revision\.snapshot/);
+  assert.doesNotMatch(panel, /const snapshot = buildSnapshot\(\);[\s\S]{0,300}latestRevision/);
+  assert.match(panel, /Open in Drive/);
+  assert.match(panel, /LEGACY PACKAGE · RESYNC/);
+  assert.match(panel, /recordDrivePackageSync/);
+  assert.match(cloud, /drive_synced_revision_number/);
+  assert.match(cloud, /workflow_summary/);
+  assert.match(cloud, /record_drive_package_sync/);
+  assert.match(migration, /add column if not exists workflow_summary jsonb/);
+  assert.match(migration, /drive_synced_revision_number bigint/);
+  assert.match(migration, /create or replace function public\.record_drive_package_sync/);
+});
+
+test("uses nominal icon sizes, accurate equipment identities, and selected placement data", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const mark = await readFile(new URL("../public/hvac-plan-studio-v98-mark.svg", import.meta.url));
+
+  assert.match(page, /const nominalScale = parts\.length > 1/);
+  assert.match(page, /size: selected\.size/);
+  assert.doesNotMatch(page, /id: "symbol-preview"[\s\S]{0,120}size: ""/);
+  assert.match(page, /equipment-heatpump-airhandler/);
+  assert.match(page, /OUTDOOR HEAT PUMP · 3 TON/);
+  assert.match(page, /equipment-supply-plenum/);
+  assert.match(page, /equipment-return-plenum/);
+  assert.match(page, /if \(variant === "furnace"\) return horizontalUnit\("FUR", "flame"\)/);
+  assert.match(page, /equipmentTypeName\(drawing\.symbol\.variant\)/);
+  assert.ok(mark.byteLength > 500);
 });
 
 test("places T/Y fittings anywhere on a trunk and supports a second-click branch attachment", async () => {
