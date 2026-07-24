@@ -13,8 +13,10 @@ import {
   FolderKanban,
   HardDrive,
   History,
+  LayoutDashboard,
   LoaderCircle,
   LogOut,
+  ExternalLink,
   Plus,
   RefreshCw,
   Search,
@@ -37,6 +39,7 @@ import {
   listCloudProjects,
   listCloudRevisions,
   removeCloudMember,
+  recordDrivePackageSync,
   saveCloudRevision,
   signInCloud,
   signOutCloud,
@@ -44,11 +47,13 @@ import {
   updateCloudProject,
 } from "./cloudProjects";
 import { saveProjectPackageToDrive } from "./googleDrive";
+import { normalizeWorkflowSummary } from "./workflowEngine";
 
 type Snapshot = Record<string, unknown> & {
   fileName?: string;
   drawings?: unknown[];
   savedAt?: string;
+  workflowSummary?: Record<string, unknown>;
 };
 
 type Props = {
@@ -61,7 +66,7 @@ type Props = {
   onClose: () => void;
 };
 
-type CloudView = "revisions" | "people" | "activity";
+type CloudView = "dashboard" | "revisions" | "people" | "activity";
 
 function formatDate(value?: string | null) {
   if (!value) return "Never";
@@ -76,6 +81,7 @@ function formatDate(value?: string | null) {
 function actionLabel(action: string) {
   if (action === "project_created") return "Project created";
   if (action === "revision_saved") return "Revision saved";
+  if (action === "drive_package_synced") return "Drive package synced";
   return action.replaceAll("_", " ");
 }
 
@@ -99,7 +105,7 @@ export default function CloudProjectsPanel({
   const [revisions, setRevisions] = useState<CloudRevision[]>([]);
   const [members, setMembers] = useState<CloudMember[]>([]);
   const [activity, setActivity] = useState<CloudActivity[]>([]);
-  const [view, setView] = useState<CloudView>("revisions");
+  const [view, setView] = useState<CloudView>("dashboard");
   const [revisionTitle, setRevisionTitle] = useState("");
   const [revisionSummary, setRevisionSummary] = useState("");
   const [projectQuery, setProjectQuery] = useState("");
@@ -120,6 +126,24 @@ export default function CloudProjectsPanel({
     return projects.filter((project) =>
       `${project.name} ${project.source_file_name || ""} ${project.status}`.toLowerCase().includes(query));
   }, [projectQuery, projects]);
+  const workflow = normalizeWorkflowSummary(activeProject?.workflow_summary);
+  const latestRevisionNumber = revisions[0]?.revision_number || 0;
+  const syncedRevisionNumber = activeProject?.drive_synced_revision_number || 0;
+  const drivePendingCount = Math.max(0, latestRevisionNumber - syncedRevisionNumber);
+  const driveState = !activeProject?.drive_package_file_id
+    ? "not-linked"
+    : syncedRevisionNumber === 0
+      ? "legacy"
+      : drivePendingCount > 0
+        ? "pending"
+        : "current";
+  const driveStateLabel = driveState === "current"
+    ? `DRIVE CURRENT · R${syncedRevisionNumber}`
+    : driveState === "pending"
+      ? `${drivePendingCount} REVISION${drivePendingCount === 1 ? "" : "S"} PENDING`
+      : driveState === "legacy"
+        ? "LEGACY PACKAGE · RESYNC"
+        : "DRIVE NOT LINKED";
 
   const refreshProjects = useCallback(async () => {
     const next = await listCloudProjects();
@@ -222,7 +246,7 @@ export default function CloudProjectsPanel({
       });
       setProjects((current) => [project, ...current]);
       setActiveProjectId(project.id);
-      setView("revisions");
+      setView("dashboard");
       setRevisionTitle("Initial cloud revision");
       setMessage("Cloud project created. Save the first revision when ready.");
     });
@@ -239,14 +263,17 @@ export default function CloudProjectsPanel({
         summary: revisionSummary,
         drawingCount: Array.isArray(snapshot.drawings) ? snapshot.drawings.length : 0,
       });
+      const updatedProject = await updateCloudProject(activeProject.id, {
+        workflow_summary: snapshot.workflowSummary || {},
+      });
       setRevisions((current) => [revision, ...current]);
       setProjects((current) => current.map((project) =>
-        project.id === activeProject.id ? { ...project, updated_at: revision.created_at } : project,
+        project.id === activeProject.id ? { ...updatedProject, updated_at: revision.created_at } : project,
       ));
       setRevisionTitle("");
       setRevisionSummary("");
       setMessage(`Revision ${revision.revision_number} saved to the cloud.`);
-      setView("revisions");
+      setView("dashboard");
       await refreshProjectDetails(activeProject.id);
     });
   }
@@ -254,20 +281,26 @@ export default function CloudProjectsPanel({
   async function exportToDrive() {
     if (!activeProject) return;
     await runAction("drive", async () => {
-      const snapshot = buildSnapshot();
+      const revision = revisions[0];
+      if (!revision) throw new Error("Save a cloud revision before creating a verified Drive package.");
       const packageResult = await saveProjectPackageToDrive({
         projectId: activeProject.id,
         projectName: activeProject.name,
         exportedAt: new Date().toISOString(),
-        latestRevision: revisions[0]?.revision_number || 0,
-        snapshot,
+        latestRevision: revision.revision_number,
+        snapshot: revision.snapshot,
       }, activeProject.drive_package_file_id);
-      const updated = await updateCloudProject(activeProject.id, {
-        drive_package_file_id: packageResult.id,
-        drive_package_url: packageResult.webViewLink,
+      const updated = await recordDrivePackageSync({
+        projectId: activeProject.id,
+        fileId: packageResult.id,
+        fileUrl: packageResult.webViewLink,
+        revisionNumber: revision.revision_number,
       });
       setProjects((current) => current.map((project) => project.id === updated.id ? updated : project));
-      setMessage(packageResult.updated ? "Drive project package updated." : "Drive project package created.");
+      await refreshProjectDetails(activeProject.id);
+      setMessage(packageResult.updated
+        ? `Drive package verified at revision ${revision.revision_number}.`
+        : `Drive package created from revision ${revision.revision_number}.`);
     });
   }
 
@@ -384,19 +417,24 @@ export default function CloudProjectsPanel({
               />
             </label>
             <div className="cloud-project-cards">
-              {visibleProjects.map((project) => <button
-                key={project.id}
-                className={activeProjectId === project.id ? "active" : ""}
-                onClick={() => { setActiveProjectId(project.id); setView("revisions"); setPendingRestore(null); }}
-              >
-                <span><FolderKanban size={15} /></span>
-                <div>
-                  <strong>{project.name}</strong>
-                  <small>{project.source_file_name || "No source plan"} · {formatDate(project.updated_at)}</small>
-                  <em className={project.drive_package_file_id ? "synced" : ""}>{project.drive_package_file_id ? "DRIVE SYNCED" : "CLOUD ONLY"}</em>
-                </div>
-                <ChevronRight size={14} />
-              </button>)}
+              {visibleProjects.map((project) => {
+                const projectWorkflow = normalizeWorkflowSummary(project.workflow_summary);
+                return <button
+                  key={project.id}
+                  className={activeProjectId === project.id ? "active" : ""}
+                  onClick={() => { setActiveProjectId(project.id); setView("dashboard"); setPendingRestore(null); }}
+                >
+                  <span><FolderKanban size={15} /></span>
+                  <div>
+                    <strong>{project.name}</strong>
+                    <small>{project.source_file_name || "No source plan"} · {formatDate(project.updated_at)}</small>
+                    <em className={project.drive_synced_revision_number ? "synced" : ""}>
+                      {projectWorkflow ? `${projectWorkflow.progress}% · ${projectWorkflow.nextAction}` : project.drive_synced_revision_number ? `DRIVE R${project.drive_synced_revision_number}` : "CLOUD ONLY"}
+                    </em>
+                  </div>
+                  <ChevronRight size={14} />
+                </button>;
+              })}
               {!projects.length && <div className="cloud-empty-projects"><CloudUpload size={22} /><strong>No cloud projects yet</strong><span>Open a plan and save it as your first project.</span></div>}
               {!!projects.length && !visibleProjects.length && <div className="cloud-empty-projects"><Search size={22} /><strong>No matching projects</strong><span>Try a project name, address, or source-plan filename.</span></div>}
             </div>
@@ -407,7 +445,7 @@ export default function CloudProjectsPanel({
               <div className="cloud-project-heading">
                 <div><span>ACTIVE CLOUD PROJECT</span><h2>{activeProject.name}</h2><small>{activeProject.source_file_name || "No source PDF linked"}</small></div>
                 <div>
-                  <button onClick={() => void exportToDrive()} disabled={busy === "drive"}>{busy === "drive" ? <LoaderCircle className="spin" size={14} /> : <HardDrive size={14} />}{activeProject.drive_package_file_id ? "Update Drive package" : "Create Drive package"}</button>
+                  <button onClick={() => void exportToDrive()} disabled={busy === "drive" || !latestRevisionNumber}>{busy === "drive" ? <LoaderCircle className="spin" size={14} /> : <HardDrive size={14} />}{latestRevisionNumber ? `Sync Drive to R${latestRevisionNumber}` : "Save revision first"}</button>
                   <button title="Archive project" onClick={() => void archiveProject()} disabled={busy === "archive"}><Archive size={14} /></button>
                 </div>
               </div>
@@ -415,15 +453,57 @@ export default function CloudProjectsPanel({
                 <span><b>●</b> SECURE PROJECT</span>
                 <span>{revisions.length} REVISION{revisions.length === 1 ? "" : "S"}</span>
                 <span>{members.length || 1} COLLABORATOR{(members.length || 1) === 1 ? "" : "S"}</span>
-                <span className={activeProject.drive_package_file_id ? "synced" : ""}>{activeProject.drive_package_file_id ? "DRIVE CURRENT" : "DRIVE NOT LINKED"}</span>
+                <span className={driveState === "current" ? "synced" : driveState}>{driveStateLabel}</span>
               </div>
               <nav className="cloud-detail-tabs">
+                <button className={view === "dashboard" ? "active" : ""} onClick={() => setView("dashboard")}><LayoutDashboard size={14} /> Dashboard</button>
                 <button className={view === "revisions" ? "active" : ""} onClick={() => setView("revisions")}><History size={14} /> Revisions</button>
                 <button className={view === "people" ? "active" : ""} onClick={() => setView("people")}><Users size={14} /> People</button>
                 <button className={view === "activity" ? "active" : ""} onClick={() => setView("activity")}><FileClock size={14} /> Activity</button>
               </nav>
 
-              {view === "revisions" ? <div className="cloud-revisions-view">
+              {view === "dashboard" ? <div className="cloud-dashboard-view">
+                <section className="cloud-dashboard-hero">
+                  <img src="/hvac-plan-studio-v98-mark.svg" alt="" />
+                  <div>
+                    <span>SYSTEM COMPLETION MODE · V98</span>
+                    <strong>{workflow?.nextAction || "Save a revision to start project tracking"}</strong>
+                    <small>{workflow ? `${workflow.systems.length || 1} active system${workflow.systems.length === 1 ? "" : "s"} · last updated ${formatDate(workflow.updatedAt)}` : "The dashboard is generated from named cloud revisions, never an unsaved working copy."}</small>
+                  </div>
+                  <b>{workflow?.progress || 0}%</b>
+                  <i><em style={{ width: `${workflow?.progress || 0}%` }} /></i>
+                </section>
+
+                <div className="cloud-dashboard-grid">
+                  <article className="cloud-next-action-card">
+                    <span><LayoutDashboard size={18} /></span>
+                    <div><small>NEXT PROJECT ACTION</small><strong>{workflow?.nextAction || "Save the first named revision"}</strong><p>Open the newest revision as a working copy, continue the system in the plan workspace, then save another named checkpoint.</p></div>
+                    <button onClick={() => setView("revisions")}>Open revisions <ChevronRight size={13} /></button>
+                  </article>
+                  <article className={`cloud-drive-sync-card ${driveState}`}>
+                    <span><HardDrive size={18} /></span>
+                    <div><small>VERIFIED GOOGLE DRIVE SYNC</small><strong>{driveStateLabel}</strong><p>{driveState === "current" ? `Revision ${syncedRevisionNumber} is the package stored in Drive.` : driveState === "pending" ? `Drive is behind the latest cloud checkpoint by ${drivePendingCount} revision${drivePendingCount === 1 ? "" : "s"}.` : driveState === "legacy" ? "The existing package predates revision verification. Resync it to establish a trusted baseline." : "Create a package from the latest immutable cloud revision."}</p></div>
+                    <div className="cloud-drive-actions">
+                      <button onClick={() => void exportToDrive()} disabled={busy === "drive" || !latestRevisionNumber}>
+                        {busy === "drive" ? <LoaderCircle className="spin" size={13} /> : <HardDrive size={13} />}
+                        {activeProject.drive_package_file_id ? "Sync latest revision" : "Create Drive package"}
+                      </button>
+                      {activeProject.drive_package_url && <a href={activeProject.drive_package_url} target="_blank" rel="noreferrer">Open in Drive <ExternalLink size={12} /></a>}
+                    </div>
+                    <time>Last verified {formatDate(activeProject.drive_synced_at)}</time>
+                  </article>
+                </div>
+
+                {workflow?.systems.length ? <div className="cloud-system-progress">
+                  <div><strong>System readiness</strong><span>Saved with revision {latestRevisionNumber || "—"}</span></div>
+                  {workflow.systems.map((system) => <article key={system.id}>
+                    <b>{system.name}</b>
+                    <span><i><em style={{ width: `${system.progress}%` }} /></i><small>{system.stage} · {system.blockers} blocker{system.blockers === 1 ? "" : "s"}</small></span>
+                    <strong>{system.progress}%</strong>
+                  </article>)}
+                </div> : <div className="cloud-empty-state"><LayoutDashboard size={22} /><strong>No completion snapshot yet</strong><span>Save a named cloud revision and the dashboard will show system progress, blockers, and the next safe action.</span></div>}
+                <p className="cloud-collaboration-note"><ShieldCheck size={13} /> Cloud members and Google Drive sharing are separate. Grant collaborators access to the Drive package when they need the source PDF or exported project file.</p>
+              </div> : view === "revisions" ? <div className="cloud-revisions-view">
                 <div className="cloud-save-revision">
                   <div><span><CloudUpload size={17} /></span><div><strong>Save a cloud revision</strong><small>Local autosave continues between these named checkpoints.</small></div></div>
                   <div className="cloud-revision-fields">
