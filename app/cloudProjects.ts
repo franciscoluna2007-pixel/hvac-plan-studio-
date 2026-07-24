@@ -14,6 +14,9 @@ export type CloudProject = {
   source_drive_file_id: string | null;
   drive_package_file_id: string | null;
   drive_package_url: string | null;
+  drive_synced_revision_number: number;
+  drive_synced_at: string | null;
+  workflow_summary: Record<string, unknown>;
   status: "active" | "archived";
   created_at: string;
   updated_at: string;
@@ -104,6 +107,7 @@ export async function signUpCloud(email: string, password: string, displayName: 
     options: { data: { display_name: displayName.trim() || email.split("@")[0] } },
   });
   if (error) throw error;
+  if (data.session) await client.rpc("claim_project_invitations");
   return data;
 }
 
@@ -148,12 +152,31 @@ export async function createCloudProject(input: {
 
 export async function updateCloudProject(
   projectId: string,
-  patch: Partial<Pick<CloudProject, "name" | "description" | "source_file_name" | "source_drive_file_id" | "drive_package_file_id" | "drive_package_url" | "status">>,
+  patch: Partial<Pick<CloudProject, "name" | "description" | "source_file_name" | "source_drive_file_id" | "workflow_summary" | "status">>,
 ) {
   const client = await getCloudClient();
   const { data, error } = await client.from("projects").update(patch).eq("id", projectId).select("*").single();
   if (error) throw error;
   return data as CloudProject;
+}
+
+export async function recordDrivePackageSync(input: {
+  projectId: string;
+  fileId: string;
+  fileUrl: string;
+  revisionNumber: number;
+}) {
+  const client = await getCloudClient();
+  const { data, error } = await client.rpc("record_drive_package_sync", {
+    project_uuid: input.projectId,
+    package_file_id: input.fileId,
+    package_file_url: input.fileUrl,
+    synced_revision: input.revisionNumber,
+  });
+  if (error) throw error;
+  const project = Array.isArray(data) ? data[0] : data;
+  if (!project) throw new Error("The Drive sync record was not returned.");
+  return project as CloudProject;
 }
 
 export async function saveCloudRevision(input: {
