@@ -17,6 +17,7 @@ import {
   LogOut,
   Plus,
   RefreshCw,
+  Search,
   ShieldCheck,
   Trash2,
   UserPlus,
@@ -101,6 +102,8 @@ export default function CloudProjectsPanel({
   const [view, setView] = useState<CloudView>("revisions");
   const [revisionTitle, setRevisionTitle] = useState("");
   const [revisionSummary, setRevisionSummary] = useState("");
+  const [projectQuery, setProjectQuery] = useState("");
+  const [pendingRestore, setPendingRestore] = useState<CloudRevision | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
   const [busy, setBusy] = useState("");
@@ -111,6 +114,12 @@ export default function CloudProjectsPanel({
     () => projects.find((project) => project.id === activeProjectId) || null,
     [activeProjectId, projects],
   );
+  const visibleProjects = useMemo(() => {
+    const query = projectQuery.trim().toLowerCase();
+    if (!query) return projects;
+    return projects.filter((project) =>
+      `${project.name} ${project.source_file_name || ""} ${project.status}`.toLowerCase().includes(query));
+  }, [projectQuery, projects]);
 
   const refreshProjects = useCallback(async () => {
     const next = await listCloudProjects();
@@ -306,6 +315,13 @@ export default function CloudProjectsPanel({
     });
   }
 
+  function confirmRestore() {
+    if (!activeProject || !pendingRestore) return;
+    onRestoreRevision(pendingRestore.snapshot as Snapshot, activeProject, pendingRestore);
+    setMessage(`Revision ${pendingRestore.revision_number} opened as the current working copy. The newer cloud revisions remain available.`);
+    setPendingRestore(null);
+  }
+
   if (!open) return null;
 
   return <div className="cloud-projects-overlay" role="dialog" aria-modal="true" aria-label="Cloud Projects">
@@ -358,17 +374,31 @@ export default function CloudProjectsPanel({
               {busy === "create" ? <LoaderCircle className="spin" size={15} /> : <Plus size={15} />}
               Save current plan as project
             </button>
+            <label className="cloud-project-search">
+              <Search size={14} />
+              <input
+                aria-label="Search cloud projects"
+                value={projectQuery}
+                onChange={(event) => setProjectQuery(event.target.value)}
+                placeholder="Search projects or plans"
+              />
+            </label>
             <div className="cloud-project-cards">
-              {projects.map((project) => <button
+              {visibleProjects.map((project) => <button
                 key={project.id}
                 className={activeProjectId === project.id ? "active" : ""}
-                onClick={() => { setActiveProjectId(project.id); setView("revisions"); }}
+                onClick={() => { setActiveProjectId(project.id); setView("revisions"); setPendingRestore(null); }}
               >
                 <span><FolderKanban size={15} /></span>
-                <div><strong>{project.name}</strong><small>{project.source_file_name || "No source plan"} · {formatDate(project.updated_at)}</small></div>
+                <div>
+                  <strong>{project.name}</strong>
+                  <small>{project.source_file_name || "No source plan"} · {formatDate(project.updated_at)}</small>
+                  <em className={project.drive_package_file_id ? "synced" : ""}>{project.drive_package_file_id ? "DRIVE SYNCED" : "CLOUD ONLY"}</em>
+                </div>
                 <ChevronRight size={14} />
               </button>)}
               {!projects.length && <div className="cloud-empty-projects"><CloudUpload size={22} /><strong>No cloud projects yet</strong><span>Open a plan and save it as your first project.</span></div>}
+              {!!projects.length && !visibleProjects.length && <div className="cloud-empty-projects"><Search size={22} /><strong>No matching projects</strong><span>Try a project name, address, or source-plan filename.</span></div>}
             </div>
           </aside>
 
@@ -380,6 +410,12 @@ export default function CloudProjectsPanel({
                   <button onClick={() => void exportToDrive()} disabled={busy === "drive"}>{busy === "drive" ? <LoaderCircle className="spin" size={14} /> : <HardDrive size={14} />}{activeProject.drive_package_file_id ? "Update Drive package" : "Create Drive package"}</button>
                   <button title="Archive project" onClick={() => void archiveProject()} disabled={busy === "archive"}><Archive size={14} /></button>
                 </div>
+              </div>
+              <div className="cloud-project-health">
+                <span><b>●</b> SECURE PROJECT</span>
+                <span>{revisions.length} REVISION{revisions.length === 1 ? "" : "S"}</span>
+                <span>{members.length || 1} COLLABORATOR{(members.length || 1) === 1 ? "" : "S"}</span>
+                <span className={activeProject.drive_package_file_id ? "synced" : ""}>{activeProject.drive_package_file_id ? "DRIVE CURRENT" : "DRIVE NOT LINKED"}</span>
               </div>
               <nav className="cloud-detail-tabs">
                 <button className={view === "revisions" ? "active" : ""} onClick={() => setView("revisions")}><History size={14} /> Revisions</button>
@@ -402,7 +438,7 @@ export default function CloudProjectsPanel({
                   {revisions.map((revision) => <article key={revision.id}>
                     <div className="cloud-revision-number">R{revision.revision_number}</div>
                     <div><strong>{revision.title}</strong><span>{revision.summary || "No revision note"}</span><small>{formatDate(revision.created_at)} · {revision.drawing_count} drawing objects</small></div>
-                    <button onClick={() => onRestoreRevision(revision.snapshot as Snapshot, activeProject, revision)}><Download size={14} /> Restore</button>
+                    <button onClick={() => setPendingRestore(revision)}><Download size={14} /> Review restore</button>
                   </article>)}
                   {!revisions.length && <div className="cloud-empty-state"><History size={22} /><strong>No revisions saved</strong><span>Save the current drawing as the first cloud checkpoint.</span></div>}
                 </div>
@@ -432,6 +468,24 @@ export default function CloudProjectsPanel({
         </div>
         {(error || message) && <div className={`cloud-message cloud-message-bar ${error ? "error" : "success"}`}>{error || message}</div>}
       </>}
+      {pendingRestore && activeProject && <div className="cloud-restore-confirm" role="alertdialog" aria-modal="true" aria-labelledby="cloud-restore-title">
+        <div className="cloud-restore-card">
+          <span><History size={22} /></span>
+          <div>
+            <small>SAFE RESTORE</small>
+            <h3 id="cloud-restore-title">Open revision R{pendingRestore.revision_number}?</h3>
+            <p><strong>{pendingRestore.title}</strong> will become your current working copy. The latest cloud revision is never overwritten and remains available in this history.</p>
+          </div>
+          <dl>
+            <div><dt>Saved</dt><dd>{formatDate(pendingRestore.created_at)}</dd></div>
+            <div><dt>Drawing objects</dt><dd>{pendingRestore.drawing_count}</dd></div>
+          </dl>
+          <div className="cloud-restore-actions">
+            <button onClick={() => setPendingRestore(null)}>Cancel</button>
+            <button className="cloud-primary" onClick={confirmRestore}><Download size={14} /> Open as working copy</button>
+          </div>
+        </div>
+      </div>}
     </section>
   </div>;
 }
