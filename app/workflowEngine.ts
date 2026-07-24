@@ -35,6 +35,20 @@ export type WorkflowSummary = {
   }>;
 };
 
+export type ProjectIntelligenceSummary = {
+  health: "critical" | "attention" | "ready";
+  score: number;
+  headline: string;
+  detail: string;
+  action: "work" | "reviews" | "files" | "command";
+  counts: {
+    open: number;
+    critical: number;
+    blocked: number;
+    pendingApprovals: number;
+  };
+};
+
 type SystemWorkflowInput = {
   runs: number;
   fittings: number;
@@ -147,4 +161,95 @@ export function normalizeWorkflowSummary(value: unknown): WorkflowSummary | null
     updatedAt: candidate.updatedAt || new Date(0).toISOString(),
     systems: Array.isArray(candidate.systems) ? candidate.systems : [],
   };
+}
+
+export function buildProjectIntelligenceSummary(input: {
+  workflow: WorkflowSummary | null;
+  workItems: Array<{ status: string; priority: string; title: string }>;
+  approvals: Array<{ status: string }>;
+  latestRevisionNumber: number;
+  driveSyncedRevisionNumber: number;
+}) {
+  const openItems = input.workItems.filter((item) => !["resolved", "closed"].includes(item.status));
+  const criticalItems = openItems.filter((item) => item.priority === "critical");
+  const blockedItems = openItems.filter((item) => item.status === "blocked");
+  const pendingApprovals = input.approvals.filter((approval) => approval.status === "requested");
+  const requestedChanges = input.approvals.filter((approval) => approval.status === "changes_requested");
+  const driveBehind = input.latestRevisionNumber > input.driveSyncedRevisionNumber;
+  const workflowProgress = input.workflow?.progress || 0;
+  const coordinationPenalty = Math.min(35,
+    criticalItems.length * 12 +
+    blockedItems.length * 6 +
+    requestedChanges.length * 10 +
+    pendingApprovals.length * 3 +
+    (driveBehind ? 5 : 0));
+  const score = Math.max(0, Math.min(100, workflowProgress - coordinationPenalty));
+
+  const counts = {
+    open: openItems.length,
+    critical: criticalItems.length,
+    blocked: blockedItems.length,
+    pendingApprovals: pendingApprovals.length,
+  };
+
+  if (criticalItems.length) {
+    return {
+      health: "critical",
+      score,
+      headline: criticalItems[0].title,
+      detail: `${criticalItems.length} critical coordination item${criticalItems.length === 1 ? "" : "s"} must be resolved before field release.`,
+      action: "work",
+      counts,
+    } satisfies ProjectIntelligenceSummary;
+  }
+  if (requestedChanges.length) {
+    return {
+      health: "critical",
+      score,
+      headline: "Revision changes requested",
+      detail: "Review the decision note, coordinate the drawing changes, and save a new named revision.",
+      action: "reviews",
+      counts,
+    } satisfies ProjectIntelligenceSummary;
+  }
+  if (blockedItems.length) {
+    return {
+      health: "attention",
+      score,
+      headline: blockedItems[0].title,
+      detail: `${blockedItems.length} blocked task${blockedItems.length === 1 ? "" : "s"} need coordination.`,
+      action: "work",
+      counts,
+    } satisfies ProjectIntelligenceSummary;
+  }
+  if (pendingApprovals.length) {
+    return {
+      health: "attention",
+      score,
+      headline: `${pendingApprovals.length} revision approval${pendingApprovals.length === 1 ? "" : "s"} pending`,
+      detail: "Approval is review-only and never changes drawing geometry.",
+      action: "reviews",
+      counts,
+    } satisfies ProjectIntelligenceSummary;
+  }
+  if (driveBehind) {
+    return {
+      health: "attention",
+      score,
+      headline: `Google Drive is behind revision ${input.latestRevisionNumber}`,
+      detail: "Sync the latest immutable cloud revision to restore a verified project package.",
+      action: "files",
+      counts,
+    } satisfies ProjectIntelligenceSummary;
+  }
+  return {
+    health: workflowProgress >= 100 ? "ready" : "attention",
+    score,
+    headline: input.workflow?.nextAction || "Save the first named revision",
+    detail: input.workflow
+      ? "Continue the next safe system step. Recommendations remain review-only."
+      : "Create a named checkpoint to activate project intelligence.",
+    action: "command",
+    counts,
+  } satisfies ProjectIntelligenceSummary;
 }
