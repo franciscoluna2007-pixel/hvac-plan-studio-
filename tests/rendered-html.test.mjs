@@ -40,7 +40,7 @@ test("adds secure cloud projects, revisions, collaborators, and Drive packages",
   const drive = await readFile(new URL("../app/googleDrive.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  assert.match(page, /Cloud Projects/);
+  assert.match(page, /Project Hub/);
   assert.match(page, /buildProjectSnapshot/);
   assert.match(page, /restoreCloudRevision/);
   assert.match(panel, /Save current plan as project/);
@@ -171,10 +171,10 @@ test("verifies Google Drive packages against immutable cloud revisions", async (
   const cloud = await readFile(new URL("../app/cloudProjects.ts", import.meta.url), "utf8");
   const migration = await readFile(new URL("../supabase/migrations/20260724120000_system_completion_and_verified_drive_sync.sql", import.meta.url), "utf8");
 
-  assert.match(panel, /SYSTEM COMPLETION MODE · V98/);
+  assert.match(panel, /PROJECT INTELLIGENCE · V100/);
   assert.match(panel, /snapshot: revision\.snapshot/);
   assert.doesNotMatch(panel, /const snapshot = buildSnapshot\(\);[\s\S]{0,300}latestRevision/);
-  assert.match(panel, /Open in Drive/);
+  assert.match(panel, /Open package/);
   assert.match(panel, /LEGACY PACKAGE · RESYNC/);
   assert.match(panel, /recordDrivePackageSync/);
   assert.match(cloud, /drive_synced_revision_number/);
@@ -183,6 +183,51 @@ test("verifies Google Drive packages against immutable cloud revisions", async (
   assert.match(migration, /add column if not exists workflow_summary jsonb/);
   assert.match(migration, /drive_synced_revision_number bigint/);
   assert.match(migration, /create or replace function public\.record_drive_package_sync/);
+});
+
+test("ships the v100 Project Intelligence Hub with secure coordination and review-only decisions", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const panel = await readFile(new URL("../app/CloudProjectsPanel.tsx", import.meta.url), "utf8");
+  const palette = await readFile(new URL("../app/ProjectCommandPalette.tsx", import.meta.url), "utf8");
+  const cloud = await readFile(new URL("../app/cloudProjects.ts", import.meta.url), "utf8");
+  const drive = await readFile(new URL("../app/googleDrive.ts", import.meta.url), "utf8");
+  const workflow = await readFile(new URL("../app/workflowEngine.ts", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../supabase/migrations/20260724140000_project_intelligence_hub.sql", import.meta.url), "utf8");
+  const releaseMigration = await readFile(new URL("../supabase/migrations/20260724143000_cloud_field_release_integrity.sql", import.meta.url), "utf8");
+
+  assert.match(page, /Project Intelligence v100/);
+  assert.match(page, /ProjectCommandPalette/);
+  assert.match(page, /const key = event\.key\.toLowerCase\(\)/);
+  assert.match(page, /\(event\.ctrlKey \|\| event\.metaKey\) && key === "k"/);
+  assert.match(panel, /Command Center/);
+  assert.match(panel, /Coordination work/);
+  assert.match(panel, /Revision approvals/);
+  assert.match(panel, /PROJECT EVIDENCE/);
+  assert.match(panel, /drawing geometry changes only when you edit it/);
+  assert.match(panel, /Project-safe save is locked/);
+  assert.match(panel, /mutationLockRef/);
+  assert.match(palette, /Review-only intelligence · geometry stays manual/);
+  assert.match(cloud, /from\("project_work_items"\)/);
+  assert.match(cloud, /from\("project_comments"\)/);
+  assert.match(cloud, /from\("project_approvals"\)/);
+  assert.match(cloud, /from\("project_files"\)/);
+  assert.match(cloud, /issue_project_field_release/);
+  assert.match(drive, /checkDriveConfiguration/);
+  assert.match(drive, /response\.status !== 401/);
+  assert.match(workflow, /buildProjectIntelligenceSummary/);
+  assert.match(migration, /enable row level security/);
+  assert.match(migration, /revoke update on public\.projects/);
+  assert.match(migration, /revoke insert on public\.project_activity/);
+  assert.match(migration, /security definer/);
+  assert.match(migration, /set workflow_summary = next_workflow_summary/);
+  assert.match(releaseMigration, /create table if not exists public\.project_field_releases/);
+  assert.match(releaseMigration, /lock table public\.project_work_items in share mode/);
+  assert.match(releaseMigration, /latest_revision\.release_fingerprint <> expected_release_fingerprint/);
+  assert.match(releaseMigration, /approval\.status = 'approved'/);
+  assert.match(page, /workingCloudRevisionFingerprint === currentCloudReleaseFingerprint/);
+  assert.match(styles, /\.cloud-executive-metrics/);
+  assert.match(styles, /\.command-palette-overlay/);
 });
 
 test("uses nominal icon sizes, accurate equipment identities, and selected placement data", async () => {
