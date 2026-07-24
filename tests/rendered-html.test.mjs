@@ -73,7 +73,8 @@ test("builds v104 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.match(page, /sourceFileName/);
   assert.match(page, /pendingProjectSetupRef\.current = null/);
   assert.match(page, /addEventListener\("cancel", handleFilePickerCancel\)/);
-  assert.match(page, /inert=\{showProjectHome \|\| showProjectSetup/);
+  assert.match(page, /const modalWorkspaceActive = showProjectHome \|\| showProjectSetup \|\| showPlanIntelligence \|\| showFieldPackageComposer \|\| showSystemBalanceStudio/);
+  assert.match(page, /inert=\{modalWorkspaceActive \? true : undefined\}/);
   assert.match(home, /From source plan to field release/);
   assert.match(home, /Manual geometry stays manual/);
   assert.match(home, /Today&apos;s coordination/i);
@@ -257,7 +258,7 @@ test("ships the v100 Project Intelligence Hub with secure coordination and revie
   const migration = await readFile(new URL("../supabase/migrations/20260724140000_project_intelligence_hub.sql", import.meta.url), "utf8");
   const releaseMigration = await readFile(new URL("../supabase/migrations/20260724143000_cloud_field_release_integrity.sql", import.meta.url), "utf8");
 
-  assert.match(page, /Project Intelligence v100/);
+  assert.match(page, /System Balance Studio v103/);
   assert.match(page, /ProjectCommandPalette/);
   assert.match(page, /const key = event\.key\.toLowerCase\(\)/);
   assert.match(page, /\(event\.ctrlKey \|\| event\.metaKey\) && key === "k"/);
@@ -457,12 +458,12 @@ test("provides a reviewed system airflow setup without automatic duct edits", as
   assert.match(source, /function airflowSetupSummary\(\)/);
   assert.match(source, /const targetCfm = equipment\.reduce/);
   assert.match(source, /function updateActiveSystemTonnage\(tons: number\)/);
-  assert.match(source, /Primary equipment tonnage · 400 CFM per ton/);
+  assert.match(source, /Planning airflow · editable 400 CFM per ton/);
   assert.match(source, /Supply scheduled/);
-  assert.match(source, /Return scheduled/);
+  assert.match(source, /Return vs planning baseline/);
   assert.match(source, /Even-division values are coordination checks—not room-load calculations/);
   assert.match(source, /no duct sizes changed/);
-  assert.match(source, /size recommendation/);
+  assert.match(source, /velocity-screened candidates/);
   assert.match(styles, /\.system-airflow-setup/);
   assert.match(styles, /\.airflow-balance-grid/);
   assert.match(styles, /\.airflow-progress-row/);
@@ -477,10 +478,11 @@ test("builds a reviewed room-by-room balancing workspace", async () => {
   assert.match(source, /function terminalCfmProposals\(/);
   assert.match(source, /function applySelectedCfmProposals\(/);
   assert.match(source, /Net room air/);
-  assert.match(source, /Equal splits are proposals—not room-load calculations/);
-  assert.match(source, /System return total/);
+  assert.match(source, /Review and save targets before applying/);
+  assert.match(source, /Return vs planning baseline/);
   assert.match(source, /Recalculate targets/);
-  assert.match(source, /Apply \{selectedCfmProposalIds\.length\} selected CFM/);
+  assert.match(source, /Save reviewed targets/);
+  assert.match(source, /Apply \{selectedCfmProposalIds\.length\} reviewed CFM/);
   assert.match(styles, /\.balance-workspace/);
   assert.match(styles, /\.balance-room-card/);
   assert.match(styles, /\.cfm-review-tray/);
@@ -571,15 +573,17 @@ test("blocks orphan runs and preserves device face and neck sizes in takeoff", a
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
   assert.match(source, /function buildFieldConnectionModel\(systemId: string\)/);
-  assert.match(source, /const physicallyAttached = \[run\.points\[0\], run\.points\[run\.points\.length - 1\]\]\.some/);
-  assert.match(source, /const connected = !hasFittingProblem/);
+  assert.match(source, /const physicallyAttached = Math\.hypot\(endpoint\.x - point\.x, endpoint\.y - point\.y\) < 2/);
+  assert.match(source, /!hasFittingProblem && startCovered && endCovered/);
+  assert.match(source, /coveredEndpoints\.has\(endpointKey\(run\.id, "start"\)\)/);
+  assert.match(source, /coveredEndpoints\.has\(endpointKey\(run\.id, "end"\)\)/);
   assert.match(source, /connected: connection\.connected/);
   assert.match(source, /Open or detached T\/Y port/);
   assert.match(source, /const neckSize = drawing\.symbol\?\.neckSize/);
   assert.match(source, /Supply can \/ plenum box", size: `Ø\$\{group\.neckSize\}" neck`/);
   assert.match(source, /`\$\{group\.size\} face · match \$\{group\.label\.toLowerCase\(\)\}`/);
   assert.match(source, />Review connected sizes</);
-  assert.match(source, />Review CFM split</);
+  assert.match(source, />Review system balance</);
 });
 
 test("requires traceable RFI approvals and invalidates changed responses", async () => {
@@ -602,4 +606,219 @@ test("provides touch-sized review controls and a mobile full-panel workflow", as
   assert.match(styles, /@media \(max-width: 760px\)/);
   assert.match(styles, /\.app-shell\.wide-inspector \.canvas-area \{ display: none; \}/);
   assert.match(styles, /\.app-shell\.wide-inspector \.right-panel \{ width: 100%; height: 100%;/);
+});
+
+test("ships v102 Plan Intelligence, stable evidence, plenum validation, and controlled field packages", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const intelligence = await readFile(new URL("../app/PlanIntelligencePanel.tsx", import.meta.url), "utf8");
+  const composer = await readFile(new URL("../app/FieldPackageComposer.tsx", import.meta.url), "utf8");
+  const identity = await readFile(new URL("../app/planIntelligence.ts", import.meta.url), "utf8");
+  const fieldPackage = await readFile(new URL("../app/fieldPackage.ts", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(page, /System Balance Studio v103/);
+  assert.match(page, /<PlanIntelligencePanel/);
+  assert.match(page, /<FieldPackageComposer/);
+  assert.match(page, /decision\.evidenceFingerprint !== issue\.evidenceFingerprint/);
+  assert.match(page, /EVIDENCE CHANGED · REVIEW AGAIN/);
+  assert.match(page, /const plenums = equipmentPlenumPorts\(symbol\)/);
+  assert.match(page, /runTouchesPoint\(symbol\.symbol\?\.connectedRunId, "supply", plenums\.supply, symbol\.symbol\?\.connectedEnd\)/);
+  assert.match(page, /runTouchesPoint\(symbol\.symbol\?\.returnRunId, "return", plenums\.return, symbol\.symbol\?\.returnEnd\)/);
+  assert.match(page, /symbol\.symbol\?\.returnRunId/);
+  assert.match(page, /equipment supply plenum, T\/Y port, or supply terminal/);
+  assert.match(page, /equipment return plenum, T\/Y port, or return grille/);
+  assert.match(page, /instanceKey: `port-\$\{port \+ 1\}`/);
+  assert.match(page, /legacyId: `review-\$\{stableTextHash/);
+  assert.match(page, /reviewDecisionForIssue/);
+  assert.match(page, /EVIDENCE CHANGED — REVIEW AGAIN/);
+  assert.match(page, /DRAFT — NOT FOR INSTALLATION/);
+  assert.match(page, /visibleLabels: \{ showCfmLabels, showLengthLabels, showFittingLabels \}/);
+  assert.match(intelligence, /Explainable HVAC review/);
+  assert.match(intelligence, /Manual geometry stays manual/);
+  assert.match(composer, /Field Package Composer/);
+  assert.match(composer, /CONTROLLED DELIVERY · V102/);
+  assert.match(identity, /function buildFindingIdentity/);
+  assert.match(identity, /input\.instanceKey \|\| "primary"/);
+  assert.match(identity, /evidenceFingerprint: `evidence-/);
+  assert.match(fieldPackage, /Installer/);
+  assert.match(fieldPackage, /Sheet Metal Shop/);
+  assert.match(fieldPackage, /Startup Technician/);
+  assert.match(fieldPackage, /Full Closeout/);
+  assert.match(styles, /\.plan-intelligence-overlay/);
+  assert.match(styles, /\.field-package-composer/);
+  assert.match(styles, /\.print-package-watermark/);
+  assert.equal((page.match(/window\.print\(\)/g) || []).length, 1);
+});
+
+test("ships v103 System Balance Studio with reviewed calculations and manual geometry control", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const studio = await readFile(new URL("../app/SystemBalanceStudio.tsx", import.meta.url), "utf8");
+  const model = await readFile(new URL("../app/systemBalance.ts", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(page, /import SystemBalanceStudio from "\.\/SystemBalanceStudio"/);
+  assert.match(page, /<SystemBalanceStudio/);
+  assert.match(page, /function buildSystemBalanceModel\(\): SystemBalanceModel/);
+  assert.match(page, /function openSystemBalanceStudio\(\)/);
+  assert.match(page, /function applySizingSuggestionIds\(ids: string\[\]\)/);
+  assert.match(page, /terminalCfmProposals\(\)\.filter\(\(proposal\) => ids\.includes\(proposal\.id\) && proposal\.connected\)/);
+  assert.match(page, /rootedTerminalRun/);
+  assert.match(page, /equipmentReturnRun/);
+  assert.match(page, /returnCalculated/);
+  assert.match(page, /reachableReturnRuns/);
+  assert.match(page, /suggestion\.overCapacity \|\| suggestion\.current !== suggestion\.recommended/);
+  assert.match(page, /const hasManualOverride = drawing\.cfmSource === "manual"/);
+  assert.match(page, /function roomAirflowTargetsAreReviewed/);
+  assert.match(page, /Review and save the room coordination targets before applying terminal CFM/);
+  assert.match(page, /scaleVerified && pressure\.pressureDrop > \.15/);
+  assert.match(page, /cfmSource: "planning-seed"/);
+  assert.match(page, /cfmSource: "manual"/);
+  assert.match(page, /cfmSource: "room-target"/);
+  const selectedSizeBody = page.slice(page.indexOf("function updateSelectedSize"), page.indexOf("function updateRunLineWeight"));
+  const fittingSizeBody = page.slice(page.indexOf("function updateFittingPortSize"), page.indexOf("function assignSelectedFittingPort"));
+  assert.doesNotMatch(selectedSizeBody, /defaultCfm|cfm:/);
+  assert.doesNotMatch(fittingSizeBody, /defaultCfm|cfm:/);
+  assert.match(page, /balanceReviewRecords,/);
+  assert.match(page, /setBalanceReviewRecords\(Array\.isArray\(project\.balanceReviewRecords\)/);
+  assert.match(page, /openSizeRecommendations: model\.runs\.length/);
+  assert.match(page, /evidenceFingerprint: model\.evidenceFingerprint/);
+  assert.match(page, /function exportSystemBalanceRunCsv\(\)/);
+  assert.match(page, /showSystemBalanceStudio && <SystemBalanceStudio/);
+  assert.doesNotMatch(page, /const activeSystemBalanceModel = buildSystemBalanceModel\(\)/);
+  assert.match(studio, /SYSTEM BALANCE STUDIO · V103/);
+  assert.match(studio, /Planning estimate—not a Manual J, S, D, or T design/);
+  assert.match(studio, /Studio never draws new runs, reroutes paths, balances airflow, or numbers ductwork automatically/);
+  assert.match(studio, /role="tablist"/);
+  assert.match(studio, /role="tabpanel"/);
+  assert.match(studio, /aria-live="polite"/);
+  assert.doesNotMatch(studio, /Automatic Run Numbering/i);
+  assert.match(model, /export function summarizeSystemBalance/);
+  assert.match(model, /latestReview\.evidenceFingerprint !== model\.evidenceFingerprint/);
+  assert.match(styles, /\.system-balance-overlay/);
+  assert.match(styles, /\.balance-method-note/);
+  assert.match(styles, /\.system-balance-studio/);
+});
+
+test("scores v103 balance evidence deterministically and marks changed reviews stale", async () => {
+  const { summarizeSystemBalance } = await import(new URL("../app/systemBalance.ts", import.meta.url));
+  const base = {
+    systemId: "system-1",
+    systemName: "System 1",
+    calculationVersion: "system-balance-v103.1",
+    evidenceFingerprint: "evidence-a",
+    designCfm: 1200,
+    supplyCfm: 1200,
+    returnCfm: 1200,
+    connectedSupplyCfm: 1200,
+    connectedReturnCfm: 1200,
+    connectedSupplyTerminals: 4,
+    connectedReturnTerminals: 2,
+    supplyTerminalCount: 4,
+    returnTerminalCount: 2,
+    totalRunCount: 6,
+    scaleVerified: true,
+    airflowTargetSource: "user-entered",
+    planningSeedTerminalCount: 0,
+    missingTerminalCfm: 0,
+    roomTargetSource: "saved-targets",
+    rules: {
+      supplyVelocityLimit: 900,
+      returnVelocityLimit: 700,
+      freshVelocityLimit: 600,
+      residentialFlexMax: "16",
+    },
+    runs: [],
+    rooms: [],
+    networks: [],
+    cfmProposals: [],
+    reviews: [],
+  };
+  const clear = summarizeSystemBalance(base);
+  assert.equal(clear.score, 100);
+  assert.equal(clear.tone, "clear");
+  assert.equal(clear.reviewStale, false);
+
+  const planning = summarizeSystemBalance({
+    ...base,
+    airflowTargetSource: "planning-seed",
+    planningSeedTerminalCount: 6,
+  });
+  assert.equal(planning.tone, "attention");
+  assert.ok(planning.score <= 79);
+  assert.match(planning.headline, /planning airflow target/i);
+
+  const changed = summarizeSystemBalance({
+    ...base,
+    connectedSupplyTerminals: 3,
+    rooms: [{
+      name: "Bedroom 1",
+      type: "bedroom",
+      supplyTarget: 150,
+      supplyScheduled: 150,
+      returnTarget: 0,
+      returnScheduled: 0,
+      diffusers: 1,
+      returns: 0,
+      connectedDevices: 1,
+      deviceCount: 1,
+      missingCfm: 0,
+      needsReturn: true,
+      drawingIds: ["diffuser-1"],
+    }],
+    networks: [{
+      unitId: "unit-1",
+      unitLabel: "3 TON AHU",
+      designCfm: 1200,
+      assignedCfm: 1200,
+      remainingCfm: 0,
+      returnCfm: 1200,
+      percent: 100,
+      runCount: 4,
+      fittingCount: 2,
+      terminalCount: 4,
+      problemCount: 1,
+      balanced: false,
+    }],
+    reviews: [{
+      id: "review-1",
+      systemId: "system-1",
+      reviewer: "Field Lead",
+      note: "Prior evidence",
+      createdAt: "2026-07-24T12:00:00.000Z",
+      evidenceFingerprint: "evidence-old",
+      score: 100,
+      designCfm: 1200,
+      supplyCfm: 1200,
+      returnCfm: 1200,
+      openSizeRecommendations: 0,
+      openCfmRecommendations: 0,
+      connectionProblems: 0,
+    }],
+  });
+  assert.equal(changed.tone, "hold");
+  assert.equal(changed.connectionProblems, 1);
+  assert.equal(changed.disconnectedDevices, 1);
+  assert.equal(changed.missingReturnRooms, 1);
+  assert.equal(changed.reviewStale, true);
+  assert.ok(changed.score < clear.score);
+
+  const overloaded = summarizeSystemBalance({
+    ...base,
+    runs: [{
+      id: "run-16",
+      type: "supply",
+      room: "Main trunk",
+      currentSize: "16",
+      recommendedSize: "16",
+      cfm: 1600,
+      currentVelocity: 1146,
+      recommendedVelocity: 1146,
+      velocityLimit: 900,
+      pressureDrop: .22,
+      airflowSource: "manual",
+      overCapacity: true,
+    }],
+  });
+  assert.equal(overloaded.tone, "hold");
+  assert.equal(overloaded.overCapacityRuns, 1);
 });
