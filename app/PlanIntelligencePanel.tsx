@@ -213,7 +213,7 @@ export default function PlanIntelligencePanel({
               <i>{finding.resolved ? <CheckCircle2 size={15} /> : finding.severity === "info" ? <ShieldCheck size={15} /> : <AlertTriangle size={15} />}</i>
               <span><small>{finding.reference} · {finding.category}</small><strong>{finding.title}</strong><em>{finding.detail}</em></span>
               {finding.decisionStale ? <b>STALE</b> : finding.resolved ? <b>DONE</b> : <b>{finding.severity.toUpperCase()}</b>}
-            </button>) : <div className="plan-intelligence-empty"><CheckCircle2 size={28} /><strong>No findings in this category</strong><span>Choose another category or continue to the field package.</span></div>}
+            </button>) : <div className="plan-intelligence-empty"><CheckCircle2 size={28} /><strong>No findings in this category</strong><span>Choose another category or continue to the takeoff package.</span></div>}
           </div>
         </section>
 
@@ -245,7 +245,7 @@ export default function PlanIntelligencePanel({
       <footer className="plan-intelligence-footer">
         <div><i /><span><strong>{releaseReady ? "Package gates are clear" : `${summary.open} review item${summary.open === 1 ? "" : "s"} remain`}</strong><small>Every recommendation is traceable and reversible.</small></span></div>
         <button onClick={onOpenEngineering}><Gauge size={15} /> Engineering detail</button>
-        <button className="primary" onClick={onComposePackage}><FileCheck2 size={15} /> Compose field package</button>
+        <button className="primary" onClick={onComposePackage}><FileCheck2 size={15} /> Compose takeoff package</button>
       </footer>
     </section>
   </div>;

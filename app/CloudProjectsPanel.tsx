@@ -11,6 +11,7 @@ import {
   Cloud,
   CloudCog,
   CloudUpload,
+  Crown,
   Download,
   FileClock,
   FileStack,
@@ -66,6 +67,13 @@ import {
   updateCloudWorkItem,
 } from "./cloudProjects";
 import { saveProjectPackageToDrive } from "./googleDrive";
+import {
+  currentAccountUsage,
+  currentPlatformProfile,
+  trackProductEvent,
+  type AccountUsageSummary,
+  type PlatformProfile,
+} from "./productAnalytics";
 import { buildProjectIntelligenceSummary, normalizeWorkflowSummary } from "./workflowEngine";
 
 type Snapshot = Record<string, unknown> & {
@@ -146,6 +154,8 @@ export default function CloudProjectsPanel({
   const [userId, setUserId] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [authenticated, setAuthenticated] = useState(false);
+  const [platformProfile, setPlatformProfile] = useState<PlatformProfile | null>(null);
+  const [accountUsage, setAccountUsage] = useState<AccountUsageSummary | null>(null);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -167,7 +177,7 @@ export default function CloudProjectsPanel({
   const [workDescription, setWorkDescription] = useState("");
   const [workKind, setWorkKind] = useState<CloudWorkItem["kind"]>("task");
   const [workPriority, setWorkPriority] = useState<CloudWorkItem["priority"]>("medium");
-  const [workCategory, setWorkCategory] = useState("coordination");
+  const [workCategory, setWorkCategory] = useState("review");
   const [workSystemId, setWorkSystemId] = useState("");
   const [workPageNumber, setWorkPageNumber] = useState("");
   const [expandedWorkItemId, setExpandedWorkItemId] = useState<string | null>(null);
@@ -278,6 +288,15 @@ export default function CloudProjectsPanel({
     });
   }, [initialProjectId]);
 
+  const refreshAccount = useCallback(async () => {
+    const [profile, usage] = await Promise.all([
+      currentPlatformProfile(),
+      currentAccountUsage(),
+    ]);
+    setPlatformProfile(profile);
+    setAccountUsage(usage);
+  }, []);
+
   const refreshProjectDetails = useCallback(async (projectId: string) => {
     const requestId = ++detailsRequestRef.current;
     const [nextRevisions, nextMembers, nextActivity, nextWorkItems, nextApprovals, nextFiles] = await Promise.all([
@@ -332,13 +351,13 @@ export default function CloudProjectsPanel({
         setAuthenticated(Boolean(user));
         setUserId(user?.id || "");
         setUserEmail(user?.email || "");
-        if (user) await refreshProjects();
+        if (user) await Promise.all([refreshProjects(), refreshAccount()]);
       } catch (cloudError) {
         if (!cancelled) setError(cloudError instanceof Error ? cloudError.message : "Cloud Projects could not be opened.");
       }
     })();
     return () => { cancelled = true; };
-  }, [open, refreshProjects]);
+  }, [open, refreshAccount, refreshProjects]);
 
   useEffect(() => {
     if (!open) return;
@@ -384,7 +403,7 @@ export default function CloudProjectsPanel({
         setAuthenticated(Boolean(user));
         setUserId(user?.id || "");
         setUserEmail(user?.email || email.trim());
-        await refreshProjects();
+        await Promise.all([refreshProjects(), refreshAccount()]);
         setMessage("Cloud workspace connected.");
       } else {
         const result = await signUpCloud(email.trim(), password, displayName);
@@ -392,7 +411,7 @@ export default function CloudProjectsPanel({
           setAuthenticated(true);
           setUserId(result.user?.id || "");
           setUserEmail(result.user?.email || email.trim());
-          await refreshProjects();
+          await Promise.all([refreshProjects(), refreshAccount()]);
           setMessage("Cloud account created and connected.");
         } else {
           setAuthMode("signin");
@@ -416,6 +435,8 @@ export default function CloudProjectsPanel({
       setView("command");
       setRevisionTitle("Initial cloud revision");
       setMessage("Cloud project created. Save the first revision when ready.");
+      await trackProductEvent("cloud_project_saved");
+      await refreshAccount();
     });
   }
 
@@ -447,6 +468,7 @@ export default function CloudProjectsPanel({
       setMessage(`Revision ${revision.revision_number} saved to the cloud.`);
       setView("command");
       await refreshProjectDetails(activeProject.id);
+      await trackProductEvent("cloud_revision_saved", { revision: revision.revision_number });
     });
   }
 
@@ -475,6 +497,7 @@ export default function CloudProjectsPanel({
       setMessage(packageResult.updated
         ? `Drive package verified at revision ${revision.revision_number}.`
         : `Drive package created from revision ${revision.revision_number}.`);
+      await trackProductEvent("drive_package_saved", { revision: revision.revision_number });
     });
   }
 
@@ -516,6 +539,8 @@ export default function CloudProjectsPanel({
       setAuthenticated(false);
       setUserId("");
       setUserEmail("");
+      setPlatformProfile(null);
+      setAccountUsage(null);
       setProjects([]);
       setActiveProjectId(null);
       setRevisions([]);
@@ -626,22 +651,23 @@ export default function CloudProjectsPanel({
       <header className="cloud-drawer-header">
         <div className="cloud-drawer-title">
           <span><CloudCog size={21} /></span>
-          <div><strong>HVAC Plan Studio</strong><small>Project Intelligence Hub · v100</small></div>
+          <div><strong>HVAC Plan Studio</strong><small>Plan Intelligence Cloud · v107</small></div>
         </div>
-        <div className="cloud-drawer-header-status"><span>PROJECT DELIVERY OS</span><button ref={closeButtonRef} aria-label="Close Project Intelligence Hub" onClick={onClose}><X size={18} /></button></div>
+        <div className="cloud-drawer-header-status"><span>PLAN INTELLIGENCE CLOUD</span><button ref={closeButtonRef} aria-label="Close Project Intelligence Hub" onClick={onClose}><X size={18} /></button></div>
       </header>
 
       {!authenticated ? <div className="cloud-auth-shell">
         <div className="cloud-auth-hero">
           <span><Target size={24} /></span>
-          <small>HVAC PLAN STUDIO · PROJECT INTELLIGENCE</small>
-          <strong>From working plan to field-ready package.</strong>
-          <p>Coordinate issues, approve immutable revisions, and keep verified Google Drive evidence in one secure project workspace.</p>
+          <small>HVAC PLAN STUDIO · OPTIONAL CLOUD WORKSPACE</small>
+          <strong>Save the plan intelligence you will need again.</strong>
+          <p>Keep HVAC plans, AI findings, markup revisions, and takeoffs ready for your next review. No account is required to test the local drawing workspace.</p>
           <div>
-            <b><ShieldCheck size={15} /> Project-level access controls</b>
-            <b><FileClock size={15} /> Immutable drawing checkpoints</b>
-            <b><HardDrive size={15} /> Verified Drive packages</b>
+            <b><ShieldCheck size={15} /> Continue projects on another device</b>
+            <b><FileClock size={15} /> Return to unresolved AI findings</b>
+            <b><HardDrive size={15} /> Keep revision and takeoff history</b>
           </div>
+          <button type="button" className="cloud-continue-local" onClick={onClose}>Continue without an account <ChevronRight size={15} /></button>
         </div>
         <form className="cloud-auth-form" onSubmit={submitAuth}>
           <div className="cloud-auth-tabs">
@@ -651,13 +677,18 @@ export default function CloudProjectsPanel({
           {authMode === "signup" && <label>Display name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Francisco" /></label>}
           <label>Email<input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" /></label>
           <label>Password<input type="password" required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 8 characters" /></label>
-          <button className="cloud-primary" disabled={busy === "auth"}>{busy === "auth" ? <LoaderCircle className="spin" size={16} /> : <Cloud size={16} />}{authMode === "signin" ? "Connect cloud workspace" : "Create cloud account"}</button>
-          <small>Secure project access is powered by Supabase. Your browser autosave remains available whether or not you sign in.</small>
+          <button className="cloud-primary" disabled={busy === "auth"}>{busy === "auth" ? <LoaderCircle className="spin" size={16} /> : <Cloud size={16} />}{authMode === "signin" ? "Open my saved projects" : "Create free workspace"}</button>
+          <small>Sign-in is only required for cloud projects, cross-device access, revision history, and collaboration. Browser autosave remains available without an account.</small>
         </form>
         {(error || message) && <div className={`cloud-message ${error ? "error" : "success"}`}>{error || message}</div>}
       </div> : <>
         <div className="cloud-account-bar">
-          <div><span className="cloud-presence-dot" /><span><strong>Cloud connected · {currentMembership?.role || "member"}</strong><small>{userEmail}</small></span></div>
+          <div><span className="cloud-presence-dot" /><span><strong>Cloud connected · {platformProfile?.plan_tier === "professional" ? "Professional" : platformProfile?.plan_tier === "team" ? "Team" : "Free workspace"}</strong><small>{userEmail}</small></span></div>
+          {accountUsage && <div className="cloud-account-usage">
+            <Crown size={14} />
+            <span><strong>{accountUsage.aiPagesUsed} AI-read pages</strong><small>Early-access usage this month · no limits enforced yet</small></span>
+            <i><b style={{ width: `${Math.min(100, accountUsage.aiPagesLimit ? accountUsage.aiPagesUsed / accountUsage.aiPagesLimit * 100 : 0)}%` }} /></i>
+          </div>}
           <button onClick={() => void logout()} disabled={busy === "logout"}><LogOut size={14} /> Sign out</button>
         </div>
 
@@ -725,7 +756,7 @@ export default function CloudProjectsPanel({
               </div>
               <nav className="cloud-detail-tabs">
                 <button className={view === "command" ? "active" : ""} onClick={() => setView("command")}><LayoutDashboard size={14} /> Command Center</button>
-                <button className={view === "work" ? "active" : ""} onClick={() => setView("work")}><ListChecks size={14} /> Work {openWorkItems.length > 0 && <b>{openWorkItems.length}</b>}</button>
+                <button className={view === "work" ? "active" : ""} onClick={() => setView("work")}><ListChecks size={14} /> Review Queue {openWorkItems.length > 0 && <b>{openWorkItems.length}</b>}</button>
                 <button className={view === "revisions" ? "active" : ""} onClick={() => setView("revisions")}><History size={14} /> Revisions</button>
                 <button className={view === "reviews" ? "active" : ""} onClick={() => setView("reviews")}><ShieldCheck size={14} /> Reviews {pendingApprovals.length > 0 && <b>{pendingApprovals.length}</b>}</button>
                 <button className={view === "files" ? "active" : ""} onClick={() => setView("files")}><FileStack size={14} /> Files</button>
@@ -745,11 +776,11 @@ export default function CloudProjectsPanel({
                   <i><em style={{ width: `${intelligence.score}%` }} /></i>
                 </section>
 
-                <section className="cloud-executive-metrics" aria-label="Project delivery metrics">
-                  <article><span>DESIGN PROGRESS</span><strong>{workflow?.progress || 0}%</strong><small>{workflow?.systems.length || 0} active system{workflow?.systems.length === 1 ? "" : "s"}</small></article>
-                  <article><span>OPEN WORK</span><strong>{intelligence.counts.open}</strong><small>{intelligence.counts.critical} critical · {intelligence.counts.blocked} blocked</small></article>
+                <section className="cloud-executive-metrics" aria-label="Project review metrics">
+                  <article><span>PLAN PROGRESS</span><strong>{workflow?.progress || 0}%</strong><small>{workflow?.systems.length || 0} reviewed system{workflow?.systems.length === 1 ? "" : "s"}</small></article>
+                  <article><span>OPEN REVIEW ITEMS</span><strong>{intelligence.counts.open}</strong><small>{intelligence.counts.critical} critical · {intelligence.counts.blocked} blocked</small></article>
                   <article><span>PENDING REVIEWS</span><strong>{intelligence.counts.pendingApprovals}</strong><small>{approvals.filter((approval) => approval.status === "approved").length} approved</small></article>
-                  <article><span>VERIFIED PACKAGE</span><strong>{syncedRevisionNumber ? `R${syncedRevisionNumber}` : "—"}</strong><small>{driveStateLabel}</small></article>
+                  <article><span>SOURCE-BACKED PACKAGE</span><strong>{syncedRevisionNumber ? `R${syncedRevisionNumber}` : "—"}</strong><small>{driveStateLabel}</small></article>
                 </section>
 
                 <div className="cloud-dashboard-grid">
@@ -781,37 +812,37 @@ export default function CloudProjectsPanel({
                 </div>
 
                 {workflow?.systems.length ? <div className="cloud-system-progress">
-                  <div><strong>System delivery readiness</strong><span>Evidence from revision {latestRevisionNumber || "—"}</span></div>
+                  <div><strong>System review progress</strong><span>Evidence from revision {latestRevisionNumber || "—"}</span></div>
                   {workflow.systems.map((system) => <article key={system.id}>
                     <b>{system.name}</b>
                     <span><i><em style={{ width: `${system.progress}%` }} /></i><small>{system.stage} · {system.blockers} blocker{system.blockers === 1 ? "" : "s"}</small></span>
                     <strong>{system.progress}%</strong>
                   </article>)}
-                </div> : <div className="cloud-empty-state"><LayoutDashboard size={22} /><strong>Project intelligence is ready to activate</strong><span>Save a named cloud revision to establish the first trusted delivery checkpoint.</span></div>}
+                </div> : <div className="cloud-empty-state"><LayoutDashboard size={22} /><strong>Project intelligence is ready to activate</strong><span>Save a named cloud revision to establish the first trusted review checkpoint.</span></div>}
                 <section className="cloud-recent-coordination">
-                  <div><strong>Recent coordination</strong><button onClick={() => setView("work")}>Open all work <ChevronRight size={13} /></button></div>
+                  <div><strong>Recent plan findings</strong><button onClick={() => setView("work")}>Open review queue <ChevronRight size={13} /></button></div>
                   {workItems.slice(0, 4).map((item) => <article key={item.id}>
                     <span className={`priority ${item.priority}`}>{item.priority}</span>
                     <div><strong>{item.title}</strong><small>{item.category} · {item.status.replaceAll("_", " ")}{item.page_number ? ` · page ${item.page_number}` : ""}</small></div>
                     <button onClick={() => { setView("work"); void toggleWorkItem(item); }}><ChevronRight size={14} /></button>
                   </article>)}
-                  {!workItems.length && <div className="cloud-empty-compact"><CheckCircle2 size={17} /> No coordination work has been logged.</div>}
+                  {!workItems.length && <div className="cloud-empty-compact"><CheckCircle2 size={17} /> No plan review items have been logged.</div>}
                 </section>
                 <p className="cloud-collaboration-note"><ShieldCheck size={14} /> Project access and Google Drive sharing are separate controls. Share Drive evidence only with the people who need it.</p>
               </div> : view === "work" ? <div className="cloud-work-view">
                 {canEdit ? <form className="cloud-work-create" onSubmit={createWorkItem}>
-                  <div className="cloud-section-heading"><span><ListChecks size={19} /></span><div><strong>Coordination work</strong><small>Create traceable tasks and issues without changing the drawing.</small></div></div>
-                  <label className="wide">Title<input required value={workTitle} onChange={(event) => setWorkTitle(event.target.value)} placeholder="Coordinate return path above corridor" /></label>
+                  <div className="cloud-section-heading"><span><ListChecks size={19} /></span><div><strong>Plan review items</strong><small>Record traceable findings, takeoff questions, and review decisions without changing the drawing.</small></div></div>
+                  <label className="wide">Title<input required value={workTitle} onChange={(event) => setWorkTitle(event.target.value)} placeholder="Verify return path on sheet M2.1" /></label>
                   <label>Type<select value={workKind} onChange={(event) => setWorkKind(event.target.value as CloudWorkItem["kind"])}><option value="task">Task</option><option value="issue">Issue</option></select></label>
                   <label>Priority<select value={workPriority} onChange={(event) => setWorkPriority(event.target.value as CloudWorkItem["priority"])}><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
-                  <label>Category<select value={workCategory} onChange={(event) => setWorkCategory(event.target.value)}><option value="coordination">Coordination</option><option value="design">Design</option><option value="airflow">Airflow</option><option value="field">Field</option><option value="review">Review</option></select></label>
+                  <label>Category<select value={workCategory} onChange={(event) => setWorkCategory(event.target.value)}><option value="review">Review</option><option value="takeoff">Takeoff</option><option value="design">Design</option><option value="airflow">Airflow</option></select></label>
                   <label>System<input value={workSystemId} onChange={(event) => setWorkSystemId(event.target.value)} placeholder="S1" /></label>
                   <label>Page<input inputMode="numeric" value={workPageNumber} onChange={(event) => setWorkPageNumber(event.target.value)} placeholder="3" /></label>
-                  <label className="wide">Description<textarea value={workDescription} onChange={(event) => setWorkDescription(event.target.value)} placeholder="Add the decision, constraint, or field condition the team needs to resolve." /></label>
+                  <label className="wide">Description<textarea value={workDescription} onChange={(event) => setWorkDescription(event.target.value)} placeholder="Add the source evidence, open question, or decision needed for this plan." /></label>
                   <button className="cloud-primary" disabled={busy === "create-work"}>{busy === "create-work" ? <LoaderCircle className="spin" size={15} /> : <Plus size={15} />} Add to project</button>
-                </form> : <div className="cloud-permission-note"><ShieldCheck size={17} /><div><strong>Review access</strong><span>Viewers can inspect work and add coordination notes. An editor can create or change project work.</span></div></div>}
+                </form> : <div className="cloud-permission-note"><ShieldCheck size={17} /><div><strong>Review access</strong><span>Viewers can inspect review items and add notes. An editor can create or change plan review items.</span></div></div>}
                 <div className="cloud-work-list">
-                  <div className="cloud-list-title"><strong>Project work</strong><span>{openWorkItems.length} open · {workItems.length} total</span></div>
+                  <div className="cloud-list-title"><strong>Plan review queue</strong><span>{openWorkItems.length} open · {workItems.length} total</span></div>
                   {workItems.map((item) => <article key={item.id} className={`cloud-work-item ${expandedWorkItemId === item.id ? "expanded" : ""}`}>
                     <button className="cloud-work-summary" onClick={() => void toggleWorkItem(item)}>
                       <span className={`priority ${item.priority}`}>{item.priority}</span>
@@ -823,18 +854,18 @@ export default function CloudProjectsPanel({
                       <p>{item.description || "No additional description."}</p>
                       {canEdit && <div className="cloud-work-actions">
                         {item.status !== "open" && <button onClick={() => void setWorkItemStatus(item, "open")}>Open</button>}
-                        {item.status !== "in_progress" && <button onClick={() => void setWorkItemStatus(item, "in_progress")}>Start work</button>}
+                        {item.status !== "in_progress" && <button onClick={() => void setWorkItemStatus(item, "in_progress")}>Begin review</button>}
                         {item.status !== "blocked" && <button onClick={() => void setWorkItemStatus(item, "blocked")}>Mark blocked</button>}
                         {item.status !== "resolved" && <button onClick={() => void setWorkItemStatus(item, "resolved")}><Check size={13} /> Resolve</button>}
                       </div>}
                       <div className="cloud-comments">
-                        <strong><MessageSquare size={14} /> Coordination notes</strong>
+                        <strong><MessageSquare size={14} /> Review notes</strong>
                         {(comments[item.id] || []).map((comment) => <div key={comment.id}><p>{comment.body}</p><small>{formatDate(comment.created_at)}</small></div>)}
                         <form onSubmit={(event) => void addComment(event, item)}><input required value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} placeholder="Add a decision or handoff note" /><button disabled={busy === `comment-${item.id}`}>Comment</button></form>
                       </div>
                     </div>}
                   </article>)}
-                  {!workItems.length && <div className="cloud-empty-state"><ListChecks size={23} /><strong>No coordination work yet</strong><span>Add the first field question, design task, or review issue above.</span></div>}
+                  {!workItems.length && <div className="cloud-empty-state"><ListChecks size={23} /><strong>No plan review items yet</strong><span>Add the first plan finding, takeoff question, or review note above.</span></div>}
                 </div>
               </div> : view === "revisions" ? <div className="cloud-revisions-view">
                 {canEdit ? <div className="cloud-save-revision">
@@ -878,7 +909,7 @@ export default function CloudProjectsPanel({
               </div> : view === "files" ? <div className="cloud-files-view">
                 <section className="cloud-file-hero">
                   <span><FileStack size={22} /></span>
-                  <div><small>PROJECT EVIDENCE</small><strong>One trusted trail from source plan to field package.</strong><p>Google Drive holds shareable files; Supabase records which immutable revision produced each package.</p></div>
+                  <div><small>PROJECT EVIDENCE</small><strong>One trusted trail from source plan to reviewed markup and takeoff.</strong><p>Google Drive holds shareable files; Supabase records which immutable revision produced each package.</p></div>
                 </section>
                 <div className="cloud-file-grid">
                   <article><span><FileStack size={18} /></span><div><small>SOURCE PLAN</small><strong>{activeProject.source_file_name || "No source plan linked"}</strong><p>{activeProject.source_drive_file_id ? "Linked from Google Drive" : "Imported locally; add a Drive source when collaboration begins."}</p></div></article>
@@ -908,7 +939,7 @@ export default function CloudProjectsPanel({
                   <span><Activity size={14} /></span>
                   <div><strong>{actionLabel(item.action)}</strong><small>{formatDate(item.created_at)}</small></div>
                 </article>)}
-                {!activity.length && <div className="cloud-empty-state"><Activity size={22} /><strong>No activity yet</strong><span>Trusted project, revision, coordination, approval, and Drive events will appear here.</span></div>}
+                {!activity.length && <div className="cloud-empty-state"><Activity size={22} /><strong>No activity yet</strong><span>Trusted project, revision, review, approval, and Drive events will appear here.</span></div>}
               </div>}
             </> : <div className="cloud-no-selection"><FolderKanban size={34} /><strong>Select or create a cloud project</strong><span>The current plan stays safely autosaved on this browser until you choose a cloud project.</span></div>}
           </div>

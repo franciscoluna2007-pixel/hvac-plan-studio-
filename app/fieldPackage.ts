@@ -19,12 +19,12 @@ export const fieldPackageSections: Array<{
   detail: string;
 }> = [
   { id: "plan", label: "Marked-up plan", detail: "Current PDF sheet and controlled HVAC overlay" },
-  { id: "release", label: "Field release & run book", detail: "Release certificate, gates, checklist, and duct schedule" },
-  { id: "materials", label: "Material takeoff", detail: "Duct, fittings, air devices, allowances, and field notes" },
+  { id: "release", label: "Analysis summary & run schedule", detail: "Source revision, review gates, checklist, and duct schedule" },
+  { id: "materials", label: "Material takeoff", detail: "Duct, fittings, air devices, allowances, and review notes" },
   { id: "airflow", label: "Room airflow", detail: "Supply, return, balance, devices, and return-path review" },
   { id: "review", label: "Plan review log", detail: "Current findings, evidence, and recorded dispositions" },
-  { id: "coordination", label: "RFI & punch records", detail: "Open coordination, approvals, field issues, and as-builts" },
-  { id: "startup", label: "Startup & commissioning", detail: "Equipment identity, static pressure, airflow, and closeout checklist" },
+  { id: "coordination", label: "Open findings & decisions", detail: "Plan questions, approvals, review issues, and recorded decisions" },
+  { id: "startup", label: "Equipment & airflow checks", detail: "Equipment identity, static pressure, airflow, and source-plan checklist" },
 ];
 
 export const fieldPackagePresets: Array<{
@@ -35,26 +35,26 @@ export const fieldPackagePresets: Array<{
 }> = [
   {
     id: "installer",
-    label: "Installer",
-    detail: "Plan, released run book, materials, airflow, and field coordination",
+    label: "Estimator",
+    detail: "Marked plan, run schedule, materials, airflow, and open findings",
     sections: ["plan", "release", "materials", "airflow", "coordination"],
   },
   {
     id: "sheet-metal",
-    label: "Sheet Metal Shop",
-    detail: "Controlled plan, release information, takeoff, and review holds",
+    label: "Sheet Metal Takeoff",
+    detail: "Source-backed plan, run information, takeoff, and review holds",
     sections: ["plan", "release", "materials", "review"],
   },
   {
     id: "startup",
-    label: "Startup Technician",
-    detail: "Plan context, release information, airflow, and commissioning",
+    label: "Plan Reviewer",
+    detail: "Plan context, source revision, airflow, and equipment checks",
     sections: ["plan", "release", "airflow", "startup"],
   },
   {
     id: "closeout",
-    label: "Full Closeout",
-    detail: "Complete controlled installation, review, coordination, and startup package",
+    label: "Complete Takeoff",
+    detail: "Complete marked plan, takeoff, review decisions, and equipment package",
     sections: fieldPackageSections.map((section) => section.id),
   },
 ];

@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronRight,
   CircleHelp,
+  Cloud,
   Download,
   Eye,
   FileSearch,
@@ -33,6 +34,7 @@ import {
   type PlanFindingDecision,
   type PlanReaderFinding,
 } from "./planReader";
+import { trackProductEvent } from "./productAnalytics";
 
 type WorkspaceView = "overview" | "sheets" | "evidence" | "findings" | "takeoff";
 
@@ -46,6 +48,8 @@ type Props = {
   onClose: () => void;
   onShowPage: (page: number) => void;
   onPrepareMarkup: (page: number, note?: string) => void;
+  cloudProjectConnected?: boolean;
+  onOpenCloudWorkspace?: () => void;
   onAnalysisChange?: (analysis: PlanAnalysis) => void | Promise<void>;
   onFindingDecision?: (
     analysis: PlanAnalysis,
@@ -94,6 +98,8 @@ export default function AIPlanWorkspace({
   onClose,
   onShowPage,
   onPrepareMarkup,
+  cloudProjectConnected = false,
+  onOpenCloudWorkspace,
   onAnalysisChange,
   onFindingDecision,
 }: Props) {
@@ -162,6 +168,8 @@ export default function AIPlanWorkspace({
 
   async function runAnalysis() {
     if (!pdf) return;
+    const startedAt = performance.now();
+    void trackProductEvent("ai_analysis_started", { page_count: pdf.numPages });
     setRunning(true);
     setError("");
     setProgress({ completed: 0, total: pdf.numPages });
@@ -174,9 +182,23 @@ export default function AIPlanWorkspace({
       });
       setAnalysis(result);
       setFindingId(result.findings[0]?.id || "");
-      await onAnalysisChange?.(result);
+      void trackProductEvent("ai_analysis_completed", {
+        page_count: result.pageCount,
+        finding_count: result.findings.length,
+        takeoff_rows: result.takeoff.length,
+        duration_ms: Math.round(performance.now() - startedAt),
+      });
+      try {
+        await onAnalysisChange?.(result);
+      } catch {
+        setError("The analysis finished in this browser, but its cloud copy could not be updated.");
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The plan reader could not analyze this PDF.");
+      void trackProductEvent("ai_analysis_failed", {
+        page_count: pdf.numPages,
+        duration_ms: Math.round(performance.now() - startedAt),
+      });
     } finally {
       setRunning(false);
     }
@@ -190,6 +212,10 @@ export default function AIPlanWorkspace({
     try {
       await onFindingDecision?.(next, activeFinding, decision, decisionNote);
       setDecisionNote("");
+      void trackProductEvent("finding_decided", {
+        decision,
+        severity: activeFinding.severity,
+      });
     } finally {
       setSavingDecision(false);
     }
@@ -222,6 +248,11 @@ export default function AIPlanWorkspace({
     anchor.download = `${sourceFileName.replace(/\.pdf$/i, "") || "hvac-plan"}-ai-takeoff.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
+    void trackProductEvent("takeoff_exported", {
+      format: "csv",
+      item_count: analysis.takeoff.length,
+      source: "ai_reader",
+    });
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -327,6 +358,16 @@ export default function AIPlanWorkspace({
             {running ? <LoaderCircle className="spin" size={14} /> : <ScanSearch size={14} />} Reanalyze
           </button>
         </nav>
+
+        <section className={`ai-cloud-value-card ${cloudProjectConnected ? "connected" : ""}`}>
+          <span><Cloud size={18} /></span>
+          <div>
+            <small>{cloudProjectConnected ? "CLOUD PROJECT CONNECTED" : "KEEP THE VALUE YOU JUST CREATED"}</small>
+            <strong>{cloudProjectConnected ? "This analysis can stay with the project." : "Save findings, decisions, markup, and the draft takeoff for the next revision."}</strong>
+            <p>{cloudProjectConnected ? "Named revisions preserve the source plan and its reviewed intelligence across devices." : "The current analysis remains in this browser. A free workspace lets you return to it and continue on another device."}</p>
+          </div>
+          {!cloudProjectConnected && onOpenCloudWorkspace && <button onClick={onOpenCloudWorkspace}>Save with a cloud project <ArrowRight size={14} /></button>}
+        </section>
 
         <div className="ai-plan-body">
           {view === "overview" && <div className="ai-overview">

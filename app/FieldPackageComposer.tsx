@@ -128,7 +128,7 @@ export default function FieldPackageComposer({
   }
 
   return <div className="field-package-overlay" role="presentation">
-    <button className="field-package-dismiss" aria-label="Close Field Package Composer" tabIndex={-1} aria-hidden="true" onClick={onClose} />
+    <button className="field-package-dismiss" aria-label="Close Takeoff Package Composer" tabIndex={-1} aria-hidden="true" onClick={onClose} />
     <section
       ref={dialogRef}
       className="field-package-composer"
@@ -140,9 +140,9 @@ export default function FieldPackageComposer({
       <header>
         <div className="field-package-title">
           <span><PackageCheck size={20} /></span>
-          <div><small>CONTROLLED DELIVERY · V102</small><h2 id="field-package-title">Field Package Composer</h2><p>{projectName} · {systemName}</p></div>
+          <div><small>PLAN INTELLIGENCE OUTPUT · V107</small><h2 id="field-package-title">Takeoff Package Composer</h2><p>{projectName} · {systemName}</p></div>
         </div>
-        <button aria-label="Close Field Package Composer" onClick={onClose}><X size={18} /></button>
+        <button aria-label="Close Takeoff Package Composer" onClick={onClose}><X size={18} /></button>
       </header>
 
       <div className={`field-package-status ${packageState}`}>
@@ -152,14 +152,14 @@ export default function FieldPackageComposer({
         </div>
         <div className="field-package-status-tags">
           <span className={scaleVerified ? "clear" : "hold"}>{scaleVerified ? <Check size={12} /> : <AlertTriangle size={12} />}{scaleVerified ? "Scale verified" : "Scale unverified"}</span>
-          <span className={released && !stale ? "clear" : "hold"}>{released && !stale ? `Revision ${releaseRevision || "issued"}` : "NOT ISSUED FOR FIELD"}</span>
+          <span className={released && !stale ? "clear" : "hold"}>{released && !stale ? `Revision ${releaseRevision || "reviewed"}` : "DRAFT · REVIEW REQUIRED"}</span>
         </div>
       </div>
 
       <div className="field-package-body">
         <section className="package-preset-column">
           <div className="package-section-heading"><strong>1. Choose the audience</strong><span>Fast package presets</span></div>
-          <div className="package-preset-list" role="radiogroup" aria-label="Field package presets">
+          <div className="package-preset-list" role="radiogroup" aria-label="Takeoff package presets">
             {fieldPackagePresets.map((item) => <button
               role="radio"
               aria-checked={preset === item.id}
@@ -174,8 +174,8 @@ export default function FieldPackageComposer({
 
           <div className="package-downloads">
             <div className="package-section-heading"><strong>Supporting files</strong><span>Active system CSV</span></div>
-            <button onClick={onDownloadManifest}><Download size={14} /> Release manifest</button>
-            <button disabled={!runCount} onClick={onDownloadRuns}><Download size={14} /> Field run schedule</button>
+            <button onClick={onDownloadManifest}><Download size={14} /> Analysis manifest</button>
+            <button disabled={!runCount} onClick={onDownloadRuns}><Download size={14} /> Duct run schedule</button>
             <button onClick={onDownloadTakeoff}><Download size={14} /> Purchase sheet</button>
           </div>
         </section>
@@ -198,9 +198,9 @@ export default function FieldPackageComposer({
         <aside className="package-preview-column">
           <div className="package-section-heading"><strong>3. Release preview</strong><span>Controlled output</span></div>
           <div className={`package-preview-sheet ${packageState}`}>
-            {!released || stale ? <div className="package-preview-watermark">NOT ISSUED<br />FOR FIELD</div> : null}
+            {!released || stale ? <div className="package-preview-watermark">DRAFT<br />REVIEW REQUIRED</div> : null}
             <div className="package-preview-logo"><FileCheck2 size={18} /><span>HVAC PLAN STUDIO</span></div>
-            <small>FIELD INSTALLATION PACKAGE</small>
+            <small>PLAN INTELLIGENCE &amp; TAKEOFF PACKAGE</small>
             <h3>{projectName}</h3>
             <p>{systemName}</p>
             <dl>
@@ -216,12 +216,12 @@ export default function FieldPackageComposer({
             <span className={connectionProblems ? "hold" : "clear"}><b>{connectionProblems}</b> Connections</span>
             <span className={clearedGateCount === gateCount ? "clear" : "hold"}><b>{clearedGateCount}/{gateCount}</b> Gates</span>
           </div>
-          <div className="package-safety-note"><ShieldCheck size={15} /><span>Draft and hold packages print with a “Not Issued for Field” watermark. Geometry is never modified during export.</span></div>
+          <div className="package-safety-note"><ShieldCheck size={15} /><span>Draft packages print with a “Review Required” watermark. Geometry is never modified during export.</span></div>
         </aside>
       </div>
 
       <footer>
-        <div><i /><span><strong>{released && !stale ? "Controlled revision ready" : "Draft package"}</strong><small>{released && !stale ? "The issued revision and drawing fingerprint will be printed." : "Use for coordination only until every release gate is clear."}</small></span></div>
+        <div><i /><span><strong>{released && !stale ? "Source-backed revision ready" : "Draft review package"}</strong><small>{released && !stale ? "The reviewed revision and drawing fingerprint will be printed." : "Confirm every source and review item before relying on the package."}</small></span></div>
         <button onClick={onClose}>Cancel</button>
         <button className="primary" disabled={!selectedSections.length} onClick={() => onPrint(selectedSections)}><Printer size={15} /> Print selected package</button>
       </footer>

@@ -17,9 +17,9 @@ export const metadata: Metadata = {
     default: "HVAC Plan Studio",
     template: "%s · HVAC Plan Studio",
   },
-  description: "A field-first HVAC design, review, collaboration, and installation delivery workspace.",
+  description: "AI-assisted HVAC plan reading, evidence review, plan markup, and source-backed takeoff in one controlled workspace.",
   applicationName: "HVAC Plan Studio",
-  keywords: ["HVAC design", "duct plan", "field drawing", "HVAC takeoff", "plan review"],
+  keywords: ["HVAC plan reader", "HVAC plan intelligence", "duct plan", "HVAC takeoff", "plan markup"],
   other: {
     "codex-preview": "development",
   },
