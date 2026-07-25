@@ -9,6 +9,7 @@ import FieldPackageComposer from "./FieldPackageComposer";
 import GuidedProjectSetup, { type ProjectSetupValues } from "./GuidedProjectSetup";
 import ProjectCommandPalette, { type ProjectCommand } from "./ProjectCommandPalette";
 import ProjectHome from "./ProjectHome";
+import { trackProductEvent } from "./productAnalytics";
 import SystemBalanceStudio from "./SystemBalanceStudio";
 import { type FieldPackageSectionId } from "./fieldPackage";
 import {
@@ -1092,6 +1093,7 @@ class WorkspaceErrorBoundary extends Component<{ children: ReactNode }, Workspac
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("HVAC Plan Studio recovered from a workspace error", error, info);
+    void trackProductEvent("application_error", { area: "workspace_boundary" });
   }
 
   render() {
@@ -1725,6 +1727,7 @@ function HVACPlanStudioApp() {
       restoreProject(projectName, sourceFingerprint);
       applyPendingProjectSetup();
       setShowProjectHome(false);
+      void trackProductEvent("pdf_opened", { origin: "local", page_count: document.numPages });
     } catch {
       setError("This PDF could not be opened. Try another file.");
       pendingProjectSetupRef.current = null;
@@ -1753,6 +1756,8 @@ function HVACPlanStudioApp() {
       restoreProject(projectName, sourceFingerprint);
       applyPendingProjectSetup();
       setShowProjectHome(false);
+      void trackProductEvent("pdf_opened", { origin: driveFileId ? "drive" : "local", page_count: document.numPages });
+      if (driveFileId) void trackProductEvent("drive_imported", { page_count: document.numPages });
     } catch {
       setError("This Drive PDF could not be opened.");
       pendingProjectSetupRef.current = null;
@@ -1809,6 +1814,7 @@ function HVACPlanStudioApp() {
       setBranchMessage(`Cloud revision R${revision.revision_number} restored · local autosave is active`);
       setShowCloudProjects(false);
       setShowProjectHome(false);
+      void trackProductEvent("revision_opened", { revision: revision.revision_number });
     } catch (cloudError) {
       setError(cloudError instanceof Error ? cloudError.message : "The cloud revision could not be restored.");
     } finally {
@@ -5234,7 +5240,7 @@ function HVACPlanStudioApp() {
       if (saveToDrive) {
         const driveFile = await saveProjectPackageToDrive({
           projectName: `${fileName.replace(/\.pdf$/i, "")} — ${record.name} ${record.revision}`,
-          packageType: "HVAC Plan Studio Field Production & Takeoff",
+          packageType: "HVAC Plan Studio Plan Intelligence & Takeoff",
           version: 104,
           system: systemLabel(activeSystem),
           sourcePlan: fileName,
@@ -5263,6 +5269,10 @@ function HVACPlanStudioApp() {
       setTakeoffPackageRecords((current) => [completed, ...current]);
       setTakeoffView("packages");
       setBranchMessage(`${completed.name} ${completed.revision} saved${saveToDrive ? " to Google Drive" : ""}`);
+      void trackProductEvent("takeoff_package_saved", {
+        format: saveToDrive ? "drive_package" : "cloud_package",
+        item_count: rows.length,
+      });
     } catch (packageError) {
       setError(packageError instanceof Error ? packageError.message : "The takeoff package could not be saved.");
     } finally {
@@ -5291,6 +5301,11 @@ function HVACPlanStudioApp() {
     link.download = `${systemLabel(activeSystem).replaceAll(" ", "-").toLowerCase()}-purchase-sheet.csv`;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    void trackProductEvent("takeoff_exported", {
+      format: "csv",
+      item_count: rows.length,
+      origin: "manual_takeoff",
+    });
   }
 
   function buildFieldConnectionModel(systemId: string) {
@@ -10588,7 +10603,7 @@ function HVACPlanStudioApp() {
               <button onClick={() => setRightTab("takeoff")}>Open full material takeoff</button>
             </div>
             </div>}
-            <div className="takeoff-note">Field package is a coordination aid. Approved plans, code, inspector comments, equipment instructions, and actual site conditions govern installation.</div>
+              <div className="takeoff-note">Takeoff output is a source-backed review aid. Approved plans, code, equipment instructions, and the estimator&apos;s final review govern purchasing decisions.</div>
           </div> : <div className="checks-panel">
             <div className="workspace-panel-hero review">
               <div><ShieldAlert size={18} /><span><strong>SMART PLAN REVIEW</strong><small>{systemLabel(activeSystem)} · prioritized HVAC QA with plan links</small></span></div>
@@ -11052,6 +11067,11 @@ function HVACPlanStudioApp() {
           setShowPlanIntelligence(false);
           goToPage(page);
           setActiveTool("note");
+        }}
+        cloudProjectConnected={Boolean(workingCloudProjectId)}
+        onOpenCloudWorkspace={() => {
+          setShowPlanIntelligence(false);
+          setShowCloudProjects(true);
         }}
         onAnalysisChange={async (analysis) => {
           setCloudPlanAnalysisRunId(null);
