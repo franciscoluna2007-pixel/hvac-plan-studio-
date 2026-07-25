@@ -56,7 +56,7 @@ test("adds secure cloud projects, revisions, collaborators, and Drive packages",
   assert.match(styles, /\.cloud-revision-list/);
 });
 
-test("builds v104 Project Home, guided setup, and an RLS-safe cloud summary", async () => {
+test("builds v106 Project Home, guided setup, and an RLS-safe cloud summary", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const home = await readFile(new URL("../app/ProjectHome.tsx", import.meta.url), "utf8");
   const setup = await readFile(new URL("../app/GuidedProjectSetup.tsx", import.meta.url), "utf8");
@@ -68,14 +68,16 @@ test("builds v104 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.match(page, /showProjectHome/);
   assert.match(page, /<ProjectHome/);
   assert.match(page, /<GuidedProjectSetup/);
-  assert.match(page, /Field Production &amp; Takeoff Center v104/);
+  assert.match(page, /AI Plan Reader v105 · Plan Intelligence v106/);
   assert.match(page, /applyPendingProjectSetup/);
   assert.match(page, /sourceFileName/);
   assert.match(page, /pendingProjectSetupRef\.current = null/);
   assert.match(page, /addEventListener\("cancel", handleFilePickerCancel\)/);
   assert.match(page, /const modalWorkspaceActive = showProjectHome \|\| showProjectSetup \|\| showPlanIntelligence \|\| showFieldPackageComposer \|\| showSystemBalanceStudio/);
   assert.match(page, /inert=\{modalWorkspaceActive \? true : undefined\}/);
-  assert.match(home, /From source plan to field release/);
+  assert.match(home, /Read, mark, and understand HVAC plans/);
+  assert.match(home, /AI plan intelligence &amp; takeoff/);
+  assert.doesNotMatch(home, /FIELD PRODUCTION|Field-first workflow|Installer-ready/);
   assert.match(home, /Manual geometry stays manual/);
   assert.match(home, /Today&apos;s coordination/i);
   assert.match(home, /handleDialogKeyDown/);
@@ -98,13 +100,16 @@ test("builds v104 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.doesNotMatch(layout, /Starter Project/);
 });
 
-test("builds v104 Field Production and Takeoff Center with controlled cloud packages", async () => {
+test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const cloud = await readFile(new URL("../app/cloudProjects.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   const migration = await readFile(new URL("../supabase/migrations/20260724210000_field_production_takeoff_center.sql", import.meta.url), "utf8");
 
-  assert.match(page, /v104 · FIELD PRODUCTION/);
+  assert.match(page, /V106 · PLAN INTELLIGENCE/);
+  assert.match(page, /HVAC Takeoff Center/);
+  assert.doesNotMatch(page, />Field<\/button>/);
+  assert.doesNotMatch(page, /Field mode<\/button>/);
   assert.match(page, /Flex quantity uses your rule/);
   assert.match(page, /Math\.ceil\(orderLength \/ 25\)/);
   assert.match(page, /Your drawing stays manual/);
@@ -208,7 +213,7 @@ test("controls fitting text, connects equipment at plenums, and repositions plan
   assert.match(styles, /\.hvac-symbol \.equipment-plenum-port/);
 });
 
-test("ships v98 System Completion Mode with field-readable defaults", async () => {
+test("keeps the system completion engine with plan-focused defaults", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const workflow = await readFile(new URL("../app/workflowEngine.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
@@ -217,7 +222,7 @@ test("ships v98 System Completion Mode with field-readable defaults", async () =
   assert.match(workflow, /"runs"[\s\S]*"branches"[\s\S]*"connections"[\s\S]*"airflow"[\s\S]*"review"[\s\S]*"release"/);
   assert.match(page, /NEXT SAFE ACTION/);
   assert.match(page, /Continue system/);
-  assert.match(page, /className="field-workflow-hud"/);
+  assert.doesNotMatch(page, /className="field-workflow-hud"/);
   assert.match(page, /workflowSummary:/);
   assert.match(page, /const \[showCfmLabels, setShowCfmLabels\] = useState\(false\)/);
   assert.match(page, /const \[showLengthLabels, setShowLengthLabels\] = useState\(false\)/);
@@ -258,7 +263,7 @@ test("ships the v100 Project Intelligence Hub with secure coordination and revie
   const migration = await readFile(new URL("../supabase/migrations/20260724140000_project_intelligence_hub.sql", import.meta.url), "utf8");
   const releaseMigration = await readFile(new URL("../supabase/migrations/20260724143000_cloud_field_release_integrity.sql", import.meta.url), "utf8");
 
-  assert.match(page, /System Balance Studio v103/);
+  assert.match(page, /AI Plan Reader v105 · Plan Intelligence v106/);
   assert.match(page, /ProjectCommandPalette/);
   assert.match(page, /const key = event\.key\.toLowerCase\(\)/);
   assert.match(page, /\(event\.ctrlKey \|\| event\.metaKey\) && key === "k"/);
@@ -608,17 +613,20 @@ test("provides touch-sized review controls and a mobile full-panel workflow", as
   assert.match(styles, /\.app-shell\.wide-inspector \.right-panel \{ width: 100%; height: 100%;/);
 });
 
-test("ships v102 Plan Intelligence, stable evidence, plenum validation, and controlled field packages", async () => {
+test("ships v105 AI Plan Reader and v106 evidence-backed Plan Intelligence", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  const intelligence = await readFile(new URL("../app/PlanIntelligencePanel.tsx", import.meta.url), "utf8");
-  const composer = await readFile(new URL("../app/FieldPackageComposer.tsx", import.meta.url), "utf8");
+  const workspace = await readFile(new URL("../app/AIPlanWorkspace.tsx", import.meta.url), "utf8");
+  const reader = await readFile(new URL("../app/planReader.ts", import.meta.url), "utf8");
+  const cloud = await readFile(new URL("../app/cloudProjects.ts", import.meta.url), "utf8");
   const identity = await readFile(new URL("../app/planIntelligence.ts", import.meta.url), "utf8");
-  const fieldPackage = await readFile(new URL("../app/fieldPackage.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../supabase/migrations/20260724220000_ai_plan_reader_intelligence.sql", import.meta.url), "utf8");
 
-  assert.match(page, /System Balance Studio v103/);
-  assert.match(page, /<PlanIntelligencePanel/);
-  assert.match(page, /<FieldPackageComposer/);
+  assert.match(page, /AI Plan Reader v105 · Plan Intelligence v106/);
+  assert.match(page, /<AIPlanWorkspace/);
+  assert.match(page, /openAIPlanReader/);
+  assert.match(page, /saveCloudPlanAnalysis/);
+  assert.match(page, /updateCloudPlanFindingDecision/);
   assert.match(page, /decision\.evidenceFingerprint !== issue\.evidenceFingerprint/);
   assert.match(page, /EVIDENCE CHANGED · REVIEW AGAIN/);
   assert.match(page, /const plenums = equipmentPlenumPorts\(symbol\)/);
@@ -631,23 +639,31 @@ test("ships v102 Plan Intelligence, stable evidence, plenum validation, and cont
   assert.match(page, /legacyId: `review-\$\{stableTextHash/);
   assert.match(page, /reviewDecisionForIssue/);
   assert.match(page, /EVIDENCE CHANGED — REVIEW AGAIN/);
-  assert.match(page, /DRAFT — NOT FOR INSTALLATION/);
   assert.match(page, /visibleLabels: \{ showCfmLabels, showLengthLabels, showFittingLabels \}/);
-  assert.match(intelligence, /Explainable HVAC review/);
-  assert.match(intelligence, /Manual geometry stays manual/);
-  assert.match(composer, /Field Package Composer/);
-  assert.match(composer, /CONTROLLED DELIVERY · V102/);
+  assert.match(workspace, /AI proposes\. You approve\./);
+  assert.match(workspace, /Nothing is drawn, resized, or changed automatically/);
+  assert.match(workspace, /Source-backed quantities/);
+  assert.match(workspace, /Show on plan/);
+  assert.match(workspace, /Prepare markup/);
+  assert.match(reader, /export async function analyzeHvacPlan/);
+  assert.match(reader, /Mechanical schedule/);
+  assert.match(reader, /Rectangular duct size/);
+  assert.match(reader, /Motorized outside-air damper/);
+  assert.match(reader, /No HVAC schedule was confirmed/);
+  assert.match(cloud, /from\("plan_analysis_runs"\)/);
+  assert.match(cloud, /from\("plan_analysis_evidence"\)/);
+  assert.match(cloud, /from\("plan_analysis_findings"\)/);
   assert.match(identity, /function buildFindingIdentity/);
   assert.match(identity, /input\.instanceKey \|\| "primary"/);
   assert.match(identity, /evidenceFingerprint: `evidence-/);
-  assert.match(fieldPackage, /Installer/);
-  assert.match(fieldPackage, /Sheet Metal Shop/);
-  assert.match(fieldPackage, /Startup Technician/);
-  assert.match(fieldPackage, /Full Closeout/);
-  assert.match(styles, /\.plan-intelligence-overlay/);
-  assert.match(styles, /\.field-package-composer/);
-  assert.match(styles, /\.print-package-watermark/);
-  assert.equal((page.match(/window\.print\(\)/g) || []).length, 1);
+  assert.match(styles, /\.ai-plan-workspace/);
+  assert.match(styles, /\.ai-findings-view/);
+  assert.match(styles, /\.ai-takeoff-table/);
+  assert.match(migration, /create table if not exists public\.plan_analysis_runs/);
+  assert.match(migration, /create table if not exists public\.plan_analysis_evidence/);
+  assert.match(migration, /create table if not exists public\.plan_analysis_findings/);
+  assert.match(migration, /enable row level security/);
+  assert.match(migration, /private\.can_edit_project\(project_id\)/);
 });
 
 test("ships v103 System Balance Studio with reviewed calculations and manual geometry control", async () => {
