@@ -4,9 +4,9 @@ import { ChangeEvent, Component, DragEvent, ErrorInfo, PointerEvent, ReactNode, 
 import * as pdfjsLib from "pdfjs-dist";
 import { checkDriveConfiguration, loadPdfFromDriveId, pickPdfFromDrive, saveProjectPackageToDrive } from "./googleDrive";
 import CloudProjectsPanel, { type CloudProjectRisk } from "./CloudProjectsPanel";
+import AIPlanWorkspace from "./AIPlanWorkspace";
 import FieldPackageComposer from "./FieldPackageComposer";
 import GuidedProjectSetup, { type ProjectSetupValues } from "./GuidedProjectSetup";
-import PlanIntelligencePanel from "./PlanIntelligencePanel";
 import ProjectCommandPalette, { type ProjectCommand } from "./ProjectCommandPalette";
 import ProjectHome from "./ProjectHome";
 import SystemBalanceStudio from "./SystemBalanceStudio";
@@ -27,7 +27,9 @@ import {
   listCloudRevisions,
   listCloudWorkItems,
   issueCloudFieldRelease,
+  saveCloudPlanAnalysis,
   saveCloudTakeoffPackage,
+  updateCloudPlanFindingDecision,
   type CloudProject,
   type CloudRevision,
 } from "./cloudProjects";
@@ -54,8 +56,6 @@ import {
   PanelTop,
   PanelLeftClose,
   PanelRightClose,
-  Maximize2,
-  Minimize2,
   FlipHorizontal2,
   X,
   ChevronLeft,
@@ -64,6 +64,7 @@ import {
   Redo2,
   Route,
   Ruler,
+  ScanSearch,
   Save,
   Scissors,
   Search,
@@ -100,7 +101,7 @@ const tools = [
   { id: "thermostat", label: "Thermostat", icon: Thermometer, tone: "orange" },
   { id: "smoke", label: "Duct smoke detector", icon: ShieldAlert, tone: "orange" },
   { id: "airflow", label: "Airflow arrow", icon: ArrowRight, tone: "orange" },
-  { id: "note", label: "Field note", icon: StickyNote, tone: "orange" },
+  { id: "note", label: "Plan note", icon: StickyNote, tone: "orange" },
   { id: "measure", label: "Measure", icon: Ruler, tone: "orange" },
 ];
 
@@ -1123,6 +1124,7 @@ function HVACPlanStudioApp() {
   const [workingCloudRevisionId, setWorkingCloudRevisionId] = useState<string | null>(null);
   const [workingCloudRevisionFingerprint, setWorkingCloudRevisionFingerprint] = useState<string | null>(null);
   const [cloudProjectRisk, setCloudProjectRisk] = useState<CloudProjectRisk | null>(null);
+  const [cloudPlanAnalysisRunId, setCloudPlanAnalysisRunId] = useState<string | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [camera, setCamera] = useState({ x: 0, y: 0 });
@@ -1174,6 +1176,7 @@ function HVACPlanStudioApp() {
   const [cloudInitialProjectId, setCloudInitialProjectId] = useState<string | null>(null);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showPlanIntelligence, setShowPlanIntelligence] = useState(false);
+  const [planWorkspaceInitialView, setPlanWorkspaceInitialView] = useState<"reader" | "findings">("reader");
   const [showFieldPackageComposer, setShowFieldPackageComposer] = useState(false);
   const [showSystemBalanceStudio, setShowSystemBalanceStudio] = useState(false);
   const [printPackageSections, setPrintPackageSections] = useState<FieldPackageSectionId[]>([
@@ -8461,13 +8464,18 @@ function HVACPlanStudioApp() {
   const modalWorkspaceActive = showProjectHome || showProjectSetup || showPlanIntelligence || showFieldPackageComposer || showSystemBalanceStudio;
   const packagePrintClasses = printPackageSections.map((section) => `package-include-${section}`).join(" ");
 
-  function openPlanIntelligence() {
+  function openAIPlanReader(view: "reader" | "findings" = "reader") {
     setShowCommandPalette(false);
     setShowCloudProjects(false);
     setShowFieldPackageComposer(false);
     setShowProjectHome(false);
     setShowProjectSetup(false);
+    setPlanWorkspaceInitialView(view);
     setShowPlanIntelligence(true);
+  }
+
+  function openPlanIntelligence() {
+    openAIPlanReader("findings");
   }
 
   function openFieldPackageComposer() {
@@ -8565,36 +8573,29 @@ function HVACPlanStudioApp() {
       run: openSystemBalanceStudio,
     },
     {
+      id: "ai-plan-reader",
+      label: "Open AI Plan Reader",
+      detail: pdf ? `Read and classify ${pdf.numPages} plan sheet${pdf.numPages === 1 ? "" : "s"} with source evidence` : "Open a plan PDF to start",
+      group: "Review",
+      disabled: !pdf,
+      keywords: "ai plan reader sheets evidence schedules takeoff v105",
+      run: () => openAIPlanReader("reader"),
+    },
+    {
       id: "plan-review",
       label: "Run the HVAC plan review",
-      detail: "Prioritized, explainable findings with hard field-release gates",
+      detail: "Prioritized, explainable plan findings with human approval",
       group: "Review",
       run: openSystemAuditWorkflow,
     },
     {
       id: "plan-intelligence",
       label: "Open Plan Intelligence",
-      detail: `${activeReviewSummary.blockers} release blocker${activeReviewSummary.blockers === 1 ? "" : "s"} · stable evidence and manual actions`,
+      detail: "Source-linked findings, confidence, and manual review decisions",
       group: "Review",
       disabled: !pdf,
-      keywords: "explainable findings evidence readiness cockpit v102",
+      keywords: "explainable findings evidence confidence ai plan v106",
       run: openPlanIntelligence,
-    },
-    {
-      id: "field-release",
-      label: "Open Field Release Center",
-      detail: "Installation package, RFI, punch, startup, and named approval",
-      group: "Field",
-      run: () => { setRightPanelOpen(true); setRightTab("field"); setFieldView("release"); },
-    },
-    {
-      id: "field-package",
-      label: "Compose a field package",
-      detail: "Choose an installer, sheet-metal, startup, or closeout package",
-      group: "Field",
-      disabled: !pdf,
-      keywords: "print pdf export installer takeoff startup package",
-      run: openFieldPackageComposer,
     },
     {
       id: "sheets",
@@ -8622,13 +8623,13 @@ function HVACPlanStudioApp() {
   ];
 
   return (
-    <main className={`app-shell ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${["rooms", "checks", "field"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${activeFieldPackage.released && !activeFieldPackage.stale ? "package-print-released" : "package-print-draft"}`}>
+    <main className={`app-shell ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${activeFieldPackage.released && !activeFieldPackage.stale ? "package-print-released" : "package-print-draft"}`}>
       <header className="topbar" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
         <button className="brand" onClick={() => setShowProjectHome(true)} aria-label="Open Project Home">
           <div className="brand-mark"><Wind size={23} strokeWidth={2.4} /></div>
           <div>
             <strong>HVAC Plan Studio</strong>
-            <span>Delivery operating system</span>
+            <span>AI plan intelligence &amp; takeoff</span>
           </div>
         </button>
 
@@ -8659,30 +8660,10 @@ function HVACPlanStudioApp() {
             <Cloud size={16} /> Project Hub <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V104"}</span>
           </button>
           <button className="drive-button" onClick={() => void openFromDrive()}><HardDrive size={16} /> Open Drive</button>
+          <button className="reader-button" disabled={!pdf} onClick={() => openAIPlanReader("reader")}><ScanSearch size={16} /> AI Plan Reader</button>
           <button className="intelligence-button" disabled={!pdf} onClick={openPlanIntelligence}><Sparkles size={16} /> Plan Intelligence</button>
-          <button
-            className={`field-mode-button ${fieldMode ? "active" : ""}`}
-            onClick={() => setFieldMode((enabled) => !enabled)}
-            title="Field Drawing Mode · Shift+F"
-          >
-            {fieldMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-            {fieldMode ? "Exit field mode" : "Field mode"}
-          </button>
-          <button className="primary-button" disabled={!pdf} onClick={openFieldPackageComposer}>Compose package</button>
         </nav>
       </header>
-
-      <div className="field-workflow-hud" aria-label="Field workflow controls" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
-        <div>
-          <span>FIELD WORKFLOW · {systemLabel(activeSystem)}</span>
-          <strong>{activeWorkflow.nextAction}</strong>
-        </div>
-        <b>{activeWorkflow.progress}%</b>
-        <button className={showCfmLabels ? "active" : ""} onClick={() => setShowCfmLabels((visible) => !visible)}>CFM</button>
-        <button className={showLengthLabels ? "active" : ""} onClick={() => setShowLengthLabels((visible) => !visible)}>Distance</button>
-        <button className={showFittingLabels ? "active" : ""} onClick={() => setShowFittingLabels((visible) => !visible)}>T/Y text</button>
-        <button onClick={() => { setFieldMode(false); continueSystemWorkflow(activeWorkflow.activeStage); }}>Open task</button>
-      </div>
 
       <div className="print-package-watermark" aria-hidden="true">DRAFT · NOT ISSUED FOR FIELD</div>
       <section className="print-header" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
@@ -8700,7 +8681,7 @@ function HVACPlanStudioApp() {
       <section className="workspace" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
         <aside className="left-panel">
           <div className="panel-heading">
-            <div><span>DESIGN TOOLS</span><small>FIELD STANDARD</small></div>
+            <div><span>PLAN MARKUP TOOLS</span><small>HVAC DESIGN</small></div>
             <button aria-label="Collapse design tools" onClick={() => setLeftPanelOpen(false)}><PanelLeftClose size={17} /></button>
           </div>
           <div className="tool-list">
@@ -9845,7 +9826,7 @@ function HVACPlanStudioApp() {
             ) : <div className="upload-card">
               <div className="upload-icon"><CloudUpload size={30} /></div>
               <h1>{loading ? "Opening your plan…" : "Start your HVAC plan"}</h1>
-              <p>{error || "Upload a construction PDF to begin a field-ready layout."}</p>
+              <p>{error || "Upload a construction PDF to begin HVAC plan reading, markup, and takeoff."}</p>
               <div className="upload-actions">
                 <button className="primary-button" disabled={loading} onClick={() => inputRef.current?.click()}><FolderOpen size={17} /> Choose PDF plan</button>
                 <button className="drive-upload-button" disabled={loading} onClick={() => void openFromDrive()}><HardDrive size={17} /> Open from Drive</button>
@@ -9865,7 +9846,6 @@ function HVACPlanStudioApp() {
             <button role="tab" aria-selected={rightTab === "rooms"} className={rightTab === "rooms" ? "active" : ""} onClick={() => openSystemBalanceWorkspace("system")}>Balance</button>
             <button role="tab" aria-selected={rightTab === "takeoff"} className={rightTab === "takeoff" ? "active" : ""} onClick={() => setRightTab("takeoff")}>Takeoff</button>
             <button role="tab" aria-selected={rightTab === "checks"} className={rightTab === "checks" ? "active" : ""} onClick={() => setRightTab("checks")}>Review</button>
-            <button role="tab" aria-selected={rightTab === "field"} className={rightTab === "field" ? "active" : ""} onClick={() => setRightTab("field")}>Field</button>
             <button className="right-collapse" aria-label="Collapse inspector" onClick={() => setRightPanelOpen(false)}><PanelRightClose size={15} /></button>
           </div>
           {rightTab === "builder" ? <div className="system-builder-panel">
@@ -9981,10 +9961,10 @@ function HVACPlanStudioApp() {
 
               <div className={`builder-action-card ${activeBuilderSummary.packageSummary.ready ? "complete" : "attention"}`}>
                 <div className="builder-action-icon"><FileText size={17} /></div>
-                <span><i>STEP 4</i><strong>Prepare the field package</strong><small>Creates the run schedule, material takeoff, flex-box quantities, fabrication holds, field checklist, room airflow schedule, RFIs, and printable installation package.</small></span>
+                <span><i>STEP 4</i><strong>Review plan intelligence &amp; takeoff</strong><small>Inspect source evidence, plan findings, run quantities, air devices, fitting counts, and material allowances before exporting.</small></span>
                 <div className="builder-action-buttons">
                   <button onClick={() => setRightTab("takeoff")}>Open takeoff</button>
-                  <button onClick={() => setRightTab("field")}>Field package</button>
+                  <button disabled={!pdf} onClick={() => openAIPlanReader("findings")}>Plan Intelligence</button>
                 </div>
               </div>
             </div>
@@ -10264,20 +10244,18 @@ function HVACPlanStudioApp() {
           </div> : rightTab === "takeoff" ? <div className="takeoff-panel">
             <div className="production-hero">
               <div>
-                <span className="production-kicker"><CloudUpload size={12} /> v104 · FIELD PRODUCTION</span>
-                <strong>Takeoff Center</strong>
-                <small>{systemLabel(activeSystem)} · purchasing, installer sheets, and controlled packages</small>
+                <span className="production-kicker"><CloudUpload size={12} /> V106 · PLAN INTELLIGENCE</span>
+                <strong>HVAC Takeoff Center</strong>
+                <small>{systemLabel(activeSystem)} · source-backed material quantities and review</small>
               </div>
               <b className={materialSummary().holds.length ? "hold" : buildTakeoff().length ? "ready" : "empty"}>
                 {materialSummary().holds.length ? `${materialSummary().holds.length} HOLD` : buildTakeoff().length ? "READY" : "EMPTY"}
               </b>
             </div>
-            <nav className="production-tabs" role="tablist" aria-label="Field Production Center">
+            <nav className="production-tabs" role="tablist" aria-label="HVAC Takeoff Center">
               {([
                 ["overview", "Overview"],
                 ["materials", "Materials"],
-                ["installer", "Installer"],
-                ["packages", "Packages"],
               ] as const).map(([view, label]) => <button role="tab" aria-selected={takeoffView === view} className={takeoffView === view ? "active" : ""} onClick={() => setTakeoffView(view)} key={view}>{label}</button>)}
             </nav>
             {takeoffView === "overview" && <>
@@ -11022,7 +11000,7 @@ function HVACPlanStudioApp() {
         <span><i className="online" /> Ready</span>
         <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor"}</span>
         <span><Ruler size={11} /> {scaleLabel}</span>
-        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · Field Production &amp; Takeoff Center v104 · System Balance Studio v103</span>
+        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · AI Plan Reader v105 · Plan Intelligence v106</span>
       </footer>
       <ProjectHome
         open={showProjectHome && !showProjectSetup}
@@ -11058,27 +11036,51 @@ function HVACPlanStudioApp() {
         onCancel={() => setShowProjectSetup(false)}
         onStart={startGuidedProject}
       />}
-      <PlanIntelligencePanel
+      <AIPlanWorkspace
         open={showPlanIntelligence}
+        initialView={planWorkspaceInitialView}
+        pdf={pdf}
+        sourceFingerprint={pdfFingerprint || sourceFileName || fileName}
+        sourceFileName={sourceFileName || `${fileName}.pdf`}
         projectName={fileName}
-        systemName={systemLabel(activeSystem)}
-        findings={activePlanIntelligenceFindings}
-        releaseStatus={activeFieldPackage.status}
-        releaseReady={!activeFieldPackage.stale && activeFieldPackage.gatesClear}
-        scaleVerified={scaleVerified}
         onClose={() => setShowPlanIntelligence(false)}
-        onOpenFinding={(finding) => {
+        onShowPage={(page) => {
           setShowPlanIntelligence(false);
-          setRightPanelOpen(true);
-          focusReviewIssue(finding);
+          goToPage(page);
         }}
-        onOpenEngineering={() => {
+        onPrepareMarkup={(page) => {
           setShowPlanIntelligence(false);
-          setRightPanelOpen(true);
-          setRightTab("checks");
-          setReviewView("engineering");
+          goToPage(page);
+          setActiveTool("note");
         }}
-        onComposePackage={openFieldPackageComposer}
+        onAnalysisChange={async (analysis) => {
+          setCloudPlanAnalysisRunId(null);
+          if (!workingCloudProjectId) return;
+          try {
+            const run = await saveCloudPlanAnalysis({
+              projectId: workingCloudProjectId,
+              revisionId: workingCloudRevisionId,
+              analysis,
+            });
+            setCloudPlanAnalysisRunId(run.id);
+            setBranchMessage("Plan Intelligence was saved to this cloud project");
+          } catch {
+            setBranchMessage("Plan Intelligence is available locally. Sign in with edit access to save it to the cloud project.");
+          }
+        }}
+        onFindingDecision={async (_analysis, finding, decision, note) => {
+          if (!cloudPlanAnalysisRunId) return;
+          try {
+            await updateCloudPlanFindingDecision({
+              runId: cloudPlanAnalysisRunId,
+              findingClientId: finding.id,
+              decision,
+              note,
+            });
+          } catch {
+            setBranchMessage("The review decision is saved locally, but cloud sync needs edit access.");
+          }
+        }}
       />
       {showSystemBalanceStudio && <SystemBalanceStudio
         open={showSystemBalanceStudio}
