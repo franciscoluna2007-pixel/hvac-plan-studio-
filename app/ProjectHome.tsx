@@ -5,9 +5,11 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
+  BarChart3,
   CheckCircle2,
   Cloud,
   Command,
+  Crown,
   FileCheck2,
   FileText,
   FolderKanban,
@@ -27,6 +29,16 @@ import {
   listProjectHomeCards,
   type ProjectHomeCard,
 } from "./cloudProjects";
+import OwnerAnalytics from "./OwnerAnalytics";
+import { PRODUCT_ENTITLEMENTS } from "./entitlements";
+import {
+  currentAccountUsage,
+  currentPlatformProfile,
+  joinProfessionalEarlyAccess,
+  trackProductEvent,
+  type AccountUsageSummary,
+  type PlatformProfile,
+} from "./productAnalytics";
 
 type Props = {
   open: boolean;
@@ -73,7 +85,7 @@ function readiness(project: ProjectHomeCard) {
 }
 
 function projectStatus(project: ProjectHomeCard) {
-  if (project.critical_work) return { label: "Critical hold", tone: "danger" };
+  if (project.critical_work) return { label: "Critical review item", tone: "danger" };
   if (project.changes_requested) return { label: "Changes requested", tone: "warning" };
   if (project.pending_approvals) return { label: "Awaiting review", tone: "review" };
   if (!project.latest_revision_number) return { label: "Baseline needed", tone: "neutral" };
@@ -104,6 +116,19 @@ export default function ProjectHome({
     projects: [],
     message: "Checking your project workspace…",
   });
+  const [account, setAccount] = useState<PlatformProfile | null>(null);
+  const [usage, setUsage] = useState<AccountUsageSummary>({
+    tier: "guest",
+    aiPagesUsed: 0,
+    aiPagesLimit: PRODUCT_ENTITLEMENTS.guest.aiPagesPerMonth,
+    takeoffExportsUsed: 0,
+    takeoffExportsLimit: 0,
+    cloudProjectsUsed: 0,
+    cloudProjectsLimit: 0,
+    periodStart: new Date().toISOString().slice(0, 7) + "-01",
+  });
+  const [showOwnerAnalytics, setShowOwnerAnalytics] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -112,6 +137,17 @@ export default function ProjectHome({
       .then(async (user) => {
         if (cancelled) return;
         if (!user) {
+          setAccount(null);
+          setUsage({
+            tier: "guest",
+            aiPagesUsed: 0,
+            aiPagesLimit: PRODUCT_ENTITLEMENTS.guest.aiPagesPerMonth,
+            takeoffExportsUsed: 0,
+            takeoffExportsLimit: 0,
+            cloudProjectsUsed: 0,
+            cloudProjectsLimit: 0,
+            periodStart: new Date().toISOString().slice(0, 7) + "-01",
+          });
           setCloud({
             status: "signed-out",
             projects: [],
@@ -119,8 +155,14 @@ export default function ProjectHome({
           });
           return;
         }
-        const projects = await listProjectHomeCards();
+        const [projects, profile, nextUsage] = await Promise.all([
+          listProjectHomeCards(),
+          currentPlatformProfile(),
+          currentAccountUsage(),
+        ]);
         if (!cancelled) {
+          setAccount(profile);
+          setUsage(nextUsage);
           setCloud({
             status: "ready",
             projects,
@@ -132,6 +174,8 @@ export default function ProjectHome({
       })
       .catch((error: unknown) => {
         if (!cancelled) {
+          setAccount(null);
+          setShowOwnerAnalytics(false);
           setCloud({
             status: "unavailable",
             projects: [],
@@ -144,6 +188,11 @@ export default function ProjectHome({
     return () => {
       cancelled = true;
     };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    void trackProductEvent("workspace_opened", {}, { oncePerSession: true });
   }, [open]);
 
   useEffect(() => {
@@ -173,10 +222,15 @@ export default function ProjectHome({
 
   if (!open) return null;
 
+  function closeHome() {
+    setShowOwnerAnalytics(false);
+    onClose();
+  }
+
   function handleDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     if (event.key === "Escape" && hasPlan) {
       event.preventDefault();
-      onClose();
+      closeHome();
       return;
     }
     if (event.key !== "Tab" || !overlayRef.current) return;
@@ -195,10 +249,35 @@ export default function ProjectHome({
     }
   }
 
-  return (
-    <section ref={overlayRef} className="project-home-overlay" role="dialog" aria-modal="true" aria-label="HVAC Plan Studio Project Home" onKeyDown={handleDialogKeyDown}>
+  async function requestEarlyAccess() {
+    setUpgradeMessage("");
+    if (!account) {
+      void trackProductEvent("upgrade_viewed", { tier: "professional" });
+      onOpenProjectHub();
+      return;
+    }
+    try {
+      await trackProductEvent("upgrade_viewed", { tier: "professional" });
+      await joinProfessionalEarlyAccess();
+      setUpgradeMessage("You’re on the Professional early-access list.");
+    } catch (caught) {
+      setUpgradeMessage(caught instanceof Error ? caught.message : "Early access could not be requested.");
+    }
+  }
+
+  return <>
+    <section
+      ref={overlayRef}
+      className="project-home-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="HVAC Plan Studio Project Home"
+      aria-hidden={showOwnerAnalytics || undefined}
+      inert={showOwnerAnalytics || undefined}
+      onKeyDown={handleDialogKeyDown}
+    >
       <header className="project-home-header">
-        <button className="project-home-brand" onClick={hasPlan ? onClose : undefined} aria-label={hasPlan ? "Return to the open plan" : "HVAC Plan Studio home"}>
+        <button className="project-home-brand" onClick={hasPlan ? closeHome : undefined} aria-label={hasPlan ? "Return to the open plan" : "HVAC Plan Studio home"}>
           <span><Wind size={22} strokeWidth={2.4} /></span>
           <div>
             <strong>HVAC Plan Studio</strong>
@@ -208,7 +287,7 @@ export default function ProjectHome({
         <nav className="project-home-nav" aria-label="Primary workspace">
           <button className="active"><LayoutDashboard size={15} /> Home</button>
           <button onClick={() => onOpenProjectHub()}><FolderKanban size={15} /> Projects</button>
-          <button disabled={!hasPlan} onClick={onClose}><FileText size={15} /> Studio</button>
+          <button disabled={!hasPlan} onClick={closeHome}><FileText size={15} /> Studio</button>
           <button onClick={() => onOpenProjectHub()}><ShieldCheck size={15} /> Reviews</button>
         </nav>
         <div className="project-home-header-actions">
@@ -221,7 +300,10 @@ export default function ProjectHome({
             {cloud.status === "loading" ? <LoaderCircle className="spin" size={14} /> : <Cloud size={14} />}
             {cloud.status === "ready" ? "Cloud ready" : cloud.status === "signed-out" ? "Local mode" : cloud.status === "loading" ? "Connecting" : "Local mode"}
           </span>
-          {hasPlan && <button className="home-close" onClick={onClose} aria-label="Close Project Home"><X size={18} /></button>}
+          {(account?.platform_role === "owner" || account?.platform_role === "admin") && <button className="home-owner-button" onClick={() => setShowOwnerAnalytics(true)}>
+            <BarChart3 size={15} /> Owner analytics
+          </button>}
+          {hasPlan && <button className="home-close" onClick={closeHome} aria-label="Close Project Home"><X size={18} /></button>}
         </div>
       </header>
 
@@ -229,15 +311,15 @@ export default function ProjectHome({
         <div className="project-home-content">
           <section className="project-home-hero">
             <div className="project-home-hero-copy">
-              <span className="home-eyebrow"><Sparkles size={13} /> AI PLAN READER · V105 + V106</span>
-              <h1>Read, mark, and understand HVAC plans in one controlled workspace.</h1>
+              <span className="home-eyebrow"><Sparkles size={13} /> AI PLAN READER · PLAN INTELLIGENCE</span>
+              <h1>Turn HVAC plan PDFs into evidence, markups, and source-backed takeoffs.</h1>
               <p>
-                Extract HVAC evidence, review plan problems, mark complete systems, and prepare source-backed takeoffs without surrendering control of the drawing.
+                Read HVAC sheets, review every AI finding against its source, mark the plan, and keep takeoffs ready for the next revision.
               </p>
               <div className="project-home-primary-actions">
-                <button data-home-primary className="home-primary" onClick={onNewProject}><Plus size={17} /> Start a project</button>
-                <button onClick={onOpenDrive} disabled={driveConfigured === false}><HardDrive size={17} /> Open from Drive</button>
-                <button onClick={onOpenLocal}><FileText size={17} /> Open PDF</button>
+                <button data-home-primary className="home-primary" onClick={onOpenLocal}><FileText size={17} /> Open a plan — no account</button>
+                <button onClick={onNewProject}><Plus size={17} /> Guided setup</button>
+                <button onClick={onOpenDrive} disabled={driveConfigured === false}><HardDrive size={17} /> Import source from Drive</button>
               </div>
               <div className="project-home-trust-row">
                 <span><CheckCircle2 size={14} /> Manual geometry stays manual</span>
@@ -286,6 +368,25 @@ export default function ProjectHome({
             </div>
           </section>
 
+          <section className={`home-access-card ${account ? "member" : "guest"}`} aria-label="Account and plan access">
+            <div className="home-access-icon">{account ? <Cloud size={20} /> : <CheckCircle2 size={20} />}</div>
+            <div className="home-access-copy">
+              <small>{account ? `${PRODUCT_ENTITLEMENTS[usage.tier].label.toUpperCase()}` : "TRY IT WITHOUT AN ACCOUNT"}</small>
+              <strong>{account ? "Your saved plan workspace is connected." : "The drawing workspace is open to everyone."}</strong>
+              <p>{account
+                ? `${usage.cloudProjectsUsed} cloud projects · ${usage.aiPagesUsed} AI-read pages this month. Early access remains unmetered while we learn what professionals value most.`
+                : "Open a PDF, test AI reading, mark the plan, and preview a takeoff. Your draft stays in this browser until you choose to create a free cloud workspace."}</p>
+            </div>
+            <div className="home-access-actions">
+              {!account ? <>
+                <button onClick={() => onOpenProjectHub()}>Save projects in the cloud</button>
+              </> : <>
+                <button onClick={() => onOpenProjectHub()}>Open saved projects</button>
+                {(account.platform_role === "owner" || account.platform_role === "admin") && <button className="secondary" onClick={() => setShowOwnerAnalytics(true)}>View usage</button>}
+              </>}
+            </div>
+          </section>
+
           <section className="project-home-status-strip" aria-label="Workspace status">
             <article>
               <span className="status-icon cloud"><Cloud size={17} /></span>
@@ -320,7 +421,7 @@ export default function ProjectHome({
                 <span>CONTINUE WORKING</span>
                 <h2>Your current plan is exactly where you left it.</h2>
               </div>
-              <button onClick={onClose}>Enter Studio <ArrowRight size={16} /></button>
+              <button onClick={closeHome}>Enter Studio <ArrowRight size={16} /></button>
             </div>
             <article className="continue-project-card">
               <span className="continue-project-mark"><Wind size={24} /></span>
@@ -333,7 +434,7 @@ export default function ProjectHome({
                 <b><i /> Ready</b>
                 <span>Right-click pan and wheel zoom preserved</span>
               </div>
-              <button onClick={onClose}><ArrowRight size={18} /></button>
+              <button onClick={closeHome}><ArrowRight size={18} /></button>
             </article>
           </section>}
 
@@ -342,7 +443,7 @@ export default function ProjectHome({
               <div className="home-section-heading">
                 <div>
                   <span>RECENT PROJECTS</span>
-                  <h2>Resume from a controlled revision.</h2>
+                  <h2>Resume your plan review.</h2>
                 </div>
                 <button onClick={() => onOpenProjectHub()}>View all projects <ArrowRight size={15} /></button>
               </div>
@@ -371,39 +472,39 @@ export default function ProjectHome({
               </div> : <div className="project-home-empty">
                 <span><Cloud size={23} /></span>
                 <div>
-                  <strong>{cloud.status === "signed-out" ? "Cloud projects are one sign-in away" : "Create your first controlled project"}</strong>
+                  <strong>{cloud.status === "signed-out" ? "Save this work when it becomes valuable" : "Create your first cloud plan project"}</strong>
                   <p>{cloud.message}</p>
                 </div>
-                <button onClick={() => onOpenProjectHub()}>{cloud.status === "signed-out" ? "Sign in" : "Open Project Hub"} <ArrowRight size={15} /></button>
+                <button onClick={() => onOpenProjectHub()}>{cloud.status === "signed-out" ? "Create free workspace" : "Open Project Hub"} <ArrowRight size={15} /></button>
               </div>}
             </div>
 
             <aside className="project-home-coordination">
               <div className="home-section-heading">
                 <div>
-                  <span>TODAY&apos;S COORDINATION</span>
-                  <h2>What needs attention.</h2>
+                  <span>PLAN REVIEW QUEUE</span>
+                  <h2>What needs your decision.</h2>
                 </div>
               </div>
               <div className="coordination-metrics">
                 <button onClick={() => onOpenProjectHub()} className={metrics.critical ? "danger" : ""}>
                   <span><AlertTriangle size={17} /></span>
-                  <div><strong>{metrics.critical}</strong><small>Critical holds</small></div>
+                  <div><strong>{metrics.critical}</strong><small>Critical review items</small></div>
                   <ArrowRight size={14} />
                 </button>
                 <button onClick={() => onOpenProjectHub()} className={metrics.blocked ? "warning" : ""}>
                   <span><Activity size={17} /></span>
-                  <div><strong>{metrics.blocked}</strong><small>Blocked work</small></div>
+                  <div><strong>{metrics.blocked}</strong><small>Open review items</small></div>
                   <ArrowRight size={14} />
                 </button>
                 <button onClick={() => onOpenProjectHub()} className={metrics.reviews ? "review" : ""}>
                   <span><ShieldCheck size={17} /></span>
-                  <div><strong>{metrics.reviews}</strong><small>Review decisions</small></div>
+                  <div><strong>{metrics.reviews}</strong><small>Decisions remaining</small></div>
                   <ArrowRight size={14} />
                 </button>
                 <button onClick={() => onOpenProjectHub()} className={metrics.syncDue ? "warning" : ""}>
                   <span><HardDrive size={17} /></span>
-                  <div><strong>{metrics.syncDue}</strong><small>Drive sync due</small></div>
+                  <div><strong>{metrics.syncDue}</strong><small>Projects not synced</small></div>
                   <ArrowRight size={14} />
                 </button>
               </div>
@@ -425,8 +526,8 @@ export default function ProjectHome({
               <article>
                 <span className="workflow-index">01</span>
                 <div className="workflow-icon design"><Wind size={19} /></div>
-                <strong>Design</strong>
-                <p>Manual runs, smart connections, real duct lengths, CFM, velocity, and system balance.</p>
+                <strong>Read &amp; Mark</strong>
+                <p>Open the HVAC plan, identify the right sheets, and add manual runs, symbols, dimensions, and notes.</p>
               </article>
               <article>
                 <span className="workflow-index">02</span>
@@ -448,14 +549,32 @@ export default function ProjectHome({
               </article>
             </div>
           </section>
+
+          <section className="home-professional-card">
+            <div className="home-professional-mark"><Crown size={23} /></div>
+            <div>
+              <small>PROFESSIONAL · COMING SOON</small>
+              <h2>Make every new plan revision faster to review.</h2>
+              <p>Keep prior findings, decisions, markups, and takeoffs ready to compare against the next PDF—without giving AI permission to change your drawing.</p>
+              <div>
+                <span>25 active cloud projects</span>
+                <span>1,500 AI-read pages / month</span>
+                <span>Unlimited takeoff exports</span>
+                <span>Revision comparison</span>
+              </div>
+            </div>
+            <button onClick={() => void requestEarlyAccess()}>{account ? "Join early access" : "Create free workspace"} <ArrowRight size={15} /></button>
+            {upgradeMessage && <em>{upgradeMessage}</em>}
+          </section>
         </div>
 
         <footer className="project-home-footer">
-              <span><Wind size={14} /> HVAC Plan Studio v106</span>
+              <span><Wind size={14} /> HVAC Plan Studio v107</span>
           <p>AI reads · people decide · plan geometry stays under your control</p>
           <button onClick={onOpenCommand}><Command size={14} /> Command palette</button>
         </footer>
       </div>
     </section>
-  );
+    <OwnerAnalytics open={showOwnerAnalytics} onClose={() => setShowOwnerAnalytics(false)} />
+  </>;
 }
