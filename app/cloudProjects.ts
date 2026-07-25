@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient, User } from "@supabase/supabase-js";
+import type { PlanAnalysis, PlanFindingDecision } from "./planReader";
 
 type CloudConfig = {
   url: string;
@@ -145,6 +146,20 @@ export type CloudTakeoffPackage = {
   drive_url: string | null;
   created_by: string;
   created_at: string;
+};
+
+export type CloudPlanAnalysisRun = {
+  id: string;
+  project_id: string;
+  revision_id: string | null;
+  source_fingerprint: string;
+  source_file_name: string;
+  status: "processing" | "completed" | "failed";
+  page_count: number;
+  summary: PlanAnalysis["summary"];
+  created_by: string;
+  created_at: string;
+  completed_at: string | null;
 };
 
 export type ProjectHomeCard = CloudProject & {
@@ -695,4 +710,101 @@ export async function registerCloudProjectFile(input: {
     .single();
   if (error) throw error;
   return data as CloudProjectFile;
+}
+
+export async function saveCloudPlanAnalysis(input: {
+  projectId: string;
+  revisionId?: string | null;
+  analysis: PlanAnalysis;
+}) {
+  const client = await getCloudClient();
+  const { data: auth, error: authError } = await client.auth.getUser();
+  if (authError || !auth.user) throw authError || new Error("Sign in to save Plan Intelligence.");
+
+  const { data: run, error: runError } = await client
+    .from("plan_analysis_runs")
+    .insert({
+      project_id: input.projectId,
+      revision_id: input.revisionId || null,
+      source_fingerprint: input.analysis.sourceFingerprint,
+      source_file_name: input.analysis.sourceFileName,
+      status: "completed",
+      page_count: input.analysis.pageCount,
+      summary: input.analysis.summary,
+      created_by: auth.user.id,
+      completed_at: new Date().toISOString(),
+    })
+    .select("*")
+    .single();
+  if (runError) throw runError;
+
+  if (input.analysis.evidence.length) {
+    const { error } = await client.from("plan_analysis_evidence").insert(
+      input.analysis.evidence.map((row) => ({
+        run_id: run.id,
+        project_id: input.projectId,
+        client_id: row.id,
+        page_number: row.page,
+        sheet_number: row.sheetNumber,
+        category: row.category,
+        label: row.label,
+        value: row.value,
+        excerpt: row.excerpt,
+        confidence: row.confidence,
+        source: row.source,
+        created_by: auth.user.id,
+      })),
+    );
+    if (error) throw error;
+  }
+
+  if (input.analysis.findings.length) {
+    const { error } = await client.from("plan_analysis_findings").insert(
+      input.analysis.findings.map((finding) => ({
+        run_id: run.id,
+        project_id: input.projectId,
+        client_id: finding.id,
+        severity: finding.severity,
+        category: finding.category,
+        title: finding.title,
+        detail: finding.detail,
+        recommendation: finding.recommendation,
+        page_number: finding.page || null,
+        sheet_number: finding.sheetNumber || null,
+        evidence_client_ids: finding.evidenceIds,
+        confidence: finding.confidence,
+        decision: finding.decision,
+        decision_note: finding.decisionNote,
+        created_by: auth.user.id,
+      })),
+    );
+    if (error) throw error;
+  }
+
+  return run as CloudPlanAnalysisRun;
+}
+
+export async function updateCloudPlanFindingDecision(input: {
+  runId: string;
+  findingClientId: string;
+  decision: PlanFindingDecision;
+  note: string;
+}) {
+  const client = await getCloudClient();
+  const { data: auth, error: authError } = await client.auth.getUser();
+  if (authError || !auth.user) throw authError || new Error("Sign in to save a Plan Intelligence decision.");
+  const { data, error } = await client
+    .from("plan_analysis_findings")
+    .update({
+      decision: input.decision,
+      decision_note: input.note.trim(),
+      decided_by: auth.user.id,
+      decided_at: new Date().toISOString(),
+    })
+    .eq("run_id", input.runId)
+    .eq("client_id", input.findingClientId)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
 }
