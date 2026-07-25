@@ -202,7 +202,7 @@ export default function ProjectHome({
           <span><Wind size={22} strokeWidth={2.4} /></span>
           <div>
             <strong>HVAC Plan Studio</strong>
-            <small>Project delivery operating system</small>
+            <small>AI plan intelligence &amp; takeoff</small>
           </div>
         </button>
         <nav className="project-home-nav" aria-label="Primary workspace">
@@ -229,10 +229,10 @@ export default function ProjectHome({
         <div className="project-home-content">
           <section className="project-home-hero">
             <div className="project-home-hero-copy">
-              <span className="home-eyebrow"><Sparkles size={13} /> FIELD PRODUCTION · V104</span>
-              <h1>From source plan to field release, in one controlled workspace.</h1>
+              <span className="home-eyebrow"><Sparkles size={13} /> AI PLAN READER · V105 + V106</span>
+              <h1>Read, mark, and understand HVAC plans in one controlled workspace.</h1>
               <p>
-                Draw complete HVAC systems, coordinate revisions, review problems, and prepare field-ready packages without surrendering control of the geometry.
+                Extract HVAC evidence, review plan problems, mark complete systems, and prepare source-backed takeoffs without surrendering control of the drawing.
               </p>
               <div className="project-home-primary-actions">
                 <button data-home-primary className="home-primary" onClick={onNewProject}><Plus size={17} /> Start a project</button>
@@ -241,20 +241,20 @@ export default function ProjectHome({
               </div>
               <div className="project-home-trust-row">
                 <span><CheckCircle2 size={14} /> Manual geometry stays manual</span>
-                <span><ShieldCheck size={14} /> Revision-controlled releases</span>
-                <span><Workflow size={14} /> Field-first workflow</span>
+                <span><ShieldCheck size={14} /> Evidence-backed findings</span>
+                <span><Workflow size={14} /> Plan-first workflow</span>
               </div>
             </div>
 
-            <div className="project-home-hero-visual" aria-label="System delivery workflow">
+            <div className="project-home-hero-visual" aria-label="HVAC plan intelligence workflow">
               <div className="home-visual-heading">
                 <div>
-                  <span>DELIVERY CONTROL</span>
+                  <span>PLAN INTELLIGENCE</span>
                   <strong>{hasPlan ? currentProjectName : "Ready for a source plan"}</strong>
                 </div>
                 <b>{hasPlan ? currentRevisionLabel : "NEW"}</b>
               </div>
-              <svg viewBox="0 0 560 220" role="img" aria-label="HVAC supply, return, and field-release workflow">
+              <svg viewBox="0 0 560 220" role="img" aria-label="HVAC supply, return, and plan review workflow">
                 <defs>
                   <linearGradient id="home-flow-blue" x1="0" x2="1">
                     <stop offset="0" stopColor="#2f80ff" />
@@ -281,7 +281,7 @@ export default function ProjectHome({
                 <span><i className="supply" /> Supply routing</span>
                 <span><i className="return" /> Return routing</span>
                 <span><i className="fitting" /> Reviewed fittings</span>
-                <strong><ShieldCheck size={14} /> Installer-ready only after approval</strong>
+                <strong><ShieldCheck size={14} /> AI findings remain human-controlled</strong>
               </div>
             </div>
           </section>
@@ -304,7 +304,7 @@ export default function ProjectHome({
             </article>
             <article>
               <span className="status-icon field"><FileCheck2 size={17} /></span>
-              <div><small>FIELD CONTROL</small><strong>Approval-gated</strong></div>
+              <div><small>PLAN INTELLIGENCE</small><strong>Evidence-linked</strong></div>
               <em className="success">ON</em>
             </article>
           </section>
@@ -409,7 +409,7 @@ export default function ProjectHome({
               </div>
               <p className="coordination-note">
                 <ShieldCheck size={15} />
-                Review intelligence can flag work, but it never changes duct geometry or releases a plan without your decision.
+                Plan Intelligence can flag problems, but it never changes duct geometry or accepts a finding without your decision.
               </p>
             </aside>
           </section>
@@ -417,8 +417,8 @@ export default function ProjectHome({
           <section className="project-home-workflow">
             <div className="home-section-heading">
               <div>
-                <span>ONE DELIVERY SYSTEM</span>
-                <h2>Move work forward without losing field context.</h2>
+                <span>ONE PLAN INTELLIGENCE SYSTEM</span>
+                <h2>Move from source PDF to a reviewable HVAC takeoff.</h2>
               </div>
             </div>
             <div className="home-workflow-cards">
@@ -432,27 +432,27 @@ export default function ProjectHome({
                 <span className="workflow-index">02</span>
                 <div className="workflow-icon review"><ShieldCheck size={19} /></div>
                 <strong>Review</strong>
-                <p>Explainable HVAC findings, RFIs, punch items, and revision-specific approvals.</p>
+                <p>Explainable HVAC findings, source evidence, confidence, and revision-specific decisions.</p>
               </article>
               <article>
                 <span className="workflow-index">03</span>
                 <div className="workflow-icon field"><FileCheck2 size={19} /></div>
-                <strong>Field</strong>
-                <p>Installer schedules, controlled field releases, takeoffs, and closeout evidence.</p>
+                <strong>Takeoff</strong>
+                <p>Reviewable equipment, air-device, duct-size, and material quantities linked to plan pages.</p>
               </article>
               <article>
                 <span className="workflow-index">04</span>
                 <div className="workflow-icon files"><HardDrive size={19} /></div>
                 <strong>Files</strong>
-                <p>Source plans and revision-verified project packages connected through Google Drive.</p>
+                <p>Source plans, marked revisions, and analysis records connected through Google Drive.</p>
               </article>
             </div>
           </section>
         </div>
 
         <footer className="project-home-footer">
-              <span><Wind size={14} /> HVAC Plan Studio v104</span>
-          <p>Engineering before geometry · local-first by design · cloud control when your team needs it</p>
+              <span><Wind size={14} /> HVAC Plan Studio v106</span>
+          <p>AI reads · people decide · plan geometry stays under your control</p>
           <button onClick={onOpenCommand}><Command size={14} /> Command palette</button>
         </footer>
       </div>
