@@ -75,11 +75,11 @@ test("builds v106 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.match(page, /addEventListener\("cancel", handleFilePickerCancel\)/);
   assert.match(page, /const modalWorkspaceActive = showProjectHome \|\| showProjectSetup \|\| showPlanIntelligence \|\| showFieldPackageComposer \|\| showSystemBalanceStudio/);
   assert.match(page, /inert=\{modalWorkspaceActive \? true : undefined\}/);
-  assert.match(home, /Read, mark, and understand HVAC plans/);
+  assert.match(home, /Turn HVAC plan PDFs into evidence, markups, and source-backed takeoffs/);
   assert.match(home, /AI plan intelligence &amp; takeoff/);
   assert.doesNotMatch(home, /FIELD PRODUCTION|Field-first workflow|Installer-ready/);
   assert.match(home, /Manual geometry stays manual/);
-  assert.match(home, /Today&apos;s coordination/i);
+  assert.match(home, /PLAN REVIEW QUEUE/);
   assert.match(home, /handleDialogKeyDown/);
   assert.match(home, /onOpenProjectHub\(project\.id\)/);
   assert.match(setup, /Guided setup · about 60 seconds/);
@@ -268,7 +268,7 @@ test("ships the v100 Project Intelligence Hub with secure coordination and revie
   assert.match(page, /const key = event\.key\.toLowerCase\(\)/);
   assert.match(page, /\(event\.ctrlKey \|\| event\.metaKey\) && key === "k"/);
   assert.match(panel, /Command Center/);
-  assert.match(panel, /Coordination work/);
+  assert.match(panel, /Plan review items/);
   assert.match(panel, /Revision approvals/);
   assert.match(panel, /PROJECT EVIDENCE/);
   assert.match(panel, /drawing geometry changes only when you edit it/);
@@ -295,6 +295,43 @@ test("ships the v100 Project Intelligence Hub with secure coordination and revie
   assert.match(page, /workingCloudRevisionFingerprint === currentCloudReleaseFingerprint/);
   assert.match(styles, /\.cloud-executive-metrics/);
   assert.match(styles, /\.command-palette-overlay/);
+});
+
+test("ships v107 public guest access, subscription readiness, and protected owner analytics", async () => {
+  const home = await readFile(new URL("../app/ProjectHome.tsx", import.meta.url), "utf8");
+  const panel = await readFile(new URL("../app/CloudProjectsPanel.tsx", import.meta.url), "utf8");
+  const reader = await readFile(new URL("../app/AIPlanWorkspace.tsx", import.meta.url), "utf8");
+  const analytics = await readFile(new URL("../app/productAnalytics.ts", import.meta.url), "utf8");
+  const owner = await readFile(new URL("../app/OwnerAnalytics.tsx", import.meta.url), "utf8");
+  const entitlements = await readFile(new URL("../app/entitlements.ts", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../supabase/migrations/20260725163857_owner_analytics_and_subscription_readiness.sql", import.meta.url), "utf8");
+
+  assert.match(home, /Open a plan — no account/);
+  assert.match(home, /The drawing workspace is open to everyone/);
+  assert.match(home, /Save projects in the cloud/);
+  assert.match(home, /PROFESSIONAL · COMING SOON/);
+  assert.match(home, /Make every new plan revision faster to review/);
+  assert.match(panel, /Continue without an account/);
+  assert.match(panel, /Sign-in is only required for cloud projects, cross-device access, revision history, and collaboration/);
+  assert.match(panel, /no limits enforced yet/);
+  assert.match(reader, /KEEP THE VALUE YOU JUST CREATED/);
+  assert.match(reader, /Save with a cloud project/);
+  assert.match(entitlements, /revisionComparison: true/);
+  assert.match(analytics, /BLOCKED_PROPERTY_PATTERN/);
+  assert.match(analytics, /drive_package_saved/);
+  assert.match(analytics, /cloud_revision_saved/);
+  assert.match(analytics, /takeoff_package_saved/);
+  assert.match(owner, /PRIVATE OWNER VIEW/);
+  assert.match(owner, /Unique workspace visitors/i);
+  assert.match(migration, /alter table public\.account_access enable row level security/);
+  assert.match(migration, /alter table public\.usage_events enable row level security/);
+  assert.match(migration, /grant insert\(visitor_id, session_id, event_name, page_path, app_version, properties\)/);
+  assert.match(migration, /grant update\(display_name, avatar_url\)/);
+  assert.match(migration, /app_role in \('owner', 'admin'\)/);
+  assert.match(migration, /Owner analytics access required/);
+  assert.match(migration, /analytics_properties_safe/);
+  assert.match(migration, /entry\.key not in/);
+  assert.doesNotMatch(migration, /provider_payload/);
 });
 
 test("uses nominal icon sizes, accurate equipment identities, and selected placement data", async () => {
