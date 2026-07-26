@@ -704,7 +704,7 @@ test("ships v105 AI Plan Reader and v106 evidence-backed Plan Intelligence", asy
   assert.match(migration, /private\.can_edit_project\(project_id\)/);
 });
 
-test("ships v103 System Balance Studio with reviewed calculations and manual geometry control", async () => {
+test("ships v110 System Balance Studio with reviewed calculations and manual geometry control", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const studio = await readFile(new URL("../app/SystemBalanceStudio.tsx", import.meta.url), "utf8");
   const model = await readFile(new URL("../app/systemBalance.ts", import.meta.url), "utf8");
@@ -739,7 +739,7 @@ test("ships v103 System Balance Studio with reviewed calculations and manual geo
   assert.match(page, /function exportSystemBalanceRunCsv\(\)/);
   assert.match(page, /showSystemBalanceStudio && <SystemBalanceStudio/);
   assert.doesNotMatch(page, /const activeSystemBalanceModel = buildSystemBalanceModel\(\)/);
-  assert.match(studio, /SYSTEM BALANCE STUDIO · V103/);
+  assert.match(studio, /SYSTEM BALANCE STUDIO · V110/);
   assert.match(studio, /Planning estimate—not a Manual J, S, D, or T design/);
   assert.match(studio, /Studio never draws new runs, reroutes paths, balances airflow, or numbers ductwork automatically/);
   assert.match(studio, /role="tablist"/);

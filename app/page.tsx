@@ -9429,7 +9429,7 @@ function HVACPlanStudioApp() {
             <Search size={16} /> <span>Command</span><kbd>⌘K</kbd>
           </button>
           <button className={`cloud-button ${showCloudProjects ? "active" : ""}`} aria-pressed={showCloudProjects} onClick={() => setShowCloudProjects(true)}>
-            <Cloud size={16} /> Project Hub <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V108"}</span>
+            <Cloud size={16} /> Project Hub <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V110"}</span>
           </button>
           <button className="drive-button" onClick={() => void openFromDrive()}><HardDrive size={16} /> Open Drive</button>
           <button className="reader-button" disabled={!pdf} onClick={() => openAIPlanReader("reader")}><ScanSearch size={16} /> AI Plan Reader</button>
@@ -11849,7 +11849,7 @@ function HVACPlanStudioApp() {
         <span><i className="online" /> Ready</span>
         <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor · two-finger touch navigates · stylus draws"}</span>
         <span><Ruler size={11} /> {scaleLabel}</span>
-        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · AI Plan Reader v105 · Plan Intelligence v106 · Tablet + Ultra-HD v108</span>
+        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · AI Plan Reader v105 · Plan Intelligence v106 · Readability v110</span>
       </footer>
       <ProjectHome
         open={showProjectHome && !showProjectSetup}

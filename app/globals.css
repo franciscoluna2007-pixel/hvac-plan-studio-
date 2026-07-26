@@ -6163,3 +6163,422 @@ footer span { display: flex; align-items: center; gap: 5px; }
   .display-settings-overlay,
   .workspace-drawer-scrim { display: none !important; }
 }
+
+/* v109 — Readability pass
+   Keep the drafting canvas dense while making every control panel usable at
+   normal desktop viewing distance. The previous 5–8px labels were below a
+   practical minimum and muted text did not separate from the panel surfaces. */
+:root {
+  color: #f1f7fc;
+  --panel: #0d1d2f;
+  --panel-2: #142a42;
+  --line: #31516d;
+  --muted: #a9bed0;
+}
+
+.left-panel,
+.right-panel {
+  color: #dce9f3;
+  background: linear-gradient(180deg, #0d1d2f, #0a1828);
+}
+
+.panel-heading {
+  height: 64px;
+  padding: 15px 16px 12px 18px;
+}
+.panel-heading span { color: #c9d9e7; font-size: 12px; letter-spacing: 1.15px; }
+.panel-heading small { color: #89a1b6; font-size: 10px; }
+
+.tool-list { padding: 10px; }
+.tool {
+  min-height: 48px;
+  height: auto;
+  gap: 12px;
+  padding: 8px 12px;
+  color: #bdcddd;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.tool:hover { color: #fff; border-color: #29465e; background: #14283b; }
+.tool.active {
+  color: #f4fbff;
+  border-color: #2d5971;
+  background: #173149;
+  box-shadow: inset 3px 0 var(--cyan), 0 8px 22px #0003;
+}
+.tool kbd { color: #90a9bd; font-size: 11px; }
+.tool-icon { width: 28px; }
+.tool-icon svg { width: 22px; height: 22px; }
+
+.run-size-default,
+.branch-designer,
+.symbol-library {
+  margin-top: 12px;
+  border-width: 1px;
+  border-radius: 11px;
+}
+.run-size-default { padding: 13px; grid-template-columns: 1fr 92px; gap: 8px 12px; }
+.run-size-default span { color: #a4eeff; font-size: 11px; letter-spacing: .85px; }
+.run-size-default b { color: #9bb1c3; font-size: 10px; }
+.run-size-default small { color: #90a8ba; font-size: 9px; line-height: 1.45; }
+.run-size-default select { height: 42px; font-size: 14px; }
+
+.branch-designer { padding: 14px; }
+.branch-designer label { color: #cbbb83; font-size: 11px; }
+.branch-designer select { height: 40px; color: #f5e8bc; font-size: 11px; }
+.branch-mode-toggle { margin-top: 11px; padding: 4px; gap: 4px; }
+.branch-mode-toggle button { min-height: 40px; font-size: 10px; }
+.branch-arm { min-height: 46px; margin-top: 11px; padding: 9px; font-size: 10px; }
+.branch-designer small { color: #a7996a; font-size: 9px; line-height: 1.5; }
+.branch-run-armed-card b,
+.branch-link-step b { font-size: 10px; }
+.branch-run-armed-card strong { font-size: 11px; }
+.branch-run-armed-card span,
+.branch-link-step span { font-size: 9px; }
+.branch-run-armed-card button,
+.branch-link-step button { min-height: 36px; font-size: 9px; }
+
+.symbol-library { padding: 14px; }
+.library-title { grid-template-columns: 22px 1fr auto; color: #93e9fb; font-size: 12px; letter-spacing: .75px; }
+.library-title b { color: #a9c4d5; font-size: 9px; }
+.symbol-library label { color: #9cb1c3; font-size: 10px; }
+.symbol-library select,
+.symbol-catalog-search { height: 40px; color: #edf6fb; font-size: 11px; }
+.symbol-catalog-search::placeholder { color: #8198ab; }
+.symbol-catalog-grid { max-height: 360px; padding: 7px; gap: 8px; }
+.symbol-catalog-card {
+  min-height: 128px;
+  padding: 8px 6px;
+  grid-template-rows: 72px auto auto;
+  gap: 4px;
+  color: #c2d2df;
+  border-color: #304a60;
+  border-radius: 8px;
+}
+.symbol-catalog-card svg { width: 76px; height: 70px; }
+.symbol-catalog-card > span {
+  font-size: 10px;
+  line-height: 1.25;
+  white-space: normal;
+  text-overflow: clip;
+}
+.symbol-catalog-card > small { color: #90a9ba; font-size: 10px; }
+.symbol-catalog-empty { color: #9bb0c0; font-size: 10px; }
+.place-symbol { min-height: 44px; font-size: 10px; }
+.symbol-library small { color: #8fa7b9; font-size: 9px; line-height: 1.5; }
+.panel-section label { color: #9db1c3; font-size: 11px; }
+.property-input,
+select { min-height: 40px; color: #e6f0f8; border-color: #35516a; font-size: 11px; }
+
+.right-tabs { height: 54px; grid-template-columns: repeat(6, minmax(58px, 1fr)) 38px; overflow-x: auto; }
+.right-tabs button { min-width: 58px; color: #9fb2c5; font-size: 10px; font-weight: 650; }
+.right-tabs button.active { color: #f0f8fd; }
+.right-tabs button.active::after { left: 12px; right: 12px; height: 3px; }
+
+.system-builder-panel { padding: 2px 0 28px; }
+.builder-hero { margin: 15px; padding: 16px; border-color: #397b96; border-radius: 12px; }
+.builder-hero-heading { grid-template-columns: 40px 1fr auto; gap: 11px; }
+.builder-hero-heading > span { width: 40px; height: 40px; border-radius: 10px; }
+.builder-hero-heading strong { color: #f1fbff; font-size: 13px; letter-spacing: .75px; }
+.builder-hero-heading small { color: #9ab8c8; font-size: 10px; line-height: 1.35; }
+.builder-hero-heading > b { font-size: 22px; }
+.builder-progress { height: 8px; margin: 15px 0 13px; }
+.builder-stage-strip { gap: 7px; }
+.builder-stage-strip button {
+  min-height: 58px;
+  padding: 8px 4px;
+  color: #9ab1bf;
+  border-color: #315267;
+  border-radius: 7px;
+  font-size: 10px;
+  line-height: 1.15;
+}
+.builder-stage-strip b { width: 22px; height: 22px; margin-bottom: 5px; font-size: 9px; }
+
+.workflow-next-action {
+  margin: 0 15px 13px;
+  padding: 14px;
+  gap: 12px;
+  border-radius: 11px;
+}
+.workflow-next-action span { color: #86e2f2; font-size: 9px; }
+.workflow-next-action strong { font-size: 13px; }
+.workflow-next-action small { color: #9cb2c2; font-size: 10px; }
+.workflow-next-action button { min-height: 42px; padding: 0 14px; font-size: 10px; }
+
+.builder-metrics { margin: 0 15px 13px; gap: 8px; }
+.builder-metrics > div { padding: 11px; border-color: #2d4b61; border-radius: 8px; }
+.builder-metrics span { color: #91a9ba; font-size: 10px; }
+.builder-metrics strong { margin-top: 5px; font-size: 17px; }
+
+.builder-workflow { margin: 0 15px; gap: 11px; }
+.builder-action-card {
+  padding: 14px;
+  grid-template-columns: 40px 1fr;
+  gap: 11px;
+  border-radius: 11px;
+}
+.builder-action-icon { width: 40px; height: 40px; border-radius: 9px; }
+.builder-action-card > span i { color: #91acbb; font-size: 10px; }
+.builder-action-card > span strong { margin-top: 3px; color: #edf7fc; font-size: 12px; }
+.builder-action-card > span small { margin-top: 5px; color: #9db1c0; font-size: 10px; line-height: 1.5; }
+
+.system-airflow-setup { padding: 13px; gap: 11px; border-radius: 9px; }
+.airflow-setup-heading strong { color: #e5f5fb; font-size: 11px; }
+.airflow-setup-heading small { color: #9bb1bf; font-size: 9px; }
+.system-airflow-setup > label { color: #a2b8c6; font-size: 10px; }
+.system-airflow-setup > label select { height: 40px; font-size: 11px; }
+.airflow-balance-grid { gap: 8px; }
+.airflow-balance-grid > div { padding: 11px; border-radius: 7px; }
+.airflow-balance-grid span { color: #97ad9e; font-size: 10px; }
+.airflow-balance-grid strong { font-size: 15px; }
+.airflow-balance-grid small { color: #9aac9e; font-size: 9px; }
+.airflow-progress-row { gap: 8px; }
+.airflow-progress-row > span {
+  grid-template-columns: 52px 38px 1fr;
+  gap: 8px;
+  color: #9db2c1;
+  font-size: 10px;
+}
+.airflow-progress-row > span > b { font-size: 9px; }
+.airflow-progress-row i { height: 7px; }
+.airflow-field-guidance { gap: 8px; }
+.airflow-field-guidance span { padding: 9px; color: #9eb3c0; font-size: 10px; line-height: 1.45; }
+.system-airflow-setup > p { color: #93aab7; font-size: 10px; line-height: 1.5; }
+.builder-action-buttons { gap: 9px; }
+.builder-action-buttons button,
+.builder-primary-action { min-height: 42px; font-size: 10px; }
+.builder-action-stats { padding: 10px 11px; color: #9db1c1; font-size: 10px; }
+.builder-action-stats b { font-size: 11px; }
+.builder-audit-strip { gap: 8px; }
+.builder-audit-strip > * { padding: 9px; color: #aabac6; font-size: 10px; }
+.builder-safety-note { margin: 13px 15px 0; padding: 13px; color: #a4b6c3; font-size: 10px; line-height: 1.55; }
+.builder-safety-note strong { color: #e0edf4; }
+
+@media (min-width: 1360px) {
+  .app-shell:not(.tablet-layout) .workspace { grid-template-columns: 300px minmax(640px, 1fr) 440px; }
+  .app-shell:not(.tablet-layout).left-closed .workspace { grid-template-columns: minmax(640px, 1fr) 440px; }
+  .app-shell:not(.tablet-layout).right-closed .workspace { grid-template-columns: 300px minmax(640px, 1fr); }
+  .app-shell:not(.tablet-layout).left-closed.right-closed .workspace { grid-template-columns: minmax(640px, 1fr); }
+  .app-shell:not(.tablet-layout).balance-open .workspace { grid-template-columns: 300px minmax(640px, 1fr) 480px; }
+  .app-shell:not(.tablet-layout).balance-open.left-closed .workspace { grid-template-columns: minmax(640px, 1fr) 480px; }
+}
+
+@media (min-width: 1920px) {
+  .app-shell:not(.tablet-layout) .workspace { grid-template-columns: 340px minmax(760px, 1fr) 500px; }
+  .app-shell:not(.tablet-layout).left-closed .workspace { grid-template-columns: minmax(760px, 1fr) 500px; }
+  .app-shell:not(.tablet-layout).right-closed .workspace { grid-template-columns: 340px minmax(760px, 1fr); }
+  .app-shell:not(.tablet-layout).left-closed.right-closed .workspace { grid-template-columns: minmax(760px, 1fr); }
+  .app-shell:not(.tablet-layout).balance-open .workspace { grid-template-columns: 340px minmax(760px, 1fr) 540px; }
+  .app-shell:not(.tablet-layout).balance-open.left-closed .workspace { grid-template-columns: minmax(760px, 1fr) 540px; }
+}
+
+@media (min-width: 2560px) {
+  .app-shell:not(.tablet-layout) .workspace { grid-template-columns: 380px minmax(980px, 1fr) 560px; }
+  .app-shell:not(.tablet-layout).left-closed .workspace { grid-template-columns: minmax(980px, 1fr) 560px; }
+  .app-shell:not(.tablet-layout).right-closed .workspace { grid-template-columns: 380px minmax(980px, 1fr); }
+}
+
+/* v110 — Whole-workspace readability floor
+   Warning, evidence, review, and coordination text must remain readable at a
+   normal desktop viewing distance. Important copy is never treated as microcopy. */
+.system-balance-studio {
+  --balance-muted: #a8bdca;
+  width: min(1500px, calc(100vw - 48px));
+  height: min(980px, calc(100dvh - 40px));
+  min-height: min(700px, calc(100dvh - 40px));
+  grid-template-rows: 88px auto auto 56px minmax(0, 1fr) 82px;
+  border-color: #3b667b;
+}
+.system-balance-header { padding: 0 24px; }
+.system-balance-brand > span { width: 48px; height: 48px; flex-basis: 48px; }
+.system-balance-brand small { color: #8be3f1; font-size: 11px; }
+.system-balance-brand h2 { margin-top: 4px; font-size: 22px; }
+.system-balance-brand p { color: #9db1c0; font-size: 12px; }
+.system-balance-header-actions > span { padding: 9px 12px; font-size: 11px; }
+.system-balance-header-actions > button { width: 44px; height: 44px; }
+
+.system-balance-command {
+  min-height: 120px;
+  margin: 16px 24px 0;
+  padding: 16px 18px;
+  gap: 18px;
+  border-radius: 14px;
+}
+.balance-score-ring { width: 82px; height: 82px; flex-basis: 82px; }
+.balance-score-ring strong { font-size: 27px; }
+.balance-score-ring span { color: #9db1bf; font-size: 10px; }
+.system-balance-command > div:nth-child(2) small { color: #84dceb; font-size: 11px; }
+.system-balance-command > div:nth-child(2) strong { margin-top: 6px; font-size: 23px; }
+.system-balance-command > div:nth-child(2) p {
+  margin-top: 8px;
+  color: #b2c2cd;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.system-balance-command > button { min-height: 48px; padding: 0 17px; font-size: 12px; }
+
+.system-balance-metrics { margin: 12px 24px 0; gap: 11px; }
+.system-balance-metrics article { min-height: 74px; padding: 12px 14px; border-radius: 11px; }
+.system-balance-metrics small { color: #9ab0be; font-size: 10px; }
+.system-balance-metrics strong { margin-top: 5px; font-size: 21px; }
+.system-balance-metrics span { color: #a6b8c3; font-size: 10px; }
+
+.system-balance-tabs { margin: 12px 24px 0; }
+.system-balance-tabs button { min-height: 48px; padding: 0 14px; font-size: 12px; }
+.system-balance-tabs button b { min-width: 23px; height: 23px; font-size: 10px; }
+.system-balance-workspace { margin: 0 24px; }
+.system-balance-workspace > section { padding: 16px 0 24px; }
+
+.balance-flow-compare { gap: 12px; }
+.balance-flow-compare article { padding: 14px 16px; border-radius: 11px; }
+.balance-flow-compare article > div { color: #b7c7d1; font-size: 12px; }
+.balance-flow-compare article > i { height: 7px; margin-top: 11px; }
+.balance-flow-compare article > small { margin-top: 9px; color: #9eb2bf; font-size: 11px; }
+.balance-section-heading { min-height: 44px; }
+.balance-section-heading strong { color: #e1ecf2; font-size: 12px; }
+.balance-section-heading small { color: #9aafbd; font-size: 11px; }
+.balance-section-heading > button,
+.balance-section-heading > div button,
+.balance-run-actions button,
+.balance-proposal-actions button {
+  min-height: 40px;
+  padding: 0 13px;
+  font-size: 11px;
+}
+
+.balance-network-list { margin-top: 11px; }
+.balance-network-list > article { margin-top: 10px; border-radius: 11px; }
+.balance-network-list > article > button { min-height: 62px; padding: 11px 14px; }
+.balance-network-list > article > button strong { font-size: 13px; }
+.balance-network-list > article > button small { margin-top: 5px; color: #9eb1bd; font-size: 11px; }
+.balance-network-list > article > button b { font-size: 10px; }
+.balance-network-list dl > div,
+.balance-room-review-list dl > div,
+.balance-review-history dl > div { padding: 10px 14px; }
+.system-balance-studio dt { color: #93aabb; font-size: 10px; }
+.system-balance-studio dd { margin-top: 5px; color: #e0eaf0; font-size: 12px; }
+
+.balance-review-health { margin-top: 13px; gap: 11px; }
+.balance-review-health article { min-height: 72px; padding: 13px 15px; gap: 12px; }
+.balance-review-health article strong { font-size: 12px; }
+.balance-review-health article small { margin-top: 6px; color: #a5b6c1; font-size: 11px; line-height: 1.5; }
+
+.balance-method-note {
+  margin-top: 13px;
+  padding: 15px 17px;
+  gap: 12px;
+  border-color: #78622c;
+  background: #211d10;
+}
+.balance-method-note p {
+  color: #c5cbd0;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.balance-method-note strong { color: #ffe397; }
+
+.system-balance-empty strong { font-size: 13px; }
+.system-balance-empty span { color: #9cafbc; font-size: 11px; }
+.balance-room-review-list,
+.balance-run-review-list,
+.balance-review-history { gap: 10px; }
+.balance-room-review-list > article > button { min-height: 58px; padding: 11px 14px; }
+.balance-room-review-list > article > button strong { font-size: 13px; }
+.balance-room-review-list > article > button small { color: #a0b2be; font-size: 11px; }
+.balance-room-review-list dd em { color: #91a9b7; font-size: 10px; }
+.balance-room-review-list > article > p { padding: 11px 14px; font-size: 11px; line-height: 1.5; }
+
+.balance-proposal-tray { margin-top: 15px; padding: 14px; }
+.balance-proposal-tray > div:first-child span strong { font-size: 12px; }
+.balance-proposal-tray > div:first-child span small { color: #9bb0be; font-size: 11px; }
+.balance-proposal-tray > div:first-child > b { font-size: 14px; }
+.balance-proposal-actions,
+.balance-run-actions { margin: 11px 0; gap: 9px; }
+.balance-proposal-tray > .balance-select-row,
+.balance-run-review-list > .balance-select-row { min-height: 60px; padding: 9px 11px; }
+.balance-proposal-tray .balance-select-row > button strong,
+.balance-run-review-list .balance-select-row > button strong { font-size: 12px; }
+.balance-proposal-tray .balance-select-row > button small,
+.balance-run-review-list .balance-select-row > button small { color: #98aeba; font-size: 11px; }
+.balance-proposal-tray .balance-select-row > button b { font-size: 12px; }
+.balance-apply { min-height: 48px; font-size: 12px !important; }
+
+.balance-rule-strip { margin-bottom: 11px; gap: 9px; }
+.balance-rule-strip span { min-height: 52px; padding: 10px 11px; color: #9db2c0; font-size: 10px; }
+.balance-rule-strip b { font-size: 13px; }
+.balance-run-review-list .balance-select-row > button em { color: #9fb2be; font-size: 11px; }
+.balance-run-review-list .balance-select-row > button b { font-size: 13px; }
+.balance-run-review-list .balance-select-row > p { font-size: 11px; line-height: 1.5; }
+
+.balance-latest-review { min-height: 70px; padding: 12px 14px; }
+.balance-latest-review span strong { font-size: 12px; }
+.balance-latest-review span small { color: #9db0bc; font-size: 11px; }
+.balance-review-form { padding: 14px; gap: 12px; }
+.balance-review-form > div span strong { font-size: 12px; }
+.balance-review-form > div span small { color: #9bafbc; font-size: 11px; }
+.balance-review-form label { color: #a8bbc6; font-size: 11px; }
+.balance-review-form input,
+.balance-review-form textarea { min-height: 44px; font-size: 12px; }
+.balance-review-form > button { min-height: 44px; font-size: 11px; }
+.balance-review-history > article { padding: 13px 14px; }
+.balance-review-history article > div strong { font-size: 12px; }
+.balance-review-history article > div small,
+.balance-review-history article > div p { color: #9db0bc; font-size: 11px; }
+
+.system-balance-footer { min-height: 82px; padding: 0 24px; gap: 12px; }
+.manual-balance-policy { gap: 11px; }
+.manual-balance-policy span strong { color: #e2ecf1; font-size: 12px; }
+.manual-balance-policy span small {
+  margin-top: 5px;
+  max-width: 960px;
+  color: #a6b8c3;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.balance-live-notice { padding: 11px 14px; font-size: 11px; line-height: 1.5; }
+.system-balance-footer > button { min-height: 46px; padding: 0 15px; font-size: 11px; }
+
+/* Keep secondary text readable in every major workspace panel. */
+.left-panel small,
+.right-panel small,
+.ai-plan-workspace small,
+.plan-intelligence-panel small,
+.field-package-overlay small,
+.cloud-projects-drawer small,
+.owner-analytics-panel small,
+.project-setup-dialog small,
+.command-palette-overlay small,
+.display-settings-panel small {
+  font-size: max(10px, .68rem) !important;
+  line-height: 1.45;
+}
+.right-panel .balance-workspace-note,
+.right-panel .takeoff-note,
+.right-panel .builder-safety-note,
+.right-panel .auxiliary-equipment-note,
+.right-panel .planning-assumption-note {
+  color: #c3d0d9;
+  font-size: 11px !important;
+  line-height: 1.55;
+}
+
+@media (max-width: 980px) {
+  .system-balance-studio {
+    width: calc(100vw - 16px);
+    height: calc(100dvh - 16px);
+    min-height: 0;
+    grid-template-rows: 76px auto auto 48px minmax(0, 1fr) 72px;
+  }
+  .system-balance-brand h2 { font-size: 17px; }
+  .system-balance-command { margin: 10px 12px 0; padding: 12px; }
+  .system-balance-command > div:nth-child(2) strong { font-size: 17px; }
+  .system-balance-command > div:nth-child(2) p { font-size: 11px; }
+  .system-balance-metrics { margin-inline: 12px; }
+  .system-balance-tabs { margin-inline: 12px; }
+  .system-balance-tabs button { font-size: 10px; }
+  .system-balance-workspace { margin-inline: 12px; }
+  .system-balance-footer { padding-inline: 12px; }
+}

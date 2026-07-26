@@ -175,7 +175,7 @@ export default function SystemBalanceStudio({
         <div className="system-balance-brand">
           <span><Wind size={20} /></span>
           <div>
-            <small>SYSTEM BALANCE STUDIO · V103</small>
+            <small>SYSTEM BALANCE STUDIO · V110</small>
             <h2 id="system-balance-title">Airflow coordination, sizing review, and evidence</h2>
             <p>{projectName} · {model.systemName}</p>
           </div>

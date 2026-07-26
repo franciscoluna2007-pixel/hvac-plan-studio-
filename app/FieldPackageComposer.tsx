@@ -140,7 +140,7 @@ export default function FieldPackageComposer({
       <header>
         <div className="field-package-title">
           <span><PackageCheck size={20} /></span>
-          <div><small>PLAN INTELLIGENCE OUTPUT · V108</small><h2 id="field-package-title">Takeoff Package Composer</h2><p>{projectName} · {systemName}</p></div>
+          <div><small>PLAN INTELLIGENCE OUTPUT · V110</small><h2 id="field-package-title">Takeoff Package Composer</h2><p>{projectName} · {systemName}</p></div>
         </div>
         <button aria-label="Close Takeoff Package Composer" onClick={onClose}><X size={18} /></button>
       </header>
