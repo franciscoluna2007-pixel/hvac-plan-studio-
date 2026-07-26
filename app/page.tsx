@@ -13,6 +13,17 @@ import { trackProductEvent } from "./productAnalytics";
 import SystemBalanceStudio from "./SystemBalanceStudio";
 import MarkupAssistantStudio from "./MarkupAssistantStudio";
 import { type FieldPackageSectionId } from "./fieldPackage";
+import type { PlanAnalysis, PlanEvidence } from "./planReader";
+import { buildAdvancedPlanIntelligence } from "./advancedPlanIntelligence";
+import {
+  ASSISTANT_REPAIR_VERSION,
+  buildRepairPlan,
+  type RepairAutonomyMode,
+  type RepairBatchRecord,
+  type RunSizeRepairAction,
+  type TerminalCfmRepairAction,
+} from "./repairPlan";
+import { buildTakeoffImpact } from "./takeoffIntelligence";
 import {
   clampZoom,
   midpoint,
@@ -55,13 +66,16 @@ import {
 } from "./ductSizing";
 import {
   listCloudApprovals,
+  listCloudRepairBatches,
   listCloudRevisions,
   listCloudWorkItems,
   issueCloudFieldRelease,
+  saveCloudRepairBatch,
   saveCloudPlanAnalysis,
   saveCloudTakeoffPackage,
   updateCloudPlanFindingDecision,
   type CloudProject,
+  type CloudRepairBatch,
   type CloudRevision,
 } from "./cloudProjects";
 import { buildSystemWorkflow, type WorkflowStageId, type WorkflowSummary } from "./workflowEngine";
@@ -939,7 +953,7 @@ type BranchOpportunity = {
 };
 
 type SavedProject = {
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   fileName: string;
   drawings: Drawing[];
   savedAt: string;
@@ -972,11 +986,64 @@ type SavedProject = {
   reviewDecisionsBySystem?: Record<string, Record<string, ReviewDecision>>;
   releaseRecords?: SystemReleaseRecord[];
   takeoffPackageRecords?: TakeoffPackageRecord[];
+  assistantAutonomyMode?: RepairAutonomyMode;
+  assistantRepairRecords?: RepairBatchRecord[];
+  activePlanAnalysis?: PlanAnalysis | null;
   workflowSummary?: WorkflowSummary;
   cloudProjectId?: string;
   cloudRevisionId?: string;
   cloudReleaseFingerprint?: string;
 };
+
+function boundedPlanAnalysisSnapshot(analysis: PlanAnalysis | null) {
+  if (!analysis) return null;
+  const evidence = analysis.evidence.slice(0, 600).map((row) => ({
+    ...row,
+    excerpt: row.excerpt.slice(0, 360),
+  }));
+  const findings = analysis.findings.slice(0, 160);
+  const takeoff = analysis.takeoff.slice(0, 300);
+  return {
+    ...analysis,
+    evidence,
+    findings,
+    takeoff,
+    persistence: {
+      truncated:
+        evidence.length < analysis.evidence.length ||
+        findings.length < analysis.findings.length ||
+        takeoff.length < analysis.takeoff.length,
+      originalEvidenceCount: analysis.evidence.length,
+      savedEvidenceCount: evidence.length,
+      originalFindingCount: analysis.findings.length,
+      savedFindingCount: findings.length,
+      originalTakeoffCount: analysis.takeoff.length,
+      savedTakeoffCount: takeoff.length,
+    },
+  } satisfies PlanAnalysis;
+}
+
+function repairRecordFromCloud(batch: CloudRepairBatch): RepairBatchRecord {
+  return {
+    id: batch.client_receipt_id,
+    cloudBatchId: batch.id,
+    repairPlanId: batch.repair_plan_id,
+    systemId: batch.system_id,
+    repairVersion: batch.assistant_version,
+    evidenceFingerprint: batch.evidence_fingerprint,
+    beforeDrawingFingerprint: batch.before_fingerprint,
+    afterDrawingFingerprint: batch.after_fingerprint,
+    autonomyMode: batch.autonomy_mode,
+    actionIds: batch.action_payload.map((action) => action.id),
+    actions: batch.action_payload,
+    takeoffImpact: batch.takeoff_delta,
+    reviewer: batch.reviewer_name,
+    note: batch.note,
+    planningOverrideAcknowledged: batch.planning_override_acknowledged,
+    createdAt: batch.created_at,
+    cloudSync: "synced",
+  };
+}
 
 type CommissioningRecord = {
   model: string;
@@ -1255,6 +1322,15 @@ function HVACPlanStudioApp() {
   const [showSystemBalanceStudio, setShowSystemBalanceStudio] = useState(false);
   const [showMarkupAssistant, setShowMarkupAssistant] = useState(false);
   const [activeMarkupRecommendation, setActiveMarkupRecommendation] = useState<MarkupRecommendation | undefined>();
+  const [assistantAutonomyMode, setAssistantAutonomyMode] = useState<RepairAutonomyMode>("prepare");
+  const [assistantSelectedActionIds, setAssistantSelectedActionIds] = useState<string[]>([]);
+  const [assistantPreparedEvidenceFingerprint, setAssistantPreparedEvidenceFingerprint] = useState("");
+  const [assistantRepairRecords, setAssistantRepairRecords] = useState<RepairBatchRecord[]>([]);
+  const [activePlanAnalysis, setActivePlanAnalysis] = useState<PlanAnalysis | null>(null);
+  const [planEvidenceRegion, setPlanEvidenceRegion] = useState<{
+    page: number;
+    region: NonNullable<PlanEvidence["region"]>;
+  } | null>(null);
   const [printPackageSections, setPrintPackageSections] = useState<FieldPackageSectionId[]>([
     "plan",
     "release",
@@ -1794,6 +1870,11 @@ function HVACPlanStudioApp() {
     setReviewDecisionsBySystem({});
     setReleaseRecords([]);
     setTakeoffPackageRecords([]);
+    setAssistantAutonomyMode("prepare");
+    setAssistantSelectedActionIds([]);
+    setAssistantPreparedEvidenceFingerprint("");
+    setAssistantRepairRecords([]);
+    setActivePlanAnalysis(null);
     setSelectedCfmProposalIds([]);
     setActiveReviewIssueId(null);
     setReviewerName("");
@@ -1839,6 +1920,16 @@ function HVACPlanStudioApp() {
     setReviewDecisionsBySystem(project.reviewDecisionsBySystem || {});
     setReleaseRecords(project.releaseRecords || []);
     setTakeoffPackageRecords(project.takeoffPackageRecords || []);
+    setAssistantAutonomyMode(project.assistantAutonomyMode || "prepare");
+    setAssistantSelectedActionIds([]);
+    setAssistantPreparedEvidenceFingerprint("");
+    setAssistantRepairRecords(Array.isArray(project.assistantRepairRecords) ? project.assistantRepairRecords : []);
+    setActivePlanAnalysis(
+      project.activePlanAnalysis &&
+      (!sourceFingerprint || project.activePlanAnalysis.sourceFingerprint === sourceFingerprint)
+        ? project.activePlanAnalysis
+        : null,
+    );
     setWorkingCloudProjectId(project.cloudProjectId || null);
     setWorkingCloudRevisionId(project.cloudRevisionId || null);
     setWorkingCloudRevisionFingerprint(
@@ -2051,7 +2142,27 @@ function HVACPlanStudioApp() {
         savedProject.cloudReleaseFingerprint ||
         cloudReleaseFingerprintFromProject(savedProject),
       );
-      setBranchMessage(`Cloud revision R${revision.revision_number} restored · local autosave is active`);
+      let receiptHistoryRefreshed = true;
+      try {
+        const cloudBatches = await listCloudRepairBatches(project.id);
+        const mergedRecords = new Map<string, RepairBatchRecord>();
+        (Array.isArray(savedProject.assistantRepairRecords) ? savedProject.assistantRepairRecords : [])
+          .forEach((record) => mergedRecords.set(record.id, record));
+        cloudBatches
+          .map(repairRecordFromCloud)
+          .forEach((record) => mergedRecords.set(record.id, {
+            ...mergedRecords.get(record.id),
+            ...record,
+            reversedAt: mergedRecords.get(record.id)?.reversedAt,
+          }));
+        setAssistantRepairRecords([...mergedRecords.values()]);
+      } catch {
+        receiptHistoryRefreshed = false;
+      }
+      setBranchMessage(
+        `Cloud revision R${revision.revision_number} restored · local autosave is active` +
+        (receiptHistoryRefreshed ? " · repair receipts refreshed" : " · repair receipt refresh unavailable"),
+      );
       setShowCloudProjects(false);
       setShowProjectHome(false);
       void trackProductEvent("revision_opened", { revision: revision.revision_number });
@@ -2726,6 +2837,7 @@ function HVACPlanStudioApp() {
 
   function goToPage(page: number) {
     if (!pdf) return;
+    setPlanEvidenceRegion(null);
     setPageNumber(Math.max(1, Math.min(pdf.numPages, page)));
     requestAnimationFrame(() => centerPlan());
   }
@@ -2747,7 +2859,7 @@ function HVACPlanStudioApp() {
       releaseStale: activeFieldPackage.stale,
     });
     return {
-      version: 3,
+      version: 4,
       fileName,
       drawings,
       savedAt: new Date().toISOString(),
@@ -2779,6 +2891,9 @@ function HVACPlanStudioApp() {
       reviewDecisionsBySystem,
       releaseRecords,
       takeoffPackageRecords,
+      assistantAutonomyMode,
+      assistantRepairRecords,
+      activePlanAnalysis: boundedPlanAnalysisSnapshot(activePlanAnalysis),
       cloudProjectId: workingCloudProjectId || undefined,
       cloudRevisionId: workingCloudRevisionId || undefined,
       cloudReleaseFingerprint: currentCloudReleaseFingerprint,
@@ -2799,13 +2914,27 @@ function HVACPlanStudioApp() {
         })),
       },
     };
-  }, [activeBuilderSummary, activeFieldPackage, activeSystem, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
+  }, [activeBuilderSummary, activeFieldPackage, activePlanAnalysis, activeSystem, assistantAutonomyMode, assistantRepairRecords, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
 
   const saveProject = useCallback(() => {
     if (!pdf) return;
     const project = buildProjectSnapshot();
-    localStorage.setItem(`${STORAGE_PREFIX}${fileName.toLowerCase()}`, JSON.stringify(project));
-    setSaveState("saved");
+    try {
+      localStorage.setItem(`${STORAGE_PREFIX}${fileName.toLowerCase()}`, JSON.stringify(project));
+      setSaveState("saved");
+    } catch {
+      try {
+        localStorage.setItem(
+          `${STORAGE_PREFIX}${fileName.toLowerCase()}`,
+          JSON.stringify({ ...project, activePlanAnalysis: null }),
+        );
+        setSaveState("saved");
+        setBranchMessage("The drawing was saved. Detailed Plan Intelligence exceeded browser storage and can be regenerated from the PDF.");
+      } catch {
+        setSaveState("saving");
+        setBranchMessage("Browser storage is full. Export or save a cloud revision before closing this plan.");
+      }
+    }
   }, [buildProjectSnapshot, fileName, pdf]);
 
   useEffect(() => {
@@ -3007,7 +3136,9 @@ function HVACPlanStudioApp() {
       .filter((drawing) => drawing.page === pageNumber && drawing.fitting)
       .map((drawing) => drawing.points[0]);
     const byPair = new Map<string, BranchOpportunity>();
-    const distanceLimit = 44 / zoom;
+    // Persisted assistant evidence must be invariant to viewport zoom.
+    // These tolerances are in the fixed logical PDF coordinate space.
+    const distanceLimit = 44;
 
     for (const main of supplyRuns) {
       const mainLength = main.points.slice(1).reduce((total, point, index) =>
@@ -3039,7 +3170,7 @@ function HVACPlanStudioApp() {
             const center = { x: a.x + amount * dx, y: a.y + amount * dy };
             const distance = Math.hypot(endpoint.x - center.x, endpoint.y - center.y);
             if (distance > distanceLimit) continue;
-            if (fittingCenters.some((fittingCenter) => Math.hypot(fittingCenter.x - center.x, fittingCenter.y - center.y) < 32 / zoom)) continue;
+            if (fittingCenters.some((fittingCenter) => Math.hypot(fittingCenter.x - center.x, fittingCenter.y - center.y) < 32)) continue;
 
             const neighbor = endpointIndex === 0 ? branch.points[1] : branch.points[branch.points.length - 2];
             const branchAngle = Math.atan2(neighbor.y - endpoint.y, neighbor.x - endpoint.x);
@@ -3072,7 +3203,7 @@ function HVACPlanStudioApp() {
     return [...byPair.values()]
       .sort((left, right) => left.score - right.score)
       .filter((opportunity, index, all) => !all.slice(0, index).some((previous) =>
-        Math.hypot(previous.center.x - opportunity.center.x, previous.center.y - opportunity.center.y) < 26 / zoom
+        Math.hypot(previous.center.x - opportunity.center.x, previous.center.y - opportunity.center.y) < 26
       ))
       .slice(0, 24);
   }
@@ -3375,9 +3506,15 @@ function HVACPlanStudioApp() {
     });
   }
 
-  function synchronizeFittingSizes(nextDrawings: Drawing[], previousDrawings = drawings) {
+  function synchronizeFittingSizes(
+    nextDrawings: Drawing[],
+    previousDrawings = drawings,
+    options: { fittingIds?: Set<string>; snapEndpoints?: boolean } = {},
+  ) {
     let synchronized = nextDrawings;
-    for (const previousFitting of previousDrawings.filter((drawing) => drawing.fitting)) {
+    for (const previousFitting of previousDrawings.filter((drawing) =>
+      drawing.fitting && (!options.fittingIds || options.fittingIds.has(drawing.id))
+    )) {
       const fitting = synchronized.find((drawing) => drawing.id === previousFitting.id);
       if (!fitting?.fitting) continue;
       const connected = fitting.fitting.connectedIds.map((id) => synchronized.find((drawing) => drawing.id === id));
@@ -3389,7 +3526,9 @@ function HVACPlanStudioApp() {
         fitting: { ...fitting.fitting, upstreamSize, downstreamSize, branchSize },
       };
       synchronized = synchronized.map((drawing) => drawing.id === fitting.id ? updatedFitting : drawing);
-      synchronized = snapRunsToFittingPorts(synchronized, updatedFitting, previousFitting);
+      if (options.snapEndpoints !== false) {
+        synchronized = snapRunsToFittingPorts(synchronized, updatedFitting, previousFitting);
+      }
     }
     return synchronized;
   }
@@ -3561,6 +3700,7 @@ function HVACPlanStudioApp() {
   function calculateAirflowNetwork() {
     const runs = drawings.filter((drawing) => ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting);
     const direct = new Map<string, number>();
+    const directSources = new Map<string, Set<"planning-seed" | "manual" | "room-target">>();
     const terminalRun = new Map<string, string>();
     const equipmentRun = new Map<string, string>();
     const equipmentReturnRun = new Map<string, string>();
@@ -3656,9 +3796,13 @@ function HVACPlanStudioApp() {
       if (savedRun) {
         terminalRun.set(symbol.id, savedRun.id);
         direct.set(savedRun.id, (direct.get(savedRun.id) || 0) + (symbol.cfm || 0));
+        const sources = new Set(directSources.get(savedRun.id) || []);
+        sources.add(symbol.cfmSource || "planning-seed");
+        directSources.set(savedRun.id, sources);
       }
     }
     const calculated = new Map<string, number>();
+    const calculatedSources = new Map<string, Set<"planning-seed" | "manual" | "room-target">>();
     const calculate = (id: string, visiting = new Set<string>()): number => {
       if (calculated.has(id)) return calculated.get(id)!;
       if (visiting.has(id)) return 0;
@@ -3667,7 +3811,24 @@ function HVACPlanStudioApp() {
       calculated.set(id, total);
       return total;
     };
-    runs.forEach((run) => calculate(run.id));
+    const calculateSources = (
+      id: string,
+      visiting = new Set<string>(),
+    ): Set<"planning-seed" | "manual" | "room-target"> => {
+      if (calculatedSources.has(id)) return calculatedSources.get(id)!;
+      if (visiting.has(id)) return new Set();
+      const next = new Set(visiting).add(id);
+      const sources = new Set(directSources.get(id) || []);
+      (children.get(id) || []).forEach((childId) => {
+        calculateSources(childId, next).forEach((source) => sources.add(source));
+      });
+      calculatedSources.set(id, sources);
+      return sources;
+    };
+    runs.forEach((run) => {
+      calculate(run.id);
+      calculateSources(run.id);
+    });
     const reachableSupplyRuns = new Set<string>();
     const supplyQueue = [...equipmentRun.values()];
     while (supplyQueue.length) {
@@ -3695,6 +3856,9 @@ function HVACPlanStudioApp() {
     const returnCalculated = new Map(
       returnTraversal.map((runId) => [runId, direct.get(runId) || 0]),
     );
+    const returnCalculatedSources = new Map(
+      returnTraversal.map((runId) => [runId, new Set(directSources.get(runId) || [])]),
+    );
     for (const runId of [...returnTraversal].reverse()) {
       const parentId = returnParent.get(runId);
       if (!parentId) continue;
@@ -3702,8 +3866,12 @@ function HVACPlanStudioApp() {
         parentId,
         (returnCalculated.get(parentId) || 0) + (returnCalculated.get(runId) || 0),
       );
+      const parentSources = new Set(returnCalculatedSources.get(parentId) || []);
+      (returnCalculatedSources.get(runId) || new Set()).forEach((source) => parentSources.add(source));
+      returnCalculatedSources.set(parentId, parentSources);
     }
     returnCalculated.forEach((cfm, runId) => calculated.set(runId, cfm));
+    returnCalculatedSources.forEach((sources, runId) => calculatedSources.set(runId, sources));
     const rootedTerminalRun = new Map<string, string>();
     drawings.filter((drawing) => ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "")).forEach((terminal) => {
       const runId = terminalRun.get(terminal.id);
@@ -3713,6 +3881,7 @@ function HVACPlanStudioApp() {
     });
     return {
       calculated,
+      calculatedSources,
       terminalRun,
       rootedTerminalRun,
       equipmentRun,
@@ -4140,6 +4309,7 @@ function HVACPlanStudioApp() {
 
   function sizingSuggestions() {
     const network = airflowNetwork();
+    const reviewedRoomTargets = roomAirflowTargetsAreReviewed();
     return drawings
       .filter((drawing) => ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting && drawingSystem(drawing) === activeSystem)
       .flatMap((drawing) => {
@@ -4148,8 +4318,11 @@ function HVACPlanStudioApp() {
           ? network.reachableSupplyRuns.has(drawing.id)
           : drawing.type === "return"
             ? network.reachableReturnRuns.has(drawing.id)
-            : hasManualOverride;
+            : false;
         const propagated = pathIsContinuous ? network.calculated.get(drawing.id) || 0 : 0;
+        const propagatedSources = [
+          ...(pathIsContinuous ? network.calculatedSources.get(drawing.id) || new Set<"planning-seed" | "manual" | "room-target">() : []),
+        ].sort();
         const manual = Math.max(0, drawing.cfm ?? 0);
         const manualBelowDownstream = hasManualOverride && propagated > manual;
         const cfm = hasManualOverride ? Math.max(manual, propagated) : propagated;
@@ -4159,7 +4332,15 @@ function HVACPlanStudioApp() {
           : drawing.type === "return"
             ? returnVelocityLimit
             : freshVelocityLimit;
-        const airflowSource = hasManualOverride ? "manual" as const : "terminal-linked" as const;
+        const manualGoverns = hasManualOverride && manual > 0 && manual >= propagated;
+        const propagatedReviewed = Boolean(
+          propagated > 0 &&
+          propagatedSources.length &&
+          !propagatedSources.includes("planning-seed") &&
+          (!propagatedSources.includes("room-target") || reviewedRoomTargets)
+        );
+        const airflowReviewed = manualGoverns || propagatedReviewed;
+        const airflowSource = manualGoverns ? "manual" as const : "terminal-linked" as const;
         const recommendation = recommendFlexibleDuctSize({
           cfm,
           airflowSource,
@@ -4179,15 +4360,30 @@ function HVACPlanStudioApp() {
           limit,
           classification: recommendation.classification,
           sizingStatus: recommendation.status,
-          applyEligible: recommendation.applyEligible,
+          applyEligible: recommendation.applyEligible && airflowReviewed,
           overCapacity: recommendation.overCapacity,
           reasonCodes: [
             ...recommendation.reasonCodes,
             ...(manualBelowDownstream ? ["MANUAL_CFM_BELOW_DOWNSTREAM"] : []),
+            ...(!airflowReviewed ? ["AIRFLOW_PROVENANCE_UNREVIEWED"] : []),
           ],
           alternatives: recommendation.alternatives,
           room: drawing.roomName?.trim() || "Unassigned route",
           airflowSource,
+          airflowReviewed,
+          airflowEvidence: manualGoverns
+            ? [`Manual run CFM governs at ${manual} CFM`]
+            : propagatedSources.map((source) =>
+              source === "room-target"
+                ? "Fingerprint-matched reviewed room-target CFM"
+                : source === "manual"
+                  ? "Manually entered terminal CFM"
+                  : "Planning-seed terminal CFM · not eligible"
+            ),
+          roomTargetReviewFingerprint: propagatedSources.includes("room-target")
+            ? roomAirflowTargetReviewFingerprints[activeSystem] || ""
+            : "",
+          equipmentRooted: pathIsContinuous,
           physicalLength: pressure.physicalLength,
           equivalentLength: pressure.equivalentLength,
           equivalentLengthPerBend: pressure.equivalentLengthPerBend,
@@ -4197,13 +4393,6 @@ function HVACPlanStudioApp() {
         }];
       })
       .filter((suggestion) => suggestion.overCapacity || suggestion.current !== suggestion.recommended);
-  }
-
-  function hasPlanningSeedTerminalCfm() {
-    const setup = airflowSetupSummary();
-    return [...setup.supplyTerminals, ...setup.returnTerminals].some((drawing) =>
-      !drawing.cfmSource || drawing.cfmSource === "planning-seed"
-    );
   }
 
   function reducerRecommendations() {
@@ -4351,37 +4540,37 @@ function HVACPlanStudioApp() {
   }
 
   function applySizingSuggestionIds(ids: string[]) {
-    if (hasPlanningSeedTerminalCfm()) {
-      setBranchMessage("Replace planning-seed terminal CFM before applying velocity-screened duct sizes");
+    const eligibleRunIds = new Set(sizingSuggestions()
+      .filter((suggestion) =>
+        ids.includes(suggestion.id) &&
+        suggestion.airflowReviewed &&
+        suggestion.equipmentRooted &&
+        suggestion.applyEligible &&
+        !suggestion.overCapacity
+      )
+      .map((suggestion) => suggestion.id));
+    const repairActionIds = assistantRepairPlan.actions
+      .filter((action) =>
+        action.kind === "run-size" &&
+        action.readiness === "ready" &&
+        eligibleRunIds.has(action.drawingId)
+      )
+      .map((action) => action.id);
+    if (!repairActionIds.length) {
+      setBranchMessage("No selected size has current reviewed airflow provenance and an equipment-rooted path. Zero changes were applied.");
       setSelectedSizingIds([]);
       return;
     }
-    const proposed = new Map(sizingSuggestions()
-      .filter((suggestion) => ids.includes(suggestion.id) && suggestion.applyEligible && !suggestion.overCapacity)
-      .map((suggestion) => [suggestion.id, suggestion.recommended]));
-    if (!proposed.size) {
-      setBranchMessage("Select at least one velocity-screened size change before applying");
-      return;
-    }
-    const resized = drawings.map((drawing) => {
-      if (drawing.fitting) {
-        const [upstreamId, downstreamId, branchId] = drawing.fitting.connectedIds;
-        const upstreamSize = proposed.get(upstreamId) || drawing.fitting.upstreamSize;
-        const downstreamSize = proposed.get(downstreamId) || drawing.fitting.downstreamSize;
-        const branchSize = proposed.get(branchId) || drawing.fitting.branchSize;
-        return {
-          ...drawing,
-          size: `${upstreamSize}×${downstreamSize}×${branchSize}`,
-          fitting: { ...drawing.fitting, upstreamSize, downstreamSize, branchSize },
-        };
-      }
-      const size = proposed.get(drawing.id);
-      return size ? { ...drawing, size } : drawing;
-    });
-    setHistory(synchronizeFittingSizes(resized, drawings));
-    setBranchMessage(`${proposed.size} reviewed duct size change${proposed.size === 1 ? "" : "s"} applied · Undo is available`);
+    setAssistantAutonomyMode("guided");
+    setAssistantPreparedEvidenceFingerprint(assistantRepairPlan.evidenceFingerprint);
+    setAssistantSelectedActionIds(repairActionIds);
     setSelectedSizingIds([]);
     setShowSizingReview(false);
+    setShowSystemBalanceStudio(false);
+    setShowMarkupAssistant(true);
+    setBranchMessage(
+      `${repairActionIds.length} velocity-screened size candidate${repairActionIds.length === 1 ? "" : "s"} opened in Guided Repair · reviewer, explicit planning override, and final batch confirmation are still required`,
+    );
   }
 
   function openSizingReview() {
@@ -4397,7 +4586,10 @@ function HVACPlanStudioApp() {
     const equipment = drawings.filter((drawing) => isPrimaryAirflowEquipment(drawing) && drawingSystem(drawing) === activeSystem);
     const targetCfm = equipment.reduce((total, drawing) => {
       const tons = Number(drawing.size.match(/[\d.]+/)?.[0] || 0);
-      return total + (drawing.cfm || tons * 400);
+      const reviewedEquipmentCfm = drawing.cfmSource === "manual" && (drawing.cfm || 0) > 0
+        ? drawing.cfm || 0
+        : 0;
+      return total + (reviewedEquipmentCfm || tons * 400);
     }, 0);
     const supplyCfm = drawings
       .filter((drawing) => drawing.symbol?.kind === "diffuser" && drawingSystem(drawing) === activeSystem)
@@ -4827,7 +5019,11 @@ function HVACPlanStudioApp() {
     const setup = airflowSetupSummary();
     const network = airflowNetwork();
     const targets = activeRoomAirflowTargets();
-    const equipmentSources = setup.equipment.map((drawing) => drawing.cfmSource || "planning-seed");
+    const equipmentSources = setup.equipment.map((drawing) =>
+      drawing.cfmSource === "manual" && (drawing.cfm || 0) > 0
+        ? "manual"
+        : "planning-seed"
+    );
     const airflowTargetSource: SystemBalanceModel["airflowTargetSource"] = !setup.targetCfm
       ? "missing"
       : equipmentSources.every((source) => source === "manual")
@@ -4902,6 +5098,8 @@ function HVACPlanStudioApp() {
       pressureDrop: run.pressureDrop,
       pressureAssumption: run.pressureAssumption,
       airflowSource: run.airflowSource,
+      airflowReviewed: run.airflowReviewed,
+      airflowEvidence: run.airflowEvidence,
       overCapacity: run.overCapacity,
     }));
     return {
@@ -5556,8 +5754,8 @@ function HVACPlanStudioApp() {
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
   }
 
-  function systemDrawingSignature(systemId = activeSystem) {
-    const scopedDrawings = drawings
+  function systemDrawingSignatureFor(sourceDrawings: Drawing[], systemId = activeSystem) {
+    const scopedDrawings = sourceDrawings
       .filter((drawing) => drawingSystem(drawing) === systemId)
       .slice()
       .sort((a, b) => a.id.localeCompare(b.id))
@@ -5590,6 +5788,10 @@ function HVACPlanStudioApp() {
       visibleLabels: { showCfmLabels, showLengthLabels, showFittingLabels },
       velocityRules: { supplyVelocityLimit, returnVelocityLimit, freshVelocityLimit, residentialFlexMax },
     }));
+  }
+
+  function systemDrawingSignature(systemId = activeSystem) {
+    return systemDrawingSignatureFor(drawings, systemId);
   }
 
   function systemReleaseSignature(systemId = activeSystem) {
@@ -7620,6 +7822,21 @@ function HVACPlanStudioApp() {
     }
     const previous = undoStack.at(-1);
     if (!previous) return;
+    const currentFingerprint = systemDrawingSignatureFor(drawings, activeSystem);
+    const previousFingerprint = systemDrawingSignatureFor(previous, activeSystem);
+    const reversibleRecord = [...assistantRepairRecords].reverse().find((record) =>
+      record.systemId === activeSystem &&
+      !record.reversedAt &&
+      record.afterDrawingFingerprint === currentFingerprint &&
+      record.beforeDrawingFingerprint === previousFingerprint
+    );
+    if (reversibleRecord) {
+      setAssistantRepairRecords((records) => records.map((record) =>
+        record.id === reversibleRecord.id
+          ? { ...record, reversedAt: new Date().toISOString() }
+          : record
+      ));
+    }
     setRedoStack((redo) => [...redo, drawings]);
     setDrawings(previous);
     setUndoStack((stack) => stack.slice(0, -1));
@@ -9247,6 +9464,337 @@ function HVACPlanStudioApp() {
     activeBuilderSummary.sizing.length,
     assistantBranchOpportunities.length,
   );
+  const assistantSizingCandidates = sizingSuggestions();
+  const assistantCfmCandidates = terminalCfmProposals();
+  const repairEvidenceFingerprint = stableTextHash(JSON.stringify({
+    systemId: activeSystem,
+    drawingSignature: systemDrawingSignature(activeSystem),
+    roomTargets: roomAirflowTargets[activeSystem] || {},
+    roomTargetsReviewed: roomAirflowTargetsAreReviewed(),
+    sizingVersion: DUCT_SIZING_CALCULATION_VERSION,
+    repairVersion: ASSISTANT_REPAIR_VERSION,
+    scaleVerified,
+    rules: {
+      supplyVelocityLimit,
+      returnVelocityLimit,
+      freshVelocityLimit,
+      residentialFlexMax,
+    },
+    sizingCandidates: assistantSizingCandidates.map((candidate) => ({
+      id: candidate.id,
+      current: candidate.current,
+      recommended: candidate.recommended,
+      cfm: candidate.cfm,
+      airflowSource: candidate.airflowSource,
+      airflowReviewed: candidate.airflowReviewed,
+      airflowEvidence: candidate.airflowEvidence,
+      roomTargetReviewFingerprint: candidate.roomTargetReviewFingerprint,
+      equipmentRooted: candidate.equipmentRooted,
+      applyEligible: candidate.applyEligible,
+      overCapacity: candidate.overCapacity,
+      reasonCodes: candidate.reasonCodes,
+    })),
+    findings: activePlanIntelligenceFindings.map((finding) => ({
+      id: finding.id,
+      evidenceFingerprint: finding.evidenceFingerprint,
+      resolved: finding.resolved,
+    })),
+    branches: assistantBranchOpportunities.map((opportunity) => ({
+      id: opportunity.id,
+      center: opportunity.center,
+      mainRunId: opportunity.mainRunId,
+      branchRunId: opportunity.branchRunId,
+      style: opportunity.style,
+    })),
+  }));
+  const assistantRepairPlan = buildRepairPlan({
+    systemId: activeSystem,
+    evidenceFingerprint: repairEvidenceFingerprint,
+    recommendations: markupRecommendations,
+    cfmCandidates: assistantCfmCandidates,
+    roomTargetsReviewed: roomAirflowTargetsAreReviewed(),
+    sizeCandidates: assistantSizingCandidates.map((candidate) => {
+      const affectedFittings = drawings.filter((drawing) =>
+        drawing.fitting?.connectedIds.includes(candidate.id) &&
+        drawingSystem(drawing) === activeSystem
+      );
+      return {
+        ...candidate,
+        affectedFittingIds: affectedFittings.map((drawing) => drawing.id),
+        affectedConnectedRunIds: affectedFittings.flatMap((drawing) =>
+          drawing.fitting?.connectedIds.filter((id) => {
+            const connected = drawings.find((candidateDrawing) => candidateDrawing.id === id);
+            return connected && drawingSystem(connected) === activeSystem;
+          }) || []
+        ),
+      };
+    }),
+    branchCandidates: assistantBranchOpportunities.map((opportunity) => ({
+      id: opportunity.id,
+      mainRunId: opportunity.mainRunId,
+      branchRunId: opportunity.branchRunId,
+      style: opportunity.style,
+      parentSize: opportunity.parentSize,
+      evidenceFingerprint: stableTextHash(JSON.stringify({
+        systemId: activeSystem,
+        ...opportunity,
+      })),
+    })),
+    scaleVerified,
+  });
+  const assistantSelectedSizeActions = assistantRepairPlan.actions.filter((action): action is RunSizeRepairAction =>
+    action.kind === "run-size" &&
+    action.readiness === "ready" &&
+    assistantPreparedEvidenceFingerprint === assistantRepairPlan.evidenceFingerprint &&
+    assistantSelectedActionIds.includes(action.id)
+  );
+  const assistantPreviewSizeChanges = new Map(
+    assistantSelectedSizeActions.map((action) => [action.drawingId, action.proposedSize]),
+  );
+  const assistantPreviewResizedDrawings = drawings.map((drawing) =>
+    assistantPreviewSizeChanges.has(drawing.id)
+      ? { ...drawing, size: assistantPreviewSizeChanges.get(drawing.id)! }
+      : drawing
+  );
+  const assistantPreviewDrawings = assistantSelectedSizeActions.length
+    ? synchronizeFittingSizes(assistantPreviewResizedDrawings, drawings, {
+      fittingIds: new Set(assistantSelectedSizeActions.flatMap((action) => action.affectedFittingIds)),
+    })
+    : drawings;
+  const assistantTakeoffRuns = (sourceDrawings: Drawing[]) => sourceDrawings.flatMap((drawing) => {
+    if (
+      drawingSystem(drawing) !== activeSystem ||
+      drawing.fitting ||
+      drawing.symbol ||
+      !["supply", "return", "fresh"].includes(drawing.type)
+    ) return [];
+    return [{
+      id: drawing.id,
+      type: drawing.type as "supply" | "return" | "fresh",
+      size: drawing.size,
+      measuredLengthFeet: drawingLengthFeet(drawing),
+    }];
+  });
+  const assistantTakeoffImpact = buildTakeoffImpact({
+    runs: assistantTakeoffRuns(drawings),
+    afterRuns: assistantTakeoffRuns(assistantPreviewDrawings),
+    sizeChanges: [],
+    wastePercent: materialWastePercent,
+    affectedFittingIds: assistantSelectedSizeActions.flatMap((action) => action.affectedFittingIds),
+    holds: assistantRepairPlan.actions
+      .filter((action) => action.readiness === "needs-input")
+      .map((action) => action.blocker || action.title),
+  });
+  const activeAdvancedPlanIntelligence = buildAdvancedPlanIntelligence(activePlanAnalysis);
+
+  function prepareAssistantRepairPlan() {
+    setAssistantPreparedEvidenceFingerprint(assistantRepairPlan.evidenceFingerprint);
+    setAssistantSelectedActionIds(assistantRepairPlan.selectedByDefault);
+    setBranchMessage(
+      assistantRepairPlan.readyCount
+        ? `${assistantRepairPlan.readyCount} evidence-bound repair${assistantRepairPlan.readyCount === 1 ? "" : "s"} prepared · review once, then apply in one Undo`
+        : "The repair plan is prepared, but no automatic action is ready yet · review the listed inputs and manual follow-ups",
+    );
+  }
+
+  async function applyAssistantRepairPlan(input: {
+    actionIds: string[];
+    evidenceFingerprint: string;
+    reviewer: string;
+    note: string;
+    planningOverrideAcknowledged: boolean;
+  }) {
+    if (assistantAutonomyMode !== "guided") {
+      setBranchMessage("Guided Apply is not active. Zero actions were applied.");
+      return false;
+    }
+    if (!input.reviewer.trim()) {
+      setBranchMessage("Enter reviewer initials or a reviewer name before applying this guided batch.");
+      return false;
+    }
+    if (
+      input.evidenceFingerprint !== assistantRepairPlan.evidenceFingerprint ||
+      assistantPreparedEvidenceFingerprint !== assistantRepairPlan.evidenceFingerprint
+    ) {
+      setBranchMessage("The repair plan changed before commit. Zero actions were applied · refresh and review the new evidence.");
+      return false;
+    }
+
+    const requestedIds = new Set(input.actionIds);
+    const actions = assistantRepairPlan.actions.filter((action) =>
+      requestedIds.has(action.id) && action.readiness === "ready"
+    );
+    if (!actions.length || actions.length !== requestedIds.size) {
+      setBranchMessage("One or more selected actions are no longer eligible. Zero actions were applied.");
+      return false;
+    }
+    const cfmActions = actions.filter((action): action is TerminalCfmRepairAction => action.kind === "terminal-cfm");
+    const sizeActions = actions.filter((action): action is RunSizeRepairAction => action.kind === "run-size");
+    if (cfmActions.length && sizeActions.length) {
+      setBranchMessage("Apply reviewed terminal CFM first, then rebuild the repair plan before resizing the network. Zero actions were applied.");
+      return false;
+    }
+    if (sizeActions.some((action) => action.requiresPlanningOverride) && !input.planningOverrideAcknowledged) {
+      setBranchMessage("The velocity-only planning override was not acknowledged. Zero size changes were applied.");
+      return false;
+    }
+
+    const liveCfm = new Map(terminalCfmProposals().map((proposal) => [proposal.drawingId, proposal]));
+    const liveSizing = new Map(sizingSuggestions().map((suggestion) => [suggestion.id, suggestion]));
+    const allActionsStillMatch = actions.every((action) => {
+      if (action.kind === "terminal-cfm") {
+        const drawing = drawings.find((candidate) => candidate.id === action.drawingId);
+        const proposal = liveCfm.get(action.drawingId);
+        return Boolean(
+          drawing &&
+          proposal &&
+          roomAirflowTargetsAreReviewed() &&
+          proposal.connected &&
+          (drawing.cfm || 0) === action.currentCfm &&
+          proposal.proposed === action.proposedCfm
+        );
+      }
+      if (action.kind === "run-size") {
+        const drawing = drawings.find((candidate) => candidate.id === action.drawingId);
+        const suggestion = liveSizing.get(action.drawingId);
+        return Boolean(
+          drawing &&
+          suggestion &&
+          drawing.size === action.currentSize &&
+          suggestion.recommended === action.proposedSize &&
+          suggestion.cfm === action.cfm &&
+          suggestion.airflowReviewed &&
+          action.airflowReviewed &&
+          (action.roomTargetReviewFingerprint || "") === (suggestion.roomTargetReviewFingerprint || "") &&
+          suggestion.equipmentRooted &&
+          suggestion.applyEligible &&
+          !suggestion.overCapacity
+        );
+      }
+      return false;
+    });
+    if (!allActionsStillMatch) {
+      setBranchMessage("The live drawing no longer matches the reviewed object diffs. Zero actions were applied · refresh the repair plan.");
+      return false;
+    }
+
+    let next = drawings;
+    if (cfmActions.length) {
+      const changes = new Map(cfmActions.map((action) => [action.drawingId, action.proposedCfm]));
+      next = drawings.map((drawing) => changes.has(drawing.id)
+        ? { ...drawing, cfm: changes.get(drawing.id), cfmSource: "room-target" as const }
+        : drawing);
+    } else if (sizeActions.length) {
+      const changes = new Map(sizeActions.map((action) => [action.drawingId, action.proposedSize]));
+      const resized = drawings.map((drawing) => changes.has(drawing.id)
+        ? { ...drawing, size: changes.get(drawing.id)! }
+        : drawing);
+      const affectedFittingIds = new Set(sizeActions.flatMap((action) => action.affectedFittingIds));
+      next = synchronizeFittingSizes(resized, drawings, {
+        fittingIds: affectedFittingIds,
+      });
+    }
+    const beforeById = new Map(drawings.map((drawing) => [drawing.id, JSON.stringify(drawing)]));
+    const allowedObjectIds = new Set(actions.flatMap((action) => action.objectIds));
+    const changedObjectIds = next
+      .filter((drawing) => beforeById.get(drawing.id) !== JSON.stringify(drawing))
+      .map((drawing) => drawing.id);
+    const outOfScopeChange = changedObjectIds.some((id) => {
+      const drawing = next.find((candidate) => candidate.id === id);
+      return !allowedObjectIds.has(id) || !drawing || drawingSystem(drawing) !== activeSystem;
+    });
+    if (outOfScopeChange) {
+      setBranchMessage("A fitting synchronization would change an object outside the reviewed batch. Zero actions were applied.");
+      return false;
+    }
+    if (next === drawings || JSON.stringify(next) === JSON.stringify(drawings)) {
+      setBranchMessage("The selected repair plan does not change the current drawing. Zero actions were applied.");
+      return false;
+    }
+
+    const beforeDrawingFingerprint = systemDrawingSignatureFor(drawings, activeSystem);
+    const afterDrawingFingerprint = systemDrawingSignatureFor(next, activeSystem);
+    const repairTakeoffRuns = (sourceDrawings: Drawing[]) => sourceDrawings.flatMap((drawing) => {
+      if (
+        drawingSystem(drawing) !== activeSystem ||
+        drawing.fitting ||
+        drawing.symbol ||
+        !["supply", "return", "fresh"].includes(drawing.type)
+      ) return [];
+      return [{
+        id: drawing.id,
+        type: drawing.type as "supply" | "return" | "fresh",
+        size: drawing.size,
+        measuredLengthFeet: drawingLengthFeet(drawing),
+      }];
+    });
+    const appliedTakeoffImpact = buildTakeoffImpact({
+      runs: repairTakeoffRuns(drawings),
+      afterRuns: repairTakeoffRuns(next),
+      sizeChanges: [],
+      wastePercent: materialWastePercent,
+      affectedFittingIds: sizeActions.flatMap((action) => action.affectedFittingIds),
+    });
+    const createdAt = new Date().toISOString();
+    const record: RepairBatchRecord = {
+      id: `repair-batch-${stableTextHash(`${assistantRepairPlan.id}|${createdAt}|${actions.map((action) => action.id).join("|")}`)}`,
+      repairPlanId: assistantRepairPlan.id,
+      systemId: activeSystem,
+      repairVersion: ASSISTANT_REPAIR_VERSION,
+      evidenceFingerprint: assistantRepairPlan.evidenceFingerprint,
+      beforeDrawingFingerprint,
+      afterDrawingFingerprint,
+      autonomyMode: assistantAutonomyMode,
+      actionIds: actions.map((action) => action.id),
+      actions: actions.map((action) => ({
+        id: action.id,
+        kind: action.kind,
+        title: action.title,
+        detail: action.detail,
+        objectIds: action.objectIds,
+        evidenceFingerprint: action.evidenceFingerprint,
+      })),
+      takeoffImpact: appliedTakeoffImpact,
+      reviewer: input.reviewer,
+      note: input.note,
+      planningOverrideAcknowledged: input.planningOverrideAcknowledged,
+      createdAt,
+      cloudSync: workingCloudProjectId ? "pending" : "local",
+    };
+
+    setHistory(next);
+    setAssistantRepairRecords((current) => [...current, record]);
+    setAssistantSelectedActionIds([]);
+    setAssistantPreparedEvidenceFingerprint("");
+    setBranchMessage(
+      `${actions.length} reviewed planning change${actions.length === 1 ? "" : "s"} applied in one undoable batch` +
+      (sizeActions.length ? ` · ${appliedTakeoffImpact.affectedFittings} fitting port${appliedTakeoffImpact.affectedFittings === 1 ? "" : "s"} synchronized` : "") +
+      (workingCloudProjectId ? " · cloud receipt pending" : " · local checkpoint saved"),
+    );
+    if (workingCloudProjectId) {
+      try {
+        const cloudBatch = await saveCloudRepairBatch({
+          projectId: workingCloudProjectId,
+          revisionId: workingCloudRevisionId,
+          record,
+        });
+        setAssistantRepairRecords((current) => current.map((candidate) =>
+          candidate.id === record.id
+            ? { ...candidate, cloudBatchId: cloudBatch.id, cloudSync: "synced" }
+            : candidate
+        ));
+        setBranchMessage(
+          `${actions.length} reviewed planning change${actions.length === 1 ? "" : "s"} applied in one Undo · cloud receipt saved`,
+        );
+      } catch {
+        setBranchMessage(
+          `${actions.length} reviewed planning change${actions.length === 1 ? "" : "s"} applied in one Undo · cloud receipt is pending and remains visible locally`,
+        );
+      }
+    }
+    return true;
+  }
+
   const activeFieldRuns = activeFieldPackage.runs;
   const modalWorkspaceActive = showProjectHome || showProjectSetup || showPlanIntelligence || showFieldPackageComposer || showSystemBalanceStudio || showDisplaySettings;
   const packagePrintClasses = printPackageSections.map((section) => `package-include-${section}`).join(" ");
@@ -9298,6 +9846,10 @@ function HVACPlanStudioApp() {
     setShowProjectHome(false);
     setShowProjectSetup(false);
     setActiveMarkupRecommendation(undefined);
+    if (!assistantPreparedEvidenceFingerprint && assistantAutonomyMode !== "inspect") {
+      setAssistantPreparedEvidenceFingerprint(assistantRepairPlan.evidenceFingerprint);
+      setAssistantSelectedActionIds(assistantRepairPlan.selectedByDefault);
+    }
     setShowMarkupAssistant(true);
   }
 
@@ -10563,6 +11115,19 @@ function HVACPlanStudioApp() {
                         <text x="0" y="-31" textAnchor="middle">ASSISTANT PREVIEW</text>
                       </g>;
                     })()}
+                    {planEvidenceRegion?.page === pageNumber && (() => {
+                      const region = planEvidenceRegion.region;
+                      const scaleX = renderSize.width / Math.max(1, region.pageWidth);
+                      const scaleY = renderSize.height / Math.max(1, region.pageHeight);
+                      const x = region.x * scaleX;
+                      const y = region.y * scaleY;
+                      const width = Math.max(8, region.width * scaleX);
+                      const height = Math.max(8, region.height * scaleY);
+                      return <g className="plan-evidence-region" aria-hidden="true">
+                        <rect x={x - 4} y={y - 4} width={width + 8} height={height + 8} rx="4" />
+                        <text x={x} y={Math.max(14, y - 9)}>SOURCE EVIDENCE · V115</text>
+                      </g>;
+                    })()}
                     {reviewIssueMarkers(activeReviewedIssueRows).map((marker) => <g
                       className={`review-marker ${marker.issue.severity} ${marker.resolvedByDecision ? "accepted" : ""} ${marker.issue.id === activeReviewIssueId ? "active" : ""}`}
                       key={`marker-${marker.issue.id}`}
@@ -10856,7 +11421,7 @@ function HVACPlanStudioApp() {
                 </div>
               </div>
             </div>
-            <div className="builder-safety-note"><ShieldAlert size={13} /><span><strong>You stay in control.</strong> Connections and repairs happen only when you press a button. Size changes still require individual approval and remain undoable. No automatic run numbering, rerouting, branch stubs, or balancing dampers.</span></div>
+            <div className="builder-safety-note"><ShieldAlert size={13} /><span><strong>You stay in control.</strong> The assistant can prepare reviewed CFM and connected-network size changes, but applies only a selected, fingerprint-bound batch after final confirmation. No silent rerouting, unit moves, cross-zone connections, branch stubs, or balancing dampers.</span></div>
           </div> : rightTab === "layers" ? <>
             <div className="search"><Search size={15} /><input aria-label="Search layers" placeholder="Search layers" /></div>
             <div className="background-control">
@@ -11055,7 +11620,7 @@ function HVACPlanStudioApp() {
               <div className="balance-workspace-note">Targets are coordination values you can edit. Final room airflow still requires load review, equipment data, field balancing, and your approval.</div>
             </> : <>
               <div className="balance-toolbar">
-                <button disabled={hasPlanningSeedTerminalCfm() || !sizingSuggestions().some((suggestion) => !suggestion.overCapacity)} onClick={() => setSelectedSizingIds(sizingSuggestions().filter((suggestion) => !suggestion.overCapacity).map((suggestion) => suggestion.id))}>Select velocity-screened sizes</button>
+                <button disabled={!sizingSuggestions().some((suggestion) => suggestion.applyEligible && suggestion.airflowReviewed && !suggestion.overCapacity)} onClick={() => setSelectedSizingIds(sizingSuggestions().filter((suggestion) => suggestion.applyEligible && suggestion.airflowReviewed && !suggestion.overCapacity).map((suggestion) => suggestion.id))}>Select velocity-screened sizes</button>
                 <button disabled={!selectedSizingIds.length} onClick={() => setSelectedSizingIds([])}>Clear</button>
               </div>
               <div className="run-review-rules">
@@ -11065,20 +11630,21 @@ function HVACPlanStudioApp() {
               </div>
               {sizingSuggestions().length ? <div className="balance-run-list">
                 {sizingSuggestions().map((suggestion) => <div className={`balance-run-row ${suggestion.overCapacity ? "over-capacity" : ""}`} key={suggestion.id}>
-                  <input aria-label={`Approve ${suggestion.room} duct size change`} type="checkbox" disabled={suggestion.overCapacity || hasPlanningSeedTerminalCfm()} checked={selectedSizingIds.includes(suggestion.id)} onChange={() => toggleSizingSuggestion(suggestion.id)} />
+                  <input aria-label={`Approve ${suggestion.room} duct size change`} type="checkbox" disabled={suggestion.overCapacity || !suggestion.applyEligible || !suggestion.airflowReviewed} checked={selectedSizingIds.includes(suggestion.id)} onChange={() => toggleSizingSuggestion(suggestion.id)} />
                   <button onClick={() => { setSelectedId(suggestion.id); setActiveTool("select"); }}>
                     <span><strong>{suggestion.room} · {suggestion.type.toUpperCase()}</strong><small>{suggestion.cfm} CFM · {suggestion.currentVelocity} FPM now · {suggestion.velocity} FPM proposed</small></span>
                     <b>{suggestion.current}″ → {suggestion.recommended}″</b>
                   </button>
                   {suggestion.overCapacity && <p>Over the {suggestion.limit} FPM limit even at {residentialFlexMax}″. Add a parallel path or revise the design manually.</p>}
+                  {!suggestion.airflowReviewed && <p>Size change paused: replace planning-seed airflow with reviewed room targets or explicit manual CFM.</p>}
                 </div>)}
               </div> : <div className="cfm-review-clear"><CheckCircle2 size={17} /> All connected runs match the current sizing rules.</div>}
-              <button className="balance-apply-sizes" disabled={hasPlanningSeedTerminalCfm() || !selectedSizingIds.length} onClick={applySizingSuggestions}>Apply {selectedSizingIds.length} reviewed size change{selectedSizingIds.length === 1 ? "" : "s"} · one Undo</button>
+              <button className="balance-apply-sizes" disabled={!selectedSizingIds.length} onClick={applySizingSuggestions}>Continue {selectedSizingIds.length} size candidate{selectedSizingIds.length === 1 ? "" : "s"} in Guided Repair</button>
               <div className={`progression-summary ${sizeProgressionIssues().length ? "attention" : "good"}`}>
                 <span><strong>{sizeProgressionIssues().length} progression review{sizeProgressionIssues().length === 1 ? "" : "s"}</strong><small>Keep reductions gradual—such as 14×12×10 → 12×10×10 → 10×8×8.</small></span>
                 <button onClick={openSystemSizingWorkflow}>Full sizing checks</button>
               </div>
-              <div className="balance-workspace-note">Existing and recommended sizes are shown together. Nothing resizes until you check rows and press Apply; over-capacity runs are blocked.</div>
+              <div className="balance-workspace-note">Existing and recommended sizes are shown together. Selected rows open in Guided Repair; reviewer identity, an explicit velocity-only planning override, and final batch confirmation are required before anything resizes.</div>
             </>}
           </div> : rightTab === "network" ? <div className="network-balance-panel">
             <div className="checks-heading">
@@ -11634,7 +12200,7 @@ function HVACPlanStudioApp() {
                       aria-label={`Approve ${suggestion.current} inch to ${suggestion.recommended} inch change`}
                       type="checkbox"
                       checked={selectedSizingIds.includes(suggestion.id)}
-                      disabled={suggestion.overCapacity}
+                      disabled={suggestion.overCapacity || !suggestion.applyEligible || !suggestion.airflowReviewed}
                       onChange={() => toggleSizingSuggestion(suggestion.id)}
                     />
                     <button onClick={() => { setSelectedId(suggestion.id); setActiveTool("select"); }}>
@@ -11644,13 +12210,14 @@ function HVACPlanStudioApp() {
                       </span>
                       <b>{suggestion.overCapacity ? `OVER ${suggestion.limit}` : `${suggestion.velocity} FPM`}</b>
                     </button>
+                    {!suggestion.airflowReviewed && <p>Paused: governing airflow is not fully reviewed.</p>}
                   </div>)}
                   <button className="apply-sizing" onClick={applySizingSuggestions} disabled={!selectedSizingIds.length}>
-                    Apply {selectedSizingIds.filter((id) => sizingSuggestions().some((suggestion) => suggestion.id === id && !suggestion.overCapacity)).length} approved changes
+                    Continue {selectedSizingIds.filter((id) => sizingSuggestions().some((suggestion) => suggestion.id === id && suggestion.applyEligible && suggestion.airflowReviewed && !suggestion.overCapacity)).length} candidates in Guided Repair
                   </button>
                 </> : <div className="sizing-clear"><CheckCircle2 size={17} /> Connected runs already match the sizing rules.</div>}
               </div>}
-              <p className="sizing-safety-note">Recommendations are advisory. Only checked rows change, every apply is one undoable action, and over-capacity runs are never applied.</p>
+              <p className="sizing-safety-note">Recommendations are advisory. Checked rows move to Guided Repair, where reviewer identity, an explicit pressure-evidence override, and final confirmation are required. Over-capacity and unreviewed-airflow runs stay blocked.</p>
             </div>
             <div className="reducer-review-card">
               <div><DraftingCompass size={16} /><span><strong>MANUAL REDUCER RECOMMENDATIONS</strong><small>Approve each transition individually</small></span></div>
@@ -11943,7 +12510,7 @@ function HVACPlanStudioApp() {
         <span><i className="online" /> Ready</span>
         <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor · two-finger touch navigates · stylus draws"}</span>
         <span><Ruler size={11} /> {scaleLabel}</span>
-        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · AI Plan Reader v105 · Plan Intelligence v106 · Markup Assistant v111 · Sizing Engine v112</span>
+        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · AI Plan Reader v105 · Plan Intelligence v106 · Markup v111 · Sizing v112 · Guided Repair v113 · Receipts v114 · Advanced Evidence v115</span>
       </footer>
       <ProjectHome
         open={showProjectHome && !showProjectSetup}
@@ -11987,9 +12554,10 @@ function HVACPlanStudioApp() {
         sourceFileName={sourceFileName || `${fileName}.pdf`}
         projectName={fileName}
         onClose={() => setShowPlanIntelligence(false)}
-        onShowPage={(page) => {
+        onShowPage={(page, region) => {
           setShowPlanIntelligence(false);
           goToPage(page);
+          setPlanEvidenceRegion(region ? { page, region } : null);
         }}
         onPrepareMarkup={(page) => {
           goToPage(page);
@@ -12001,6 +12569,7 @@ function HVACPlanStudioApp() {
           setShowCloudProjects(true);
         }}
         onAnalysisChange={async (analysis) => {
+          setActivePlanAnalysis(analysis);
           setCloudPlanAnalysisRunId(null);
           if (!workingCloudProjectId) return;
           try {
@@ -12030,12 +12599,19 @@ function HVACPlanStudioApp() {
         }}
       />
       <MarkupAssistantStudio
-        key={`markup-${activeSystem}-${showMarkupAssistant ? "open" : "closed"}-${markupRecommendations.map((row) => row.evidenceFingerprint).join("-")}`}
         open={showMarkupAssistant}
         projectName={fileName}
         systemName={systemLabel(activeSystem)}
         recommendations={markupRecommendations}
         summary={markupAssistantSummary}
+        repairPlan={assistantRepairPlan}
+        autonomyMode={assistantAutonomyMode}
+        selectedActionIds={assistantSelectedActionIds}
+        preparedEvidenceFingerprint={assistantPreparedEvidenceFingerprint}
+        repairRecords={assistantRepairRecords.filter((record) => record.systemId === activeSystem)}
+        takeoffImpact={assistantTakeoffImpact}
+        advancedIntelligence={activeAdvancedPlanIntelligence}
+        canUndo={Boolean(undoStack.length)}
         onClose={() => {
           setShowMarkupAssistant(false);
           setActiveMarkupRecommendation(undefined);
@@ -12075,6 +12651,15 @@ function HVACPlanStudioApp() {
           setShowMarkupAssistant(false);
           setActiveMarkupRecommendation(undefined);
           openSystemBalanceStudio();
+        }}
+        onAutonomyModeChange={setAssistantAutonomyMode}
+        onSelectedActionIdsChange={setAssistantSelectedActionIds}
+        onPrepareRepairPlan={prepareAssistantRepairPlan}
+        onApplyRepairPlan={applyAssistantRepairPlan}
+        onUndoRepairBatch={undo}
+        onOpenPlanIntelligence={() => {
+          setShowMarkupAssistant(false);
+          openAIPlanReader("reader");
         }}
         onApplyRecommendation={(recommendation) => {
           const preview = recommendation.preview;

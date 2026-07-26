@@ -1,145 +1,163 @@
 # HVAC Plan Studio
 
-HVAC Plan Studio is an approval-first HVAC plan-markup and coordination workspace for contractors, estimators, reviewers, and field teams.
+HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review, takeoff, and field-release workspace for HVAC contractors, estimators, reviewers, and field teams.
 
-It places editable HVAC geometry over source-plan PDFs, traces scheduled airflow through connected duct networks, produces evidence-backed review queues, and prepares controlled takeoff and field-release packages. Human judgment remains authoritative: recommendations are previews until a person reviews and confirms the next action.
+It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current milestone
+## Current release — v115
 
-### v112 — Transparent Duct Sizing Engine
+v113 through v115 make the Intelligent HVAC Markup Assistant materially more helpful without restoring uncontrolled automation.
 
-v112 makes the sizing review independently testable and explicit about what is known, assumed, and blocked.
+### v113 — Guided Repair Plan
 
-It adds:
+- **Inspect only** highlights and explains without changing the plan.
+- **Build repair plan** gathers eligible CFM, connected-network size, fitting-port, and branch actions with blockers and provenance.
+- **Guided apply** revalidates the exact reviewed fingerprint and applies selected eligible actions in one Undo.
+- Reviewed terminal CFM applies before sizing; the repair plan must be rebuilt against the new airflow.
+- Network provenance follows every contributing terminal; planning-seed or stale room-target contributors block resizing.
+- Every size-apply entry point hands off to Guided Repair rather than mutating the drawing directly.
+- Diameter never generates CFM.
+- Supply/return sizing requires an equipment-rooted connected path.
+- Fresh-air sizing remains manual until a real OA equipment/control-rooted path exists.
+- T/Y topology remains confirm-on-plan.
+- Velocity-only size changes require a separate recorded planning-override acknowledgment.
 
-- A versioned pure calculation module for round-duct area, velocity, capacity, rough flex friction, equivalent length, segment-loss estimates, and explicit available-static-pressure math.
-- Airflow provenance, velocity limits, planning classifications, reason codes, and apply eligibility on each candidate.
-- A hard 16-inch supported residential-flex ceiling and parallel-path alternatives when one flex run cannot meet the configured velocity screen.
-- Protection against circular size-derived CFM and manual CFM values that undercut known downstream terminal demand.
-- Readable 13 px safety guidance that separates a velocity preview from a pressure-screened result.
+### v114 — Repair Receipts and Takeoff Intelligence
 
-The engine never claims a pressure pass without explicit external static pressure, component losses, and total effective length. Rough flex loss remains a disclosed planning estimate.
+- Reviewer-required local and cloud receipts retain action scope, calculation versions, evidence and drawing fingerprints, planning-override acknowledgment, and cloud-sync status.
+- Numeric before/after takeoff includes measured length, order allowance, 25-foot flex boxes, changed rows, fitting-port impact, and holds.
+- Preview and commit use the same scoped fitting-synchronization path and actual geometry.
+- Supabase repair receipts are member-readable, editor-insertable, retry-idempotent, and append-only for normal authenticated clients.
+- Cloud-sync failure leaves the applied plan and a visible pending local receipt; it never reports a false cloud save.
 
-### v111 — Intelligent HVAC Markup Assistant
+### v115 — Advanced Plan Intelligence
 
-The v111 assistant converts current drawing evidence into a prioritized recommendation queue.
+- PDF text regions use the composed PDF.js viewport transform and highlight the exact extracted region on the live plan.
+- Repeated text occurrences remain distinct.
+- Sheet-role-specific coverage and OCR/visual-review gaps are presented as a non-gating review heuristic.
+- Cross-sheet relationships require the same non-generic equipment identifier on multiple sheets.
+- CFM is a text reference unless a real schedule-row relationship is known.
+- AI takeoff rows are text-reference counts, not installed quantities, and always require visual reconciliation.
+- Supabase plan-analysis records retain source regions and the advanced coverage summary.
 
-It can:
+## Product workflow
 
-- Explain connection, airflow, return-path, coordination, and duct-sizing findings.
-- Highlight the affected drawing object or a reviewable T/Y junction over the live plan.
-- Show the evidence fingerprint, confidence, observed condition, why it matters, and a safe proposed action.
-- Route approved work into the existing run-first branch pass, System Balance Studio, or Plan Intelligence decision record.
-- Revalidate a proposed T/Y against current geometry before arming placement.
+1. Open a local or Google Drive PDF.
+2. Confirm the source revision, system, and scale.
+3. Draw or edit supply, return, fresh-air, equipment, device, fitting, room, and note objects.
+4. Save reviewed room or terminal airflow.
+5. Trace airflow through physically connected networks.
+6. Inspect findings and build a repair plan.
+7. Review affected objects, CFM provenance, velocity screen, pressure limitations, and takeoff delta.
+8. Apply selected eligible planning changes in one Undo.
+9. Resolve RFIs, punch items, connections, approvals, and field checks.
+10. Save a named cloud revision and prepare the field package.
 
-The assistant does not move walls, invent rooms, connect systems, reroute ductwork, or change diameters automatically. Manual geometry and existing undoable editing tools remain authoritative.
+## Core capabilities
 
-## Core workflows
+### Source plans and markup
 
-### Source plans and projects
+- Local and Google Drive PDF input.
+- Sheet navigation, calibration, zoom, tablet/stylus input, and bounded 4K rendering.
+- Editable supply, return, fresh-air, measurements, symbols, equipment, devices, and notes.
+- Run-first T/Y placement, fitting ports, snapping, connection repair, copy, resize, and undo/redo.
+- Separate systems and zones.
 
-- Open local or Google Drive PDFs.
-- Calibrate or select plan scale.
-- Save browser autosaves and immutable named cloud revisions.
-- Restore the source PDF and its saved HVAC overlay together.
+### Airflow and sizing
 
-### HVAC markup
+- Reviewed terminal CFM propagation through physically connected runs.
+- Equipment, supply, return, room, and network balance review.
+- Versioned round-area, velocity, capacity, rough flex-friction, equivalent-length, segment-loss, pressure-basis, allocation, and transition calculations.
+- User-controlled velocity limits.
+- A 16-inch maximum residential-flex company policy.
+- Parallel-path alternatives when one supported flex run is over capacity.
+- No diameter-derived airflow.
 
-- Draw supply, return, fresh-air, and measurement geometry.
-- Place equipment, diffusers, return grilles, controls, dampers, notes, and fittings.
-- Use run-first T/Y placement with fitting ports, snapping, repair, copy, resize, and undo/redo.
-- Keep systems and zones separated.
+### Intelligence and review
 
-### Plan Intelligence
-
-- Classify HVAC-related sheets from the PDF text layer.
-- Extract source-linked equipment, airflow, duct, device, control, schedule, and note evidence.
-- Generate explainable drawing findings.
-- Record accepted conditions, RFIs, and punch items with evidence fingerprints that become stale when the underlying condition changes.
-
-### Airflow and sizing review
-
-- Propagate reviewed terminal CFM through physically connected runs.
-- Compare equipment, supply, return, room, and network airflow.
-- Screen current and proposed diameters against user-controlled velocity limits.
-- Estimate flex friction and current-segment pressure loss when scale is verified.
-- Apply only checked, eligible changes in one undoable transaction.
+- Searchable-PDF sheet classification and source-linked HVAC evidence.
+- Exact text-region highlighting.
+- Evidence-bound findings, decisions, RFIs, and punch items.
+- Stale-decision detection after source, geometry, airflow, or rule changes.
+- Repair plans grouped into eligible planning changes, missing inputs, plan confirmations, and manual follow-up.
 
 ### Takeoff and release
 
-- Measure duct length from saved geometry.
-- Apply the 25-foot flex-box purchasing rule and material allowance.
-- Count devices, cans, fittings, accessories, and equipment.
-- Create immutable takeoff packages tied to a named cloud revision.
-- Block field release until required drawing, review, connection, scale, checklist, coordination, and cloud-approval gates are clear.
+- Geometry-based duct length and material allowance.
+- 25-foot flex-box ordering logic.
+- Before/after repair impact.
+- Devices, cans, fittings, accessories, and equipment.
+- Named takeoff packages and field-release gates.
 
-## Approval-first operating model
+### Cloud collaboration
 
-1. Read the source plan and current marked geometry.
-2. Produce evidence and deterministic recommendations.
-3. Preview the affected object or proposed junction.
-4. Require a person to review the evidence.
-5. Continue through an existing manual tool or checked apply workflow.
-6. Record the resulting revision and invalidate stale reviews when evidence changes.
+- Supabase Auth, PostgreSQL, RLS, members, work items, comments, approvals, files, plan analysis, repair receipts, takeoff packages, and field releases.
+- Named immutable project revision snapshots.
+- Google Drive source plans and package export.
+- Local guest work until a user chooses authenticated cloud features.
 
-“Approved” never means professionally engineered, code approved, permit approved, or ready for installation by itself.
+## Approval model
+
+“Approved” in HVAC Plan Studio means a named person accepted a specific planning action against a specific evidence fingerprint. It does not mean professionally engineered, code approved, permit approved, TAB verified, manufacturer selected, or ready for installation by itself.
+
+Guided apply requires:
+
+- current and prepared evidence fingerprints to match;
+- unchanged current/proposed object values;
+- one calculation stage at a time;
+- only eligible active-system objects;
+- explicit reviewer identity;
+- final object-diff confirmation;
+- a separate velocity-only override when pressure evidence is missing.
+
+## Engineering boundary
+
+The automatic sequence is:
+
+`reviewed airflow → connected network accumulation → planning size proposal`
+
+It is never:
+
+`existing diameter → invented CFM`
+
+Final duct design still depends on OEM external static pressure, component losses, filter/coil/grille losses, critical-path total effective length, fitting losses, flex support/compression/bends, sound, installation quality, and field verification.
+
+HVAC Plan Studio is not:
+
+- a Manual J load calculation;
+- a Manual S equipment selection;
+- a Manual D or Manual T design;
+- a permit calculation or engineering stamp;
+- a TAB report;
+- a manufacturer blower-performance selection;
+- automatic code compliance;
+- a substitute for approved plans, OEM data, applicable codes, an AHJ, field measurements, or a responsible licensed professional.
 
 ## Architecture
 
 | Layer | Implementation |
 |---|---|
 | Application | React 19, TypeScript, Next-compatible vinext runtime |
-| PDF workspace | PDF.js canvas rendering with SVG markup in PDF coordinates |
+| PDF workspace | PDF.js canvas plus SVG markup in composed viewport coordinates |
 | Drawing model | Runs, symbols, fittings, rooms, systems, CFM, elevations, and saved connections |
-| Intelligence | Deterministic Plan Intelligence, v111 markup recommendations, and the v112 sizing engine |
-| Cloud projects | Supabase Auth, PostgreSQL, RLS, members, immutable revisions, approvals, analysis, takeoff, and release records |
-| File workflow | Local PDF input and Google Drive import/package export |
-| Hosting | OpenAI Sites / Cloudflare-compatible deployment |
-| Verification | ESLint, production build validation, and Node test suite |
+| Intelligence | Deterministic Plan Intelligence, repair plans, advanced coverage, and versioned sizing/takeoff modules |
+| Cloud | Supabase Auth/PostgreSQL/RLS with projects, revisions, analyses, receipts, takeoff, and releases |
+| Files | Local PDF input and Google Drive import/package export |
+| Hosting | OpenAI Sites / Cloudflare-compatible worker deployment |
+| Verification | ESLint, production build validation, Node behavior tests, and browser QA |
 
-The main workspace is currently orchestrated in `app/page.tsx`. New calculation and recommendation capabilities are being extracted into small pure modules so their inputs, outputs, and tests remain inspectable.
+## Repository map
 
-## Release gates
-
-A field release can require:
-
-- At least one duct run.
-- No unresolved critical drawing findings.
-- Every warning reviewed or resolved.
-- Saved device and fitting connections physically aligned.
-- Run elevations coordinated.
-- Terminal rooms assigned.
-- Drawing scale verified.
-- Field checklist complete.
-- RFIs approved or closed.
-- Critical punch items closed.
-- If cloud-connected, the latest named revision opened, unchanged, and approved.
-
-Any geometry, rules, review evidence, or cloud status change can make an earlier release stale.
-
-## Product boundaries and non-claims
-
-HVAC Plan Studio is a drafting, coordination, review, and estimating aid. It is not:
-
-- A Manual J load calculation.
-- A Manual S equipment selection.
-- A Manual D or Manual T design.
-- A permit calculation or engineering stamp.
-- A TAB report.
-- A manufacturer blower-performance selection.
-- A substitute for approved plans, OEM data, applicable codes, an AHJ, field measurements, or a responsible licensed professional.
-
-PDF text extraction does not understand every graphical symbol or unlabeled condition. The current workspace has no complete wall, room-polygon, obstruction, or building-load model, so recommendations must be visually confirmed.
-
-Velocity and pressure results are transparent planning screens based on entered data and current assumptions. They do not prove final airflow, sound, static pressure, comfort, ventilation, or equipment operation.
-
-## Data and security
-
-- Supabase Row Level Security limits project data to authorized members.
-- Drawing geometry is stored in immutable named revision snapshots.
-- Plan-analysis evidence and human decisions are project scoped.
-- Takeoff and release records retain revision and evidence signatures.
-- Public guest use remains local until a user chooses cloud-project features.
+- `app/page.tsx` — workspace orchestration, geometry, airflow, repair apply, takeoff, and release integration
+- `app/MarkupAssistantStudio.tsx` — v113–v115 repair-plan, receipt, and evidence workspace
+- `app/repairPlan.ts` — deterministic evidence-bound repair planner
+- `app/ductSizing.ts` — versioned sizing and pressure-screening calculations
+- `app/takeoffIntelligence.ts` — numeric before/after purchasing impact
+- `app/planReader.ts` — searchable-PDF evidence and viewport regions
+- `app/advancedPlanIntelligence.ts` — coverage, exact-identifier relationships, and source comparison
+- `app/cloudProjects.ts` — Supabase project, analysis, receipt, takeoff, and release operations
+- `supabase/migrations/` — PostgreSQL schema and RLS controls
+- `tests/` — product-behavior and calculation verification
 
 ## Development
 
@@ -147,8 +165,6 @@ Requirements:
 
 - Node.js `>=22.13.0`
 - Linux shell environment for the provided build scripts
-
-Common commands:
 
 ```bash
 npm ci
@@ -158,18 +174,4 @@ node --test tests/rendered-html.test.mjs
 npm run build
 ```
 
-## Repository map
-
-- `app/page.tsx` — workspace orchestration, drawing tools, geometry, airflow, takeoff, and release integration
-- `app/markupAssistant.ts` — v111 evidence-to-recommendation engine
-- `app/MarkupAssistantStudio.tsx` — v111 recommendation and preview workspace
-- `app/planReader.ts` — source-plan text analysis
-- `app/planIntelligence.ts` — finding identities, summaries, and explanations
-- `app/systemBalance.ts` — deterministic System Balance model and scoring
-- `app/SystemBalanceStudio.tsx` — airflow and sizing review workspace
-- `app/ductSizing.ts` — v112 versioned, deterministic sizing calculations
-- `app/cloudProjects.ts` — Supabase project and revision operations
-- `supabase/migrations/` — PostgreSQL schema, RLS, and release-integrity controls
-- `tests/` — build and product-behavior verification
-
-See [ROADMAP.md](./ROADMAP.md) for release status, acceptance gates, and planned v113–v117 work.
+See [ROADMAP.md](./ROADMAP.md) for the complete product overview, release outcomes, safety gates, evidence basis, and planned v116–v117 work.

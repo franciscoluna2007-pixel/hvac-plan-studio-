@@ -1,4 +1,4 @@
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import { Util, type PDFDocumentProxy } from "pdfjs-dist";
 
 export type PlanEvidenceCategory =
   | "Equipment"
@@ -34,6 +34,15 @@ export type PlanEvidence = {
   excerpt: string;
   confidence: number;
   source: "PDF text layer";
+  region?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    pageWidth: number;
+    pageHeight: number;
+    coordinateSpace: "viewport-points";
+  };
 };
 
 export type PlanReaderFinding = {
@@ -80,10 +89,28 @@ export type PlanAnalysis = {
     openFindings: number;
     averageConfidence: number;
   };
+  persistence?: {
+    truncated: boolean;
+    originalEvidenceCount: number;
+    savedEvidenceCount: number;
+    originalFindingCount: number;
+    savedFindingCount: number;
+    originalTakeoffCount: number;
+    savedTakeoffCount: number;
+  };
 };
 
 type PdfTextItem = {
   str?: string;
+  transform?: number[];
+  width?: number;
+  height?: number;
+};
+
+type PageTextSpan = {
+  start: number;
+  end: number;
+  region?: NonNullable<PlanEvidence["region"]>;
 };
 
 type EvidencePattern = {
@@ -112,7 +139,7 @@ const evidencePatterns: EvidencePattern[] = [
   },
   {
     category: "Airflow",
-    label: "Scheduled airflow",
+    label: "CFM text reference",
     expression: /\b\d{2,4}\s*CFM\b/gi,
     baseConfidence: 0.95,
     maxPerPage: 80,
@@ -128,7 +155,7 @@ const evidencePatterns: EvidencePattern[] = [
   {
     category: "Ductwork",
     label: "Round duct size",
-    expression: /\b(?:[4-9]|1[0-6])\s*(?:"|IN\.?)\b/gi,
+    expression: /\b(?:[4-9]|[1-5]\d|60)\s*(?:"|IN\.?)\b/gi,
     baseConfidence: 0.78,
     maxPerPage: 100,
     contextRequired: /\b(?:DUCT|SUPPLY|RETURN|EXHAUST|FLEX|SA|RA|OA|ROUND|SIZE|TRUNK)\b/i,
@@ -275,7 +302,31 @@ function classifyPage(text: string) {
   return { hvacScore, classification, title };
 }
 
-function extractEvidence(text: string, page: PlanPageReading) {
+function regionForMatch(
+  spans: PageTextSpan[],
+  start: number,
+  end: number,
+): PlanEvidence["region"] {
+  const regions = spans
+    .filter((span) => span.region && span.end > start && span.start < end)
+    .map((span) => span.region!);
+  if (!regions.length) return undefined;
+  const x = Math.min(...regions.map((region) => region.x));
+  const y = Math.min(...regions.map((region) => region.y));
+  const right = Math.max(...regions.map((region) => region.x + region.width));
+  const bottom = Math.max(...regions.map((region) => region.y + region.height));
+  return {
+    x,
+    y,
+    width: Math.max(1, right - x),
+    height: Math.max(1, bottom - y),
+    pageWidth: regions[0].pageWidth,
+    pageHeight: regions[0].pageHeight,
+    coordinateSpace: "pdf-points",
+  };
+}
+
+function extractEvidence(text: string, page: PlanPageReading, spans: PageTextSpan[]) {
   const rows: PlanEvidence[] = [];
   evidencePatterns.forEach((pattern) => {
     const expression = new RegExp(pattern.expression.source, pattern.expression.flags);
@@ -285,17 +336,10 @@ function extractEvidence(text: string, page: PlanPageReading) {
       const excerpt = excerptAround(text, match.index, match[0].length);
       if (pattern.contextRequired && !pattern.contextRequired.test(excerpt)) continue;
       const value = match[0].replace(/\s+/g, " ").trim().toUpperCase();
-      const duplicate = rows.some((row) =>
-        row.category === pattern.category &&
-        row.label === pattern.label &&
-        row.value === value &&
-        row.page === page.page
-      );
-      if (duplicate) continue;
       const sheetBoost = page.classification === "Mechanical plan" || page.classification === "Mechanical schedule" ? 0.04 : 0;
       const confidence = Math.min(0.99, pattern.baseConfidence + sheetBoost);
       rows.push({
-        id: `evidence-${stableHash(`${page.page}|${pattern.category}|${pattern.label}|${value}`)}`,
+        id: `evidence-${stableHash(`${page.page}|${pattern.category}|${pattern.label}|${value}|${match.index}`)}`,
         category: pattern.category,
         label: pattern.label,
         value,
@@ -304,6 +348,7 @@ function extractEvidence(text: string, page: PlanPageReading) {
         excerpt,
         confidence,
         source: "PDF text layer",
+        region: regionForMatch(spans, match.index, match.index + match[0].length),
       });
       count += 1;
     }
@@ -326,11 +371,11 @@ function buildTakeoff(evidence: PlanEvidence[]) {
       return {
         id: `takeoff-${stableHash(key)}`,
         category,
-        item: `${label} · ${value}`,
+        item: `Text reference · ${label} · ${value}`,
         quantity: rows.length,
         pages: [...new Set(rows.map((row) => row.page))].sort((left, right) => left - right),
         confidence,
-        reviewRequired: confidence < 0.82 || category === "Ductwork",
+        reviewRequired: true,
       } satisfies PlanTakeoffRow;
     })
     .sort((left, right) => left.category.localeCompare(right.category) || left.item.localeCompare(right.item));
@@ -376,8 +421,8 @@ function buildFindings(pages: PlanPageReading[], evidence: PlanEvidence[]) {
     add({
       severity: "warning",
       category: "Schedules",
-      title: "No HVAC schedule was confirmed",
-      detail: "The reader found HVAC-related sheets but did not confirm an equipment or air-device schedule.",
+      title: "No HVAC schedule was detected",
+      detail: "The reader found HVAC-related sheets but did not detect an equipment or air-device schedule in searchable text.",
       recommendation: "Check the sheet index and add the missing schedule sheet before finalizing the takeoff.",
       evidenceIds: [],
       confidence: 0.84,
@@ -391,7 +436,7 @@ function buildFindings(pages: PlanPageReading[], evidence: PlanEvidence[]) {
     add({
       severity: "warning",
       category: "Equipment",
-      title: "Equipment tonnage is not confirmed",
+      title: "Equipment tonnage was not detected",
       detail: `${equipment.length} equipment tag${equipment.length === 1 ? " was" : "s were"} detected without a corresponding tonnage value.`,
       recommendation: "Open the equipment schedule and confirm each system size before using airflow or duct-sizing recommendations.",
       evidenceIds: equipment.slice(0, 8).map((row) => row.id),
@@ -402,31 +447,12 @@ function buildFindings(pages: PlanPageReading[], evidence: PlanEvidence[]) {
     add({
       severity: "warning",
       category: "Equipment",
-      title: "Scheduled CFM is missing",
-      detail: "Equipment was detected, but no scheduled airflow value was confirmed in the searchable plan text.",
+      title: "Airflow text was not detected",
+      detail: "Equipment was detected, but no CFM text reference was found in the searchable plan text.",
       recommendation: "Confirm design CFM from the equipment schedule or manufacturer data before balancing the marked plan.",
       evidenceIds: equipment.slice(0, 8).map((row) => row.id),
       confidence: 0.88,
     });
-  }
-
-  if (tonnage.length === 1 && airflow.length === 1) {
-    const tons = Number(tonnage[0].value.match(/\d+(?:\.\d+)?/)?.[0] || 0);
-    const cfm = Number(airflow[0].value.match(/\d+/)?.[0] || 0);
-    const expected = tons * 400;
-    if (tons && cfm && Math.abs(cfm - expected) / expected > 0.15) {
-      add({
-        severity: "warning",
-        category: "Equipment",
-        title: "Tonnage and scheduled airflow need review",
-        detail: `${tonnage[0].value} and ${airflow[0].value} differ materially from the 400 CFM/ton planning reference.`,
-        recommendation: "Treat the plan schedule as authoritative, but confirm the equipment selection and design airflow before sizing ductwork.",
-        page: airflow[0].page,
-        sheetNumber: airflow[0].sheetNumber,
-        evidenceIds: [tonnage[0].id, airflow[0].id],
-        confidence: 0.92,
-      });
-    }
   }
 
   const supplies = evidence.filter((row) => row.label === "Supply diffuser");
@@ -435,8 +461,8 @@ function buildFindings(pages: PlanPageReading[], evidence: PlanEvidence[]) {
     add({
       severity: "warning",
       category: "Air distribution",
-      title: "Supply devices found without confirmed returns",
-      detail: `${supplies.length} supply-device reference${supplies.length === 1 ? " was" : "s were"} detected, but no return-grille reference was confirmed.`,
+      title: "Supply devices found without detected returns",
+      detail: `${supplies.length} supply-device reference${supplies.length === 1 ? " was" : "s were"} detected, but no return-grille reference was found in searchable text.`,
       recommendation: "Review the mechanical plan and schedule for return-air paths before accepting the marked system.",
       evidenceIds: supplies.slice(0, 10).map((row) => row.id),
       confidence: 0.85,
@@ -449,8 +475,8 @@ function buildFindings(pages: PlanPageReading[], evidence: PlanEvidence[]) {
     add({
       severity: "info",
       category: "Fresh air",
-      title: "Fresh-air control is not confirmed",
-      detail: "Outside or fresh air is referenced, but a motorized outside-air damper was not confirmed in the searchable text.",
+      title: "Fresh-air control was not detected",
+      detail: "Outside or fresh air is referenced, but a motorized outside-air damper was not detected in searchable text.",
       recommendation: "Review the sequence, notes, and controls details before adding the fresh-air markup or takeoff item.",
       page: freshAir[0].page,
       sheetNumber: freshAir[0].sheetNumber,
@@ -486,11 +512,61 @@ export async function analyzeHvacPlan(input: {
   for (let pageNumber = 1; pageNumber <= input.pdf.numPages; pageNumber += 1) {
     const page = await input.pdf.getPage(pageNumber);
     const content = await page.getTextContent();
-    const text = (content.items as PdfTextItem[])
-      .map((item) => item.str || "")
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
+    const viewport = page.getViewport({ scale: 1 });
+    const spans: PageTextSpan[] = [];
+    let text = "";
+    (content.items as PdfTextItem[]).forEach((item) => {
+      const value = (item.str || "").replace(/\s+/g, " ").trim();
+      if (!value) return;
+      if (text) text += " ";
+      const start = text.length;
+      text += value;
+      const transform = item.transform;
+      const combined = transform?.length === 6
+        ? Util.transform(viewport.transform, transform)
+        : undefined;
+      const baselineX = Number(combined?.[4]);
+      const baselineY = Number(combined?.[5]);
+      const width = Math.max(1, Number(item.width) || Math.hypot(Number(combined?.[0]) || 0, Number(combined?.[1]) || 0) || value.length * 4);
+      const height = Math.max(1, Number(item.height) || Math.hypot(Number(combined?.[2]) || 0, Number(combined?.[3]) || 0) || 8);
+      const widthScale = Math.max(.0001, Math.hypot(Number(combined?.[0]) || 0, Number(combined?.[1]) || 0));
+      const heightScale = Math.max(.0001, Math.hypot(Number(combined?.[2]) || 0, Number(combined?.[3]) || 0));
+      const widthVector = {
+        x: (Number(combined?.[0]) || 0) / widthScale * width,
+        y: (Number(combined?.[1]) || 0) / widthScale * width,
+      };
+      const heightVector = {
+        x: (Number(combined?.[2]) || 0) / heightScale * height,
+        y: (Number(combined?.[3]) || 0) / heightScale * height,
+      };
+      const corners = [
+        { x: baselineX, y: baselineY },
+        { x: baselineX + widthVector.x, y: baselineY + widthVector.y },
+        { x: baselineX + heightVector.x, y: baselineY + heightVector.y },
+        {
+          x: baselineX + widthVector.x + heightVector.x,
+          y: baselineY + widthVector.y + heightVector.y,
+        },
+      ];
+      const hasPosition = corners.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+      const left = Math.min(...corners.map((point) => point.x));
+      const top = Math.min(...corners.map((point) => point.y));
+      const right = Math.max(...corners.map((point) => point.x));
+      const bottom = Math.max(...corners.map((point) => point.y));
+      spans.push({
+        start,
+        end: text.length,
+        region: hasPosition ? {
+          x: Math.max(0, left),
+          y: Math.max(0, top),
+          width: Math.max(1, right - left),
+          height: Math.max(1, bottom - top),
+          pageWidth: viewport.width,
+          pageHeight: viewport.height,
+          coordinateSpace: "viewport-points",
+        } : undefined,
+      });
+    });
     const classification = classifyPage(text);
     const reading: PlanPageReading = {
       page: pageNumber,
@@ -504,7 +580,7 @@ export async function analyzeHvacPlan(input: {
     };
     pages.push(reading);
     if (classification.classification !== "Unclassified") {
-      evidence.push(...extractEvidence(text, reading));
+      evidence.push(...extractEvidence(text, reading, spans));
     }
     input.onProgress?.(pageNumber, input.pdf.numPages);
     await new Promise<void>((resolve) => window.setTimeout(resolve, 0));

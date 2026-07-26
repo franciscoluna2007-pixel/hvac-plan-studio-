@@ -6028,6 +6028,1158 @@ footer span { display: flex; align-items: center; gap: 5px; }
   }
 }
 
+/* Final semantic type scale wins over legacy v111 microcopy rules. */
+.markup-assistant-overlay {
+  width: min(1120px, max(800px, 64vw));
+  max-width: calc(100vw - 16px);
+}
+.markup-assistant-brand small,
+.markup-assistant-command small,
+.markup-detail-heading small,
+.repair-plan-workspace small,
+.repair-history-workspace small,
+.assistant-evidence-workspace small {
+  font-size: 12px !important;
+  line-height: 1.4 !important;
+}
+.markup-assistant-brand p,
+.markup-assistant-header-actions > span,
+.markup-detail-heading > span,
+.markup-assistant-list > button em,
+.takeoff-delta-rows small,
+.assistant-coverage-matrix small,
+.assistant-relationships small {
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+}
+.markup-assistant-command p,
+.markup-assistant-detail section p,
+.markup-assistant-detail section li,
+.markup-stale-warning,
+.repair-action-select em,
+.repair-action-evidence,
+.repair-plan-heading p,
+.repair-plan-approval p,
+.repair-history-workspace p,
+.assistant-evidence-workspace p,
+.assistant-evidence-blocker,
+.markup-assistant-footer span {
+  font-size: 15px !important;
+  line-height: 1.6 !important;
+}
+.markup-assistant-brand h2,
+.markup-detail-heading h3,
+.repair-plan-heading h3,
+.repair-history-workspace > header h3,
+.assistant-evidence-workspace > header h3,
+.takeoff-delta-panel h3,
+.repair-plan-approval h3,
+.assistant-coverage-matrix h3,
+.assistant-relationships h3 {
+  font-size: 22px !important;
+  line-height: 1.3;
+}
+.markup-assistant-command h3 {
+  font-size: 20px !important;
+}
+.markup-assistant-filter button,
+.markup-assistant-footer button,
+.markup-detail-actions button,
+.markup-assistant-command > button,
+.repair-plan-workspace button,
+.repair-history-workspace button,
+.assistant-evidence-workspace button {
+  font-size: 14px !important;
+}
+.repair-action-actions {
+  padding: 0 16px 14px 65px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.repair-action-actions button {
+  min-height: 40px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #b9d0d9;
+  border: 1px solid #345768;
+  border-radius: 8px;
+  background: #0a2230;
+}
+.repair-final-confirmation.pressure-override {
+  color: #f2d47d;
+  border-color: #806727;
+  background: #2a2311;
+}
+.repair-final-confirmation:has(input:disabled) {
+  opacity: .62;
+}
+.plan-evidence-region {
+  pointer-events: none;
+  color: #ffcf55;
+}
+.plan-evidence-region rect {
+  fill: #ffcf5524;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-dasharray: 8 5;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 5px #ffcf5599);
+}
+.plan-evidence-region text {
+  fill: #fff2bf;
+  stroke: #07141f;
+  stroke-width: 3px;
+  paint-order: stroke fill;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .6px;
+}
+.ai-plan-workspace .ai-coverage-summary small,
+.ai-plan-workspace .ai-coverage-table small,
+.ai-plan-workspace .ai-relationship-panel small {
+  font-size: 13px !important;
+}
+
+/* v115 final layout guard: keep review evidence wide enough to read. */
+.markup-assistant-overlay {
+  width: min(1120px, max(800px, 64vw));
+  max-width: calc(100vw - 16px);
+}
+.ai-plan-snapshot-warning {
+  margin: 12px 18px 0;
+  padding: 12px 14px;
+  border: 1px solid #8b6b24;
+  border-radius: 10px;
+  background: #2c2410;
+  color: #f8e2a1;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.ai-plan-snapshot-warning strong { color: #fff0bc; }
+
+@media (max-width: 820px) {
+  .markup-assistant-overlay {
+    width: calc(100vw - 16px);
+    min-width: 0;
+  }
+  .ai-plan-snapshot-warning { margin-inline: 12px; }
+}
+.ai-plan-workspace .ai-coverage-table,
+.ai-plan-workspace .ai-relationship-panel,
+.ai-plan-workspace .ai-coverage-blockers {
+  font-size: 15px;
+  line-height: 1.55;
+}
+@media (max-width: 820px) {
+  .markup-assistant-overlay {
+    width: calc(100vw - 8px);
+    max-width: none;
+  }
+  .assistant-mode-strip {
+    display: flex;
+    overflow-x: auto;
+  }
+  .assistant-mode-strip button {
+    flex: 0 0 min(280px, 82vw);
+  }
+  .assistant-workspace-tabs {
+    display: flex;
+    overflow-x: auto;
+  }
+  .assistant-workspace-tabs button {
+    flex: 0 0 150px;
+  }
+  .repair-plan-stale {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .repair-plan-stale button {
+    grid-column: 1 / -1;
+  }
+  .takeoff-delta-rows > div {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .repair-action-evidence,
+  .repair-action-actions {
+    padding-left: 16px;
+  }
+}
+
+/* v113–v115 — readable guided repair, durable review, and evidence coverage. */
+.markup-assistant-studio {
+  --assistant-label: 12px;
+  --assistant-meta: 13px;
+  --assistant-body: 15px;
+  --assistant-title: 22px;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+}
+.markup-assistant-overlay {
+  width: min(1120px, 64vw);
+}
+.markup-assistant-header {
+  min-height: 100px;
+  padding: 16px 20px;
+}
+.markup-assistant-brand > span {
+  width: 48px;
+  height: 48px;
+}
+.markup-assistant-brand small,
+.markup-assistant-command small,
+.markup-detail-heading small,
+.repair-plan-workspace small,
+.repair-history-workspace small,
+.assistant-evidence-workspace small {
+  font-size: var(--assistant-label) !important;
+  line-height: 1.35 !important;
+  letter-spacing: .65px;
+}
+.markup-assistant-brand h2 {
+  max-width: 720px;
+  font-size: var(--assistant-title);
+  line-height: 1.22;
+}
+.markup-assistant-brand p,
+.markup-assistant-header-actions > span {
+  font-size: var(--assistant-meta) !important;
+  line-height: 1.45;
+}
+.markup-assistant-header-actions > span {
+  min-height: 38px;
+  padding-inline: 13px;
+}
+.assistant-mode-strip {
+  padding: 12px 18px 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  background: #081823;
+}
+.assistant-mode-strip button {
+  min-width: 0;
+  min-height: 70px;
+  padding: 11px 13px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 9px;
+  align-items: center;
+  color: #a8bdca;
+  text-align: left;
+  border: 1px solid #29495a;
+  border-radius: 10px;
+  background: #0a1d29;
+}
+.assistant-mode-strip button > span {
+  grid-row: 1 / span 2;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: #69dcec;
+  border-radius: 8px;
+  background: #0c3040;
+}
+.assistant-mode-strip button strong {
+  color: #e8f3f8;
+  font-size: 15px;
+  line-height: 1.3;
+}
+.assistant-mode-strip button small {
+  overflow: visible;
+  color: #9db3c0;
+  font-size: var(--assistant-meta) !important;
+  font-weight: 500;
+  line-height: 1.4 !important;
+  white-space: normal;
+}
+.assistant-mode-strip button.active {
+  border-color: #55d9ea;
+  background: linear-gradient(135deg, #103443, #0b2633);
+  box-shadow: inset 0 0 0 1px #55d9ea2e;
+}
+.assistant-mode-strip button.active > span {
+  color: #06202a;
+  background: #58d9e9;
+}
+.markup-assistant-command {
+  margin: 12px 18px 0;
+  padding: 16px;
+  gap: 16px;
+}
+.markup-assistant-command.stale {
+  border-color: #7a5d25;
+  background: linear-gradient(135deg, #2b2311, #111d22);
+}
+.markup-assistant-score {
+  width: 72px;
+  height: 72px;
+}
+.markup-assistant-score strong {
+  font-size: 24px;
+}
+.markup-assistant-score span {
+  font-size: var(--assistant-label) !important;
+}
+.markup-assistant-command h3 {
+  font-size: 20px;
+  line-height: 1.3;
+}
+.markup-assistant-command p,
+.markup-assistant-detail section p,
+.markup-assistant-detail section li,
+.markup-stale-warning,
+.repair-plan-heading p,
+.repair-action-select em,
+.repair-action-evidence,
+.takeoff-delta-panel p,
+.repair-plan-approval p,
+.repair-history-workspace p,
+.assistant-evidence-workspace p,
+.assistant-evidence-blocker,
+.markup-assistant-footer span {
+  font-size: var(--assistant-body) !important;
+  line-height: 1.6 !important;
+}
+.markup-assistant-command > button,
+.markup-detail-actions button,
+.markup-assistant-footer button,
+.repair-plan-workspace button,
+.repair-history-workspace button,
+.assistant-evidence-workspace button {
+  min-height: 44px;
+  font-size: 14px;
+}
+.assistant-workspace-tabs {
+  min-height: 54px;
+  margin: 10px 18px 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid #2a4c5e;
+}
+.assistant-workspace-tabs button {
+  min-width: 0;
+  min-height: 50px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #a8bdca;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 800;
+}
+.assistant-workspace-tabs button b {
+  min-width: 24px;
+  padding: 3px 7px;
+  color: #b7cad4;
+  border-radius: 999px;
+  background: #102a38;
+  font-size: 12px;
+}
+.assistant-workspace-tabs button.active {
+  color: #75e6f2;
+  border-bottom-color: #55d9ea;
+  background: linear-gradient(180deg, transparent, #12303c80);
+}
+.markup-assistant-body {
+  margin-top: 0;
+  grid-template-columns: minmax(330px, .82fr) minmax(460px, 1.18fr);
+  overflow: hidden;
+}
+.markup-assistant-body.view-repair-plan,
+.markup-assistant-body.view-history,
+.markup-assistant-body.view-evidence {
+  display: block;
+  overflow-y: auto;
+  border-top: 0;
+  background: #071620;
+}
+.markup-assistant-filter {
+  padding: 12px;
+  gap: 7px;
+}
+.markup-assistant-filter button {
+  min-height: 44px;
+  font-size: 14px !important;
+}
+.markup-assistant-filter button b {
+  font-size: 12px;
+}
+.markup-assistant-list {
+  padding: 10px;
+}
+.markup-assistant-list > button {
+  min-height: 104px;
+  padding: 13px 11px;
+  gap: 10px;
+}
+.markup-assistant-list > button small {
+  font-size: var(--assistant-label) !important;
+}
+.markup-assistant-list > button strong {
+  margin-top: 5px;
+  font-size: 15px;
+  line-height: 1.42;
+}
+.markup-assistant-list > button em {
+  margin-top: 7px;
+  overflow: visible;
+  color: #9bb1be;
+  font-size: var(--assistant-meta) !important;
+  line-height: 1.45 !important;
+  text-overflow: clip;
+  white-space: normal;
+}
+.markup-assistant-detail {
+  padding: 20px;
+}
+.markup-detail-heading h3 {
+  font-size: var(--assistant-title);
+}
+.markup-detail-heading > span {
+  padding: 7px 10px;
+  font-size: var(--assistant-meta);
+}
+.markup-assistant-detail > section {
+  margin-top: 14px;
+  padding: 15px 16px;
+}
+.markup-assistant-detail section li {
+  align-items: flex-start;
+}
+.markup-stale-warning {
+  padding: 13px 14px;
+}
+.markup-detail-actions {
+  margin-top: 18px;
+  gap: 9px;
+}
+.repair-plan-workspace,
+.repair-history-workspace,
+.assistant-evidence-workspace {
+  min-height: 100%;
+  padding: 20px;
+  color: #dfeef4;
+}
+.repair-plan-stale {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  color: #f5cc64;
+  border: 1px solid #765f2d;
+  border-radius: 10px;
+  background: #2a2312;
+  font-size: var(--assistant-body);
+  line-height: 1.55;
+}
+.repair-plan-stale button {
+  padding-inline: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #f5d677;
+  border: 1px solid #846b31;
+  border-radius: 8px;
+  background: #171d1b;
+}
+.repair-plan-heading,
+.repair-history-workspace > header,
+.assistant-evidence-workspace > header,
+.takeoff-delta-panel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+.repair-plan-heading h3,
+.repair-history-workspace > header h3,
+.assistant-evidence-workspace > header h3,
+.takeoff-delta-panel h3,
+.repair-plan-approval h3,
+.assistant-coverage-matrix h3,
+.assistant-relationships h3 {
+  margin: 5px 0 0;
+  color: #f0f8fb;
+  font-size: var(--assistant-title);
+  line-height: 1.3;
+}
+.repair-plan-heading p,
+.repair-history-workspace > header p,
+.assistant-evidence-workspace > header p {
+  max-width: 780px;
+  margin: 7px 0 0;
+  color: #a8bdca;
+}
+.repair-plan-counts {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 7px;
+}
+.repair-plan-counts span {
+  min-width: 88px;
+  padding: 9px 10px;
+  color: #a8bdca;
+  text-align: center;
+  border: 1px solid #2c4d5e;
+  border-radius: 8px;
+  background: #0a1d29;
+  font-size: var(--assistant-meta);
+}
+.repair-plan-counts b {
+  display: block;
+  color: #eef8fb;
+  font-size: 19px;
+}
+.repair-action-list {
+  margin-top: 18px;
+  display: grid;
+  gap: 10px;
+}
+.repair-action {
+  overflow: hidden;
+  border: 1px solid #2b4d5e;
+  border-left: 4px solid #617f8e;
+  border-radius: 11px;
+  background: #091b26;
+}
+.repair-action.ready {
+  border-left-color: #4fd69a;
+}
+.repair-action.needs-input {
+  border-left-color: #edc14f;
+}
+.repair-action.confirm-on-plan {
+  border-left-color: #57d9e9;
+}
+.repair-action.selected {
+  border-color: #53d7e7;
+  background: #0d2936;
+  box-shadow: inset 0 0 0 1px #53d7e72e;
+}
+.repair-action-select {
+  width: 100%;
+  min-height: 92px;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  color: #b9cad3;
+  text-align: left;
+  border: 0;
+  background: transparent;
+}
+.repair-action-select:disabled {
+  opacity: .88;
+  cursor: default;
+}
+.repair-action-select > i {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  color: #6de6ae;
+  border-radius: 9px;
+  background: #103126;
+}
+.repair-action-select span,
+.repair-action-select small,
+.repair-action-select strong,
+.repair-action-select em {
+  display: block;
+  min-width: 0;
+}
+.repair-action-select strong {
+  margin-top: 4px;
+  color: #ecf6fa;
+  font-size: 16px;
+  line-height: 1.45;
+}
+.repair-action-select em {
+  margin-top: 5px;
+  color: #a8bdca;
+  font-style: normal;
+}
+.repair-action-select > b {
+  color: #79eab4;
+  font-size: 12px;
+  letter-spacing: .5px;
+}
+.repair-action-evidence {
+  padding: 11px 16px 14px 65px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 13px;
+  color: #9fb4c0;
+  border-top: 1px solid #203d4c;
+}
+.repair-action-evidence span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.repair-action-evidence p {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  color: #edc868;
+}
+.takeoff-delta-panel,
+.repair-plan-approval,
+.assistant-coverage-matrix,
+.assistant-relationships {
+  margin-top: 18px;
+  padding: 17px;
+  border: 1px solid #2b5264;
+  border-radius: 11px;
+  background: #091d29;
+}
+.takeoff-delta-panel > header > span {
+  color: #9ec4cf;
+  font-size: var(--assistant-meta);
+}
+.takeoff-delta-summary {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+.takeoff-delta-summary > span {
+  padding: 12px;
+  border: 1px solid #294958;
+  border-radius: 8px;
+  background: #071721;
+}
+.takeoff-delta-summary small,
+.takeoff-delta-summary strong {
+  display: block;
+}
+.takeoff-delta-summary strong {
+  margin-top: 6px;
+  color: #ecf7fa;
+  font-size: 17px;
+}
+.takeoff-delta-rows {
+  margin-top: 12px;
+  display: grid;
+  gap: 7px;
+}
+.takeoff-delta-rows > div {
+  padding: 11px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  border: 1px solid #274452;
+  border-radius: 8px;
+  background: #071721;
+}
+.takeoff-delta-rows span,
+.takeoff-delta-rows strong,
+.takeoff-delta-rows small {
+  display: block;
+}
+.takeoff-delta-rows strong,
+.takeoff-delta-rows > div > b {
+  color: #dfeef4;
+  font-size: 14px;
+}
+.takeoff-delta-rows small {
+  margin-top: 4px;
+  color: #a8bdca;
+  font-size: var(--assistant-meta) !important;
+}
+.repair-plan-approval {
+  border-color: #39715a;
+  background: #0b251d;
+}
+.repair-plan-reviewer {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 9px;
+}
+.repair-plan-reviewer label {
+  color: #b6cbd4;
+  font-size: var(--assistant-meta);
+  font-weight: 700;
+}
+.repair-plan-reviewer input {
+  width: 100%;
+  height: 46px;
+  margin-top: 6px;
+  padding: 0 12px;
+  color: #eef8fb;
+  border: 1px solid #355e6c;
+  border-radius: 8px;
+  background: #071820;
+  font: inherit;
+}
+.repair-final-confirmation {
+  margin-top: 14px;
+  padding: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #d4e6eb;
+  border: 1px solid #356b54;
+  border-radius: 8px;
+  background: #0c2d22;
+  font-size: var(--assistant-body);
+  line-height: 1.55;
+}
+.repair-final-confirmation input {
+  width: 19px;
+  height: 19px;
+  margin-top: 2px;
+  accent-color: #51d99c;
+}
+.repair-apply-button {
+  width: 100%;
+  min-height: 50px !important;
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #052119;
+  border: 1px solid #8df3bd;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #6be0a5, #3fbe83);
+  font-weight: 900;
+}
+.repair-apply-button:disabled {
+  color: #718791;
+  border-color: #314a53;
+  background: #15262b;
+}
+.repair-planning-notice {
+  margin: 13px 0 0;
+  color: #e0c879 !important;
+}
+.repair-history-workspace > header button,
+.assistant-evidence-workspace > header button {
+  flex: 0 0 auto;
+  padding-inline: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #b8d0da;
+  border: 1px solid #355a6c;
+  border-radius: 8px;
+  background: #0b2230;
+}
+.repair-history-list {
+  margin-top: 18px;
+  display: grid;
+  gap: 10px;
+}
+.repair-history-list > article {
+  padding: 15px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 13px;
+  border: 1px solid #2b4e5f;
+  border-radius: 10px;
+  background: #091c28;
+}
+.repair-history-list > article > i {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: #6ce1aa;
+  border-radius: 9px;
+  background: #0f3024;
+}
+.repair-history-list h3 {
+  margin: 5px 0 0;
+  color: #edf7fa;
+  font-size: 18px;
+}
+.repair-history-list p {
+  margin: 6px 0;
+  color: #a8bdca;
+}
+.repair-history-list span {
+  margin-right: 14px;
+  color: #91aeba;
+  font-size: var(--assistant-meta);
+}
+.repair-receipt-facts {
+  margin: 12px 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.repair-receipt-facts > div {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #294958;
+  border-radius: 8px;
+  background: #071720;
+}
+.repair-receipt-facts dt {
+  color: #86a3b1;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+}
+.repair-receipt-facts dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  color: #d7e8ed;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.repair-history-list blockquote {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  color: #c8dce4;
+  border-left: 3px solid #55d9ea;
+  background: #071720;
+  font-size: var(--assistant-body);
+}
+.assistant-evidence-score {
+  margin-top: 18px;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  border: 1px solid #31596a;
+  border-radius: 11px;
+  background: #0a202c;
+}
+.assistant-evidence-score > span {
+  width: 88px;
+  height: 88px;
+  display: grid;
+  place-content: center;
+  color: #eaf8fb;
+  text-align: center;
+  border: 6px solid #55d9ea;
+  border-radius: 50%;
+}
+.assistant-evidence-score > span strong {
+  font-size: 28px;
+}
+.assistant-evidence-score > span small {
+  margin-top: 3px;
+}
+.assistant-evidence-score > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+.assistant-evidence-score > div b {
+  padding: 12px;
+  color: #bcd1d9;
+  border: 1px solid #294957;
+  border-radius: 8px;
+  background: #071820;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.assistant-evidence-blocker {
+  margin-top: 9px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: #f0ca69;
+  border: 1px solid #715d2d;
+  border-radius: 8px;
+  background: #292311;
+}
+.assistant-evidence-heuristic,
+.assistant-evidence-notice,
+.ai-evidence-heuristic {
+  margin-top: 9px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: #c6dae1;
+  border: 1px solid #31596a;
+  border-radius: 8px;
+  background: #091d29;
+  font-size: 15px;
+  line-height: 1.55;
+}
+.assistant-evidence-heuristic strong,
+.ai-evidence-heuristic strong {
+  color: #75e5f1;
+}
+.assistant-evidence-notice {
+  color: #b9cbd3;
+  border-color: #294957;
+  background: #071820;
+}
+.assistant-coverage-matrix > article,
+.assistant-relationships > article {
+  min-height: 68px;
+  padding: 11px 12px;
+  display: grid;
+  grid-template-columns: minmax(180px, .7fr) minmax(260px, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  border-top: 1px solid #274655;
+}
+.assistant-coverage-matrix > article:first-of-type,
+.assistant-relationships > article:first-of-type {
+  margin-top: 12px;
+}
+.assistant-coverage-matrix span,
+.assistant-coverage-matrix strong,
+.assistant-coverage-matrix small,
+.assistant-coverage-matrix b,
+.assistant-relationships span,
+.assistant-relationships strong,
+.assistant-relationships small {
+  display: block;
+}
+.assistant-coverage-matrix strong,
+.assistant-relationships strong {
+  color: #edf7fa;
+  font-size: 15px;
+}
+.assistant-coverage-matrix small,
+.assistant-relationships small {
+  margin-top: 4px;
+  color: #a8bdca;
+  font-size: var(--assistant-meta) !important;
+  letter-spacing: 0;
+}
+.assistant-coverage-matrix b {
+  color: #bfd3db;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.assistant-coverage-matrix em {
+  padding: 6px 8px;
+  color: #75e2ac;
+  border: 1px solid #326a51;
+  border-radius: 999px;
+  background: #0c2b21;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+.assistant-coverage-matrix em.attention {
+  color: #f0ca69;
+  border-color: #715d2d;
+  background: #292311;
+}
+.assistant-relationships > article {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.assistant-relationships > article > b {
+  color: #75e5f1;
+  font-size: 18px;
+}
+
+/* Advanced Plan Intelligence keeps the same readable scale outside the assistant. */
+.ai-coverage-view {
+  gap: 16px;
+}
+.ai-coverage-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.ai-coverage-summary > article {
+  padding: 16px;
+  border: 1px solid #2d5064;
+  border-radius: 10px;
+  background: #0a1d2b;
+}
+.ai-coverage-summary small,
+.ai-coverage-summary strong {
+  display: block;
+}
+.ai-coverage-summary small,
+.ai-coverage-table small,
+.ai-relationship-panel small {
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+.ai-coverage-summary strong {
+  margin-top: 7px;
+  color: #edf7fb;
+  font-size: 24px;
+}
+.ai-coverage-blockers {
+  display: grid;
+  gap: 8px;
+}
+.ai-coverage-blockers > div {
+  padding: 12px 14px;
+  color: #edc969;
+  border: 1px solid #705d2e;
+  border-radius: 8px;
+  background: #292311;
+  font-size: 15px;
+  line-height: 1.55;
+}
+.ai-coverage-table th,
+.ai-coverage-table td,
+.ai-relationship-panel {
+  font-size: 15px;
+  line-height: 1.55;
+}
+.ai-relationship-panel {
+  padding: 16px;
+  border: 1px solid #2c5063;
+  border-radius: 10px;
+  background: #091d2a;
+}
+.ai-relationship-panel > article {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #294957;
+  border-radius: 9px;
+  background: #071820;
+}
+.ai-relationship-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.ai-relationship-summary span,
+.ai-relationship-summary strong,
+.ai-relationship-summary small {
+  display: block;
+}
+.ai-relationship-summary strong {
+  color: #edf7fa;
+  font-size: 16px;
+}
+.ai-relationship-status {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  color: #f0ca69;
+  border: 1px solid #715d2d;
+  border-radius: 999px;
+  background: #292311;
+  font-size: 12px;
+}
+.ai-relationship-panel > article > p {
+  margin: 10px 0 0;
+  color: #b6c9d1;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.ai-relationship-sources {
+  margin-top: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ai-relationship-sources button {
+  min-height: 44px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #c8e0e8;
+  border: 1px solid #356276;
+  border-radius: 8px;
+  background: #0b2635;
+  font-size: 14px;
+}
+
+@media (max-width: 1180px) {
+  .markup-assistant-overlay {
+    width: min(1040px, calc(100vw - 16px));
+  }
+}
+@media (max-width: 820px) {
+  .markup-assistant-overlay {
+    top: 8px;
+    bottom: 8px;
+    width: calc(100vw - 8px);
+  }
+  .markup-assistant-header {
+    align-items: flex-start;
+  }
+  .markup-assistant-header-actions > span {
+    display: none;
+  }
+  .assistant-mode-strip {
+    grid-template-columns: 1fr;
+  }
+  .assistant-mode-strip button {
+    min-height: 58px;
+  }
+  .markup-assistant-command {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .markup-assistant-command > button {
+    grid-column: 1 / -1;
+  }
+  .markup-assistant-body {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  .markup-assistant-queue {
+    max-height: 44vh;
+    border-right: 0;
+    border-bottom: 1px solid #234355;
+  }
+  .markup-assistant-detail {
+    overflow: visible;
+  }
+  .repair-plan-heading,
+  .repair-history-workspace > header,
+  .assistant-evidence-workspace > header,
+  .takeoff-delta-panel > header {
+    display: grid;
+  }
+  .repair-plan-counts,
+  .takeoff-delta-summary,
+  .assistant-evidence-score > div,
+  .ai-coverage-summary {
+    grid-template-columns: 1fr;
+  }
+  .repair-plan-counts {
+    display: grid;
+  }
+  .repair-plan-reviewer {
+    grid-template-columns: 1fr;
+  }
+  .assistant-coverage-matrix > article {
+    grid-template-columns: 1fr;
+  }
+  .repair-receipt-facts {
+    grid-template-columns: 1fr;
+  }
+  .ai-relationship-summary {
+    display: grid;
+  }
+  .ai-relationship-status {
+    justify-self: start;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drawing-layer .markup-preview-run .duct-line {
+    animation: none;
+  }
+}
+
 /* v112 — calculation evidence and safety copy are primary content. */
 .balance-safety-note > div {
   max-width: 110ch;
@@ -7110,4 +8262,66 @@ select { min-height: 40px; color: #e6f0f8; border-color: #35516a; font-size: 11p
   .markup-assistant-footer span {
     font-size: 12px !important;
   }
+}
+
+/* v115 final readability guard: working evidence and warnings are never microcopy. */
+.markup-assistant-brand small,
+.markup-assistant-command small,
+.markup-detail-heading small,
+.repair-plan-workspace small,
+.repair-history-workspace small,
+.assistant-evidence-workspace small {
+  font-size: 12px !important;
+  line-height: 1.4 !important;
+}
+.markup-assistant-brand p,
+.markup-assistant-header-actions > span,
+.markup-detail-heading > span,
+.markup-assistant-list > button em,
+.takeoff-delta-rows small,
+.assistant-coverage-matrix small,
+.assistant-relationships small {
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+}
+.markup-assistant-command p,
+.markup-assistant-detail section p,
+.markup-assistant-detail section li,
+.markup-stale-warning,
+.repair-action-select em,
+.repair-action-evidence,
+.repair-plan-heading p,
+.repair-plan-approval p,
+.repair-history-workspace p,
+.assistant-evidence-workspace p,
+.assistant-evidence-blocker,
+.markup-assistant-footer span {
+  font-size: 15px !important;
+  line-height: 1.6 !important;
+}
+.markup-assistant-brand h2,
+.markup-detail-heading h3,
+.repair-plan-heading h3,
+.repair-history-workspace > header h3,
+.assistant-evidence-workspace > header h3,
+.takeoff-delta-panel h3,
+.repair-plan-approval h3,
+.assistant-coverage-matrix h3,
+.assistant-relationships h3 {
+  font-size: 22px !important;
+}
+.markup-assistant-command h3 { font-size: 20px !important; }
+.markup-assistant-filter button,
+.markup-assistant-footer button,
+.markup-detail-actions button,
+.markup-assistant-command > button,
+.repair-plan-workspace button,
+.repair-history-workspace button,
+.assistant-evidence-workspace button {
+  font-size: 14px !important;
+}
+.ai-plan-workspace .ai-coverage-summary small,
+.ai-plan-workspace .ai-coverage-table small,
+.ai-plan-workspace .ai-relationship-panel small {
+  font-size: 13px !important;
 }

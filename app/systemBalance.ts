@@ -34,6 +34,8 @@ export type BalanceRunReview = {
   pressureDrop: number;
   pressureAssumption: string;
   airflowSource: "terminal-linked" | "manual" | "estimated";
+  airflowReviewed: boolean;
+  airflowEvidence: string[];
   overCapacity: boolean;
 };
 

@@ -30,13 +30,15 @@ import {
   analyzeHvacPlan,
   updatePlanFindingDecision,
   type PlanAnalysis,
+  type PlanEvidence,
   type PlanEvidenceCategory,
   type PlanFindingDecision,
   type PlanReaderFinding,
 } from "./planReader";
 import { trackProductEvent } from "./productAnalytics";
+import { buildAdvancedPlanIntelligence } from "./advancedPlanIntelligence";
 
-type WorkspaceView = "overview" | "sheets" | "evidence" | "findings" | "takeoff";
+type WorkspaceView = "overview" | "sheets" | "evidence" | "coverage" | "findings" | "takeoff";
 
 type Props = {
   open: boolean;
@@ -46,7 +48,7 @@ type Props = {
   sourceFileName: string;
   projectName: string;
   onClose: () => void;
-  onShowPage: (page: number) => void;
+  onShowPage: (page: number, region?: PlanEvidence["region"]) => void;
   onPrepareMarkup: (page: number, note?: string) => void;
   cloudProjectConnected?: boolean;
   onOpenCloudWorkspace?: () => void;
@@ -74,13 +76,19 @@ const categoryOptions: Array<"All" | PlanEvidenceCategory> = [
 const severityRank = { critical: 0, warning: 1, info: 2 };
 
 function confidenceLabel(value: number) {
-  if (value >= 0.9) return "High";
-  if (value >= 0.8) return "Review";
-  return "Low";
+  if (value >= 0.9) return "Strong match";
+  if (value >= 0.8) return "Review match";
+  return "Weak match";
 }
 
 function confidencePercent(value: number) {
   return `${Math.round(value * 100)}%`;
+}
+
+function confidenceTone(value: number) {
+  if (value >= 0.9) return "high";
+  if (value >= 0.8) return "review";
+  return "low";
 }
 
 function csvCell(value: string | number) {
@@ -163,6 +171,10 @@ export default function AIPlanWorkspace({
     () => new Map((analysis?.evidence || []).map((row) => [row.id, row])),
     [analysis],
   );
+  const advanced = useMemo(
+    () => buildAdvancedPlanIntelligence(analysis),
+    [analysis],
+  );
 
   if (!open) return null;
 
@@ -221,15 +233,15 @@ export default function AIPlanWorkspace({
     }
   }
 
-  function showSource(page: number) {
-    onShowPage(page);
+  function showSource(page: number, region?: PlanEvidence["region"]) {
+    onShowPage(page, region);
     onClose();
   }
 
   function exportTakeoff() {
     if (!analysis) return;
     const rows = [
-      ["Category", "Item", "Quantity", "Pages", "Confidence", "Review required"],
+      ["Category", "Item", "Text references", "Pages", "Extraction score", "Review required"],
       ...analysis.takeoff.map((row) => [
         row.category,
         row.item,
@@ -291,8 +303,8 @@ export default function AIPlanWorkspace({
         <div className="ai-plan-brand">
           <span><ScanSearch size={22} /></span>
           <div>
-            <small>HVAC PLAN STUDIO · V105 + V106</small>
-            <h2 id="ai-plan-title">AI Plan Reader</h2>
+            <small>HVAC PLAN STUDIO · V115</small>
+            <h2 id="ai-plan-title">Advanced Plan Intelligence</h2>
             <p>{projectName} · {sourceFileName || "No plan loaded"}</p>
           </div>
         </div>
@@ -304,7 +316,7 @@ export default function AIPlanWorkspace({
 
       <div className="ai-plan-policy">
         <Sparkles size={15} />
-        <span><strong>AI proposes. You approve.</strong> Findings include source evidence and confidence. Nothing is drawn, resized, or changed automatically.</span>
+        <span><strong>Evidence stays inspectable.</strong> Text regions, sheet coverage, and cross-sheet relationships remain draft until a person confirms them.</span>
       </div>
 
       {!analysis ? <div className="ai-plan-start">
@@ -317,7 +329,7 @@ export default function AIPlanWorkspace({
             <article><Layers3 size={18} /><strong>Classify sheets</strong><span>Find mechanical plans, schedules, and coordination sheets.</span></article>
             <article><FileSearch size={18} /><strong>Extract evidence</strong><span>Equipment, CFM, duct sizes, air devices, controls, and notes.</span></article>
             <article><ListChecks size={18} /><strong>Explain findings</strong><span>Every issue links back to the source page and extracted text.</span></article>
-            <article><Table2 size={18} /><strong>Draft takeoff</strong><span>Reviewable quantities with confidence and source-sheet coverage.</span></article>
+            <article><Table2 size={18} /><strong>Draft evidence register</strong><span>Text-reference counts with source-sheet coverage for visual reconciliation.</span></article>
           </div>
           {error && <div className="ai-plan-error"><AlertTriangle size={16} /> {error}</div>}
           <button className="ai-analyze-button" disabled={!pdf || running} onClick={runAnalysis}>
@@ -335,7 +347,7 @@ export default function AIPlanWorkspace({
             ["02", "HVAC systems", "Tags, tonnage, CFM, and schedules"],
             ["03", "Air distribution", "Supply, return, duct, and device evidence"],
             ["04", "Fresh air + controls", "OA references, dampers, thermostats, smoke detection"],
-            ["05", "Takeoff confidence", "Items requiring visual confirmation"],
+            ["05", "Takeoff review", "Text references requiring visual reconciliation"],
           ].map(([number, title, detail]) => <div key={number}><b>{number}</b><span><strong>{title}</strong><small>{detail}</small></span><ChevronRight size={15} /></div>)}
         </aside>
       </div> : <>
@@ -344,6 +356,7 @@ export default function AIPlanWorkspace({
             ["overview", "Overview", Sparkles],
             ["sheets", "Sheets", Layers3],
             ["evidence", "Evidence", FileSearch],
+            ["coverage", "Coverage", ScanSearch],
             ["findings", "Findings", ListChecks],
             ["takeoff", "Takeoff", Table2],
           ] as const).map(([id, label, Icon]) => <button
@@ -358,6 +371,17 @@ export default function AIPlanWorkspace({
             {running ? <LoaderCircle className="spin" size={14} /> : <ScanSearch size={14} />} Reanalyze
           </button>
         </nav>
+
+        {analysis.persistence?.truncated && <div className="ai-plan-snapshot-warning" role="status">
+          <AlertTriangle size={17} />
+          <span>
+            <strong>Restored analysis snapshot is partial.</strong>{" "}
+            This browser saved {analysis.persistence.savedEvidenceCount} of {analysis.persistence.originalEvidenceCount} evidence rows,
+            {" "}{analysis.persistence.savedFindingCount} of {analysis.persistence.originalFindingCount} findings, and
+            {" "}{analysis.persistence.savedTakeoffCount} of {analysis.persistence.originalTakeoffCount} takeoff rows.
+            Reanalyze the source PDF before relying on coverage or automation readiness.
+          </span>
+        </div>}
 
         <section className={`ai-cloud-value-card ${cloudProjectConnected ? "connected" : ""}`}>
           <span><Cloud size={18} /></span>
@@ -379,13 +403,13 @@ export default function AIPlanWorkspace({
                   : "The automated review has no open findings"}</h3>
                 <p>{analysis.summary.mechanicalSheets} HVAC-related sheet{analysis.summary.mechanicalSheets === 1 ? "" : "s"} identified across {analysis.pageCount} pages. Results remain draft until you confirm them.</p>
               </div>
-              <span className="ai-confidence-ring"><strong>{Math.round(analysis.summary.averageConfidence * 100)}</strong><small>AVG CONFIDENCE</small></span>
+              <span className="ai-confidence-ring"><strong>{Math.round(analysis.summary.averageConfidence * 100)}</strong><small>AVG MATCH SCORE</small></span>
             </section>
             <div className="ai-metric-grid">
               <article><Layers3 size={17} /><small>HVAC SHEETS</small><strong>{analysis.summary.mechanicalSheets}</strong><span>{analysis.summary.readableSheets} readable</span></article>
               <article><FileSearch size={17} /><small>EVIDENCE</small><strong>{analysis.evidence.length}</strong><span>source-linked</span></article>
               <article><ListChecks size={17} /><small>OPEN FINDINGS</small><strong>{analysis.summary.openFindings}</strong><span>need a decision</span></article>
-              <article><Table2 size={17} /><small>TAKEOFF ROWS</small><strong>{analysis.takeoff.length}</strong><span>draft quantities</span></article>
+              <article><Table2 size={17} /><small>EVIDENCE ROWS</small><strong>{analysis.takeoff.length}</strong><span>text-reference groups</span></article>
             </div>
             <div className="ai-overview-grid">
               <section className="ai-overview-card">
@@ -416,7 +440,7 @@ export default function AIPlanWorkspace({
           {view === "sheets" && <div className="ai-table-view">
             <header><div><small>SHEET CLASSIFICATION</small><h3>Plan set map</h3><p>Use the reader’s classifications to move directly to HVAC-relevant sheets.</p></div></header>
             <div className="ai-data-table ai-sheet-table">
-              <div className="ai-table-head"><span>Sheet</span><span>Classification</span><span>Text</span><span>Confidence</span><span /></div>
+              <div className="ai-table-head"><span>Sheet</span><span>Classification</span><span>Text</span><span>Match score</span><span /></div>
               {analysis.pages.map((page) => <div className="ai-table-row" key={page.page}>
                 <span><b>{page.sheetNumber}</b><small>PDF page {page.page}</small></span>
                 <span><strong>{page.title}</strong><small>{page.classification}</small></span>
@@ -429,22 +453,86 @@ export default function AIPlanWorkspace({
 
           {view === "evidence" && <div className="ai-table-view">
             <header className="ai-evidence-header">
-              <div><small>SOURCE EVIDENCE</small><h3>What the reader found</h3><p>Every extracted value keeps its sheet, excerpt, and confidence.</p></div>
+              <div><small>SOURCE EVIDENCE</small><h3>What the reader found</h3><p>Every extracted value keeps its sheet, excerpt, source region, and deterministic match score.</p></div>
               <div className="ai-evidence-tools">
                 <label><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search evidence…" /></label>
                 <label><Filter size={14} /><select value={category} onChange={(event) => setCategory(event.target.value as typeof category)}>{categoryOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
               </div>
             </header>
             <div className="ai-data-table ai-evidence-table">
-              <div className="ai-table-head"><span>Evidence</span><span>Source excerpt</span><span>Confidence</span><span /></div>
+              <div className="ai-table-head"><span>Evidence</span><span>Source excerpt</span><span>Match score</span><span /></div>
               {visibleEvidence.map((row) => <div className="ai-table-row" key={row.id}>
                 <span><b>{row.value}</b><small>{row.category} · {row.label}</small></span>
-                <span><strong>{row.excerpt}</strong><small>{row.sheetNumber} · PDF page {row.page}</small></span>
-                <span className={`confidence-${confidenceLabel(row.confidence).toLowerCase()}`}><b>{confidenceLabel(row.confidence)}</b><small>{confidencePercent(row.confidence)}</small></span>
-                <button onClick={() => showSource(row.page)}><MapPin size={14} /> Show source</button>
+                <span><strong>{row.excerpt}</strong><small>{row.sheetNumber} · PDF page {row.page}{row.region ? ` · region ${Math.round(row.region.x)}, ${Math.round(row.region.y)}` : " · page-linked"}</small></span>
+                <span className={`confidence-${confidenceTone(row.confidence)}`}><b>{confidenceLabel(row.confidence)}</b><small>{confidencePercent(row.confidence)}</small></span>
+                <button onClick={() => showSource(row.page, row.region)}><MapPin size={14} /> Show source</button>
               </div>)}
               {!visibleEvidence.length && <div className="ai-empty-table"><FileSearch size={24} /><strong>No evidence matches this filter</strong><span>Clear the search or choose another category.</span></div>}
             </div>
+          </div>}
+
+          {view === "coverage" && advanced && <div className="ai-table-view ai-coverage-view">
+            <header>
+              <div>
+                <small>V115 EVIDENCE READINESS</small>
+                <h3>Sheet coverage and source relationships</h3>
+                <p>Coverage explains what the reader could verify, what needs OCR, and which cross-sheet links still need human confirmation.</p>
+              </div>
+              <span className={`ai-coverage-score ${advanced.blockers.length ? "attention" : "clear"}`}>
+                <strong>{advanced.readinessScore}</strong>
+                <small>EVIDENCE INDEX</small>
+              </span>
+            </header>
+            <div className="ai-evidence-heuristic"><ShieldCheck size={17} /><span><strong>Review-only heuristic.</strong> This index is not a probability, approval, or release gate and never authorizes plan changes.</span></div>
+            <div className="ai-coverage-summary">
+              <article><strong>{advanced.averageCoveragePercent}%</strong><span>category coverage</span></article>
+              <article><strong>{advanced.averageRegionCoveragePercent}%</strong><span>exact text regions</span></article>
+              <article><strong>{advanced.ocrRequiredPages.length}</strong><span>OCR / visual checks</span></article>
+              <article><strong>{advanced.relationships.length}</strong><span>relationships to confirm</span></article>
+            </div>
+            {advanced.blockers.length > 0 && <div className="ai-coverage-blockers">
+              <AlertTriangle size={18} />
+              <div><strong>Source review still required</strong>{advanced.blockers.map((blocker) => <p key={blocker}>{blocker}</p>)}</div>
+            </div>}
+            <div className="ai-data-table ai-coverage-table">
+              <div className="ai-table-head"><span>Sheet</span><span>Covered evidence</span><span>Missing / review</span><span>Regions</span><span /></div>
+              {advanced.coverage.map((row) => <div className="ai-table-row" key={row.page}>
+                <span><b>{row.sheetNumber}</b><small>{row.title}</small></span>
+                <span><strong>{row.coveredCategories.join(", ") || "No HVAC evidence"}</strong><small>{row.evidenceCount} extracted item{row.evidenceCount === 1 ? "" : "s"}</small></span>
+                <span className={row.ocrStatus === "required" || row.missingCategories.length ? "status-review" : "status-good"}>
+                  {row.ocrStatus === "required" ? "OCR / visual confirmation" : row.missingCategories.length ? row.missingCategories.join(", ") : "Covered"}
+                </span>
+                <span><b>{row.regionCoveragePercent}%</b><small>exact regions</small></span>
+                <button onClick={() => showSource(row.page)}><Eye size={14} /> Open sheet</button>
+              </div>)}
+            </div>
+            <section className="ai-relationship-panel">
+              <header><div><small>CROSS-SHEET RELATIONSHIPS</small><h3>Exact-source links to confirm</h3></div></header>
+              {advanced.relationships.map((relationship) => {
+                const sourceKeys = new Set<string>();
+                const sources = relationship.evidenceIds.flatMap((evidenceId) => {
+                  const evidence = evidenceById.get(evidenceId);
+                  if (!evidence) return [];
+                  const key = `${evidence.page}:${evidence.sheetNumber}:${evidence.region ? `${evidence.region.x}:${evidence.region.y}:${evidence.region.width}:${evidence.region.height}` : "page"}`;
+                  if (sourceKeys.has(key)) return [];
+                  sourceKeys.add(key);
+                  return [evidence];
+                });
+                return <article key={relationship.id}>
+                  <div className="ai-relationship-summary">
+                    <span><strong>{relationship.label}</strong><small>{relationship.sourceSheets.join(" ↔ ")}</small></span>
+                    <b className="ai-relationship-status">UNCONFIRMED EXACT-TAG CANDIDATE</b>
+                  </div>
+                  <p>Rule-based text match {Math.round(relationship.confidence * 100)}/100 · not a probability. Matching tags do not prove a schedule-row, airflow, or equipment association.</p>
+                  <div className="ai-relationship-sources">
+                    {sources.map((evidence) => <button key={evidence.id} onClick={() => showSource(evidence.page, evidence.region)}>
+                      <Eye size={14} /> Open {evidence.sheetNumber || `page ${evidence.page}`} source
+                    </button>)}
+                  </div>
+                </article>;
+              })}
+              {!advanced.relationships.length && <div className="ai-plan-clear"><CheckCircle2 size={22} /><strong>No exact cross-sheet relationships found</strong><span>The reader will not guess relationships from nearby numbers.</span></div>}
+            </section>
           </div>}
 
           {view === "findings" && <div className="ai-findings-view">
@@ -470,7 +558,7 @@ export default function AIPlanWorkspace({
                 <section>
                   <small>SOURCE EVIDENCE</small>
                   <div className="ai-finding-sources">
-                    {activeFinding.evidenceIds.map((id) => evidenceById.get(id)).filter(Boolean).map((row) => row && <button key={row.id} onClick={() => showSource(row.page)}>
+                    {activeFinding.evidenceIds.map((id) => evidenceById.get(id)).filter(Boolean).map((row) => row && <button key={row.id} onClick={() => showSource(row.page, row.region)}>
                       <span><strong>{row.value}</strong><small>{row.sheetNumber} · {confidencePercent(row.confidence)}</small></span><Eye size={14} />
                     </button>)}
                     {!activeFinding.evidenceIds.length && <p className="ai-no-direct-evidence">This is a plan-set coverage check. Confirm it against the sheet index and visible sheets.</p>}
@@ -498,9 +586,9 @@ export default function AIPlanWorkspace({
               <div><small>DRAFT AI TAKEOFF</small><h3>Source-backed quantities</h3><p>Review every flagged row before using this export for estimating.</p></div>
               <button onClick={exportTakeoff}><Download size={15} /> Export CSV</button>
             </header>
-            <div className="ai-takeoff-warning"><AlertTriangle size={15} /><span>This is a text-layer takeoff draft. It does not count unlabelled graphical symbols or measure duct length.</span></div>
+            <div className="ai-takeoff-warning"><AlertTriangle size={15} /><span>These are text-reference counts, not installed quantities. Repeated tags can appear on plans, schedules, details, and notes; visually reconcile every row before purchasing.</span></div>
             <div className="ai-data-table ai-takeoff-table">
-              <div className="ai-table-head"><span>Category</span><span>Item</span><span>Quantity</span><span>Source pages</span><span>Confidence</span></div>
+              <div className="ai-table-head"><span>Category</span><span>Item</span><span>Text refs</span><span>Source pages</span><span>Match score</span></div>
               {analysis.takeoff.map((row) => <div className="ai-table-row" key={row.id}>
                 <span><b>{row.category}</b></span>
                 <span><strong>{row.item}</strong>{row.reviewRequired && <small className="needs-review">VISUAL REVIEW REQUIRED</small>}</span>

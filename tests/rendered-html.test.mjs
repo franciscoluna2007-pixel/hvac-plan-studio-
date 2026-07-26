@@ -651,10 +651,11 @@ test("provides touch-sized review controls and a mobile full-panel workflow", as
   assert.match(styles, /\.app-shell\.wide-inspector \.right-panel \{ width: 100%; height: 100%;/);
 });
 
-test("ships v105 AI Plan Reader and v106 evidence-backed Plan Intelligence", async () => {
+test("keeps the v105/v106 reader foundation and adds v115 inspectable evidence coverage", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const workspace = await readFile(new URL("../app/AIPlanWorkspace.tsx", import.meta.url), "utf8");
   const reader = await readFile(new URL("../app/planReader.ts", import.meta.url), "utf8");
+  const advanced = await readFile(new URL("../app/advancedPlanIntelligence.ts", import.meta.url), "utf8");
   const cloud = await readFile(new URL("../app/cloudProjects.ts", import.meta.url), "utf8");
   const identity = await readFile(new URL("../app/planIntelligence.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
@@ -678,16 +679,26 @@ test("ships v105 AI Plan Reader and v106 evidence-backed Plan Intelligence", asy
   assert.match(page, /reviewDecisionForIssue/);
   assert.match(page, /EVIDENCE CHANGED — REVIEW AGAIN/);
   assert.match(page, /visibleLabels: \{ showCfmLabels, showLengthLabels, showFittingLabels \}/);
-  assert.match(workspace, /AI proposes\. You approve\./);
-  assert.match(workspace, /Nothing is drawn, resized, or changed automatically/);
+  assert.match(workspace, /HVAC PLAN STUDIO · V115/);
+  assert.match(workspace, /Advanced Plan Intelligence/);
+  assert.match(workspace, /Evidence stays inspectable\./);
+  assert.match(workspace, /\["coverage", "Coverage", ScanSearch\]/);
+  assert.match(workspace, /ai-coverage-view/);
+  assert.match(workspace, /showSource\(row\.page, row\.region\)/);
   assert.match(workspace, /Source-backed quantities/);
   assert.match(workspace, /Show on plan/);
   assert.match(workspace, /Prepare markup/);
   assert.match(reader, /export async function analyzeHvacPlan/);
+  assert.match(reader, /function regionForMatch/);
+  assert.match(reader, /region: regionForMatch\(spans, match\.index, match\.index \+ match\[0\]\.length\)/);
+  assert.match(reader, /coordinateSpace: "viewport-points"/);
   assert.match(reader, /Mechanical schedule/);
   assert.match(reader, /Rectangular duct size/);
   assert.match(reader, /Motorized outside-air damper/);
-  assert.match(reader, /No HVAC schedule was confirmed/);
+  assert.match(reader, /No HVAC schedule was detected/);
+  assert.match(advanced, /advanced-plan-intelligence-v115\.0/);
+  assert.match(advanced, /Evidence readiness is a review heuristic and never authorizes plan mutation by itself/);
+  assert.match(advanced, /confirmed: false/);
   assert.match(cloud, /from\("plan_analysis_runs"\)/);
   assert.match(cloud, /from\("plan_analysis_evidence"\)/);
   assert.match(cloud, /from\("plan_analysis_findings"\)/);
@@ -695,6 +706,7 @@ test("ships v105 AI Plan Reader and v106 evidence-backed Plan Intelligence", asy
   assert.match(identity, /input\.instanceKey \|\| "primary"/);
   assert.match(identity, /evidenceFingerprint: `evidence-/);
   assert.match(styles, /\.ai-plan-workspace/);
+  assert.match(styles, /\.ai-coverage-view/);
   assert.match(styles, /\.ai-findings-view/);
   assert.match(styles, /\.ai-takeoff-table/);
   assert.match(migration, /create table if not exists public\.plan_analysis_runs/);
@@ -742,7 +754,8 @@ test("ships v112 System Balance Studio with reviewed calculations and manual geo
   assert.match(studio, /SYSTEM BALANCE STUDIO · V112/);
   assert.match(studio, /TRANSPARENT DUCT SIZE REVIEW · V112/);
   assert.match(studio, /Velocity preview only\. Pressure remains unverified\./);
-  assert.match(studio, /run\.applyEligible/);
+  assert.match(studio, /run\.applyEligible && run\.airflowReviewed && !run\.overCapacity/);
+  assert.match(studio, /Replace planning-seed contributors with fingerprint-matched reviewed room targets or explicit manual values first/);
   assert.match(studio, /Planning estimate—not a Manual J, S, D, or T design/);
   assert.match(studio, /Studio never draws new runs, reroutes paths, balances airflow, or numbers ductwork automatically/);
   assert.match(studio, /role="tablist"/);
@@ -880,50 +893,368 @@ test("v112 allocation and progression rules remain exact without mutating inputs
   }).status, "blocked");
 });
 
-test("v112 removes circular and bulk sizing shortcuts from the workspace", async () => {
+test("v113 restores reviewed-airflow network sizing without diameter-derived CFM", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const studio = await readFile(new URL("../app/SystemBalanceStudio.tsx", import.meta.url), "utf8");
+  const assistant = await readFile(new URL("../app/MarkupAssistantStudio.tsx", import.meta.url), "utf8");
+  const repair = await readFile(new URL("../app/repairPlan.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   const roadmap = await readFile(new URL("../ROADMAP.md", import.meta.url), "utf8");
 
   assert.match(page, /DUCT_SIZING_CALCULATION_VERSION/);
   assert.match(page, /Math\.max\(manual, propagated\)/);
-  assert.match(page, /suggestion\.applyEligible && !suggestion\.overCapacity/);
+  assert.match(page, /applyEligible: recommendation\.applyEligible && airflowReviewed/);
+  assert.match(page, /async function applyAssistantRepairPlan/);
+  assert.match(page, /suggestion\.airflowReviewed &&[\s\S]{0,100}action\.airflowReviewed &&[\s\S]{0,180}suggestion\.equipmentRooted &&[\s\S]{0,100}suggestion\.applyEligible &&[\s\S]{0,100}!suggestion\.overCapacity/);
+  assert.match(page, /cfmSource: "room-target" as const/);
+  assert.match(page, /next = synchronizeFittingSizes\(resized, drawings, \{/);
+  assert.match(page, /setHistory\(next\)/);
   assert.doesNotMatch(page, /function defaultCfm/);
-  assert.doesNotMatch(page, /function autoSizeSelectedBranchNetwork/);
-  assert.doesNotMatch(page, /function rebalanceSelectedFitting/);
+  const legacySizeApplyBody = page.slice(
+    page.indexOf("function applySizingSuggestionIds"),
+    page.indexOf("function openSizingReview"),
+  );
+  assert.match(legacySizeApplyBody, /suggestion\.airflowReviewed/);
+  assert.match(legacySizeApplyBody, /setAssistantAutonomyMode\("guided"\)/);
+  assert.match(legacySizeApplyBody, /setAssistantPreparedEvidenceFingerprint\(assistantRepairPlan\.evidenceFingerprint\)/);
+  assert.match(legacySizeApplyBody, /setAssistantSelectedActionIds\(repairActionIds\)/);
+  assert.match(legacySizeApplyBody, /setShowMarkupAssistant\(true\)/);
+  assert.match(legacySizeApplyBody, /opened in Guided Repair/);
+  assert.doesNotMatch(legacySizeApplyBody, /setHistory|synchronizeFittingSizes|drawing\.size/);
+  assert.match(repair, /cfmSource: "manual" \| "terminal-linked" \| "room-target"/);
+  assert.match(repair, /candidate\.cfm > 0 &&[\s\S]{0,100}candidate\.equipmentRooted &&[\s\S]{0,100}candidate\.airflowReviewed/);
+  assert.doesNotMatch(repair, /cfmSource: "planning-seed"/);
+  assert.match(repair, /CFM is not derived from duct diameter/);
+  assert.match(repair, /Apply the reviewed terminal CFM first, then rebuild the repair plan so sizing uses the new network airflow/);
+  assert.match(repair, /The governing airflow includes a planning seed or a room target whose review fingerprint is no longer current/);
+  assert.match(repair, /Automatic network sizing requires an equipment-rooted connected path/);
+  assert.match(assistant, /The assistant may resize eligible connected runs and synchronize fitting ports only after one final batch approval/);
+  assert.match(assistant, /It never invents CFM from diameter/);
   assert.match(studio, /No supported single flex run passes/);
-  assert.match(styles, /v112 — calculation evidence and safety copy are primary content/);
-  assert.match(styles, /\.balance-safety-note p,[\s\S]*font-size: 13px !important/);
-  assert.match(roadmap, /## v112 — Transparent Duct Sizing Engine/);
-  assert.match(roadmap, /## v112 — Transparent Duct Sizing Engine[\s\S]{0,100}\*\*Status: Shipped\*\*/);
+  assert.match(styles, /v113–v115 — readable guided repair, durable review, and evidence coverage/);
+  assert.match(styles, /--assistant-body: 15px/);
+  assert.match(roadmap, /\| v113 \| Guided Repair Plan and controlled network resizing \| Shipped \|/);
 });
 
-test("ships v111 Intelligent HVAC Markup Assistant as an evidence-bound, approval-first preview", async () => {
+test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const studio = await readFile(new URL("../app/MarkupAssistantStudio.tsx", import.meta.url), "utf8");
   const engineSource = await readFile(new URL("../app/markupAssistant.ts", import.meta.url), "utf8");
+  const repairSource = await readFile(new URL("../app/repairPlan.ts", import.meta.url), "utf8");
+  const takeoffSource = await readFile(new URL("../app/takeoffIntelligence.ts", import.meta.url), "utf8");
+  const advancedSource = await readFile(new URL("../app/advancedPlanIntelligence.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   const roadmap = await readFile(new URL("../ROADMAP.md", import.meta.url), "utf8");
 
   assert.match(page, /import MarkupAssistantStudio from "\.\/MarkupAssistantStudio"/);
+  assert.match(page, /buildRepairPlan/);
+  assert.match(page, /buildTakeoffImpact/);
+  assert.match(page, /buildAdvancedPlanIntelligence/);
   assert.match(page, /buildMarkupRecommendations/);
   assert.match(page, /<MarkupAssistantStudio/);
-  assert.match(page, /Approved T\/Y preview armed · click the highlighted junction to confirm placement/);
-  assert.match(page, /That preview changed with the plan/);
-  assert.match(page, /markup-suggestion-preview/);
-  assert.match(studio, /INTELLIGENT HVAC MARKUP ASSISTANT · V111/);
+  assert.match(page, /function prepareAssistantRepairPlan/);
+  assert.match(page, /async function applyAssistantRepairPlan/);
+  assert.match(page, /input\.evidenceFingerprint !== assistantRepairPlan\.evidenceFingerprint/);
+  assert.match(page, /actions\.length !== requestedIds\.size/);
+  assert.match(page, /Apply reviewed terminal CFM first, then rebuild the repair plan before resizing the network/);
+  assert.match(page, /setHistory\(next\)/);
+  assert.match(studio, /INTELLIGENT HVAC MARKUP ASSISTANT · V115/);
+  assert.match(studio, /Build the repair plan\. Approve one controlled batch\./);
   assert.match(studio, /aria-modal="false"/);
-  assert.match(studio, /aria-atomic="true"/);
-  assert.match(studio, /evidenceFingerprint === recommendation\.evidenceFingerprint/);
-  assert.match(studio, /Approved for the next manual step/);
-  assert.match(studio, /The plan is still unchanged/);
-  assert.match(studio, /aria-pressed=\{filter === id\}/);
+  assert.match(studio, /Inspect only/);
+  assert.match(studio, /Build repair plan/);
+  assert.match(studio, /Guided apply/);
+  assert.match(studio, /V113 GUIDED REPAIR PLAN/);
+  assert.match(studio, /This repair plan is stale\./);
+  assert.match(studio, /V114 TAKEOFF IMPACT/);
+  assert.match(studio, /Before → after purchasing impact/);
+  assert.match(studio, /ONE CONTROLLED TRANSACTION/);
+  assert.match(studio, /I reviewed the selected object diffs and understand this is a planning-screened repair/);
+  assert.match(studio, /autonomyMode !== "guided"/);
+  assert.match(studio, /onApplyRepairPlan/);
+  assert.match(studio, /onUndoRepairBatch/);
+  assert.match(studio, /V114 APPLICATION RECEIPTS/);
+  assert.match(studio, /Receipt/);
+  assert.match(studio, /Evidence set/);
+  assert.match(studio, /Material basis/);
+  assert.match(studio, /V115 ADVANCED PLAN INTELLIGENCE/);
+  assert.match(studio, /Evidence coverage before automation/);
+  assert.match(studio, /Review-only heuristic/);
+  assert.match(studio, /not a probability, approval, or release gate/);
   assert.doesNotMatch(engineSource, /setHistory|setDrawings|dispatch/);
-  assert.match(styles, /v111 — Markup Assistant readability floor/);
-  assert.match(styles, /\.markup-suggestion-preview text \{ font-size: 11px; \}/);
-  assert.match(roadmap, /## v111 — Intelligent HVAC Markup Assistant/);
-  assert.match(roadmap, /session-level/);
+  assert.match(repairSource, /guided-repair-v115\.0/);
+  assert.match(takeoffSource, /takeoff-intelligence-v114\.0/);
+  assert.match(advancedSource, /advanced-plan-intelligence-v115\.0/);
+  assert.match(styles, /v115 final readability guard: working evidence and warnings are never microcopy/);
+  assert.match(styles, /\.markup-stale-warning,[\s\S]{0,500}font-size: 15px !important/);
+  assert.match(roadmap, /\| v113 \| Guided Repair Plan and controlled network resizing \| Shipped \|/);
+  assert.match(roadmap, /\| v114 \| Repair receipts and before\/after takeoff intelligence \| Shipped \|/);
+  assert.match(roadmap, /\| v115 \| Advanced Plan Intelligence, source regions, and coverage \| Shipped \|/);
+});
+
+test("v113 repair planning stages reviewed CFM before sizing and selects only eligible actions", async () => {
+  const repair = await import(new URL("../app/repairPlan.ts", import.meta.url));
+  const sizeCandidate = {
+    id: "run-12",
+    type: "supply",
+    room: "Conference 101",
+    current: "10",
+    recommended: "12",
+    cfm: 640,
+    currentVelocity: 1173,
+    velocity: 814,
+    limit: 900,
+    airflowSource: "room-target",
+    airflowReviewed: true,
+    airflowEvidence: ["Fingerprint-matched reviewed room-target CFM"],
+    roomTargetReviewFingerprint: "room-review-current",
+    equipmentRooted: true,
+    applyEligible: true,
+    overCapacity: false,
+    affectedFittingIds: ["fitting-1"],
+    affectedConnectedRunIds: ["run-13"],
+    reasonCodes: ["PRESSURE_EVIDENCE_MISSING"],
+  };
+  const stagedInput = {
+    systemId: "system-1",
+    evidenceFingerprint: "evidence-a",
+    createdAt: "2026-07-25T18:00:00.000Z",
+    recommendations: [],
+    cfmCandidates: [{
+      id: "proposal-1",
+      drawingId: "diffuser-1",
+      room: "Conference 101",
+      label: "Supply diffuser",
+      current: 400,
+      proposed: 640,
+      connected: true,
+    }],
+    roomTargetsReviewed: true,
+    sizeCandidates: [sizeCandidate],
+    branchCandidates: [],
+    scaleVerified: true,
+  };
+  const before = JSON.stringify(stagedInput);
+  const staged = repair.buildRepairPlan(stagedInput);
+
+  assert.equal(JSON.stringify(stagedInput), before);
+  assert.equal(staged.version, "guided-repair-v115.0");
+  assert.equal(staged.readyCount, 1);
+  assert.equal(staged.needsInputCount, 1);
+  const cfmAction = staged.actions.find((action) => action.kind === "terminal-cfm");
+  const blockedSizeAction = staged.actions.find((action) => action.kind === "run-size");
+  assert.equal(cfmAction.readiness, "ready");
+  assert.equal(cfmAction.cfmSource, "room-target");
+  assert.ok(cfmAction.evidence.includes("CFM is not derived from duct diameter"));
+  assert.equal(blockedSizeAction.readiness, "needs-input");
+  assert.match(blockedSizeAction.blocker, /Apply the reviewed terminal CFM first/);
+  assert.deepEqual(staged.selectedByDefault, [cfmAction.id]);
+
+  const rebuilt = repair.buildRepairPlan({
+    ...stagedInput,
+    evidenceFingerprint: "evidence-b",
+    cfmCandidates: [],
+    sizeCandidates: [sizeCandidate],
+  });
+  const readySizeAction = rebuilt.actions.find((action) => action.kind === "run-size");
+  assert.equal(rebuilt.readyCount, 1);
+  assert.equal(rebuilt.needsInputCount, 0);
+  assert.equal(readySizeAction.readiness, "ready");
+  assert.equal(readySizeAction.cfm, 640);
+  assert.equal(readySizeAction.cfmSource, "room-target");
+  assert.equal(readySizeAction.airflowReviewed, true);
+  assert.equal(readySizeAction.roomTargetReviewFingerprint, "room-review-current");
+  assert.equal(readySizeAction.currentSize, "10");
+  assert.equal(readySizeAction.proposedSize, "12");
+  assert.ok(readySizeAction.evidence.includes("640 CFM · Saved room target"));
+  assert.ok(readySizeAction.evidence.includes("Fingerprint-matched reviewed room-target CFM"));
+  assert.ok(readySizeAction.evidence.includes("Room-target review ROOM-REVIEW-CURRENT"));
+  assert.deepEqual(rebuilt.selectedByDefault, [readySizeAction.id]);
+  assert.deepEqual(
+    repair.selectedReadyActions(rebuilt, [readySizeAction.id, "unknown"]).map((action) => action.id),
+    [readySizeAction.id],
+  );
+  assert.equal(repair.repairPlanIsStale(rebuilt, "evidence-b"), false);
+  assert.equal(repair.repairPlanIsStale(rebuilt, "evidence-c"), true);
+
+  const unreviewed = repair.buildRepairPlan({
+    ...stagedInput,
+    evidenceFingerprint: "evidence-unreviewed",
+    cfmCandidates: [],
+    sizeCandidates: [{
+      ...sizeCandidate,
+      id: "run-planning-seed",
+      room: "Planning seed route",
+      airflowReviewed: false,
+      airflowEvidence: ["Planning-seed terminal CFM · not eligible"],
+      roomTargetReviewFingerprint: "",
+      applyEligible: false,
+      reasonCodes: ["AIRFLOW_PROVENANCE_UNREVIEWED"],
+    }, {
+      ...sizeCandidate,
+      id: "run-stale-review",
+      room: "Stale room-target route",
+      airflowReviewed: false,
+      airflowEvidence: ["Room-target review fingerprint no longer current"],
+      roomTargetReviewFingerprint: "room-review-stale",
+      applyEligible: false,
+      reasonCodes: ["AIRFLOW_PROVENANCE_UNREVIEWED"],
+    }],
+  });
+  const blockedSizes = unreviewed.actions.filter((action) => action.kind === "run-size");
+  assert.equal(unreviewed.readyCount, 0);
+  assert.equal(unreviewed.needsInputCount, 2);
+  assert.deepEqual(unreviewed.selectedByDefault, []);
+  assert.ok(blockedSizes.every((action) => action.airflowReviewed === false));
+  assert.ok(blockedSizes.every((action) => action.readiness === "needs-input"));
+  assert.ok(blockedSizes.every((action) =>
+    /planning seed or a room target whose review fingerprint is no longer current/.test(action.blocker)
+  ));
+  assert.ok(
+    blockedSizes.find((action) => action.drawingId === "run-planning-seed")
+      .evidence.includes("Planning-seed terminal CFM · not eligible"),
+  );
+  assert.ok(
+    blockedSizes.find((action) => action.drawingId === "run-stale-review")
+      .evidence.includes("Room-target review fingerprint no longer current"),
+  );
+});
+
+test("v114 takeoff intelligence reports actual before-and-after material impact", async () => {
+  const takeoff = await import(new URL("../app/takeoffIntelligence.ts", import.meta.url));
+  const input = {
+    runs: [
+      { id: "supply-a", type: "supply", size: "10", measuredLengthFeet: 20 },
+      { id: "supply-b", type: "supply", size: "10", measuredLengthFeet: 20 },
+      { id: "return-a", type: "return", size: "14", measuredLengthFeet: 30 },
+    ],
+    sizeChanges: [{ drawingId: "supply-b", proposedSize: "12" }],
+    wastePercent: 10,
+    affectedFittingIds: ["fitting-1", "fitting-1", "fitting-2"],
+    holds: ["Verify scale", "Verify scale"],
+  };
+  const before = JSON.stringify(input);
+  const impact = takeoff.buildTakeoffImpact(input);
+
+  assert.equal(JSON.stringify(input), before);
+  assert.equal(impact.version, "takeoff-intelligence-v114.0");
+  assert.equal(impact.measuredLengthBefore, 70);
+  assert.equal(impact.measuredLengthAfter, 70);
+  assert.equal(impact.changedRows, 2);
+  assert.equal(impact.boxesBefore, 4);
+  assert.equal(impact.boxesAfter, 4);
+  assert.equal(impact.affectedFittings, 2);
+  assert.deepEqual(impact.holds, ["Verify scale"]);
+  assert.deepEqual(
+    impact.rows.find((row) => row.key === "supply:10"),
+    {
+      key: "supply:10",
+      type: "supply",
+      size: "10",
+      beforeMeasuredFeet: 40,
+      afterMeasuredFeet: 20,
+      deltaMeasuredFeet: -20,
+      beforeOrderFeet: 44,
+      afterOrderFeet: 22,
+      beforeBoxes: 2,
+      afterBoxes: 1,
+      deltaBoxes: -1,
+    },
+  );
+  assert.deepEqual(
+    impact.rows.find((row) => row.key === "supply:12"),
+    {
+      key: "supply:12",
+      type: "supply",
+      size: "12",
+      beforeMeasuredFeet: 0,
+      afterMeasuredFeet: 20,
+      deltaMeasuredFeet: 20,
+      beforeOrderFeet: 0,
+      afterOrderFeet: 22,
+      beforeBoxes: 0,
+      afterBoxes: 1,
+      deltaBoxes: 1,
+    },
+  );
+});
+
+test("v115 Advanced Plan Intelligence keeps source regions, OCR gaps, and relationships review-only", async () => {
+  const advanced = await import(new URL("../app/advancedPlanIntelligence.ts", import.meta.url));
+  const workspace = await readFile(new URL("../app/AIPlanWorkspace.tsx", import.meta.url), "utf8");
+  assert.match(workspace, /UNCONFIRMED EXACT-TAG CANDIDATE/);
+  assert.match(workspace, /Rule-based text match/);
+  assert.match(workspace, /Open \{evidence\.sheetNumber \|\| `page \$\{evidence\.page\}`\} source/);
+  assert.match(workspace, /showSource\(evidence\.page, evidence\.region\)/);
+  assert.match(workspace, /Matching tags do not prove a schedule-row, airflow, or equipment association/);
+  const region = (x, y) => ({
+    x,
+    y,
+    width: 20,
+    height: 8,
+    pageWidth: 612,
+    pageHeight: 792,
+    coordinateSpace: "viewport-points",
+  });
+  const evidence = [
+    { id: "eq-plan", category: "Equipment", label: "Equipment tag", value: "AHU-1", page: 1, sheetNumber: "M1.1", excerpt: "AHU-1", confidence: .95, source: "PDF text layer", region: region(10, 20) },
+    { id: "duct-plan", category: "Ductwork", label: "Round duct size", value: "10 IN", page: 1, sheetNumber: "M1.1", excerpt: "10 IN", confidence: .92, source: "PDF text layer", region: region(40, 20) },
+    { id: "device-plan", category: "Air devices", label: "Supply diffuser", value: "S-1", page: 1, sheetNumber: "M1.1", excerpt: "S-1", confidence: .91, source: "PDF text layer", region: region(70, 20) },
+    { id: "air-plan", category: "Airflow", label: "CFM text reference", value: "400 CFM", page: 1, sheetNumber: "M1.1", excerpt: "400 CFM", confidence: .94, source: "PDF text layer", region: region(100, 20) },
+    { id: "eq-schedule", category: "Equipment", label: "Equipment tag", value: "ahu-1", page: 2, sheetNumber: "M2.1", excerpt: "AHU-1", confidence: .88, source: "PDF text layer", region: region(10, 30) },
+    { id: "schedule", category: "Schedules", label: "Mechanical schedule", value: "AHU-1 schedule", page: 2, sheetNumber: "M2.1", excerpt: "AHU-1 schedule", confidence: .9, source: "PDF text layer" },
+    { id: "air-schedule", category: "Airflow", label: "CFM text reference", value: "1200 CFM", page: 2, sheetNumber: "M2.1", excerpt: "1200 CFM", confidence: .93, source: "PDF text layer", region: region(40, 30) },
+  ];
+  const analysis = {
+    id: "analysis-1",
+    sourceFingerprint: "source-current",
+    sourceFileName: "mechanical.pdf",
+    createdAt: "2026-07-25T18:00:00.000Z",
+    pageCount: 3,
+    pages: [
+      { page: 1, sheetNumber: "M1.1", title: "Mechanical plan", classification: "Mechanical plan", hvacScore: 6, confidence: .95, textLength: 1200, readable: true },
+      { page: 2, sheetNumber: "M2.1", title: "Equipment schedule", classification: "Mechanical schedule", hvacScore: 5, confidence: .94, textLength: 800, readable: true },
+      { page: 3, sheetNumber: "M3.1", title: "Scanned mechanical plan", classification: "Mechanical plan", hvacScore: 4, confidence: .2, textLength: 0, readable: false },
+    ],
+    evidence,
+    findings: [],
+    takeoff: [],
+    summary: {
+      mechanicalSheets: 3,
+      readableSheets: 2,
+      equipment: 2,
+      ductSizes: 1,
+      airDevices: 1,
+      openFindings: 0,
+      averageConfidence: .82,
+    },
+  };
+  const result = advanced.buildAdvancedPlanIntelligence(analysis);
+
+  assert.equal(result.version, "advanced-plan-intelligence-v115.0");
+  assert.deepEqual(result.ocrRequiredPages, [3]);
+  assert.equal(result.coverage.find((row) => row.page === 1).regionCoveragePercent, 100);
+  assert.equal(result.coverage.find((row) => row.page === 2).regionCoveragePercent, 67);
+  assert.deepEqual(result.coverage.find((row) => row.page === 3).missingCategories, ["Ductwork", "Air devices"]);
+  assert.equal(result.averageCoveragePercent, 71);
+  assert.equal(result.averageRegionCoveragePercent, 86);
+  assert.equal(result.readinessScore, 64);
+  assert.match(result.blockers[0], /need OCR or visual confirmation/);
+  assert.ok(result.notices.includes("Some evidence is page-linked without an exact text region."));
+  assert.ok(result.notices.some((notice) => /1 cross-sheet relationship.*human confirmation/.test(notice)));
+  assert.ok(result.notices.includes("Evidence readiness is a review heuristic and never authorizes plan mutation by itself."));
+  assert.equal(result.relationships.length, 1);
+  assert.equal(result.relationships[0].kind, "equipment-tag");
+  assert.equal(result.relationships[0].label, "AHU-1 appears across 2 sheets");
+  assert.deepEqual(result.relationships[0].sourceSheets, ["M1.1", "M2.1"]);
+  assert.equal(result.relationships[0].confidence, .88);
+  assert.equal(result.relationships[0].confirmed, false);
+
+  const comparison = advanced.comparePlanAnalysisSources(
+    { ...analysis, sourceFingerprint: "source-previous", evidence: evidence.slice(0, -1) },
+    analysis,
+  );
+  assert.deepEqual(comparison, { changed: true, added: 1, removed: 0, unchanged: 6 });
 });
 
 test("v111 recommendations are deterministic, granular, immutable, and stale when evidence moves", async () => {

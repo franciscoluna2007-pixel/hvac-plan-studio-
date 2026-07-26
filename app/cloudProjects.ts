@@ -1,5 +1,7 @@
 import { createClient, SupabaseClient, User } from "@supabase/supabase-js";
 import type { PlanAnalysis, PlanFindingDecision } from "./planReader";
+import type { RepairBatchRecord } from "./repairPlan";
+import { buildAdvancedPlanIntelligence } from "./advancedPlanIntelligence";
 
 type CloudConfig = {
   url: string;
@@ -157,9 +159,32 @@ export type CloudPlanAnalysisRun = {
   status: "processing" | "completed" | "failed";
   page_count: number;
   summary: PlanAnalysis["summary"];
+  advanced_summary: Record<string, unknown>;
   created_by: string;
   created_at: string;
   completed_at: string | null;
+};
+
+export type CloudRepairBatch = {
+  id: string;
+  project_id: string;
+  revision_id: string | null;
+  system_id: string;
+  assistant_version: string;
+  repair_plan_id: string;
+  evidence_fingerprint: string;
+  before_fingerprint: string;
+  after_fingerprint: string;
+  autonomy_mode: RepairBatchRecord["autonomyMode"];
+  action_count: number;
+  action_payload: RepairBatchRecord["actions"];
+  takeoff_delta: RepairBatchRecord["takeoffImpact"];
+  reviewer_name: string;
+  note: string;
+  client_receipt_id: string;
+  planning_override_acknowledged: boolean;
+  created_by: string;
+  created_at: string;
 };
 
 export type ProjectHomeCard = CloudProject & {
@@ -433,6 +458,66 @@ export async function saveCloudTakeoffPackage(input: {
     .single();
   if (error) throw error;
   return data as CloudTakeoffPackage;
+}
+
+export async function saveCloudRepairBatch(input: {
+  projectId: string;
+  revisionId?: string | null;
+  record: RepairBatchRecord;
+}) {
+  const client = await getCloudClient();
+  const { data: auth, error: authError } = await client.auth.getUser();
+  if (authError || !auth.user) throw authError || new Error("Sign in to save the repair audit.");
+  const payload = {
+    project_id: input.projectId,
+    revision_id: input.revisionId || null,
+    client_receipt_id: input.record.id,
+    system_id: input.record.systemId,
+    assistant_version: input.record.repairVersion,
+    repair_plan_id: input.record.repairPlanId,
+    evidence_fingerprint: input.record.evidenceFingerprint,
+    before_fingerprint: input.record.beforeDrawingFingerprint,
+    after_fingerprint: input.record.afterDrawingFingerprint,
+    autonomy_mode: input.record.autonomyMode,
+    action_count: input.record.actionIds.length,
+    action_payload: input.record.actions,
+    takeoff_delta: input.record.takeoffImpact,
+    reviewer_name: input.record.reviewer,
+    note: input.record.note,
+    planning_override_acknowledged: input.record.planningOverrideAcknowledged,
+    created_by: auth.user.id,
+  };
+  const { data, error } = await client
+    .from("project_repair_batches")
+    .insert(payload)
+    .select("*")
+    .single();
+  if (error?.code === "23505") {
+    const { data: existing, error: existingError } = await client
+      .from("project_repair_batches")
+      .select("*")
+      .eq("project_id", input.projectId)
+      .eq("client_receipt_id", input.record.id)
+      .single();
+    if (existingError) throw existingError;
+    return existing as CloudRepairBatch;
+  }
+  if (error) throw error;
+  return data as CloudRepairBatch;
+}
+
+export async function listCloudRepairBatches(projectId: string, systemId?: string) {
+  const client = await getCloudClient();
+  let query = client
+    .from("project_repair_batches")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (systemId) query = query.eq("system_id", systemId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []) as CloudRepairBatch[];
 }
 
 export async function listCloudRevisions(projectId: string) {
@@ -720,6 +805,7 @@ export async function saveCloudPlanAnalysis(input: {
   const client = await getCloudClient();
   const { data: auth, error: authError } = await client.auth.getUser();
   if (authError || !auth.user) throw authError || new Error("Sign in to save Plan Intelligence.");
+  const advanced = buildAdvancedPlanIntelligence(input.analysis);
 
   const { data: run, error: runError } = await client
     .from("plan_analysis_runs")
@@ -731,6 +817,7 @@ export async function saveCloudPlanAnalysis(input: {
       status: "completed",
       page_count: input.analysis.pageCount,
       summary: input.analysis.summary,
+      advanced_summary: advanced || {},
       created_by: auth.user.id,
       completed_at: new Date().toISOString(),
     })
@@ -752,6 +839,7 @@ export async function saveCloudPlanAnalysis(input: {
         excerpt: row.excerpt,
         confidence: row.confidence,
         source: row.source,
+        source_region: row.region || null,
         created_by: auth.user.id,
       })),
     );

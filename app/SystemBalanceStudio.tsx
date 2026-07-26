@@ -69,10 +69,10 @@ export default function SystemBalanceStudio({
   const [note, setNote] = useState("");
   const [notice, setNotice] = useState("");
   const summary = useMemo(() => summarizeSystemBalance(model), [model]);
-  const sizeApplyReady = model.planningSeedTerminalCount === 0;
   const candidateSizeIds = model.runs
-    .filter((run) => run.applyEligible && sizeApplyReady)
+    .filter((run) => run.applyEligible && run.airflowReviewed && !run.overCapacity)
     .map((run) => run.id);
+  const unreviewedAirflowRuns = model.runs.filter((run) => !run.airflowReviewed).length;
   const cfmApplyReady = model.roomTargetSource === "saved-targets";
   const continuousCfmIds = model.cfmProposals
     .filter((proposal) => proposal.connected && cfmApplyReady)
@@ -328,9 +328,9 @@ export default function SystemBalanceStudio({
             <button disabled={!candidateSizeIds.length} onClick={() => setSelectedSizeIds(candidateSizeIds)}>Select velocity-screened candidates</button>
             <button disabled={!selectedSizeIds.length} onClick={() => setSelectedSizeIds([])}>Clear</button>
           </div>
-          {!sizeApplyReady && <div className="balance-method-note">
+          {unreviewedAirflowRuns > 0 && <div className="balance-method-note">
             <AlertTriangle size={16} />
-            <p><strong>Size Apply is paused.</strong> Replace the {model.planningSeedTerminalCount} planning-seed terminal CFM entr{model.planningSeedTerminalCount === 1 ? "y" : "ies"} with reviewed room targets or manual values first.</p>
+            <p><strong>{unreviewedAirflowRuns} size candidate{unreviewedAirflowRuns === 1 ? " is" : "s are"} paused.</strong> Replace planning-seed contributors with fingerprint-matched reviewed room targets or explicit manual values first.</p>
           </div>}
           <div className="balance-method-note balance-safety-note">
             <AlertTriangle size={16} />
@@ -344,7 +344,7 @@ export default function SystemBalanceStudio({
           </div>
           <div className="balance-run-review-list">
             {model.runs.length ? model.runs.map((run) => <div className={`balance-select-row ${run.sizingStatus === "blocked" ? "over-capacity" : ""}`} key={run.id}>
-              <input id={`balance-size-${run.id}`} aria-label={`Select ${run.room} ${run.type} size candidate`} type="checkbox" disabled={!run.applyEligible || !sizeApplyReady} checked={selectedSizeIds.includes(run.id)} onChange={() => setSelectedSizeIds((current) => current.includes(run.id) ? current.filter((id) => id !== run.id) : [...current, run.id])} />
+              <input id={`balance-size-${run.id}`} aria-label={`Select ${run.room} ${run.type} size candidate`} type="checkbox" disabled={!run.applyEligible || !run.airflowReviewed || run.overCapacity} checked={selectedSizeIds.includes(run.id)} onChange={() => setSelectedSizeIds((current) => current.includes(run.id) ? current.filter((id) => id !== run.id) : [...current, run.id])} />
               <button type="button" onClick={() => onFocusDrawing(run.id)}>
                 <span><strong>{run.room} · {run.type.toUpperCase()}</strong><small>{run.cfm} CFM · {run.airflowSource} airflow · {run.classification.replaceAll("-", " ")} · {run.sizingStatus}</small></span>
                 <em>{run.currentVelocity} → {run.recommendedVelocity} FPM · {run.velocityLimit} FPM limit</em>
@@ -354,13 +354,14 @@ export default function SystemBalanceStudio({
                 ? `${run.physicalLength.toFixed(1)} ft drawn · ${run.equivalentLength.toFixed(1)} ft assumed equivalent · ~${run.frictionRate.toFixed(3)} in. w.g./100 ft · ~${run.pressureDrop.toFixed(3)} in. w.g. segment estimate`
                 : "Scale is not verified, so length, friction-path, and segment-loss evidence is withheld."}</p>
               {run.reasonCodes.includes("MANUAL_CFM_BELOW_DOWNSTREAM") && <p className="attention">Manual CFM is below the connected downstream demand; the preview safely uses the higher terminal-linked airflow.</p>}
+              {!run.airflowReviewed && <p className="attention">The governing airflow includes an unreviewed planning seed or stale room-target review fingerprint. Guided resizing is blocked.</p>}
               {run.overCapacity && <p className="attention">No supported single flex run passes {run.velocityLimit} FPM. {run.alternatives[0]
                 ? `Review ${run.alternatives[0].pathCount} parallel ${run.alternatives[0].diameterInches}″ paths at about ${Math.round(run.alternatives[0].airflowPerPathCfm)} CFM each, or revise the trunk material and topology manually.`
                 : "Revise the trunk material or topology manually."}</p>}
             </div>) : <div className="system-balance-empty"><CheckCircle2 size={25} /><strong>No velocity-screened changes are waiting</strong><span>Current sizes are within the entered FPM screens; pressure and sound still require verification.</span></div>}
           </div>
-          <button className="balance-apply" disabled={!selectedSizeIds.length || !sizeApplyReady} onClick={() => { const count = selectedSizeIds.length; onApplySizes(selectedSizeIds); setSelectedSizeIds([]); setNotice(`${count} reviewed size change${count === 1 ? "" : "s"} applied; saved fitting endpoints stayed attached.`); }}>
-            Apply {selectedSizeIds.length} reviewed size change{selectedSizeIds.length === 1 ? "" : "s"} · one Undo
+          <button className="balance-apply" disabled={!selectedSizeIds.length} onClick={() => { const count = selectedSizeIds.length; onApplySizes(selectedSizeIds); setSelectedSizeIds([]); setNotice(`${count} size candidate${count === 1 ? "" : "s"} sent to Guided Repair for reviewer identity, pressure override, and final confirmation.`); }}>
+            Continue {selectedSizeIds.length} size candidate{selectedSizeIds.length === 1 ? "" : "s"} in Guided Repair
           </button>
         </section>}
 
@@ -389,7 +390,7 @@ export default function SystemBalanceStudio({
 
       <footer className="system-balance-footer">
         {notice && <div className="balance-live-notice" role="status" aria-live="polite">{notice}</div>}
-        <div className="manual-balance-policy"><SlidersHorizontal size={17} /><span><strong>Manual route shapes stay manual.</strong><small>A reviewed size changes only the selected diameter and keeps its saved fitting endpoints attached; intermediate route vertices never move. Studio never draws new runs, reroutes paths, balances airflow, or numbers ductwork automatically.</small></span></div>
+        <div className="manual-balance-policy"><SlidersHorizontal size={17} /><span><strong>Manual route shapes stay manual.</strong><small>Guided Repair changes only reviewed diameters and may align listed attached endpoints to resized fitting ports; intermediate route vertices never move. Studio never draws new runs, reroutes paths, balances airflow, or numbers ductwork automatically.</small></span></div>
         <button onClick={() => onOpenEngineering(view === "overview" || view === "reviews" ? "system" : view)}><Gauge size={15} /> Calculation details</button>
         <button className="primary" onClick={onClose}><ShieldCheck size={15} /> Return to plan</button>
       </footer>
