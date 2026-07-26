@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, Component, DragEvent, ErrorInfo, PointerEvent, ReactNode, WheelEvent as ReactWheelEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, Component, DragEvent, ErrorInfo, KeyboardEvent as ReactKeyboardEvent, PointerEvent, ReactNode, WheelEvent as ReactWheelEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import { checkDriveConfiguration, loadPdfFromDriveId, pickPdfFromDrive, saveProjectPackageToDrive } from "./googleDrive";
 import CloudProjectsPanel, { type CloudProjectRisk } from "./CloudProjectsPanel";
@@ -12,6 +12,24 @@ import ProjectHome from "./ProjectHome";
 import { trackProductEvent } from "./productAnalytics";
 import SystemBalanceStudio from "./SystemBalanceStudio";
 import { type FieldPackageSectionId } from "./fieldPackage";
+import {
+  clampZoom,
+  midpoint,
+  pinchCamera,
+  pointDistance,
+  renderQualityPlan,
+  workspaceLayoutFor,
+  type RenderQualityMode,
+  type ScreenPoint,
+  type WorkspaceDensity,
+  type WorkspaceLayoutMode,
+} from "./workspaceDisplay";
+import {
+  loadCloudWorkspacePreferences,
+  loadLocalWorkspacePreferences,
+  saveCloudWorkspacePreferences,
+  saveLocalWorkspacePreferences,
+} from "./workspacePreferences";
 import {
   buildFindingIdentity,
   type PlanFindingCategory,
@@ -812,13 +830,17 @@ export default function Home() {
   </WorkspaceErrorBoundary>;
 }
 type DragState =
-  | { kind: "point"; drawingId: string; pointIndex: number; before: Drawing[] }
-  | { kind: "line"; drawingId: string; start: Point; original: Point[]; before: Drawing[] }
-  | { kind: "label"; drawingId: string; start: Point; originalOffset: Point; before: Drawing[] }
-  | { kind: "fitting"; drawingId: string; start: Point; originalCenter: Point; originalPorts: Point[]; connectedIds: string[]; before: Drawing[] }
-  | { kind: "symbol"; drawingId: string; before: Drawing[] }
-  | { kind: "symbol-resize"; drawingId: string; center: Point; rotation: number; halfWidth: number; halfHeight: number; before: Drawing[] }
-  | { kind: "group"; start: Point; ids: string[]; originals: Record<string, Point[]>; before: Drawing[] };
+  | ({ kind: "point"; drawingId: string; pointIndex: number; before: Drawing[] } & EditPointer)
+  | ({ kind: "line"; drawingId: string; start: Point; original: Point[]; before: Drawing[] } & EditPointer)
+  | ({ kind: "label"; drawingId: string; start: Point; originalOffset: Point; before: Drawing[] } & EditPointer)
+  | ({ kind: "fitting"; drawingId: string; start: Point; originalCenter: Point; originalPorts: Point[]; connectedIds: string[]; before: Drawing[] } & EditPointer)
+  | ({ kind: "symbol"; drawingId: string; before: Drawing[] } & EditPointer)
+  | ({ kind: "symbol-resize"; drawingId: string; center: Point; rotation: number; halfWidth: number; halfHeight: number; before: Drawing[] } & EditPointer)
+  | ({ kind: "group"; start: Point; ids: string[]; originals: Record<string, Point[]>; before: Drawing[] } & EditPointer);
+type EditPointer = {
+  pointerId: number;
+  pointerType: string;
+};
 type PanState = {
   pointerId: number;
   startX: number;
@@ -829,6 +851,15 @@ type PanState = {
   latestY: number;
   frameId: number | null;
   moved: boolean;
+};
+type TouchGestureState = {
+  pointerIds: [number, number];
+  startDistance: number;
+  startZoom: number;
+  anchorPlan: ScreenPoint;
+  latestZoom: number;
+  latestCamera: ScreenPoint;
+  frameId: number | null;
 };
 
 type BranchPreview = {
@@ -847,6 +878,30 @@ type BranchPreview = {
   candidateEndpoint?: Point;
   candidateProjected?: Point;
   candidateEndpointDistance?: number;
+};
+
+type EditTransactionSnapshot = {
+  pointerId: number;
+  drawings: Drawing[];
+  draft: Point[];
+  undoStack: Drawing[][];
+  redoStack: Drawing[][];
+  measureDraft: Point[];
+  selectedId: string | null;
+  selectedIds: string[];
+  continuingRunId: string | null;
+  pendingBranchFittingId: string | null;
+  branchPlacementResult: { fittingId: string; message: string } | null;
+  queuedBranchRunId: string | null;
+  branchPreview: BranchPreview | null;
+  branchMessage: string;
+  branchHoverRunId: string | null;
+  symbolPreview: { kind: SymbolKind; point: Point } | null;
+  scaleFeetPerUnit: number;
+  scaleLabel: string;
+  scaleLocked: boolean;
+  scaleVerified: boolean;
+  calibrating: boolean;
 };
 
 type ThreeRunBranchMatch = {
@@ -1116,7 +1171,12 @@ function HVACPlanStudioApp() {
   const inputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasViewportRef = useRef<HTMLDivElement>(null);
+  const pdfStageRef = useRef<HTMLDivElement>(null);
   const planSheetRef = useRef<HTMLDivElement>(null);
+  const displaySettingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const displaySettingsCloseRef = useRef<HTMLButtonElement>(null);
+  const displaySettingsPanelRef = useRef<HTMLElement>(null);
+  const displaySettingsLastFocusRef = useRef<HTMLElement | null>(null);
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [pdfFingerprint, setPdfFingerprint] = useState("");
   const [sourceDriveFileId, setSourceDriveFileId] = useState<string | null>(null);
@@ -1146,7 +1206,7 @@ function HVACPlanStudioApp() {
   const [continuingRunId, setContinuingRunId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [selectionBox, setSelectionBox] = useState<{ start: Point; end: Point; additive: boolean } | null>(null);
+  const [selectionBox, setSelectionBox] = useState<{ start: Point; end: Point; additive: boolean; pointerId: number } | null>(null);
   const [renderSize, setRenderSize] = useState({ width: 0, height: 0 });
   const [renderedPageNumber, setRenderedPageNumber] = useState(0);
   const [hoverPoint, setHoverPoint] = useState<Point | null>(null);
@@ -1308,6 +1368,16 @@ function HVACPlanStudioApp() {
   const [fieldMode, setFieldMode] = useState(false);
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [workspaceLayout, setWorkspaceLayout] = useState<WorkspaceLayoutMode>("desktop");
+  const [workspaceDensity, setWorkspaceDensity] = useState<WorkspaceDensity>("comfortable");
+  const [renderQuality, setRenderQuality] = useState<RenderQualityMode>("auto");
+  const [showDisplaySettings, setShowDisplaySettings] = useState(false);
+  const [devicePixelRatio, setDevicePixelRatio] = useState(1);
+  const [renderQualityStatus, setRenderQualityStatus] = useState({
+    label: "Auto · preparing",
+    megapixels: 0,
+    reduced: false,
+  });
   const [showCfmLabels, setShowCfmLabels] = useState(false);
   const [showLengthLabels, setShowLengthLabels] = useState(false);
   const [showFittingLabels, setShowFittingLabels] = useState(false);
@@ -1358,11 +1428,139 @@ function HVACPlanStudioApp() {
 
   const dragRef = useRef<DragState | null>(null);
   const panRef = useRef<PanState | null>(null);
+  const touchPointersRef = useRef(new Map<number, ScreenPoint>());
+  const touchGestureRef = useRef<TouchGestureState | null>(null);
+  const activeEditPointerIdRef = useRef<number | null>(null);
+  const completedEditPointerIdsRef = useRef(new Set<number>());
+  const editTransactionRef = useRef<EditTransactionSnapshot | null>(null);
+  const activePenPointerIdRef = useRef<number | null>(null);
+  const lastPenActivityRef = useRef(Number.NEGATIVE_INFINITY);
+  const pdfRenderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
+  const pdfRenderGenerationRef = useRef(0);
+  const pdfRenderKeyRef = useRef("");
+  const renderedPageNumberRef = useRef(0);
+  const viewportSizeRef = useRef({ width: 0, height: 0 });
+  const preferencesHydratedRef = useRef(false);
+  const initialResponsiveLayoutRef = useRef(false);
   const pendingFocusRef = useRef<{ page: number; point: Point } | null>(null);
   const zoomRef = useRef(zoom);
+
+  useLayoutEffect(() => {
+    if (!pdfStageRef.current || panRef.current || touchGestureRef.current) return;
+    pdfStageRef.current.style.transformOrigin = "0 0";
+    pdfStageRef.current.style.transform = `translate3d(${camera.x}px, ${camera.y}px, 0)`;
+  }, [camera.x, camera.y, pdf, renderSize.height, renderSize.width]);
   const cameraRef = useRef(camera);
   const clipboardRef = useRef<Drawing | null>(null);
   const placementWheelAtRef = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const applyPreferences = (preferences: ReturnType<typeof loadLocalWorkspacePreferences>) => {
+      const coarse = window.matchMedia("(pointer: coarse)").matches;
+      const layout = workspaceLayoutFor(window.innerWidth, window.innerHeight, coarse);
+      const closeConflictingTabletDrawers =
+        layout !== "desktop" && preferences.leftPanelOpen && preferences.rightPanelOpen;
+      setRenderQuality(preferences.renderQuality);
+      setWorkspaceDensity(coarse && preferences.density === "compact" ? "comfortable" : preferences.density);
+      setLeftPanelOpen(closeConflictingTabletDrawers ? false : preferences.leftPanelOpen);
+      setRightPanelOpen(closeConflictingTabletDrawers ? false : preferences.rightPanelOpen);
+    };
+    applyPreferences(loadLocalWorkspacePreferences());
+    void loadCloudWorkspacePreferences().then((cloudPreferences) => {
+      if (!cancelled && cloudPreferences) applyPreferences(cloudPreferences);
+    }).finally(() => {
+      if (!cancelled) preferencesHydratedRef.current = true;
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!preferencesHydratedRef.current) return;
+    const preferences = {
+      renderQuality,
+      density: workspaceDensity,
+      leftPanelOpen,
+      rightPanelOpen,
+    };
+    saveLocalWorkspacePreferences(preferences);
+    const timer = window.setTimeout(() => void saveCloudWorkspacePreferences(preferences), 900);
+    return () => window.clearTimeout(timer);
+  }, [leftPanelOpen, renderQuality, rightPanelOpen, workspaceDensity]);
+
+  useEffect(() => {
+    const closeTransientWorkspaceUi = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (showDisplaySettings) {
+        setShowDisplaySettings(false);
+        return;
+      }
+      if (workspaceLayout !== "desktop" && (leftPanelOpen || rightPanelOpen)) {
+        setLeftPanelOpen(false);
+        setRightPanelOpen(false);
+      }
+    };
+    window.addEventListener("keydown", closeTransientWorkspaceUi);
+    return () => window.removeEventListener("keydown", closeTransientWorkspaceUi);
+  }, [leftPanelOpen, rightPanelOpen, showDisplaySettings, workspaceLayout]);
+
+  useEffect(() => {
+    if (showDisplaySettings) {
+      displaySettingsLastFocusRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const frame = requestAnimationFrame(() => displaySettingsCloseRef.current?.focus());
+      return () => cancelAnimationFrame(frame);
+    }
+    const previous = displaySettingsLastFocusRef.current;
+    displaySettingsLastFocusRef.current = null;
+    previous?.focus();
+  }, [showDisplaySettings]);
+
+  useEffect(() => {
+    const viewport = canvasViewportRef.current;
+    if (!viewport) return;
+    const measure = () => {
+      const bounds = viewport.getBoundingClientRect();
+      const width = Math.max(1, bounds.width);
+      const height = Math.max(1, bounds.height);
+      const coarse = window.matchMedia("(pointer: coarse)").matches;
+      const nextLayout = workspaceLayoutFor(window.innerWidth, window.innerHeight, coarse);
+      setWorkspaceLayout(nextLayout);
+      setDevicePixelRatio(Math.max(1, window.devicePixelRatio || 1));
+
+      const previous = viewportSizeRef.current;
+      if (pdf && previous.width && previous.height && (previous.width !== width || previous.height !== height)) {
+        const planCenter = {
+          x: (previous.width / 2 - cameraRef.current.x) / zoomRef.current,
+          y: (previous.height / 2 - cameraRef.current.y) / zoomRef.current,
+        };
+        updateCamera({
+          x: width / 2 - planCenter.x * zoomRef.current,
+          y: height / 2 - planCenter.y * zoomRef.current,
+        });
+      }
+      viewportSizeRef.current = { width, height };
+
+      if (!initialResponsiveLayoutRef.current) {
+        initialResponsiveLayoutRef.current = true;
+        if (nextLayout !== "desktop") {
+          setLeftPanelOpen(false);
+          setRightPanelOpen(false);
+        }
+      }
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    window.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("resize", measure);
+    measure();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
+    };
+  }, [pdf]);
+
   const airflowNetworkModel = useMemo(() => calculateAirflowNetwork(), [drawings]);
   const activeValidationIssues = useMemo(
     () => validationIssues(),
@@ -1697,6 +1895,23 @@ function HVACPlanStudioApp() {
     }
   }
 
+  async function replacePdfDocument(document: pdfjsLib.PDFDocumentProxy) {
+    pdfRenderGenerationRef.current += 1;
+    pdfRenderTaskRef.current?.cancel();
+    pdfRenderTaskRef.current = null;
+    pdfRenderKeyRef.current = "";
+    renderedPageNumberRef.current = 0;
+    const previous = pdf;
+    if (previous && previous !== document) {
+      try {
+        await previous.destroy();
+      } catch {
+        // A replaced worker may already be shutting down. The new plan can still open safely.
+      }
+    }
+    setPdf(document);
+  }
+
   async function openPdf(file?: File) {
     if (!file) {
       pendingProjectSetupRef.current = null;
@@ -1707,6 +1922,11 @@ function HVACPlanStudioApp() {
       pendingProjectSetupRef.current = null;
       return;
     }
+    if (file.size > 100 * 1024 * 1024) {
+      setError("This PDF is larger than 100 MB. Optimize or split the plan set, then try again.");
+      pendingProjectSetupRef.current = null;
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -1714,7 +1934,7 @@ function HVACPlanStudioApp() {
       const sourceFingerprint = stableByteHash(bytes);
       const document = await pdfjsLib.getDocument({ data: bytes }).promise;
       const projectName = pendingProjectSetupRef.current?.projectName.trim() || file.name.replace(/\.pdf$/i, "");
-      setPdf(document);
+      await replacePdfDocument(document);
       setPdfFingerprint(sourceFingerprint);
       setSourceDriveFileId(null);
       setSourceFileName(file.name);
@@ -1737,13 +1957,18 @@ function HVACPlanStudioApp() {
   }
 
   async function openPdfBytes(name: string, bytes: Uint8Array, driveFileId?: string | null) {
+    if (bytes.byteLength > 100 * 1024 * 1024) {
+      setError("This Drive PDF is larger than 100 MB. Optimize or split the plan set, then try again.");
+      pendingProjectSetupRef.current = null;
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       const sourceFingerprint = stableByteHash(bytes);
       const document = await pdfjsLib.getDocument({ data: bytes }).promise;
       const projectName = pendingProjectSetupRef.current?.projectName.trim() || name.replace(/\.pdf$/i, "");
-      setPdf(document);
+      await replacePdfDocument(document);
       setPdfFingerprint(sourceFingerprint);
       setSourceDriveFileId(driveFileId || null);
       setSourceFileName(name);
@@ -1793,7 +2018,7 @@ function HVACPlanStudioApp() {
         );
         sourceFingerprint = stableByteHash(source.bytes);
         const document = await pdfjsLib.getDocument({ data: source.bytes }).promise;
-        setPdf(document);
+        await replacePdfDocument(document);
         setPdfFingerprint(sourceFingerprint);
         setSourceDriveFileId(project.source_drive_file_id);
         setSourceFileName(project.source_file_name || `${project.name}.pdf`);
@@ -1839,29 +2064,108 @@ function HVACPlanStudioApp() {
 
   useEffect(() => {
     if (!pdf || !canvasRef.current) return;
-    let cancelled = false;
-    const render = async () => {
-      const page = await pdf.getPage(pageNumber);
-      if (cancelled || !canvasRef.current) return;
-      const viewport = page.getViewport({ scale: 1.35 });
-      const canvas = canvasRef.current;
-      const ratio = window.devicePixelRatio || 1;
-      canvas.width = Math.floor(viewport.width * ratio);
-      canvas.height = Math.floor(viewport.height * ratio);
-      canvas.style.width = `${viewport.width}px`;
-      canvas.style.height = `${viewport.height}px`;
-      const context = canvas.getContext("2d");
-      if (!context) return;
-      context.setTransform(ratio, 0, 0, ratio, 0, 0);
-      await page.render({ canvasContext: context, viewport }).promise;
-      if (!cancelled) {
-        setRenderSize({ width: viewport.width, height: viewport.height });
-        setRenderedPageNumber(pageNumber);
+    const generation = ++pdfRenderGenerationRef.current;
+    const timer = window.setTimeout(() => {
+      const render = async () => {
+        const page = await pdf.getPage(pageNumber);
+        if (generation !== pdfRenderGenerationRef.current || !canvasRef.current) return;
+        const viewport = page.getViewport({ scale: 1.35 });
+        const requestedPlan = renderQualityPlan({
+          logicalWidth: viewport.width,
+          logicalHeight: viewport.height,
+          zoom: zoomRef.current,
+          devicePixelRatio,
+          mode: renderQuality,
+        });
+        const requestedKey = `${pageNumber}:${renderQuality}:${requestedPlan.width}x${requestedPlan.height}`;
+        if (pdfRenderKeyRef.current === requestedKey && canvasRef.current.width === requestedPlan.width) {
+          setRenderQualityStatus({
+            label: requestedPlan.label,
+            megapixels: requestedPlan.megapixels,
+            reduced: requestedPlan.reduced,
+          });
+          return;
+        }
+
+        const paint = async (
+          plan: ReturnType<typeof renderQualityPlan>,
+          key: string,
+          fallback = false,
+        ) => {
+          const buffer = document.createElement("canvas");
+          buffer.width = plan.width;
+          buffer.height = plan.height;
+          const context = buffer.getContext("2d", { alpha: false });
+          if (!context) throw new Error("Canvas rendering is unavailable.");
+          pdfRenderTaskRef.current?.cancel();
+          const renderTask = page.render({
+            canvasContext: context,
+            viewport,
+            transform: plan.ratio === 1 ? undefined : [plan.ratio, 0, 0, plan.ratio, 0, 0],
+          });
+          pdfRenderTaskRef.current = renderTask;
+          try {
+            await renderTask.promise;
+            if (generation !== pdfRenderGenerationRef.current || !canvasRef.current) return;
+            const canvas = canvasRef.current;
+            canvas.width = plan.width;
+            canvas.height = plan.height;
+            canvas.style.width = `${viewport.width}px`;
+            canvas.style.height = `${viewport.height}px`;
+            const visibleContext = canvas.getContext("2d", { alpha: false });
+            if (!visibleContext) return;
+            visibleContext.setTransform(1, 0, 0, 1, 0, 0);
+            visibleContext.drawImage(buffer, 0, 0);
+            pdfRenderKeyRef.current = key;
+            renderedPageNumberRef.current = pageNumber;
+            setRenderSize({ width: viewport.width, height: viewport.height });
+            setRenderedPageNumber(pageNumber);
+            setRenderQualityStatus({
+              label: fallback ? "Performance fallback" : plan.label,
+              megapixels: plan.megapixels,
+              reduced: fallback || plan.reduced,
+            });
+          } finally {
+            if (pdfRenderTaskRef.current === renderTask) pdfRenderTaskRef.current = null;
+            buffer.width = 1;
+            buffer.height = 1;
+          }
+        };
+
+        try {
+          await paint(requestedPlan, requestedKey);
+        } catch (renderError) {
+          if ((renderError as { name?: string })?.name === "RenderingCancelledException") return;
+          const fallbackPlan = renderQualityPlan({
+            logicalWidth: viewport.width,
+            logicalHeight: viewport.height,
+            zoom: 1,
+            devicePixelRatio: 1,
+            mode: "performance",
+          });
+          try {
+            await paint(
+              fallbackPlan,
+              `${pageNumber}:performance-fallback:${fallbackPlan.width}x${fallbackPlan.height}`,
+              true,
+            );
+          } catch (fallbackError) {
+            if ((fallbackError as { name?: string })?.name !== "RenderingCancelledException") {
+              setError("The plan renderer could not finish this sheet. Try Performance mode or reopen the PDF.");
+            }
+          }
+        }
+      };
+      void render();
+    }, renderedPageNumberRef.current === pageNumber ? 160 : 0);
+    return () => {
+      window.clearTimeout(timer);
+      if (generation === pdfRenderGenerationRef.current) {
+        pdfRenderTaskRef.current?.cancel();
+        pdfRenderTaskRef.current = null;
       }
     };
-    void render();
-    return () => { cancelled = true; };
-  }, [pdf, pageNumber]);
+  }, [devicePixelRatio, pageNumber, pdf, renderQuality, zoom]);
 
   useEffect(() => {
     if (!pdf || !renderSize.width || !renderSize.height) return;
@@ -1894,7 +2198,7 @@ function HVACPlanStudioApp() {
     if (!viewport) return;
     const bounds = viewport.getBoundingClientRect();
     zoomAtPoint(
-      Math.max(.25, Math.min(8, +(zoomRef.current * factor).toFixed(3))),
+      clampZoom(+(zoomRef.current * factor).toFixed(3)),
       bounds.left + bounds.width / 2,
       bounds.top + bounds.height / 2,
     );
@@ -1913,7 +2217,7 @@ function HVACPlanStudioApp() {
   }
 
   function applyViewportZoom(nextZoom: number) {
-    const normalizedZoom = Math.max(.25, Math.min(8, +nextZoom.toFixed(3)));
+    const normalizedZoom = clampZoom(+nextZoom.toFixed(3));
     zoomRef.current = normalizedZoom;
     setZoom(normalizedZoom);
     centerPlan(normalizedZoom);
@@ -1935,7 +2239,8 @@ function HVACPlanStudioApp() {
 
   function zoomAtPoint(nextZoom: number, clientX: number, clientY: number) {
     const viewport = canvasViewportRef.current;
-    if (!viewport || nextZoom === zoomRef.current) return;
+    const normalizedZoom = clampZoom(nextZoom);
+    if (!viewport || normalizedZoom === zoomRef.current) return;
     const viewportBounds = viewport.getBoundingClientRect();
     const localX = clientX - viewportBounds.left;
     const localY = clientY - viewportBounds.top;
@@ -1943,16 +2248,17 @@ function HVACPlanStudioApp() {
     const planX = (localX - cameraRef.current.x) / currentZoom;
     const planY = (localY - cameraRef.current.y) / currentZoom;
     updateCamera({
-      x: localX - planX * nextZoom,
-      y: localY - planY * nextZoom,
+      x: localX - planX * normalizedZoom,
+      y: localY - planY * normalizedZoom,
     });
-    zoomRef.current = nextZoom;
-    setZoom(nextZoom);
+    zoomRef.current = normalizedZoom;
+    setZoom(normalizedZoom);
   }
 
   function handleWheelZoom(event: ReactWheelEvent<HTMLDivElement>) {
     if (!pdf) return;
     event.preventDefault();
+    if (touchGestureRef.current || panRef.current || activeEditPointerIdRef.current !== null) return;
     if (symbolPreview && symbolTools.includes(activeTool as SymbolKind)) {
       if (!event.deltaY) return;
       const now = performance.now();
@@ -1965,12 +2271,20 @@ function HVACPlanStudioApp() {
     }
     const delta = event.deltaMode === 1 ? event.deltaY * 18 : event.deltaY;
     const sensitivity = event.ctrlKey ? .004 : .0018;
-    const nextZoom = Math.max(.25, Math.min(8, +(zoomRef.current * Math.exp(-delta * sensitivity)).toFixed(3)));
+    const nextZoom = clampZoom(+(zoomRef.current * Math.exp(-delta * sensitivity)).toFixed(3));
     zoomAtPoint(nextZoom, event.clientX, event.clientY);
   }
 
   function startPlanPan(event: PointerEvent<HTMLDivElement>) {
-    if (!pdf || event.button !== 2 || draft.length) return;
+    if (
+      !pdf ||
+      event.button !== 2 ||
+      draft.length ||
+      panRef.current ||
+      touchGestureRef.current ||
+      touchPointersRef.current.size ||
+      activeEditPointerIdRef.current !== null
+    ) return;
     const viewport = canvasViewportRef.current;
     if (!viewport) return;
     event.preventDefault();
@@ -2002,14 +2316,18 @@ function HVACPlanStudioApp() {
       const activePan = panRef.current;
       if (!activePan || activePan.pointerId !== pan.pointerId) return;
       activePan.frameId = null;
-      updateCamera({
+      const nextCamera = {
         x: activePan.cameraX + activePan.latestX - activePan.startX,
         y: activePan.cameraY + activePan.latestY - activePan.startY,
-      });
+      };
+      if (pdfStageRef.current) {
+        pdfStageRef.current.style.transform =
+          `translate3d(${nextCamera.x}px, ${nextCamera.y}px, 0)`;
+      }
     });
   }
 
-  function endPlanPan(event: PointerEvent<HTMLDivElement>) {
+  function endPlanPan(event: PointerEvent<HTMLDivElement>, cancelled = false) {
     const pan = panRef.current;
     const viewport = canvasViewportRef.current;
     if (!pan || !viewport || pan.pointerId !== event.pointerId) return;
@@ -2018,15 +2336,377 @@ function HVACPlanStudioApp() {
       cancelAnimationFrame(pan.frameId);
       pan.frameId = null;
     }
-    updateCamera({
-      x: pan.cameraX + event.clientX - pan.startX,
-      y: pan.cameraY + event.clientY - pan.startY,
-    });
+    const nextCamera = {
+      x: pan.cameraX + (cancelled ? pan.latestX : event.clientX) - pan.startX,
+      y: pan.cameraY + (cancelled ? pan.latestY : event.clientY) - pan.startY,
+    };
+    cameraRef.current = nextCamera;
+    setCamera(nextCamera);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     viewport.classList.remove("panning");
     panRef.current = null;
+  }
+
+  function touchPointInViewport(point: ScreenPoint) {
+    const viewport = canvasViewportRef.current;
+    if (!viewport) return point;
+    const bounds = viewport.getBoundingClientRect();
+    return { x: point.x - bounds.left, y: point.y - bounds.top };
+  }
+
+  function beginTouchGesture() {
+    if (!pdf || panRef.current || activeEditPointerIdRef.current !== null) return;
+    const entries = [...touchPointersRef.current.entries()].slice(0, 2);
+    if (entries.length !== 2) return;
+    const first = entries[0][1];
+    const second = entries[1][1];
+    const center = touchPointInViewport(midpoint(first, second));
+    const startZoom = zoomRef.current;
+    touchGestureRef.current = {
+      pointerIds: [entries[0][0], entries[1][0]],
+      startDistance: Math.max(1, pointDistance(first, second)),
+      startZoom,
+      anchorPlan: {
+        x: (center.x - cameraRef.current.x) / startZoom,
+        y: (center.y - cameraRef.current.y) / startZoom,
+      },
+      latestZoom: startZoom,
+      latestCamera: { ...cameraRef.current },
+      frameId: null,
+    };
+    canvasViewportRef.current?.classList.add("touch-navigating");
+    setHoverPoint(null);
+    setSnapMarker(null);
+    setSnapInfo(null);
+    setAlignmentGuides([]);
+    setBranchPreview(null);
+    setSymbolPreview(null);
+  }
+
+  function updateTouchGesture() {
+    const gesture = touchGestureRef.current;
+    if (!gesture) return;
+    const first = touchPointersRef.current.get(gesture.pointerIds[0]);
+    const second = touchPointersRef.current.get(gesture.pointerIds[1]);
+    if (!first || !second) return;
+    const center = touchPointInViewport(midpoint(first, second));
+    const next = pinchCamera({
+      anchorPlan: gesture.anchorPlan,
+      currentMidpoint: center,
+      startDistance: gesture.startDistance,
+      currentDistance: pointDistance(first, second),
+      startZoom: gesture.startZoom,
+    });
+    gesture.latestZoom = next.zoom;
+    gesture.latestCamera = next.camera;
+    if (pdfStageRef.current) {
+      const previewScale = next.zoom / Math.max(0.01, gesture.startZoom);
+      pdfStageRef.current.style.transform =
+        `translate3d(${next.camera.x}px, ${next.camera.y}px, 0) scale(${previewScale})`;
+      pdfStageRef.current.style.transformOrigin = "0 0";
+    }
+  }
+
+  function scheduleTouchGestureUpdate() {
+    const gesture = touchGestureRef.current;
+    if (!gesture || gesture.frameId !== null) return;
+    gesture.frameId = requestAnimationFrame(() => {
+      const current = touchGestureRef.current;
+      if (!current) return;
+      current.frameId = null;
+      updateTouchGesture();
+    });
+  }
+
+  function commitTouchGesture(gesture: TouchGestureState | null) {
+    if (!gesture) return;
+    zoomRef.current = gesture.latestZoom;
+    cameraRef.current = gesture.latestCamera;
+    setZoom(gesture.latestZoom);
+    setCamera(gesture.latestCamera);
+  }
+
+  function finishTouchPointer(
+    pointerId: number,
+    target: HTMLDivElement,
+    finalPoint?: ScreenPoint,
+  ) {
+    if (finalPoint && touchPointersRef.current.has(pointerId)) {
+      touchPointersRef.current.set(pointerId, finalPoint);
+    }
+    const gesture = touchGestureRef.current;
+    if (gesture?.pointerIds.includes(pointerId)) {
+      if (gesture.frameId !== null) cancelAnimationFrame(gesture.frameId);
+      updateTouchGesture();
+      commitTouchGesture(gesture);
+      touchGestureRef.current = null;
+      canvasViewportRef.current?.classList.remove("touch-navigating");
+    }
+    touchPointersRef.current.delete(pointerId);
+    if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+  }
+
+  function cancelTouchNavigation(target: HTMLDivElement) {
+    const gesture = touchGestureRef.current;
+    if (gesture?.frameId !== null && gesture?.frameId !== undefined) {
+      cancelAnimationFrame(gesture.frameId);
+    }
+    if (gesture) {
+      updateTouchGesture();
+      commitTouchGesture(gesture);
+    }
+    const capturedPointerIds = [...touchPointersRef.current.keys()];
+    touchPointersRef.current.clear();
+    capturedPointerIds.forEach((pointerId) => {
+      if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+    });
+    touchGestureRef.current = null;
+    canvasViewportRef.current?.classList.remove("touch-navigating");
+  }
+
+  function isCanvasUiTarget(target: EventTarget | null) {
+    return target instanceof Element && Boolean(target.closest(
+      "button,input,select,textarea,a,[role='dialog'],[role='toolbar'],[data-canvas-ui]",
+    ));
+  }
+
+  function beginEditTransaction(pointerId: number) {
+    const owner = activeEditPointerIdRef.current;
+    if (owner !== null && owner !== pointerId) return false;
+    activeEditPointerIdRef.current = pointerId;
+    if (editTransactionRef.current?.pointerId !== pointerId) {
+      editTransactionRef.current = {
+        pointerId,
+        drawings,
+        draft,
+        undoStack,
+        redoStack,
+        measureDraft,
+        selectedId,
+        selectedIds,
+        continuingRunId,
+        pendingBranchFittingId,
+        branchPlacementResult,
+        queuedBranchRunId,
+        branchPreview,
+        branchMessage,
+        branchHoverRunId,
+        symbolPreview,
+        scaleFeetPerUnit,
+        scaleLabel,
+        scaleLocked,
+        scaleVerified,
+        calibrating,
+      };
+    }
+    return true;
+  }
+
+  function restoreEditTransaction(pointerId: number) {
+    const snapshot = editTransactionRef.current;
+    const drag = dragRef.current;
+    if (snapshot?.pointerId === pointerId) {
+      setDrawings(snapshot.drawings);
+      setDraft(snapshot.draft);
+      setUndoStack(snapshot.undoStack);
+      setRedoStack(snapshot.redoStack);
+      setMeasureDraft(snapshot.measureDraft);
+      setSelectedId(snapshot.selectedId);
+      setSelectedIds(snapshot.selectedIds);
+      setContinuingRunId(snapshot.continuingRunId);
+      setPendingBranchFittingId(snapshot.pendingBranchFittingId);
+      setBranchPlacementResult(snapshot.branchPlacementResult);
+      setQueuedBranchRunId(snapshot.queuedBranchRunId);
+      setBranchPreview(snapshot.branchPreview);
+      setBranchMessage(snapshot.branchMessage);
+      setBranchHoverRunId(snapshot.branchHoverRunId);
+      setSymbolPreview(snapshot.symbolPreview);
+      setScaleFeetPerUnit(snapshot.scaleFeetPerUnit);
+      setScaleLabel(snapshot.scaleLabel);
+      setScaleLocked(snapshot.scaleLocked);
+      setScaleVerified(snapshot.scaleVerified);
+      setCalibrating(snapshot.calibrating);
+    } else if (drag?.pointerId === pointerId) {
+      setDrawings(drag.before);
+    }
+    if (drag?.pointerId === pointerId) dragRef.current = null;
+    if (selectionBox?.pointerId === pointerId) setSelectionBox(null);
+    setSnapMarker(null);
+    setSnapInfo(null);
+    setAlignmentGuides([]);
+    setHoverPoint(null);
+    activeEditPointerIdRef.current = null;
+    editTransactionRef.current = null;
+  }
+
+  function handleViewportPointerDownCapture(event: PointerEvent<HTMLDivElement>) {
+    if (isCanvasUiTarget(event.target)) return;
+    if (event.pointerType === "touch") {
+      if (!pdf) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (
+        activePenPointerIdRef.current !== null ||
+        performance.now() - lastPenActivityRef.current < 650 ||
+        activeEditPointerIdRef.current !== null ||
+        panRef.current
+      ) return;
+      touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      event.currentTarget.setPointerCapture(event.pointerId);
+      if (touchPointersRef.current.size === 2) beginTouchGesture();
+      return;
+    }
+    if (event.pointerType === "pen") {
+      if (activePenPointerIdRef.current !== null && activePenPointerIdRef.current !== event.pointerId) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      cancelTouchNavigation(event.currentTarget);
+      if (!beginEditTransaction(event.pointerId)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+      activePenPointerIdRef.current = event.pointerId;
+      lastPenActivityRef.current = performance.now();
+      return;
+    }
+    if (touchGestureRef.current || touchPointersRef.current.size) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (event.button === 2) {
+      startPlanPan(event);
+      return;
+    }
+    if (event.button === 0) {
+      if (!beginEditTransaction(event.pointerId)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+    }
+  }
+
+  function handleViewportPointerMoveCapture(event: PointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "touch") {
+      if (!touchPointersRef.current.has(event.pointerId)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (activePenPointerIdRef.current !== null) return;
+      touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      scheduleTouchGestureUpdate();
+      return;
+    }
+    if (
+      event.pointerType === "pen" &&
+      (activePenPointerIdRef.current === event.pointerId || event.buttons !== 0 || event.pressure > 0)
+    ) {
+      lastPenActivityRef.current = performance.now();
+    }
+    movePlanPan(event);
+  }
+
+  function handleViewportPointerUpCapture(event: PointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "touch") {
+      if (!touchPointersRef.current.has(event.pointerId)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      finishTouchPointer(
+        event.pointerId,
+        event.currentTarget,
+        { x: event.clientX, y: event.clientY },
+      );
+      return;
+    }
+    if (event.pointerType === "pen") {
+      lastPenActivityRef.current = performance.now();
+      if (activePenPointerIdRef.current === event.pointerId) activePenPointerIdRef.current = null;
+    }
+    if (activeEditPointerIdRef.current === event.pointerId) {
+      completedEditPointerIdsRef.current.add(event.pointerId);
+    }
+    endPlanPan(event);
+    const target = event.currentTarget;
+    queueMicrotask(() => {
+      if (activeEditPointerIdRef.current === event.pointerId) {
+        activeEditPointerIdRef.current = null;
+        if (editTransactionRef.current?.pointerId === event.pointerId) {
+          editTransactionRef.current = null;
+        }
+      }
+      if (target.hasPointerCapture(event.pointerId)) {
+        target.releasePointerCapture(event.pointerId);
+      }
+      window.setTimeout(() => completedEditPointerIdsRef.current.delete(event.pointerId), 0);
+    });
+  }
+
+  function handleViewportPointerCancelCapture(event: PointerEvent<HTMLDivElement>) {
+    completedEditPointerIdsRef.current.delete(event.pointerId);
+    if (event.pointerType === "touch") {
+      if (!touchPointersRef.current.has(event.pointerId)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      finishTouchPointer(
+        event.pointerId,
+        event.currentTarget,
+        { x: event.clientX, y: event.clientY },
+      );
+      return;
+    }
+    if (event.pointerType === "pen" && activePenPointerIdRef.current === event.pointerId) {
+      activePenPointerIdRef.current = null;
+      lastPenActivityRef.current = performance.now();
+    }
+    if (activeEditPointerIdRef.current === event.pointerId) {
+      restoreEditTransaction(event.pointerId);
+    }
+    endPlanPan(event, true);
+  }
+
+  function handleViewportLostPointerCapture(event: PointerEvent<HTMLDivElement>) {
+    if (completedEditPointerIdsRef.current.delete(event.pointerId)) return;
+    handleViewportPointerCancelCapture(event);
+  }
+
+  function handleDisplaySettingsKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key !== "Tab") return;
+    const panel = displaySettingsPanelRef.current;
+    if (!panel) return;
+    const focusable = [...panel.querySelectorAll<HTMLElement>(
+      "button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])",
+    )].filter((element) => element.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  function openToolsPanel() {
+    setLeftPanelOpen(true);
+    if (workspaceLayout !== "desktop") setRightPanelOpen(false);
+  }
+
+  function openInspectorPanel() {
+    setRightPanelOpen(true);
+    if (workspaceLayout !== "desktop") setLeftPanelOpen(false);
   }
 
   function goToPage(page: number) {
@@ -5873,7 +6553,7 @@ function HVACPlanStudioApp() {
   }
 
   function continueSystemWorkflow(stage: WorkflowStageId) {
-    setRightPanelOpen(true);
+    openInspectorPanel();
     if (stage === "runs") {
       setRightTab("builder");
       setActiveTool("supply");
@@ -6878,7 +7558,8 @@ function HVACPlanStudioApp() {
   }
 
   function handleDrawingClick(event: PointerEvent<SVGSVGElement>) {
-    if (event.button !== 0 || panRef.current) return;
+    if (event.pointerType === "touch" || event.button !== 0 || panRef.current || touchGestureRef.current) return;
+    if (activeEditPointerIdRef.current !== null && activeEditPointerIdRef.current !== event.pointerId) return;
     const rawPoint = canvasPoint(event);
     if (calibrating) {
       const point = snapPoint(rawPoint);
@@ -6900,7 +7581,12 @@ function HVACPlanStudioApp() {
     }
     if (activeTool === "select") {
       event.currentTarget.setPointerCapture(event.pointerId);
-      setSelectionBox({ start: rawPoint, end: rawPoint, additive: event.shiftKey });
+      setSelectionBox({
+        start: rawPoint,
+        end: rawPoint,
+        additive: event.shiftKey,
+        pointerId: event.pointerId,
+      });
       if (!event.shiftKey) selectOnly(null);
       return;
     }
@@ -7581,7 +8267,14 @@ function HVACPlanStudioApp() {
       return;
     }
     event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
-    dragRef.current = { kind: "point", drawingId, pointIndex, before: drawings };
+    dragRef.current = {
+      kind: "point",
+      drawingId,
+      pointIndex,
+      before: drawings,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+    };
     setSelectedId(drawingId);
     setActiveSystem(drawingSystem(drawings.find((drawing) => drawing.id === drawingId)));
   }
@@ -7595,7 +8288,14 @@ function HVACPlanStudioApp() {
     const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     const nextPoints = [...drawing.points.slice(0, segmentIndex + 1), midpoint, ...drawing.points.slice(segmentIndex + 1)];
     event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
-    dragRef.current = { kind: "point", drawingId, pointIndex: segmentIndex + 1, before: drawings };
+    dragRef.current = {
+      kind: "point",
+      drawingId,
+      pointIndex: segmentIndex + 1,
+      before: drawings,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+    };
     setDrawings((current) => current.map((item) => item.id === drawingId ? { ...item, points: nextPoints } : item));
     selectOnly(drawingId);
     setActiveSystem(drawingSystem(drawing));
@@ -7618,7 +8318,15 @@ function HVACPlanStudioApp() {
       return;
     }
     event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
-    dragRef.current = { kind: "line", drawingId: drawing.id, start: canvasPoint(event as unknown as PointerEvent<SVGSVGElement>), original: drawing.points, before: drawings };
+    dragRef.current = {
+      kind: "line",
+      drawingId: drawing.id,
+      start: canvasPoint(event as unknown as PointerEvent<SVGSVGElement>),
+      original: drawing.points,
+      before: drawings,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+    };
     setSelectedId(drawing.id);
     setActiveSystem(drawingSystem(drawing));
   }
@@ -7633,6 +8341,8 @@ function HVACPlanStudioApp() {
       start: canvasPoint(event as unknown as PointerEvent<SVGSVGElement>),
       originalOffset: drawing.labelOffset || { x: 0, y: 0 },
       before: drawings,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
     };
     selectOnly(drawing.id);
     setActiveSystem(drawingSystem(drawing));
@@ -7659,6 +8369,8 @@ function HVACPlanStudioApp() {
       originalPorts: fittingPortPoints(drawing),
       connectedIds: drawing.fitting.connectedIds,
       before: drawings,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
     };
     setSelectedId(drawing.id);
     setActiveSystem(drawingSystem(drawing));
@@ -7676,7 +8388,13 @@ function HVACPlanStudioApp() {
       return;
     }
     event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
-    dragRef.current = { kind: "symbol", drawingId: drawing.id, before: drawings };
+    dragRef.current = {
+      kind: "symbol",
+      drawingId: drawing.id,
+      before: drawings,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+    };
     setSelectedId(drawing.id);
     setActiveSystem(drawingSystem(drawing));
   }
@@ -7713,6 +8431,8 @@ function HVACPlanStudioApp() {
       halfWidth: bounds.width / 2,
       halfHeight: bounds.height / 2,
       before: drawings,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
     };
     selectOnly(drawing.id);
     setActiveSystem(drawingSystem(drawing));
@@ -7734,15 +8454,20 @@ function HVACPlanStudioApp() {
       ids,
       originals,
       before: drawings,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
     };
     setSelectedIds(ids);
     setSelectedId(drawingId);
   }
 
   function handlePointerMove(event: PointerEvent<SVGSVGElement>) {
-    if (panRef.current) return;
+    if (event.pointerType === "touch" || panRef.current || touchGestureRef.current) return;
     const raw = canvasPoint(event);
     const drag = dragRef.current;
+    if (drag && drag.pointerId !== event.pointerId) return;
+    if (selectionBox && selectionBox.pointerId !== event.pointerId) return;
+    if ((drag || selectionBox) && activeEditPointerIdRef.current !== event.pointerId) return;
     if (!drag && selectionBox) {
       setSelectionBox((box) => box ? { ...box, end: raw } : null);
       return;
@@ -7997,8 +8722,17 @@ function HVACPlanStudioApp() {
     }
   }
 
-  function endDrag() {
+  function endDrag(event: PointerEvent<SVGSVGElement>, cancelled = false) {
+    if (event.pointerType === "touch") return;
+    if (activeEditPointerIdRef.current !== null && activeEditPointerIdRef.current !== event.pointerId) return;
     if (selectionBox) {
+      if (selectionBox.pointerId !== event.pointerId) return;
+      if (cancelled) {
+        setSelectionBox(null);
+        activeEditPointerIdRef.current = null;
+        if (editTransactionRef.current?.pointerId === event.pointerId) editTransactionRef.current = null;
+        return;
+      }
       const minX = Math.min(selectionBox.start.x, selectionBox.end.x);
       const maxX = Math.max(selectionBox.start.x, selectionBox.end.x);
       const minY = Math.min(selectionBox.start.y, selectionBox.end.y);
@@ -8019,10 +8753,27 @@ function HVACPlanStudioApp() {
         setSelectedId(next.at(-1) || null);
       }
       setSelectionBox(null);
+      activeEditPointerIdRef.current = null;
+      if (editTransactionRef.current?.pointerId === event.pointerId) editTransactionRef.current = null;
       return;
     }
     const drag = dragRef.current;
-    if (!drag) return;
+    if (!drag) {
+      activeEditPointerIdRef.current = null;
+      if (editTransactionRef.current?.pointerId === event.pointerId) editTransactionRef.current = null;
+      return;
+    }
+    if (drag.pointerId !== event.pointerId) return;
+    if (cancelled) {
+      setDrawings(drag.before);
+      dragRef.current = null;
+      activeEditPointerIdRef.current = null;
+      if (editTransactionRef.current?.pointerId === event.pointerId) editTransactionRef.current = null;
+      setSnapMarker(null);
+      setSnapInfo(null);
+      setAlignmentGuides([]);
+      return;
+    }
     setUndoStack((stack) => [...stack, drag.before]);
     setRedoStack([]);
     if (drag.kind === "fitting") {
@@ -8058,6 +8809,8 @@ function HVACPlanStudioApp() {
       setBranchMessage("Duct-size label repositioned · route geometry was not changed");
     }
     dragRef.current = null;
+    activeEditPointerIdRef.current = null;
+    if (editTransactionRef.current?.pointerId === event.pointerId) editTransactionRef.current = null;
     setSnapMarker(null);
     setSnapInfo(null);
     setAlignmentGuides([]);
@@ -8265,6 +9018,10 @@ function HVACPlanStudioApp() {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const key = event.key.toLowerCase();
+      if (showDisplaySettings) {
+        if (event.key === "Escape") event.preventDefault();
+        return;
+      }
       if (showCommandPalette) {
         if (event.key === "Escape" || ((event.ctrlKey || event.metaKey) && key === "k")) {
           event.preventDefault();
@@ -8476,7 +9233,7 @@ function HVACPlanStudioApp() {
     releaseStale: activeFieldPackage.stale,
   });
   const activeFieldRuns = activeFieldPackage.runs;
-  const modalWorkspaceActive = showProjectHome || showProjectSetup || showPlanIntelligence || showFieldPackageComposer || showSystemBalanceStudio;
+  const modalWorkspaceActive = showProjectHome || showProjectSetup || showPlanIntelligence || showFieldPackageComposer || showSystemBalanceStudio || showDisplaySettings;
   const packagePrintClasses = printPackageSections.map((section) => `package-include-${section}`).join(" ");
 
   function openAIPlanReader(view: "reader" | "findings" = "reader") {
@@ -8638,7 +9395,7 @@ function HVACPlanStudioApp() {
   ];
 
   return (
-    <main className={`app-shell ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${activeFieldPackage.released && !activeFieldPackage.stale ? "package-print-released" : "package-print-draft"}`}>
+    <main className={`app-shell layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${activeFieldPackage.released && !activeFieldPackage.stale ? "package-print-released" : "package-print-draft"}`}>
       <header className="topbar" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
         <button className="brand" onClick={() => setShowProjectHome(true)} aria-label="Open Project Home">
           <div className="brand-mark"><Wind size={23} strokeWidth={2.4} /></div>
@@ -8672,7 +9429,7 @@ function HVACPlanStudioApp() {
             <Search size={16} /> <span>Command</span><kbd>⌘K</kbd>
           </button>
           <button className={`cloud-button ${showCloudProjects ? "active" : ""}`} aria-pressed={showCloudProjects} onClick={() => setShowCloudProjects(true)}>
-            <Cloud size={16} /> Project Hub <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V104"}</span>
+            <Cloud size={16} /> Project Hub <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V108"}</span>
           </button>
           <button className="drive-button" onClick={() => void openFromDrive()}><HardDrive size={16} /> Open Drive</button>
           <button className="reader-button" disabled={!pdf} onClick={() => openAIPlanReader("reader")}><ScanSearch size={16} /> AI Plan Reader</button>
@@ -8694,10 +9451,15 @@ function HVACPlanStudioApp() {
       </section>
 
       <section className="workspace" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
-        <aside className="left-panel">
+        {workspaceLayout !== "desktop" && (leftPanelOpen || rightPanelOpen) && <button
+          className="workspace-drawer-scrim"
+          aria-label="Close open workspace drawer"
+          onClick={() => { setLeftPanelOpen(false); setRightPanelOpen(false); }}
+        />}
+        <aside id="workspace-tools-panel" className="left-panel" aria-label="HVAC plan tools">
           <div className="panel-heading">
             <div><span>PLAN MARKUP TOOLS</span><small>HVAC DESIGN</small></div>
-            <button aria-label="Collapse design tools" onClick={() => setLeftPanelOpen(false)}><PanelLeftClose size={17} /></button>
+            <button aria-label="Collapse design tools" aria-controls="workspace-tools-panel" aria-expanded={leftPanelOpen} onClick={() => setLeftPanelOpen(false)}><PanelLeftClose size={17} /></button>
           </div>
           <div className="tool-list">
             {tools.filter(({ id }) => ["select", "supply", "branch", "return", "fresh"].includes(id)).map(({ id, label, icon: Icon, tone }) => (
@@ -9276,7 +10038,12 @@ function HVACPlanStudioApp() {
 
         <section className="canvas-area">
           <div className="canvas-toolbar">
-            {!leftPanelOpen && <button className="panel-restore" onClick={() => setLeftPanelOpen(true)}><PanelLeftClose size={16} /> Tools</button>}
+            {!leftPanelOpen && <button className="panel-restore" aria-controls="workspace-tools-panel" aria-expanded={leftPanelOpen} onClick={openToolsPanel}><PanelLeftClose size={16} /> Tools</button>}
+            {workspaceLayout !== "desktop" && <>
+              <button className="tablet-quick-action" onClick={() => void openFromDrive()}><HardDrive size={15} /> Drive</button>
+              <button className="tablet-quick-action" disabled={!pdf} onClick={() => openAIPlanReader("reader")}><ScanSearch size={15} /> AI Reader</button>
+              <button className="tablet-quick-action" disabled={!pdf} onClick={openPlanIntelligence}><Sparkles size={15} /> Review AI</button>
+            </>}
             <div className="canvas-edit-actions" role="group" aria-label="Edit history">
               <button aria-label="Undo" onClick={undo} disabled={!undoStack.length}><Undo2 size={16} /></button>
               <button aria-label="Redo" onClick={redo} disabled={!redoStack.length}><Redo2 size={16} /></button>
@@ -9285,13 +10052,24 @@ function HVACPlanStudioApp() {
             <span className="divider" />
             <button onClick={() => setActiveTool("select")}><MousePointer2 size={16} /> {activeTool === "select" ? "Select" : tools.find((tool) => tool.id === activeTool)?.label}</button>
             <span className="divider" />
-            <button className={activeTool === "select" ? "active" : ""} aria-label="Pan drawing" title="Right-click and drag anywhere to pan the plan. Left-click stays reserved for drawing and selecting." onClick={() => setActiveTool("select")}><Hand size={16} /> Grab plan</button>
+            <button className={activeTool === "select" ? "active" : ""} aria-label="Pan drawing" title="Right-click and drag anywhere to pan the plan. Left-click stays reserved for drawing and selecting. On tablets, use two fingers to pan or pinch; use a stylus to draw." onClick={() => setActiveTool("select")}><Hand size={16} /> Grab plan</button>
             <button aria-label="Zoom out" onClick={zoomOut} disabled={!pdf}><ZoomOut size={17} /></button>
             <strong>{Math.round(zoom * 100)}%</strong>
             <button aria-label="Zoom in" onClick={zoomIn} disabled={!pdf}><ZoomIn size={17} /></button>
             <button className="view-button" disabled={!pdf} onClick={fitPage} title="Fit the entire sheet in the workspace">Fit</button>
             <button className="view-button" disabled={!pdf} onClick={fitWidth} title="Fit sheet width to the workspace">Width</button>
             <button className="view-button" disabled={!pdf} onClick={() => applyViewportZoom(1)} title="Return to 100% zoom">100%</button>
+            <button
+              ref={displaySettingsTriggerRef}
+              className={`quality-button ${renderQuality === "4k" ? "ultra" : ""}`}
+              aria-haspopup="dialog"
+              aria-expanded={showDisplaySettings}
+              onClick={() => setShowDisplaySettings((visible) => !visible)}
+              title="Choose plan rendering quality, including a fixed 8.3 MP 4K canvas"
+            >
+              <SlidersHorizontal size={15} /> {renderQuality === "4k" ? "4K" : renderQuality === "performance" ? "Fast" : renderQuality === "sharp" ? "Sharp" : "Auto"}
+              <span>{renderQualityStatus.megapixels ? `${renderQualityStatus.megapixels.toFixed(1)} MP` : "HD"}</span>
+            </button>
             <button
               className={`precision-toggle ${showGrid ? "active" : ""}`}
               onClick={() => setShowGrid((visible) => !visible)}
@@ -9368,7 +10146,7 @@ function HVACPlanStudioApp() {
                 {calibrating ? `${referenceFeet} ft · pick 2 points` : scaleVerified ? "Recalibrate" : "Calibrate"}
               </button>
             </div>
-            {!rightPanelOpen && <button className="panel-restore" onClick={() => setRightPanelOpen(true)}>Inspector <PanelRightClose size={16} /></button>}
+            {!rightPanelOpen && <button className="panel-restore" aria-controls="workspace-inspector-panel" aria-expanded={rightPanelOpen} onClick={openInspectorPanel}>Inspector <PanelRightClose size={16} /></button>}
           </div>
 
           <div
@@ -9377,17 +10155,18 @@ function HVACPlanStudioApp() {
             onDragOver={(event) => event.preventDefault()}
             onDrop={onDrop}
             onWheel={handleWheelZoom}
-            onPointerDownCapture={startPlanPan}
-            onPointerMoveCapture={movePlanPan}
-            onPointerUpCapture={endPlanPan}
-            onPointerCancelCapture={endPlanPan}
+            onPointerDownCapture={handleViewportPointerDownCapture}
+            onPointerMoveCapture={handleViewportPointerMoveCapture}
+            onPointerUpCapture={handleViewportPointerUpCapture}
+            onPointerCancelCapture={handleViewportPointerCancelCapture}
+            onLostPointerCapture={handleViewportLostPointerCapture}
             onContextMenu={(event) => {
               event.preventDefault();
               if (draft.length) finishDrawing();
             }}
           >
             <input ref={inputRef} className="file-input" type="file" accept="application/pdf,.pdf" onChange={onFileChange} />
-            {selectedId && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions">
+            {selectedId && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
               <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T/Y FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : "DUCT RUN"}</strong>
               {!selectedDrawing?.symbol && !selectedDrawing?.measurement && <select
                 aria-label="Quick duct size"
@@ -9407,13 +10186,13 @@ function HVACPlanStudioApp() {
               <button className="danger" title="Delete selection" onClick={deleteSelected}><Trash2 size={15} /></button>
               <button title="Clear selection" onClick={() => selectOnly(null)}><X size={15} /></button>
             </div>}
-            {draft.length > 0 && ["supply", "return", "fresh"].includes(activeTool) && <div className="live-draft-hud">
+            {draft.length > 0 && ["supply", "return", "fresh"].includes(activeTool) && <div className="live-draft-hud" data-canvas-ui>
               <span>LIVE RUN</span>
               <strong>{ductSize}&quot; · {liveDraftFeet.toFixed(1)} LF</strong>
               <b>{liveDraftCfm} CFM · {liveDraftVelocity} FPM</b>
               <small>Left-click direction · Shift locks angle · Right-click finishes</small>
             </div>}
-            {pdf && activeTool === "branch" && <div className={`branch-workflow-hud ${pendingBranchFittingId ? "awaiting-branch" : ""} ${queuedBranchRunId ? "run-armed" : ""} ${branchPlacementResult ? "complete" : ""}`} aria-live="polite">
+            {pdf && activeTool === "branch" && <div className={`branch-workflow-hud ${pendingBranchFittingId ? "awaiting-branch" : ""} ${queuedBranchRunId ? "run-armed" : ""} ${branchPlacementResult ? "complete" : ""}`} aria-live="polite" data-canvas-ui>
               <div className="branch-workflow-heading">
                 <span><DraftingCompass size={14} /> {branchWorkflow === "run-first" ? "RUN-FIRST T/Y PASS" : "SMART T/Y"}</span>
                 <b>{branchPlacementResult
@@ -9525,7 +10304,7 @@ function HVACPlanStudioApp() {
                 <button className="danger" onClick={undo}><Undo2 size={13} /> Undo connection</button>
               </div>}
             </div>}
-            {pdf && showSheetNavigator && <div className="sheet-navigator" role="dialog" aria-label="PDF sheet navigator">
+            {pdf && showSheetNavigator && <div className="sheet-navigator" role="dialog" aria-label="PDF sheet navigator" data-canvas-ui>
               <div className="sheet-navigator-heading">
                 <div><strong>SHEET NAVIGATOR</strong><small>{pdf.numPages} pages · select any sheet</small></div>
                 <button aria-label="Close sheet navigator" onClick={() => setShowSheetNavigator(false)}>×</button>
@@ -9549,7 +10328,7 @@ function HVACPlanStudioApp() {
               <div className="sheet-navigator-footer">Tip: Page Up / Page Down changes sheets · Home / End jumps to the first or last page.</div>
             </div>}
             {pdf ? (
-              <div className="pdf-stage" style={{ transform: `translate3d(${camera.x}px, ${camera.y}px, 0)` }}>
+              <div ref={pdfStageRef} className="pdf-stage">
                 <div ref={planSheetRef} className="plan-sheet" style={{ width: renderSize.width * zoom, height: renderSize.height * zoom }}>
                   <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} style={{ opacity: backgroundOpacity / 100 }} />
                   <svg
@@ -9558,7 +10337,7 @@ function HVACPlanStudioApp() {
                     onPointerDown={handleDrawingClick}
                     onPointerMove={handlePointerMove}
                     onPointerUp={endDrag}
-                    onPointerCancel={endDrag}
+                    onPointerCancel={(event) => endDrag(event, true)}
                     onPointerLeave={() => { if (!dragRef.current) { setHoverPoint(null); setSnapMarker(null); setSnapInfo(null); setAlignmentGuides([]); setBranchPreview(null); setSymbolPreview(null); } }}
                     onContextMenu={(event) => event.preventDefault()}
                   >
@@ -9854,14 +10633,14 @@ function HVACPlanStudioApp() {
           </div>
         </section>
 
-        <aside className="right-panel">
+        <aside id="workspace-inspector-panel" className="right-panel" aria-label="HVAC plan inspector">
           <div className="right-tabs" role="tablist" aria-label="HVAC workspace panels">
             <button role="tab" aria-selected={rightTab === "builder"} className={rightTab === "builder" ? "active" : ""} onClick={() => setRightTab("builder")}>Builder</button>
             <button role="tab" aria-selected={rightTab === "layers"} className={rightTab === "layers" ? "active" : ""} onClick={() => setRightTab("layers")}>Layers</button>
             <button role="tab" aria-selected={rightTab === "rooms"} className={rightTab === "rooms" ? "active" : ""} onClick={() => openSystemBalanceWorkspace("system")}>Balance</button>
             <button role="tab" aria-selected={rightTab === "takeoff"} className={rightTab === "takeoff" ? "active" : ""} onClick={() => setRightTab("takeoff")}>Takeoff</button>
             <button role="tab" aria-selected={rightTab === "checks"} className={rightTab === "checks" ? "active" : ""} onClick={() => setRightTab("checks")}>Review</button>
-            <button className="right-collapse" aria-label="Collapse inspector" onClick={() => setRightPanelOpen(false)}><PanelRightClose size={15} /></button>
+            <button className="right-collapse" aria-label="Collapse inspector" aria-controls="workspace-inspector-panel" aria-expanded={rightPanelOpen} onClick={() => setRightPanelOpen(false)}><PanelRightClose size={15} /></button>
           </div>
           {rightTab === "builder" ? <div className="system-builder-panel">
             <div className="builder-hero">
@@ -11011,11 +11790,66 @@ function HVACPlanStudioApp() {
         </>}
       </section>
 
+      {showDisplaySettings && <div className="display-settings-overlay" role="presentation">
+        <button className="display-settings-scrim" aria-label="Close display settings" onClick={() => setShowDisplaySettings(false)} />
+        <section
+          ref={displaySettingsPanelRef}
+          className="display-settings-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="display-settings-title"
+          onKeyDown={handleDisplaySettingsKeyDown}
+        >
+          <header>
+            <div>
+              <small>TABLET + ULTRA-HD WORKSPACE</small>
+              <h2 id="display-settings-title">Display &amp; input</h2>
+            </div>
+            <button ref={displaySettingsCloseRef} aria-label="Close display settings" onClick={() => setShowDisplaySettings(false)}><X size={18} /></button>
+          </header>
+          <div className="display-settings-body">
+            <fieldset>
+              <legend>Plan rendering</legend>
+              {([
+                ["auto", "Auto", "Adapts to zoom, monitor DPR, and a safe 12 MP page budget."],
+                ["performance", "Performance", "Fastest redraws for large scanned sets and older tablets."],
+                ["sharp", "Sharp", "Higher-detail plan text with a bounded 16 MP page budget."],
+                ["4k", "4K Fixed", "Targets an 8.3 MP full-sheet canvas without unsafe 5K/8K memory growth."],
+              ] as Array<[RenderQualityMode, string, string]>).map(([mode, label, detail]) => <button
+                type="button"
+                key={mode}
+                className={renderQuality === mode ? "selected" : ""}
+                aria-pressed={renderQuality === mode}
+                onClick={() => setRenderQuality(mode)}
+              >
+                <span><strong>{label}</strong><small>{detail}</small></span>
+                <i aria-hidden="true" />
+              </button>)}
+            </fieldset>
+            <div className={`render-quality-readout ${renderQualityStatus.reduced ? "reduced" : ""}`}>
+              <span>{renderQualityStatus.reduced ? <ShieldAlert size={17} /> : <CheckCircle2 size={17} />}</span>
+              <div><strong>{renderQualityStatus.label}</strong><small>{renderQualityStatus.megapixels.toFixed(1)} MP full-sheet canvas · measurements and markups stay in PDF coordinates.</small></div>
+            </div>
+            <fieldset className="density-options">
+              <legend>Control density</legend>
+              <div>
+                <button type="button" className={workspaceDensity === "comfortable" ? "selected" : ""} aria-pressed={workspaceDensity === "comfortable"} onClick={() => setWorkspaceDensity("comfortable")}>Comfortable</button>
+                <button type="button" className={workspaceDensity === "compact" ? "selected" : ""} aria-pressed={workspaceDensity === "compact"} onClick={() => setWorkspaceDensity("compact")}>Compact</button>
+              </div>
+            </fieldset>
+            <div className="tablet-input-note">
+              <strong>Tablet controls are active</strong>
+              <span>Two fingers pan and pinch. Apple Pencil or another stylus draws and edits. Stylus-aware touch suppression keeps finger input out of duct geometry.</span>
+            </div>
+          </div>
+        </section>
+      </div>}
+
       <footer inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
         <span><i className="online" /> Ready</span>
-        <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor"}</span>
+        <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor · two-finger touch navigates · stylus draws"}</span>
         <span><Ruler size={11} /> {scaleLabel}</span>
-        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · AI Plan Reader v105 · Plan Intelligence v106</span>
+        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · AI Plan Reader v105 · Plan Intelligence v106 · Tablet + Ultra-HD v108</span>
       </footer>
       <ProjectHome
         open={showProjectHome && !showProjectSetup}
@@ -11113,7 +11947,7 @@ function HVACPlanStudioApp() {
         }}
         onOpenEngineering={(view) => {
           setShowSystemBalanceStudio(false);
-          setRightPanelOpen(true);
+          openInspectorPanel();
           openSystemBalanceWorkspace(view);
           window.requestAnimationFrame(() => {
             document.querySelector<HTMLElement>('.balance-view-tabs button[aria-selected="true"]')?.focus();
