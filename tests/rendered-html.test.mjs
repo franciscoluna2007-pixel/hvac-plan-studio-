@@ -146,8 +146,9 @@ test("implements the Figma cloud dock, safe restore flow, and distinct terminal 
 test("reserves plan panning for a stable right-click drag", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /if \(!pdf \|\| event\.button !== 2 \|\| draft\.length\) return;/);
+  assert.match(source, /function startPlanPan[\s\S]{0,500}event\.button !== 2[\s\S]{0,500}activeEditPointerIdRef\.current !== null/);
   assert.match(source, /pan\.frameId = requestAnimationFrame\(\(\) =>/);
+  assert.match(source, /pdfStageRef\.current\.style\.transform/);
   assert.doesNotMatch(source, /naturalLeftPan|spacePanRef|panMomentumRef/);
   assert.match(source, /Right-click drag pans anywhere · left-click selects\/draws/);
   assert.match(source, /Right-click and drag anywhere to pan the plan\. Left-click stays reserved for drawing and selecting\./);
@@ -874,4 +875,93 @@ test("scores v103 balance evidence deterministically and marks changed reviews s
   });
   assert.equal(overloaded.tone, "hold");
   assert.equal(overloaded.overCapacityRuns, 1);
+});
+
+test("ships v108 tablet gestures, stylus protection, responsive drawers, and bounded 4K rendering", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const display = await readFile(new URL("../app/workspaceDisplay.ts", import.meta.url), "utf8");
+  const preferences = await readFile(new URL("../app/workspacePreferences.ts", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const analytics = await readFile(new URL("../app/productAnalytics.ts", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../supabase/migrations/20260725213000_tablet_ultrahd_workspace_preferences.sql", import.meta.url), "utf8");
+  const {
+    pinchCamera,
+    renderQualityPlan,
+    workspaceLayoutFor,
+  } = await import(new URL("../app/workspaceDisplay.ts", import.meta.url));
+
+  assert.match(page, /touchPointersRef = useRef\(new Map/);
+  assert.match(page, /event\.pointerType === "touch"/);
+  assert.match(page, /event\.pointerType === "pen"/);
+  assert.match(page, /beginTouchGesture/);
+  assert.match(page, /pinchCamera/);
+  assert.match(page, /drag\.pointerId !== event\.pointerId/);
+  assert.match(page, /selectionBox\.pointerId !== event\.pointerId/);
+  assert.match(page, /cancelTouchNavigation/);
+  assert.match(page, /isCanvasUiTarget/);
+  assert.match(page, /setPointerCapture\(event\.pointerId\)/);
+  assert.match(page, /completedEditPointerIdsRef/);
+  assert.match(page, /handleViewportLostPointerCapture/);
+  assert.match(page, /useLayoutEffect\(\(\) => \{\s*if \(!pdfStageRef\.current \|\| panRef\.current \|\| touchGestureRef\.current\) return/);
+  assert.doesNotMatch(page, /className="pdf-stage" style=/);
+  assert.match(page, /Stylus-aware touch suppression/);
+  assert.match(page, /pdfRenderTaskRef\.current\?\.cancel\(\)/);
+  assert.match(page, /RenderingCancelledException/);
+  assert.match(page, /100 \* 1024 \* 1024/);
+  assert.match(page, /4K Fixed/);
+  assert.match(page, /if \(showDisplaySettings\) \{\s*if \(event\.key === "Escape"\) event\.preventDefault\(\);\s*return;/);
+  assert.match(page, /showSystemBalanceStudio \|\| showDisplaySettings/);
+  assert.match(page, /function openInspectorPanel\(\) \{\s*setRightPanelOpen\(true\)/);
+  assert.match(page, /workspace-drawer-scrim/);
+
+  assert.match(display, /"4k": \{ megapixels: 8\.2944/);
+  assert.match(display, /workspaceLayoutFor/);
+  assert.match(display, /Math\.sqrt\(\(limits\.megapixels \* 1_000_000\) \/ logicalPixels\)/);
+  assert.match(display, /export function pinchCamera/);
+  assert.match(preferences, /from\("workspace_preferences"\)/);
+  assert.match(preferences, /onConflict: "user_id"/);
+  assert.match(migration, /alter table public\.workspace_preferences enable row level security/);
+  assert.match(migration, /user_id = \(select auth\.uid\(\)\)/);
+  assert.match(migration, /revoke all on public\.workspace_preferences from anon/);
+  assert.match(styles, /v108 — Tablet \+ Ultra-HD Workspace/);
+  assert.match(styles, /\.app-shell\.tablet-layout \.left-panel/);
+  assert.match(styles, /min-width: 44px; min-height: 44px/);
+  assert.match(styles, /@media \(min-width: 2560px\)/);
+  assert.match(styles, /height: 100dvh/);
+  assert.match(analytics, /app_version: "108"/);
+
+  const pinch = pinchCamera({
+    anchorPlan: { x: 100, y: 200 },
+    currentMidpoint: { x: 400, y: 500 },
+    startDistance: 100,
+    currentDistance: 200,
+    startZoom: 1,
+  });
+  assert.equal(pinch.zoom, 2);
+  assert.deepEqual(pinch.camera, { x: 200, y: 100 });
+  assert.equal(pinch.camera.x + 100 * pinch.zoom, 400);
+  assert.equal(pinch.camera.y + 200 * pinch.zoom, 500);
+
+  const huge4k = renderQualityPlan({
+    logicalWidth: 40_000,
+    logicalHeight: 30_000,
+    zoom: 8,
+    devicePixelRatio: 2,
+    mode: "4k",
+  });
+  assert.ok(huge4k.megapixels <= 8.2944);
+  assert.ok(huge4k.width <= 5120);
+  assert.ok(huge4k.height <= 5120);
+
+  const normal4k = renderQualityPlan({
+    logicalWidth: 1200,
+    logicalHeight: 900,
+    zoom: 1,
+    devicePixelRatio: 1,
+    mode: "4k",
+  });
+  assert.ok(normal4k.megapixels > 8.28 && normal4k.megapixels <= 8.2944);
+  assert.equal(workspaceLayoutFor(1024, 768, true), "tablet-landscape");
+  assert.equal(workspaceLayoutFor(768, 1024, true), "tablet-portrait");
+  assert.equal(workspaceLayoutFor(1920, 1080, false), "desktop");
 });
