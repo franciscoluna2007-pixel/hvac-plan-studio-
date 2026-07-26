@@ -569,7 +569,7 @@ export default function ProjectHome({
         </div>
 
         <footer className="project-home-footer">
-              <span><Wind size={14} /> HVAC Plan Studio v110</span>
+              <span><Wind size={14} /> HVAC Plan Studio v112</span>
           <p>AI reads · people decide · plan geometry stays under your control</p>
           <button onClick={onOpenCommand}><Command size={14} /> Command palette</button>
         </footer>

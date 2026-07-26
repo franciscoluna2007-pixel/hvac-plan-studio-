@@ -651,7 +651,7 @@ export default function CloudProjectsPanel({
       <header className="cloud-drawer-header">
         <div className="cloud-drawer-title">
           <span><CloudCog size={21} /></span>
-          <div><strong>HVAC Plan Studio</strong><small>Plan Intelligence Cloud · v110</small></div>
+          <div><strong>HVAC Plan Studio</strong><small>Plan Intelligence Cloud · v112</small></div>
         </div>
         <div className="cloud-drawer-header-status"><span>PLAN INTELLIGENCE CLOUD</span><button ref={closeButtonRef} aria-label="Close Project Intelligence Hub" onClick={onClose}><X size={18} /></button></div>
       </header>

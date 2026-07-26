@@ -71,7 +71,7 @@ export default function SystemBalanceStudio({
   const summary = useMemo(() => summarizeSystemBalance(model), [model]);
   const sizeApplyReady = model.planningSeedTerminalCount === 0;
   const candidateSizeIds = model.runs
-    .filter((run) => !run.overCapacity && sizeApplyReady)
+    .filter((run) => run.applyEligible && sizeApplyReady)
     .map((run) => run.id);
   const cfmApplyReady = model.roomTargetSource === "saved-targets";
   const continuousCfmIds = model.cfmProposals
@@ -175,7 +175,7 @@ export default function SystemBalanceStudio({
         <div className="system-balance-brand">
           <span><Wind size={20} /></span>
           <div>
-            <small>SYSTEM BALANCE STUDIO · V110</small>
+            <small>SYSTEM BALANCE STUDIO · V112</small>
             <h2 id="system-balance-title">Airflow coordination, sizing review, and evidence</h2>
             <p>{projectName} · {model.systemName}</p>
           </div>
@@ -263,9 +263,16 @@ export default function SystemBalanceStudio({
             <article className={summary.overCapacityRuns ? "hold" : "clear"}><Gauge size={17} /><span><strong>{summary.overCapacityRuns} over-capacity runs</strong><small>{summary.overCapacityRuns ? "Add a parallel path or revise the design manually." : "Every proposed size stays within the current velocity limits."}</small></span></article>
             <article className={summary.missingReturnRooms ? "attention" : "clear"}><ShieldCheck size={17} /><span><strong>{summary.missingReturnRooms} bedroom return-path reviews</strong><small>{summary.missingReturnRooms ? "Verify a dedicated return or documented transfer path." : "Assigned bedrooms have a return path in the current schedule."}</small></span></article>
           </div>
-          <div className="balance-method-note">
+          <div className="balance-method-note balance-safety-note">
             <AlertTriangle size={16} />
-            <p><strong>Planning estimate—not a Manual J, S, D, or T design, permit calculation, TAB report, or manufacturer selection.</strong> Results depend on entered airflow, verified scale, duct construction, fittings, installation, altitude, leakage, accessories, and the selected blower table. The editable 400 CFM/ton starting value is not verified design airflow. Until an explicit return target is added, the return comparison uses the system planning-airflow baseline. Confirm final sizes, airflow, static pressure, noise, ventilation, code, and equipment operation with approved plans, OEM data, applicable ACCA/ASHRAE procedures, field measurements, and the responsible licensed professional or AHJ.</p>
+            <div>
+              <p><strong>Planning estimate—not a Manual J, S, D, or T design, permit calculation, TAB report, or manufacturer selection.</strong></p>
+              <ul>
+                <li>Entered airflow, scale, duct construction, fittings, installation, altitude, leakage, accessories, and blower data all affect the result.</li>
+                <li>The editable 400 CFM/ton starting value and the return planning baseline are coordination seeds, not verified design airflow.</li>
+                <li>Confirm final sizes, airflow, static pressure, sound, ventilation, code, and equipment operation with approved plans, OEM data, applicable ACCA/ASHRAE procedures, field measurements, and the responsible licensed professional or AHJ.</li>
+              </ul>
+            </div>
           </div>
         </section>}
 
@@ -308,7 +315,7 @@ export default function SystemBalanceStudio({
 
         {view === "runs" && <section id="system-balance-panel-runs" className="balance-run-view" role="tabpanel" aria-labelledby="system-balance-tab-runs">
           <div className="balance-section-heading">
-            <span><strong>VELOCITY-SCREENED SIZE REVIEW</strong><small>Candidates do not verify pressure, sound, blower performance, or installation conditions</small></span>
+            <span><strong>TRANSPARENT DUCT SIZE REVIEW · V112</strong><small>{model.ductSizingVersion} · candidates do not verify pressure, sound, blower performance, or installation conditions</small></span>
             <div><button disabled={!model.runs.length} onClick={onExportRuns}><Download size={14} /> Review CSV</button><button onClick={() => onOpenEngineering("runs")}>Calculation assumptions</button></div>
           </div>
           <div className="balance-rule-strip">
@@ -325,15 +332,31 @@ export default function SystemBalanceStudio({
             <AlertTriangle size={16} />
             <p><strong>Size Apply is paused.</strong> Replace the {model.planningSeedTerminalCount} planning-seed terminal CFM entr{model.planningSeedTerminalCount === 1 ? "y" : "ies"} with reviewed room targets or manual values first.</p>
           </div>}
+          <div className="balance-method-note balance-safety-note">
+            <AlertTriangle size={16} />
+            <div>
+              <p><strong>Velocity preview only. Pressure remains unverified.</strong></p>
+              <ul>
+                <li>Diameter follows terminal-linked or manual CFM, the configured velocity limit, and the supported flex ceiling.</li>
+                <li>Shown friction and segment loss are rough planning estimates only when scale is verified; they do not use a blower table, available static pressure, or a complete critical path.</li>
+              </ul>
+            </div>
+          </div>
           <div className="balance-run-review-list">
-            {model.runs.length ? model.runs.map((run) => <div className={`balance-select-row ${run.overCapacity ? "over-capacity" : ""}`} key={run.id}>
-              <input id={`balance-size-${run.id}`} aria-label={`Select ${run.room} ${run.type} size candidate`} type="checkbox" disabled={run.overCapacity || !sizeApplyReady} checked={selectedSizeIds.includes(run.id)} onChange={() => setSelectedSizeIds((current) => current.includes(run.id) ? current.filter((id) => id !== run.id) : [...current, run.id])} />
+            {model.runs.length ? model.runs.map((run) => <div className={`balance-select-row ${run.sizingStatus === "blocked" ? "over-capacity" : ""}`} key={run.id}>
+              <input id={`balance-size-${run.id}`} aria-label={`Select ${run.room} ${run.type} size candidate`} type="checkbox" disabled={!run.applyEligible || !sizeApplyReady} checked={selectedSizeIds.includes(run.id)} onChange={() => setSelectedSizeIds((current) => current.includes(run.id) ? current.filter((id) => id !== run.id) : [...current, run.id])} />
               <button type="button" onClick={() => onFocusDrawing(run.id)}>
-                <span><strong>{run.room} · {run.type.toUpperCase()}</strong><small>{run.cfm} CFM · {run.airflowSource} airflow · {model.scaleVerified ? `~${run.pressureDrop.toFixed(2)} in. w.g. current-segment rough loss` : "verify scale to estimate segment loss"}</small></span>
-                <em>{run.currentVelocity} → {run.recommendedVelocity} FPM</em>
+                <span><strong>{run.room} · {run.type.toUpperCase()}</strong><small>{run.cfm} CFM · {run.airflowSource} airflow · {run.classification.replaceAll("-", " ")} · {run.sizingStatus}</small></span>
+                <em>{run.currentVelocity} → {run.recommendedVelocity} FPM · {run.velocityLimit} FPM limit</em>
                 <b>{run.overCapacity && run.currentSize === run.recommendedSize ? `${run.currentSize}″ MAX` : `${run.currentSize}″ → ${run.recommendedSize}″`}</b>
               </button>
-              {run.overCapacity && <p>Add a parallel path or revise the design manually; the maximum allowed flex remains over {run.velocityLimit} FPM.</p>}
+              <p>{model.scaleVerified
+                ? `${run.physicalLength.toFixed(1)} ft drawn · ${run.equivalentLength.toFixed(1)} ft assumed equivalent · ~${run.frictionRate.toFixed(3)} in. w.g./100 ft · ~${run.pressureDrop.toFixed(3)} in. w.g. segment estimate`
+                : "Scale is not verified, so length, friction-path, and segment-loss evidence is withheld."}</p>
+              {run.reasonCodes.includes("MANUAL_CFM_BELOW_DOWNSTREAM") && <p className="attention">Manual CFM is below the connected downstream demand; the preview safely uses the higher terminal-linked airflow.</p>}
+              {run.overCapacity && <p className="attention">No supported single flex run passes {run.velocityLimit} FPM. {run.alternatives[0]
+                ? `Review ${run.alternatives[0].pathCount} parallel ${run.alternatives[0].diameterInches}″ paths at about ${Math.round(run.alternatives[0].airflowPerPathCfm)} CFM each, or revise the trunk material and topology manually.`
+                : "Revise the trunk material or topology manually."}</p>}
             </div>) : <div className="system-balance-empty"><CheckCircle2 size={25} /><strong>No velocity-screened changes are waiting</strong><span>Current sizes are within the entered FPM screens; pressure and sound still require verification.</span></div>}
           </div>
           <button className="balance-apply" disabled={!selectedSizeIds.length || !sizeApplyReady} onClick={() => { const count = selectedSizeIds.length; onApplySizes(selectedSizeIds); setSelectedSizeIds([]); setNotice(`${count} reviewed size change${count === 1 ? "" : "s"} applied; saved fitting endpoints stayed attached.`); }}>

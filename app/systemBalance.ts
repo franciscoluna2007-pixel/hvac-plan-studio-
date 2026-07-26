@@ -17,7 +17,22 @@ export type BalanceRunReview = {
   currentVelocity: number;
   recommendedVelocity: number;
   velocityLimit: number;
+  classification: "planning-estimate" | "pressure-screened" | "imported-professional" | "field-verified";
+  sizingStatus: "pass" | "review" | "blocked" | "unknown";
+  applyEligible: boolean;
+  reasonCodes: string[];
+  alternatives: Array<{
+    pathCount: number;
+    diameterInches: number;
+    airflowPerPathCfm: number;
+    velocityPerPathFpm: number;
+  }>;
+  physicalLength: number;
+  equivalentLength: number;
+  equivalentLengthPerBend: number;
+  frictionRate: number;
   pressureDrop: number;
+  pressureAssumption: string;
   airflowSource: "terminal-linked" | "manual" | "estimated";
   overCapacity: boolean;
 };
@@ -86,6 +101,7 @@ export type SystemBalanceModel = {
   systemId: string;
   systemName: string;
   calculationVersion: string;
+  ductSizingVersion: string;
   evidenceFingerprint: string;
   designCfm: number;
   supplyCfm: number;
@@ -124,13 +140,14 @@ export type SystemBalanceSummary = {
   disconnectedDevices: number;
   overCapacityRuns: number;
   missingReturnRooms: number;
+  pressureUnverified: boolean;
   planningEstimate: boolean;
   draftRoomTargets: boolean;
   latestReview?: BalanceReviewRecord;
   reviewStale: boolean;
 };
 
-export const BALANCE_CALCULATION_VERSION = "system-balance-v103.1";
+export const BALANCE_CALCULATION_VERSION = "system-balance-v112.0";
 
 function percent(value: number, total: number) {
   return total > 0 ? Math.round(value / total * 100) : 0;
@@ -147,6 +164,7 @@ export function summarizeSystemBalance(model: SystemBalanceModel): SystemBalance
     Math.max(0, model.returnTerminalCount - model.connectedReturnTerminals);
   const overCapacityRuns = model.runs.filter((run) => run.overCapacity).length;
   const missingReturnRooms = model.rooms.filter((room) => room.needsReturn).length;
+  const pressureUnverified = model.runs.some((run) => run.classification === "planning-estimate");
   const planningEstimate = model.airflowTargetSource !== "user-entered";
   const draftRoomTargets = model.roomTargetSource === "draft-allocation";
   const supplyVariance = model.designCfm ? Math.abs(supplyGap) / model.designCfm : 1;
@@ -183,6 +201,7 @@ export function summarizeSystemBalance(model: SystemBalanceModel): SystemBalance
     draftRoomTargets ||
     model.cfmProposals.length > 0 ||
     model.runs.length > 0 ||
+    pressureUnverified ||
     supplyVariance > .1 ||
     returnVariance > .1 ||
     missingReturnRooms > 0;
@@ -200,6 +219,7 @@ export function summarizeSystemBalance(model: SystemBalanceModel): SystemBalance
   else if (draftRoomTargets && model.rooms.length) headline = "Review and save the draft room targets";
   else if (model.cfmProposals.length) headline = "Review the room CFM candidates";
   else if (model.runs.length) headline = "Review the velocity-screened size candidates";
+  else if (pressureUnverified) headline = "Review velocity previews and pressure assumptions";
   else if (supplyVariance > .1) headline = "Reconcile scheduled supply airflow";
   else if (returnVariance > .1) headline = "Review system return airflow";
   else if (missingReturnRooms) headline = "Review bedroom return paths";
@@ -217,6 +237,7 @@ export function summarizeSystemBalance(model: SystemBalanceModel): SystemBalance
     disconnectedDevices,
     overCapacityRuns,
     missingReturnRooms,
+    pressureUnverified,
     planningEstimate,
     draftRoomTargets,
     latestReview,

@@ -11,6 +11,7 @@ import ProjectCommandPalette, { type ProjectCommand } from "./ProjectCommandPale
 import ProjectHome from "./ProjectHome";
 import { trackProductEvent } from "./productAnalytics";
 import SystemBalanceStudio from "./SystemBalanceStudio";
+import MarkupAssistantStudio from "./MarkupAssistantStudio";
 import { type FieldPackageSectionId } from "./fieldPackage";
 import {
   clampZoom,
@@ -36,11 +37,22 @@ import {
   type PlanIntelligenceFinding,
 } from "./planIntelligence";
 import {
+  buildMarkupRecommendations,
+  summarizeMarkupAssistant,
+  type MarkupRecommendation,
+} from "./markupAssistant";
+import {
   BALANCE_CALCULATION_VERSION,
   summarizeSystemBalance,
   type BalanceReviewRecord,
   type SystemBalanceModel,
 } from "./systemBalance";
+import {
+  DUCT_SIZING_CALCULATION_VERSION,
+  estimateRunPressureDrop,
+  recommendFlexibleDuctSize,
+  roundDuctVelocityFpm,
+} from "./ductSizing";
 import {
   listCloudApprovals,
   listCloudRevisions,
@@ -1241,6 +1253,8 @@ function HVACPlanStudioApp() {
   const [planWorkspaceInitialView, setPlanWorkspaceInitialView] = useState<"reader" | "findings">("reader");
   const [showFieldPackageComposer, setShowFieldPackageComposer] = useState(false);
   const [showSystemBalanceStudio, setShowSystemBalanceStudio] = useState(false);
+  const [showMarkupAssistant, setShowMarkupAssistant] = useState(false);
+  const [activeMarkupRecommendation, setActiveMarkupRecommendation] = useState<MarkupRecommendation | undefined>();
   const [printPackageSections, setPrintPackageSections] = useState<FieldPackageSectionId[]>([
     "plan",
     "release",
@@ -1417,6 +1431,7 @@ function HVACPlanStudioApp() {
   useEffect(() => {
     setSelectedCfmProposalIds([]);
     setSelectedSizingIds([]);
+    setActiveMarkupRecommendation(undefined);
   }, [activeSystem]);
 
   useEffect(() => {
@@ -3491,42 +3506,27 @@ function HVACPlanStudioApp() {
     return units * scaleFeetPerUnit;
   }
 
-  function defaultCfm(size: string) {
-    const values: Record<string, number> = {
-      "4": 40,
-      "6": 75,
-      "7": 110,
-      "8": 160,
-      "10": 280,
-      "12": 450,
-      "14": 700,
-      "16": 1000,
-    };
-    return values[size] || 0;
-  }
-
   function velocityFpm(size: string, cfm = 0) {
-    const diameterFeet = Number(size) / 12;
-    const area = Math.PI * diameterFeet * diameterFeet / 4;
-    return area > 0 ? Math.round(cfm / area) : 0;
-  }
-
-  function flexFrictionRate(size: string, cfm = 0) {
-    const diameter = Number(size);
-    if (!diameter || !cfm) return 0;
-    // Round-duct equal-friction estimate with a 1.5× installed-flex allowance.
-    return 0.109136 * Math.pow(cfm, 1.9) / Math.pow(diameter, 5.02) * 1.5;
+    return Math.round(roundDuctVelocityFpm(size, cfm));
   }
 
   function runPressure(drawing: Drawing) {
     const bends = Math.max(0, drawing.points.length - 2);
-    const equivalentLength = drawingLengthFeet(drawing) + bends * 8;
-    const frictionRate = flexFrictionRate(drawing.size, runAirflow(drawing));
+    const pressure = estimateRunPressureDrop({
+      diameterInches: drawing.size,
+      cfm: runAirflow(drawing),
+      physicalLengthFeet: drawingLengthFeet(drawing),
+      bendCount: bends,
+    });
     return {
       bends,
-      equivalentLength,
-      frictionRate,
-      pressureDrop: frictionRate * equivalentLength / 100,
+      physicalLength: pressure.physicalLengthFeet,
+      equivalentLength: pressure.equivalentLengthFeet,
+      equivalentLengthPerBend: pressure.equivalentLengthPerBendFeet,
+      frictionRate: pressure.frictionRateInWgPer100Ft,
+      pressureDrop: pressure.pressureDropInWg,
+      classification: pressure.classification,
+      assumptionNotice: pressure.assumptionNotice,
     };
   }
 
@@ -3728,9 +3728,11 @@ function HVACPlanStudioApp() {
   }
 
   function runAirflow(drawing: Drawing) {
-    if (drawing.cfmSource === "manual") return Math.max(0, drawing.cfm ?? 0);
     const propagated = airflowNetwork().calculated.get(drawing.id) || 0;
-    return propagated || drawing.cfm || defaultCfm(drawing.size);
+    if (drawing.cfmSource === "manual") {
+      return Math.max(propagated, Math.max(0, drawing.cfm ?? 0));
+    }
+    return propagated || Math.max(0, drawing.cfm ?? 0);
   }
 
   function branchNetworkTrace(fitting?: Drawing) {
@@ -4123,14 +4125,17 @@ function HVACPlanStudioApp() {
   }
 
   function recommendedDuctSize(cfm: number, type: Drawing["type"]) {
-    const maximumSize = allowedResidentialFlexSizes.includes(residentialFlexMax) ? Number(residentialFlexMax) : 16;
-    const sizes = allowedResidentialFlexSizes.filter((size) => Number(size) <= maximumSize);
     const maximumVelocity = type === "supply"
       ? supplyVelocityLimit
       : type === "return"
         ? returnVelocityLimit
         : freshVelocityLimit;
-    return sizes.find((size) => velocityFpm(size, cfm) <= maximumVelocity) || sizes.at(-1) || "16";
+    return String(recommendFlexibleDuctSize({
+      cfm,
+      airflowSource: "terminal-linked",
+      velocityLimitFpm: maximumVelocity,
+      maxDiameterInches: residentialFlexMax,
+    }).recommendedDiameterInches);
   }
 
   function sizingSuggestions() {
@@ -4146,14 +4151,23 @@ function HVACPlanStudioApp() {
             : hasManualOverride;
         const propagated = pathIsContinuous ? network.calculated.get(drawing.id) || 0 : 0;
         const manual = Math.max(0, drawing.cfm ?? 0);
-        const cfm = hasManualOverride ? manual : propagated;
+        const manualBelowDownstream = hasManualOverride && propagated > manual;
+        const cfm = hasManualOverride ? Math.max(manual, propagated) : propagated;
         if (!cfm) return [];
-        const recommended = recommendedDuctSize(cfm, drawing.type);
         const limit = drawing.type === "supply"
           ? supplyVelocityLimit
           : drawing.type === "return"
             ? returnVelocityLimit
             : freshVelocityLimit;
+        const airflowSource = hasManualOverride ? "manual" as const : "terminal-linked" as const;
+        const recommendation = recommendFlexibleDuctSize({
+          cfm,
+          airflowSource,
+          velocityLimitFpm: limit,
+          maxDiameterInches: residentialFlexMax,
+        });
+        const recommended = String(recommendation.recommendedDiameterInches);
+        const pressure = runPressure({ ...drawing, cfm });
         return [{
           id: drawing.id,
           type: drawing.type,
@@ -4163,10 +4177,23 @@ function HVACPlanStudioApp() {
           currentVelocity: velocityFpm(drawing.size, cfm),
           velocity: velocityFpm(recommended, cfm),
           limit,
-          overCapacity: velocityFpm(recommended, cfm) > limit,
+          classification: recommendation.classification,
+          sizingStatus: recommendation.status,
+          applyEligible: recommendation.applyEligible,
+          overCapacity: recommendation.overCapacity,
+          reasonCodes: [
+            ...recommendation.reasonCodes,
+            ...(manualBelowDownstream ? ["MANUAL_CFM_BELOW_DOWNSTREAM"] : []),
+          ],
+          alternatives: recommendation.alternatives,
           room: drawing.roomName?.trim() || "Unassigned route",
-          airflowSource: hasManualOverride ? "manual" as const : "terminal-linked" as const,
-          pressureDrop: runPressure({ ...drawing, cfm }).pressureDrop,
+          airflowSource,
+          physicalLength: pressure.physicalLength,
+          equivalentLength: pressure.equivalentLength,
+          equivalentLengthPerBend: pressure.equivalentLengthPerBend,
+          frictionRate: pressure.frictionRate,
+          pressureDrop: pressure.pressureDrop,
+          pressureAssumption: pressure.assumptionNotice,
         }];
       })
       .filter((suggestion) => suggestion.overCapacity || suggestion.current !== suggestion.recommended);
@@ -4330,7 +4357,7 @@ function HVACPlanStudioApp() {
       return;
     }
     const proposed = new Map(sizingSuggestions()
-      .filter((suggestion) => ids.includes(suggestion.id) && !suggestion.overCapacity)
+      .filter((suggestion) => ids.includes(suggestion.id) && suggestion.applyEligible && !suggestion.overCapacity)
       .map((suggestion) => [suggestion.id, suggestion.recommended]));
     if (!proposed.size) {
       setBranchMessage("Select at least one velocity-screened size change before applying");
@@ -4863,7 +4890,17 @@ function HVACPlanStudioApp() {
       currentVelocity: run.currentVelocity,
       recommendedVelocity: run.velocity,
       velocityLimit: run.limit,
+      classification: run.classification,
+      sizingStatus: run.sizingStatus,
+      applyEligible: run.applyEligible,
+      reasonCodes: run.reasonCodes,
+      alternatives: run.alternatives,
+      physicalLength: run.physicalLength,
+      equivalentLength: run.equivalentLength,
+      equivalentLengthPerBend: run.equivalentLengthPerBend,
+      frictionRate: run.frictionRate,
       pressureDrop: run.pressureDrop,
+      pressureAssumption: run.pressureAssumption,
       airflowSource: run.airflowSource,
       overCapacity: run.overCapacity,
     }));
@@ -4871,7 +4908,8 @@ function HVACPlanStudioApp() {
       systemId: activeSystem,
       systemName: systemLabel(activeSystem),
       calculationVersion: BALANCE_CALCULATION_VERSION,
-      evidenceFingerprint: stableTextHash(`${systemDrawingSignature(activeSystem)}|${BALANCE_CALCULATION_VERSION}`),
+      ductSizingVersion: DUCT_SIZING_CALCULATION_VERSION,
+      evidenceFingerprint: stableTextHash(`${systemDrawingSignature(activeSystem)}|${BALANCE_CALCULATION_VERSION}|${DUCT_SIZING_CALCULATION_VERSION}`),
       designCfm: setup.targetCfm,
       supplyCfm: setup.supplyCfm,
       returnCfm: setup.returnCfm,
@@ -7086,56 +7124,6 @@ function HVACPlanStudioApp() {
     return { connected, overloaded: Number(recommended) > Number(run.size), cfm, recommended };
   }
 
-  function rebalanceSelectedFitting() {
-    const fitting = drawings.find((drawing) => drawing.id === selectedId && drawing.fitting);
-    if (!fitting?.fitting) return;
-    const [inletId, outletId, branchId] = fitting.fitting.connectedIds;
-    const inlet = drawings.find((drawing) => drawing.id === inletId);
-    const outlet = drawings.find((drawing) => drawing.id === outletId);
-    const branch = drawings.find((drawing) => drawing.id === branchId);
-    if (!outlet || !branch) return;
-    const inletCfm = inlet?.cfm || defaultCfm(fitting.fitting.upstreamSize);
-    const outletArea = Number(outlet.size) ** 2;
-    const branchArea = Number(branch.size) ** 2;
-    const totalArea = Math.max(1, outletArea + branchArea);
-    setHistory(drawings.map((drawing) => {
-      if (drawing.id === outletId) return { ...drawing, cfm: Math.round(inletCfm * outletArea / totalArea / 5) * 5 };
-      if (drawing.id === branchId) return { ...drawing, cfm: Math.round(inletCfm * branchArea / totalArea / 5) * 5 };
-      return drawing;
-    }));
-  }
-
-  function autoSizeSelectedBranchNetwork() {
-    const fitting = drawings.find((drawing) => drawing.id === selectedId && drawing.fitting);
-    if (!fitting?.fitting) return;
-    const network = airflowNetwork();
-    const rootRunId = fitting.fitting.connectedIds[0];
-    const connectedRunIds = new Set<string>();
-    const queue = [rootRunId];
-    while (queue.length) {
-      const runId = queue.shift()!;
-      if (connectedRunIds.has(runId)) continue;
-      connectedRunIds.add(runId);
-      queue.push(...(network.children.get(runId) || []));
-    }
-    let changes = 0;
-    const resized = drawings.map((drawing) => {
-      if (!connectedRunIds.has(drawing.id) || drawing.fitting || drawing.type !== "supply") return drawing;
-      const calculatedCfm = network.calculated.get(drawing.id) || drawing.cfm || 0;
-      if (!calculatedCfm) return drawing;
-      const recommended = recommendedDuctSize(calculatedCfm, "supply");
-      if (recommended === drawing.size) return drawing;
-      changes += 1;
-      return { ...drawing, size: recommended, cfm: calculatedCfm };
-    });
-    if (!changes) {
-      setBranchMessage("Connected branch network already matches calculated CFM");
-      return;
-    }
-    setHistory(synchronizeFittingSizes(resized, drawings));
-    setBranchMessage(`${changes} connected run${changes === 1 ? "" : "s"} resized · all T/Y ports kept attached`);
-  }
-
   function reshapeSelectedFitting(nextStyle: "wye45" | "tee90", nextSide?: 1 | -1) {
     const fitting = drawings.find((drawing) => drawing.id === selectedId && drawing.fitting);
     if (!fitting?.fitting) return;
@@ -7375,7 +7363,7 @@ function HVACPlanStudioApp() {
           size: ductSize,
           lineWeight: ["supply", "return"].includes(activeTool) ? runLineWeight : 0.2,
           page: pageNumber,
-          cfm: defaultCfm(ductSize),
+          cfm: 0,
           cfmSource: "planning-seed",
           systemId: activeSystem,
           elevation: "",
@@ -7761,7 +7749,8 @@ function HVACPlanStudioApp() {
       ...upstream,
       points: cleanPoints([...upstreamPoints.slice(0, -1), ...downstreamPoints]),
       size: fitting.fitting.upstreamSize,
-      cfm: upstream.cfm || defaultCfm(fitting.fitting.upstreamSize),
+      cfm: upstream.cfm || downstream.cfm || 0,
+      cfmSource: upstream.cfmSource || downstream.cfmSource,
     };
     const retained = drawings.filter((drawing) =>
         drawing.id !== fitting.id &&
@@ -9036,6 +9025,14 @@ function HVACPlanStudioApp() {
         }
         return;
       }
+      if (showMarkupAssistant) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setShowMarkupAssistant(false);
+          setActiveMarkupRecommendation(undefined);
+        }
+        return;
+      }
       if (showPlanIntelligence || showFieldPackageComposer || showSystemBalanceStudio) {
         if (event.key === "Escape") event.preventDefault();
         return;
@@ -9204,7 +9201,7 @@ function HVACPlanStudioApp() {
   const liveDraftFeet = liveDraftPoints.length > 1
     ? liveDraftPoints.slice(1).reduce((total, point, index) => total + Math.hypot(point.x - liveDraftPoints[index].x, point.y - liveDraftPoints[index].y), 0) * scaleFeetPerUnit
     : 0;
-  const liveDraftCfm = defaultCfm(ductSize);
+  const liveDraftCfm = 0;
   const liveDraftVelocity = velocityFpm(ductSize, liveDraftCfm);
   const activeReviewRow = rightTab === "checks" ? activeReviewedIssueRows.find((row) => row.issue.id === activeReviewIssueId) : undefined;
   const activeProjectCommand = projectCommandSnapshot || {
@@ -9232,6 +9229,24 @@ function HVACPlanStudioApp() {
     released: activeFieldPackage.released,
     releaseStale: activeFieldPackage.stale,
   });
+  const assistantBranchOpportunities = branchOpportunities().filter((opportunity) => {
+    const run = drawings.find((drawing) => drawing.id === opportunity.mainRunId);
+    return run && drawingSystem(run) === activeSystem;
+  });
+  const markupRecommendations = buildMarkupRecommendations({
+    findings: activePlanIntelligenceFindings,
+    branchOpportunities: assistantBranchOpportunities,
+    sizingCandidateCount: activeBuilderSummary.sizing.length,
+    sizingEvidenceFingerprint: stableTextHash(JSON.stringify(activeBuilderSummary.sizing)),
+    scaleVerified,
+    designCfm: activeAirflowSetup.targetCfm,
+  });
+  const markupAssistantSummary = summarizeMarkupAssistant(
+    markupRecommendations,
+    activePlanIntelligenceFindings,
+    activeBuilderSummary.sizing.length,
+    assistantBranchOpportunities.length,
+  );
   const activeFieldRuns = activeFieldPackage.runs;
   const modalWorkspaceActive = showProjectHome || showProjectSetup || showPlanIntelligence || showFieldPackageComposer || showSystemBalanceStudio || showDisplaySettings;
   const packagePrintClasses = printPackageSections.map((section) => `package-include-${section}`).join(" ");
@@ -9240,6 +9255,7 @@ function HVACPlanStudioApp() {
     setShowCommandPalette(false);
     setShowCloudProjects(false);
     setShowFieldPackageComposer(false);
+    setShowMarkupAssistant(false);
     setShowProjectHome(false);
     setShowProjectSetup(false);
     setPlanWorkspaceInitialView(view);
@@ -9254,6 +9270,7 @@ function HVACPlanStudioApp() {
     setShowCommandPalette(false);
     setShowCloudProjects(false);
     setShowPlanIntelligence(false);
+    setShowMarkupAssistant(false);
     setShowProjectHome(false);
     setShowProjectSetup(false);
     setShowFieldPackageComposer(true);
@@ -9263,12 +9280,25 @@ function HVACPlanStudioApp() {
     setShowCommandPalette(false);
     setShowCloudProjects(false);
     setShowPlanIntelligence(false);
+    setShowMarkupAssistant(false);
     setShowFieldPackageComposer(false);
     setShowProjectHome(false);
     setShowProjectSetup(false);
     setSelectedCfmProposalIds([]);
     setSelectedSizingIds([]);
     setShowSystemBalanceStudio(true);
+  }
+
+  function openMarkupAssistant() {
+    setShowCommandPalette(false);
+    setShowCloudProjects(false);
+    setShowPlanIntelligence(false);
+    setShowFieldPackageComposer(false);
+    setShowSystemBalanceStudio(false);
+    setShowProjectHome(false);
+    setShowProjectSetup(false);
+    setActiveMarkupRecommendation(undefined);
+    setShowMarkupAssistant(true);
   }
 
   function printSelectedFieldPackage(sections: FieldPackageSectionId[]) {
@@ -9337,6 +9367,14 @@ function HVACPlanStudioApp() {
       run: () => { finishDrawing(); setBranchWorkflow("run-first"); setActiveTool("branch"); },
     },
     {
+      id: "markup-assistant",
+      label: "Open Intelligent HVAC Markup Assistant",
+      detail: `${markupAssistantSummary.open} evidence-bound recommendation${markupAssistantSummary.open === 1 ? "" : "s"} · plan stays unchanged until approval`,
+      group: "Systems",
+      keywords: "v111 markup assistant routing return branch ty recommendations approval",
+      run: openMarkupAssistant,
+    },
+    {
       id: "airflow",
       label: "Open System Balance Studio",
       detail: `${activeAirflowSetup.targetCfm || "No"} planning CFM · review continuous paths, room CFM, and velocity-screened sizes`,
@@ -9395,7 +9433,7 @@ function HVACPlanStudioApp() {
   ];
 
   return (
-    <main className={`app-shell layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${activeFieldPackage.released && !activeFieldPackage.stale ? "package-print-released" : "package-print-draft"}`}>
+    <main className={`app-shell layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${activeFieldPackage.released && !activeFieldPackage.stale ? "package-print-released" : "package-print-draft"}`}>
       <header className="topbar" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
         <button className="brand" onClick={() => setShowProjectHome(true)} aria-label="Open Project Home">
           <div className="brand-mark"><Wind size={23} strokeWidth={2.4} /></div>
@@ -9429,7 +9467,7 @@ function HVACPlanStudioApp() {
             <Search size={16} /> <span>Command</span><kbd>⌘K</kbd>
           </button>
           <button className={`cloud-button ${showCloudProjects ? "active" : ""}`} aria-pressed={showCloudProjects} onClick={() => setShowCloudProjects(true)}>
-            <Cloud size={16} /> Project Hub <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V110"}</span>
+            <Cloud size={16} /> Project Hub <span className="cloud-button-badge">{showCloudProjects ? "OPEN" : "V112"}</span>
           </button>
           <button className="drive-button" onClick={() => void openFromDrive()}><HardDrive size={16} /> Open Drive</button>
           <button className="reader-button" disabled={!pdf} onClick={() => openAIPlanReader("reader")}><ScanSearch size={16} /> AI Plan Reader</button>
@@ -9446,7 +9484,7 @@ function HVACPlanStudioApp() {
         <dl>
           <div><dt>Sheet</dt><dd>{pageNumber} of {pdf?.numPages || 1}</dd></div>
           <div><dt>Scale</dt><dd>{scaleLabel}</dd></div>
-          <div><dt>Airflow</dt><dd>{Math.max(0, ...drawings.filter((drawing) => drawing.type === "supply").map((drawing) => drawing.cfm || defaultCfm(drawing.size)))} CFM</dd></div>
+          <div><dt>Airflow</dt><dd>{Math.max(0, ...drawings.filter((drawing) => drawing.type === "supply").map((drawing) => drawing.cfm || 0))} CFM</dd></div>
         </dl>
       </section>
 
@@ -10436,9 +10474,19 @@ function HVACPlanStudioApp() {
                             : branchPreview?.runIds?.includes(drawing.id) || branchPreview?.branchRunId === drawing.id
                             ? "branch-candidate-route"
                               : "";
+                      const assistantPreviewClass =
+                        showMarkupAssistant &&
+                        activeMarkupRecommendation?.preview?.kind === "branch-junction" &&
+                        [activeMarkupRecommendation.preview.mainRunId, activeMarkupRecommendation.preview.branchRunId].includes(drawing.id)
+                          ? "markup-preview-run"
+                          : showMarkupAssistant &&
+                            activeMarkupRecommendation?.preview?.kind === "drawing" &&
+                            activeMarkupRecommendation.preview.drawingId === drawing.id
+                            ? "markup-preview-run"
+                            : "";
                       const runSelected = isSelected(drawing.id);
                       const showRunNodeHandles = runSelected || Boolean(branchCandidateClass);
-                      return <g key={drawing.id} className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${runSelected ? "selected-drawing" : ""} ${branchCandidateClass}`.trim()} onPointerDown={(event) => {
+                      return <g key={drawing.id} className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${runSelected ? "selected-drawing" : ""} ${branchCandidateClass} ${assistantPreviewClass}`.trim()} onPointerDown={(event) => {
                         if (event.button !== 0 || panRef.current || activeTool !== "select" || drawingLocked(drawing)) return;
                         event.stopPropagation();
                         event.shiftKey ? toggleSelection(drawing.id) : selectOnly(drawing.id);
@@ -10480,6 +10528,41 @@ function HVACPlanStudioApp() {
                         </text>
                       </g>;
                     })}
+                    {showMarkupAssistant && activeMarkupRecommendation?.preview && (() => {
+                      const preview = activeMarkupRecommendation.preview;
+                      if (preview.kind === "branch-junction") {
+                        const mainRun = drawings.find((drawing) => drawing.id === preview.mainRunId && drawing.page === pageNumber);
+                        const branchRun = drawings.find((drawing) => drawing.id === preview.branchRunId && drawing.page === pageNumber);
+                        if (!mainRun || !branchRun) return null;
+                        const mainDegrees = preview.angle * 180 / Math.PI;
+                        const branchDegrees = preview.branchAngle * 180 / Math.PI;
+                        return <g
+                          className="markup-suggestion-preview branch"
+                          aria-hidden="true"
+                          transform={`translate(${preview.point.x} ${preview.point.y}) scale(${1 / Math.max(.1, zoom)})`}
+                        >
+                          <circle className="markup-preview-halo" cx="0" cy="0" r="24" />
+                          <path className="markup-preview-main" d="M -23 0 L 23 0" transform={`rotate(${mainDegrees})`} />
+                          <path className="markup-preview-branch" d="M 0 0 L 23 0" transform={`rotate(${branchDegrees})`} />
+                          <circle className="markup-preview-port" cx="0" cy="0" r="7" />
+                          <text x="0" y="-31" textAnchor="middle">APPROVAL PREVIEW · PLAN UNCHANGED</text>
+                        </g>;
+                      }
+                      const drawing = drawings.find((candidate) => candidate.id === preview.drawingId && candidate.page === pageNumber);
+                      if (!drawing) return null;
+                      const point = drawing.points[Math.floor(drawing.points.length / 2)] || drawing.points[0];
+                      if (!point) return null;
+                      return <g
+                        className={`markup-suggestion-preview ${drawing.type}`}
+                        aria-hidden="true"
+                        transform={`translate(${point.x} ${point.y}) scale(${1 / Math.max(.1, zoom)})`}
+                      >
+                        <circle className="markup-preview-halo" cx="0" cy="0" r="25" />
+                        <circle className="markup-preview-target" cx="0" cy="0" r="14" />
+                        <path d="M -20 0 L -9 0 M 9 0 L 20 0 M 0 -20 L 0 -9 M 0 9 L 0 20" />
+                        <text x="0" y="-31" textAnchor="middle">ASSISTANT PREVIEW</text>
+                      </g>;
+                    })()}
                     {reviewIssueMarkers(activeReviewedIssueRows).map((marker) => <g
                       className={`review-marker ${marker.issue.severity} ${marker.resolvedByDecision ? "accepted" : ""} ${marker.issue.id === activeReviewIssueId ? "active" : ""}`}
                       key={`marker-${marker.issue.id}`}
@@ -10661,6 +10744,17 @@ function HVACPlanStudioApp() {
                   {stage.shortLabel}
                 </button>)}
               </div>
+            </div>
+
+            <div className="markup-assistant-launch">
+              <span><Sparkles size={19} /></span>
+              <div>
+                <small>V111 · APPROVAL-FIRST DESIGN INTELLIGENCE</small>
+                <strong>Intelligent HVAC Markup Assistant</strong>
+                <p>{markupAssistantSummary.headline}. Preview recommendations over the live plan before taking the next manual step.</p>
+              </div>
+              <b>{markupAssistantSummary.open}</b>
+              <button onClick={openMarkupAssistant}>Open assistant <ArrowRight size={14} /></button>
             </div>
 
             <div className="workflow-next-action">
@@ -11849,7 +11943,7 @@ function HVACPlanStudioApp() {
         <span><i className="online" /> Ready</span>
         <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor · two-finger touch navigates · stylus draws"}</span>
         <span><Ruler size={11} /> {scaleLabel}</span>
-        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · AI Plan Reader v105 · Plan Intelligence v106 · Readability v110</span>
+        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · AI Plan Reader v105 · Plan Intelligence v106 · Markup Assistant v111 · Sizing Engine v112</span>
       </footer>
       <ProjectHome
         open={showProjectHome && !showProjectSetup}
@@ -11898,9 +11992,8 @@ function HVACPlanStudioApp() {
           goToPage(page);
         }}
         onPrepareMarkup={(page) => {
-          setShowPlanIntelligence(false);
           goToPage(page);
-          setActiveTool("note");
+          openMarkupAssistant();
         }}
         cloudProjectConnected={Boolean(workingCloudProjectId)}
         onOpenCloudWorkspace={() => {
@@ -11934,6 +12027,89 @@ function HVACPlanStudioApp() {
           } catch {
             setBranchMessage("The review decision is saved locally, but cloud sync needs edit access.");
           }
+        }}
+      />
+      <MarkupAssistantStudio
+        key={`markup-${activeSystem}-${showMarkupAssistant ? "open" : "closed"}-${markupRecommendations.map((row) => row.evidenceFingerprint).join("-")}`}
+        open={showMarkupAssistant}
+        projectName={fileName}
+        systemName={systemLabel(activeSystem)}
+        recommendations={markupRecommendations}
+        summary={markupAssistantSummary}
+        onClose={() => {
+          setShowMarkupAssistant(false);
+          setActiveMarkupRecommendation(undefined);
+        }}
+        onActiveRecommendationChange={setActiveMarkupRecommendation}
+        onFocusDrawing={(drawingId) => {
+          focusDrawingOnPlan(drawingId);
+        }}
+        onOpenManualReview={(recommendation) => {
+          const issue = recommendation.findingId
+            ? activeValidationIssues.find((candidate) => candidate.id === recommendation.findingId)
+            : undefined;
+          if (issue) {
+            setShowMarkupAssistant(false);
+            setActiveMarkupRecommendation(undefined);
+            openInspectorPanel();
+            window.requestAnimationFrame(() => focusReviewIssue(issue));
+            return;
+          }
+          if (recommendation.action === "sizing-review") {
+            setShowMarkupAssistant(false);
+            setActiveMarkupRecommendation(undefined);
+            openSystemBalanceStudio();
+            return;
+          }
+          setBranchMessage("This recommendation needs a manual plan decision before geometry can change");
+        }}
+        onStartBranchPass={() => {
+          setShowMarkupAssistant(false);
+          setActiveMarkupRecommendation(undefined);
+          finishDrawing();
+          setBranchWorkflow("run-first");
+          setActiveTool("branch");
+          setBranchMessage("Run-first branch pass opened from an approved preview · choose the highlighted existing runs");
+        }}
+        onOpenSizingReview={() => {
+          setShowMarkupAssistant(false);
+          setActiveMarkupRecommendation(undefined);
+          openSystemBalanceStudio();
+        }}
+        onApplyRecommendation={(recommendation) => {
+          const preview = recommendation.preview;
+          if (preview?.kind !== "branch-junction") return;
+          const opportunity = assistantBranchOpportunities.find((candidate) =>
+            candidate.mainRunId === preview.mainRunId &&
+            candidate.branchRunId === preview.branchRunId &&
+            Math.hypot(candidate.center.x - preview.point.x, candidate.center.y - preview.point.y) < 1
+          );
+          if (!opportunity) {
+            setBranchMessage("That preview changed with the plan. Review the refreshed junction before placing it.");
+            setActiveMarkupRecommendation(undefined);
+            return;
+          }
+          setShowMarkupAssistant(false);
+          setActiveMarkupRecommendation(undefined);
+          finishDrawing();
+          setBranchWorkflow("run-first");
+          setQueuedBranchRunId(opportunity.branchRunId);
+          setActiveTool("branch");
+          setBranchPreview({
+            center: opportunity.center,
+            angle: opportunity.angle,
+            branchAngle: opportunity.branchAngle,
+            side: opportunity.side,
+            style: opportunity.style,
+            parentSize: opportunity.parentSize,
+            valid: true,
+            matchedExisting: true,
+            mainRunId: opportunity.mainRunId,
+            branchRunId: opportunity.branchRunId,
+            runIds: [opportunity.mainRunId, opportunity.branchRunId],
+            mode: "attach-run",
+          });
+          setBranchMessage("Approved T/Y preview armed · click the highlighted junction to confirm placement · Undo remains available");
         }}
       />
       {showSystemBalanceStudio && <SystemBalanceStudio

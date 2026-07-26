@@ -704,7 +704,7 @@ test("ships v105 AI Plan Reader and v106 evidence-backed Plan Intelligence", asy
   assert.match(migration, /private\.can_edit_project\(project_id\)/);
 });
 
-test("ships v110 System Balance Studio with reviewed calculations and manual geometry control", async () => {
+test("ships v112 System Balance Studio with reviewed calculations and manual geometry control", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const studio = await readFile(new URL("../app/SystemBalanceStudio.tsx", import.meta.url), "utf8");
   const model = await readFile(new URL("../app/systemBalance.ts", import.meta.url), "utf8");
@@ -739,7 +739,10 @@ test("ships v110 System Balance Studio with reviewed calculations and manual geo
   assert.match(page, /function exportSystemBalanceRunCsv\(\)/);
   assert.match(page, /showSystemBalanceStudio && <SystemBalanceStudio/);
   assert.doesNotMatch(page, /const activeSystemBalanceModel = buildSystemBalanceModel\(\)/);
-  assert.match(studio, /SYSTEM BALANCE STUDIO · V110/);
+  assert.match(studio, /SYSTEM BALANCE STUDIO · V112/);
+  assert.match(studio, /TRANSPARENT DUCT SIZE REVIEW · V112/);
+  assert.match(studio, /Velocity preview only\. Pressure remains unverified\./);
+  assert.match(studio, /run\.applyEligible/);
   assert.match(studio, /Planning estimate—not a Manual J, S, D, or T design/);
   assert.match(studio, /Studio never draws new runs, reroutes paths, balances airflow, or numbers ductwork automatically/);
   assert.match(studio, /role="tablist"/);
@@ -747,10 +750,256 @@ test("ships v110 System Balance Studio with reviewed calculations and manual geo
   assert.match(studio, /aria-live="polite"/);
   assert.doesNotMatch(studio, /Automatic Run Numbering/i);
   assert.match(model, /export function summarizeSystemBalance/);
+  assert.match(model, /system-balance-v112\.0/);
   assert.match(model, /latestReview\.evidenceFingerprint !== model\.evidenceFingerprint/);
   assert.match(styles, /\.system-balance-overlay/);
   assert.match(styles, /\.balance-method-note/);
   assert.match(styles, /\.system-balance-studio/);
+});
+
+test("v112 sizing physics are versioned, bounded, deterministic, and explicit about pressure", async () => {
+  const sizing = await import(new URL("../app/ductSizing.ts", import.meta.url));
+
+  assert.equal(sizing.DUCT_SIZING_CALCULATION_VERSION, "duct-sizing-v112.0");
+  assert.equal(sizing.planningAirflowCfm(3), 1200);
+  assert.equal(sizing.planningAirflowCfm(5), 2000);
+  assert.ok(Math.abs(sizing.roundDuctAreaSquareFeet(8) - 0.3490658503988659) < 1e-12);
+  assert.ok(Math.abs(sizing.roundDuctVelocityFpm(8, 200) - 572.9577951308232) < 1e-9);
+  assert.ok(Math.abs(sizing.roundDuctVelocityCapacity(16, 600) - 837.7580409572781) < 1e-9);
+
+  const input = {
+    cfm: 200,
+    airflowSource: "manual",
+    velocityLimitFpm: 600,
+    maxDiameterInches: 16,
+  };
+  const before = JSON.stringify(input);
+  const branch = sizing.recommendFlexibleDuctSize(input);
+  assert.equal(JSON.stringify(input), before);
+  assert.equal(branch.recommendedDiameterInches, 8);
+  assert.equal(branch.classification, "planning-estimate");
+  assert.equal(branch.status, "review");
+  assert.equal(branch.applyEligible, true);
+  assert.ok(branch.reasonCodes.includes("PRESSURE_EVIDENCE_MISSING"));
+
+  const singleMain = sizing.recommendFlexibleDuctSize({
+    cfm: 2000,
+    airflowSource: "manual",
+    velocityLimitFpm: 900,
+    maxDiameterInches: 20,
+  });
+  assert.equal(singleMain.recommendedDiameterInches, 16);
+  assert.equal(singleMain.maxDiameterInches, 16);
+  assert.equal(singleMain.overCapacity, true);
+  assert.equal(singleMain.applyEligible, false);
+  assert.ok(singleMain.reasonCodes.includes("NO_COMPLIANT_FLEX_SIZE"));
+  assert.ok(singleMain.reasonCodes.includes("MAX_FLEX_16"));
+  assert.equal(singleMain.alternatives[0].pathCount, 2);
+  assert.ok(Math.abs(sizing.roundDuctVelocityFpm(16, 2000) - 1432.3944878270581) < 1e-9);
+  assert.ok(Math.abs(sizing.roundDuctVelocityFpm(14, 1200) - 1122.529557807327) < 1e-9);
+
+  const planningSeed = sizing.recommendFlexibleDuctSize({
+    cfm: 200,
+    airflowSource: "planning-seed",
+    velocityLimitFpm: 600,
+  });
+  assert.equal(planningSeed.applyEligible, false);
+  assert.ok(planningSeed.reasonCodes.includes("AIRFLOW_PLANNING_SEED"));
+
+  const pressure = sizing.calculatePressureBasis({
+    externalStaticPressureInWg: .5,
+    componentLossesInWg: [.12, .08],
+    totalEffectiveLengthFeet: 300,
+  });
+  assert.equal(pressure.status, "pass");
+  assert.ok(Math.abs(pressure.availableStaticPressureInWg - .3) < 1e-12);
+  assert.ok(Math.abs(pressure.designFrictionRateInWgPer100Ft - .1) < 1e-12);
+  assert.equal(sizing.calculatePressureBasis().status, "unknown");
+  assert.equal(sizing.calculatePressureBasis({
+    externalStaticPressureInWg: .2,
+    componentLossesInWg: [.25],
+    totalEffectiveLengthFeet: 150,
+  }).status, "blocked");
+
+  const eightInch = sizing.estimateRunPressureDrop({
+    diameterInches: 8,
+    cfm: 200,
+    physicalLengthFeet: 50,
+    bendCount: 2,
+  });
+  const tenInch = sizing.estimateRunPressureDrop({
+    diameterInches: 10,
+    cfm: 200,
+    physicalLengthFeet: 50,
+    bendCount: 2,
+  });
+  assert.equal(eightInch.equivalentLengthFeet, 66);
+  assert.ok(tenInch.pressureDropInWg < eightInch.pressureDropInWg);
+  assert.match(eightInch.assumptionNotice, /not a pressure verification/i);
+});
+
+test("v112 allocation and progression rules remain exact without mutating inputs", async () => {
+  const sizing = await import(new URL("../app/ductSizing.ts", import.meta.url));
+  const rows = [
+    { key: "master", weight: 3 },
+    { key: "living", weight: 2 },
+    { key: "bedroom", weight: 1 },
+  ];
+  const before = JSON.stringify(rows);
+  assert.deepEqual(sizing.allocateCfm(1200, rows), {
+    bedroom: 200,
+    living: 400,
+    master: 600,
+  });
+  assert.equal(JSON.stringify(rows), before);
+  assert.deepEqual(sizing.allocateCfm(100, [
+    { key: "a", weight: 1 },
+    { key: "b", weight: 1 },
+    { key: "c", weight: 1 },
+  ]), { a: 35, b: 35, c: 30 });
+
+  assert.equal(sizing.evaluateTransition({
+    parentDiameterInches: 14,
+    childDiameterInches: 12,
+    portKind: "straight",
+  }).status, "pass");
+  assert.equal(sizing.evaluateTransition({
+    parentDiameterInches: 14,
+    childDiameterInches: 10,
+    portKind: "branch",
+  }).status, "pass");
+  assert.equal(sizing.evaluateTransition({
+    parentDiameterInches: 14,
+    childDiameterInches: 10,
+    portKind: "straight",
+  }).status, "review");
+  assert.equal(sizing.evaluateTransition({
+    parentDiameterInches: 14,
+    childDiameterInches: 16,
+    portKind: "straight",
+  }).status, "blocked");
+});
+
+test("v112 removes circular and bulk sizing shortcuts from the workspace", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const studio = await readFile(new URL("../app/SystemBalanceStudio.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const roadmap = await readFile(new URL("../ROADMAP.md", import.meta.url), "utf8");
+
+  assert.match(page, /DUCT_SIZING_CALCULATION_VERSION/);
+  assert.match(page, /Math\.max\(manual, propagated\)/);
+  assert.match(page, /suggestion\.applyEligible && !suggestion\.overCapacity/);
+  assert.doesNotMatch(page, /function defaultCfm/);
+  assert.doesNotMatch(page, /function autoSizeSelectedBranchNetwork/);
+  assert.doesNotMatch(page, /function rebalanceSelectedFitting/);
+  assert.match(studio, /No supported single flex run passes/);
+  assert.match(styles, /v112 — calculation evidence and safety copy are primary content/);
+  assert.match(styles, /\.balance-safety-note p,[\s\S]*font-size: 13px !important/);
+  assert.match(roadmap, /## v112 — Transparent Duct Sizing Engine/);
+  assert.match(roadmap, /## v112 — Transparent Duct Sizing Engine[\s\S]{0,100}\*\*Status: Shipped\*\*/);
+});
+
+test("ships v111 Intelligent HVAC Markup Assistant as an evidence-bound, approval-first preview", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const studio = await readFile(new URL("../app/MarkupAssistantStudio.tsx", import.meta.url), "utf8");
+  const engineSource = await readFile(new URL("../app/markupAssistant.ts", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const roadmap = await readFile(new URL("../ROADMAP.md", import.meta.url), "utf8");
+
+  assert.match(page, /import MarkupAssistantStudio from "\.\/MarkupAssistantStudio"/);
+  assert.match(page, /buildMarkupRecommendations/);
+  assert.match(page, /<MarkupAssistantStudio/);
+  assert.match(page, /Approved T\/Y preview armed · click the highlighted junction to confirm placement/);
+  assert.match(page, /That preview changed with the plan/);
+  assert.match(page, /markup-suggestion-preview/);
+  assert.match(studio, /INTELLIGENT HVAC MARKUP ASSISTANT · V111/);
+  assert.match(studio, /aria-modal="false"/);
+  assert.match(studio, /aria-atomic="true"/);
+  assert.match(studio, /evidenceFingerprint === recommendation\.evidenceFingerprint/);
+  assert.match(studio, /Approved for the next manual step/);
+  assert.match(studio, /The plan is still unchanged/);
+  assert.match(studio, /aria-pressed=\{filter === id\}/);
+  assert.doesNotMatch(engineSource, /setHistory|setDrawings|dispatch/);
+  assert.match(styles, /v111 — Markup Assistant readability floor/);
+  assert.match(styles, /\.markup-suggestion-preview text \{ font-size: 11px; \}/);
+  assert.match(roadmap, /## v111 — Intelligent HVAC Markup Assistant/);
+  assert.match(roadmap, /session-level/);
+});
+
+test("v111 recommendations are deterministic, granular, immutable, and stale when evidence moves", async () => {
+  const { stripTypeScriptTypes } = await import("node:module");
+  const planSource = await readFile(new URL("../app/planIntelligence.ts", import.meta.url), "utf8");
+  const markupSource = await readFile(new URL("../app/markupAssistant.ts", import.meta.url), "utf8");
+  const standaloneSource = [
+    stripTypeScriptTypes(planSource, { mode: "transform" }),
+    stripTypeScriptTypes(markupSource.replace(/^import \{[\s\S]*?\} from "\.\/planIntelligence";\n/, ""), { mode: "transform" }),
+  ].join("\n");
+  const { buildMarkupRecommendations } = await import(`data:text/javascript;base64,${Buffer.from(standaloneSource).toString("base64")}`);
+  const findings = [{
+    id: "finding-1",
+    ruleId: "unconnected-run",
+    evidenceFingerprint: "evidence-a",
+    severity: "critical",
+    category: "Connections",
+    title: "Supply run is disconnected",
+    detail: "Run 12 is not connected to equipment.",
+    drawingId: "run-12",
+    reference: "Run 12",
+    resolved: false,
+  }];
+  const opportunities = [{
+    id: "run-a-run-b-0-1",
+    center: { x: 120.125, y: 220.5 },
+    angle: 0,
+    branchAngle: Math.PI / 4,
+    side: 1,
+    mainRunId: "run-a",
+    branchRunId: "run-b",
+    parentSize: "14",
+    style: "wye45",
+    score: 2,
+  }, {
+    id: "run-a-run-c-0-1",
+    center: { x: 180, y: 260 },
+    angle: 0,
+    branchAngle: Math.PI / 2,
+    side: -1,
+    mainRunId: "run-a",
+    branchRunId: "run-c",
+    parentSize: "12",
+    style: "tee90",
+    score: 3,
+  }];
+  const input = {
+    findings,
+    branchOpportunities: opportunities,
+    sizingCandidateCount: 2,
+    sizingEvidenceFingerprint: "sizes-a",
+    scaleVerified: true,
+    designCfm: 1200,
+  };
+  const before = JSON.stringify(input);
+  const first = buildMarkupRecommendations(input);
+  const second = buildMarkupRecommendations(input);
+
+  assert.equal(JSON.stringify(input), before);
+  assert.deepEqual(first, second);
+  assert.equal(first.filter((row) => row.category === "Branch strategy").length, 2);
+  assert.ok(first.filter((row) => row.category === "Branch strategy").every((row) => row.preview?.kind === "branch-junction"));
+
+  const moved = buildMarkupRecommendations({
+    ...input,
+    branchOpportunities: [{ ...opportunities[0], center: { x: 121.125, y: 220.5 } }, opportunities[1]],
+  });
+  assert.notEqual(
+    first.find((row) => row.id.includes(opportunities[0].id)).evidenceFingerprint,
+    moved.find((row) => row.id.includes(opportunities[0].id)).evidenceFingerprint,
+  );
+  const resized = buildMarkupRecommendations({ ...input, sizingEvidenceFingerprint: "sizes-b" });
+  assert.notEqual(
+    first.find((row) => row.action === "sizing-review")?.evidenceFingerprint,
+    resized.find((row) => row.action === "sizing-review")?.evidenceFingerprint,
+  );
 });
 
 test("scores v103 balance evidence deterministically and marks changed reviews stale", async () => {
@@ -758,7 +1007,8 @@ test("scores v103 balance evidence deterministically and marks changed reviews s
   const base = {
     systemId: "system-1",
     systemName: "System 1",
-    calculationVersion: "system-balance-v103.1",
+    calculationVersion: "system-balance-v112.0",
+    ductSizingVersion: "duct-sizing-v112.0",
     evidenceFingerprint: "evidence-a",
     designCfm: 1200,
     supplyCfm: 1200,
@@ -869,6 +1119,16 @@ test("scores v103 balance evidence deterministically and marks changed reviews s
       recommendedVelocity: 1146,
       velocityLimit: 900,
       pressureDrop: .22,
+      classification: "planning-estimate",
+      sizingStatus: "blocked",
+      applyEligible: false,
+      reasonCodes: ["NO_COMPLIANT_FLEX_SIZE"],
+      alternatives: [],
+      physicalLength: 25,
+      equivalentLength: 33,
+      equivalentLengthPerBend: 8,
+      frictionRate: .66,
+      pressureAssumption: "Planning estimate",
       airflowSource: "manual",
       overCapacity: true,
     }],
@@ -928,7 +1188,7 @@ test("ships v108 tablet gestures, stylus protection, responsive drawers, and bou
   assert.match(styles, /min-width: 44px; min-height: 44px/);
   assert.match(styles, /@media \(min-width: 2560px\)/);
   assert.match(styles, /height: 100dvh/);
-  assert.match(analytics, /app_version: "108"/);
+  assert.match(analytics, /app_version: "112"/);
 
   const pinch = pinchCamera({
     anchorPlan: { x: 100, y: 200 },
