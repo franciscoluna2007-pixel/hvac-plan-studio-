@@ -958,7 +958,7 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(page, /actions\.length !== requestedIds\.size/);
   assert.match(page, /Apply reviewed terminal CFM first, then rebuild the repair plan before resizing the network/);
   assert.match(page, /setHistory\(next\)/);
-  assert.match(studio, /INTELLIGENT HVAC MARKUP ASSISTANT · V115/);
+  assert.match(studio, /INTELLIGENT HVAC MARKUP ASSISTANT · V116/);
   assert.match(studio, /Build the repair plan\. Approve one controlled batch\./);
   assert.match(studio, /aria-modal="false"/);
   assert.match(studio, /Inspect only/);
@@ -1257,13 +1257,56 @@ test("v115 Advanced Plan Intelligence keeps source regions, OCR gaps, and relati
   assert.deepEqual(comparison, { changed: true, added: 1, removed: 0, unchanged: 6 });
 });
 
+test("v116 Studio Standard separates locked rules, recommendations, and project-only overrides", async () => {
+  const standard = await import(new URL("../app/designStandard.ts", import.meta.url));
+  const studio = await readFile(new URL("../app/MarkupAssistantStudio.tsx", import.meta.url), "utf8");
+  const roadmap = await readFile(new URL("../ROADMAP.md", import.meta.url), "utf8");
+  const input = {
+    systemId: "system-1",
+    evidenceFingerprint: "drawing-a",
+    residentialFlexMax: "18",
+    runs: [
+      { id: "run-18", type: "supply", size: "18", roomName: "Bedroom 1", roomType: "bedroom" },
+      { id: "run-10", type: "supply", size: "10", roomName: "Living", roomType: "general" },
+      { id: "run-8", type: "supply", size: "8", roomName: "Office", roomType: "general" },
+      { id: "run-6", type: "supply", size: "6", roomName: "Bedroom 2", roomType: "bedroom" },
+      { id: "run-oa", type: "fresh", size: "6" },
+    ],
+    terminals: [
+      { id: "diffuser-1", kind: "diffuser", roomName: "Bedroom 1", roomType: "bedroom", connected: true },
+      { id: "diffuser-2", kind: "diffuser", roomName: "Bedroom 2", roomType: "bedroom", connected: false },
+      { id: "return-1", kind: "returnGrille", roomName: "Bedroom 1", roomType: "bedroom", connected: true },
+    ],
+    tyFittingIds: [],
+    motorDamperIds: [],
+    projectOverrides: { "reviewed-ty-strategy": "Existing structure limits fitting access." },
+  };
+  const before = JSON.stringify(input);
+  const profile = standard.buildDesignStandardProfile(input);
+
+  assert.equal(JSON.stringify(input), before);
+  assert.equal(profile.engineVersion, "design-standard-v116.0");
+  assert.equal(profile.name, "HVAC Plan Studio Standard");
+  assert.equal(profile.profileVersion, "1.0");
+  assert.equal(profile.blocked, 2);
+  assert.equal(profile.rules.find((row) => row.id === "residential-flex-limit").overrideAllowed, false);
+  assert.ok(profile.rules.find((row) => row.id === "bedroom-return-path").drawingIds.includes("diffuser-2"));
+  assert.equal(profile.rules.find((row) => row.id === "reviewed-ty-strategy").level, "project");
+  assert.match(profile.rules.find((row) => row.id === "fresh-air-control").finding, /without a motorized outside-air damper/);
+  assert.match(studio, /Studio Standard/);
+  assert.match(studio, /Locked safeguards/);
+  assert.match(studio, /Project exceptions/);
+  assert.doesNotMatch(studio, /4119|119 Company Style/);
+  assert.doesNotMatch(roadmap, /4119 Company Style|119 Company Style/);
+});
+
 test("v111 recommendations are deterministic, granular, immutable, and stale when evidence moves", async () => {
   const { stripTypeScriptTypes } = await import("node:module");
   const planSource = await readFile(new URL("../app/planIntelligence.ts", import.meta.url), "utf8");
   const markupSource = await readFile(new URL("../app/markupAssistant.ts", import.meta.url), "utf8");
   const standaloneSource = [
     stripTypeScriptTypes(planSource, { mode: "transform" }),
-    stripTypeScriptTypes(markupSource.replace(/^import \{[\s\S]*?\} from "\.\/planIntelligence";\n/, ""), { mode: "transform" }),
+    stripTypeScriptTypes(markupSource.replace(/^import \{[\s\S]*?\} from "\.\/planIntelligence";\r?\n/, ""), { mode: "transform" }),
   ].join("\n");
   const { buildMarkupRecommendations } = await import(`data:text/javascript;base64,${Buffer.from(standaloneSource).toString("base64")}`);
   const findings = [{

@@ -46,7 +46,7 @@ The product is not an autonomous HVAC designer. It makes evidence, calculations,
 | v113 | Guided Repair Plan and controlled network resizing | Shipped |
 | v114 | Repair receipts and before/after takeoff intelligence | Shipped |
 | v115 | Advanced Plan Intelligence, source regions, and coverage | Shipped |
-| v116 | Company Design Style Engine | Planned |
+| v116 | Studio Standard | Shipped |
 | v117 | Multi-company commercial operations | Planned |
 
 ## Shipped foundation — v98 through v110
@@ -175,13 +175,13 @@ The plan reader explains what searchable evidence exists, where it appears, what
 
 v115 detects searchable PDF text. It does not claim that OCR ran, that a nearby tonnage belongs to a nearby CFM value, that a regex score is a calibrated probability, or that a text count equals purchasing quantity. Extracted evidence remains draft until a person confirms it.
 
-## v116 — Company Design Style Engine
+## v116 — Studio Standard
 
 ### Goal
 
-Turn company drafting preferences into editable, visible QA rules and proposals.
+Turn proven HVAC drafting preferences into visible, evidence-linked QA rules and review actions under **HVAC Plan Studio Standard · v1.0**.
 
-### Planned profile
+### Shipped profile
 
 - Flex-heavy residential routing with minimal hard duct.
 - Main trunk deep first, then branch backward.
@@ -194,7 +194,11 @@ Turn company drafting preferences into editable, visible QA rules and proposals.
 - Bedroom return-path review.
 - Extra review for west glass, sliders, high ceilings, and door-closed rooms.
 
-Style rules will create findings and ghost proposals; they will not silently redraw the plan.
+The Markup Assistant now includes a dedicated Studio Standard workspace. It separates locked safeguards, calculated checks, studio recommendations, and project-only exceptions; scores the current system; links affected objects back to the plan; and keeps engineering evidence and approval gates independent.
+
+Project numbers remain source examples and are not used as the name of the reusable standard.
+
+Standard rules create findings and review actions; they do not silently redraw the plan or infer airflow from diameter.
 
 ## v117 — Commercial Product Operations
 

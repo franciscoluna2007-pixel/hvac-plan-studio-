@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Crosshair,
+  DraftingCompass,
   FileSearch,
   Gauge,
   History,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { AdvancedPlanIntelligence } from "./advancedPlanIntelligence";
+import type { DesignStandardProfile, DesignStandardRuleLevel } from "./designStandard";
 import type { MarkupAssistantSummary, MarkupRecommendation } from "./markupAssistant";
 import type {
   RepairAutonomyMode,
@@ -30,7 +32,7 @@ import type {
 import type { TakeoffImpact } from "./takeoffIntelligence";
 
 type RecommendationFilter = "open" | "critical" | "all";
-type AssistantView = "recommendations" | "repair-plan" | "history" | "evidence";
+type AssistantView = "recommendations" | "standards" | "repair-plan" | "history" | "evidence";
 
 type Props = {
   open: boolean;
@@ -45,6 +47,7 @@ type Props = {
   repairRecords: RepairBatchRecord[];
   takeoffImpact: TakeoffImpact;
   advancedIntelligence: AdvancedPlanIntelligence | null;
+  designStandard: DesignStandardProfile;
   canUndo: boolean;
   onClose: () => void;
   onFocusDrawing: (drawingId: string) => void;
@@ -108,6 +111,7 @@ export default function MarkupAssistantStudio({
   repairRecords,
   takeoffImpact,
   advancedIntelligence,
+  designStandard,
   canUndo,
   onClose,
   onFocusDrawing,
@@ -178,7 +182,7 @@ export default function MarkupAssistantStudio({
     action.kind === "run-size" && action.requiresPlanningOverride
   );
   const planningOverrideConfirmed = !requiresPlanningOverride || planningOverrideKey === confirmationKey;
-  const viewOrder: AssistantView[] = ["recommendations", "repair-plan", "history", "evidence"];
+  const viewOrder: AssistantView[] = ["recommendations", "standards", "repair-plan", "history", "evidence"];
 
   const filtered = recommendations.filter((recommendation) => {
     if (filter === "critical") return !recommendation.resolved && recommendation.severity === "critical";
@@ -301,7 +305,7 @@ export default function MarkupAssistantStudio({
         <div className="markup-assistant-brand">
           <span><Sparkles size={22} /></span>
           <div>
-            <small>INTELLIGENT HVAC MARKUP ASSISTANT · V115</small>
+            <small>INTELLIGENT HVAC MARKUP ASSISTANT · V116</small>
             <h2 id="markup-assistant-title">Build the repair plan. Approve one controlled batch.</h2>
             <p>{projectName} · {systemName}</p>
           </div>
@@ -359,6 +363,7 @@ export default function MarkupAssistantStudio({
       <nav className="assistant-workspace-tabs" aria-label="Markup assistant views" role="tablist" onKeyDown={handleViewKeyDown}>
         {([
           ["recommendations", "Recommendations", recommendations.length],
+          ["standards", "Studio Standard", designStandard.review + designStandard.blocked],
           ["repair-plan", "Repair plan", repairPlan.readyCount],
           ["history", "History", repairRecords.length],
           ["evidence", "Evidence", advancedIntelligence?.readinessScore ?? 0],
@@ -436,6 +441,57 @@ export default function MarkupAssistantStudio({
             </div>}
           </main>
         </>}
+
+        {view === "standards" && <main className="design-standard-workspace" role="tabpanel" id="assistant-panel-standards" aria-labelledby="assistant-tab-standards">
+          <header className="design-standard-heading">
+            <div>
+              <small>V116 · {designStandard.name.toUpperCase()} · V{designStandard.profileVersion}</small>
+              <h3>Your drafting standards, checked against the current system</h3>
+              <p>Locked safeguards, calculated checks, recommendations, and project-only exceptions stay visibly separate.</p>
+            </div>
+            <div className={`design-standard-score ${designStandard.blocked ? "blocked" : designStandard.review ? "review" : "clear"}`}>
+              <strong>{designStandard.score}</strong>
+              <span>STANDARD<br />SCORE</span>
+            </div>
+          </header>
+
+          <section className="design-standard-levels" aria-label="Standard rule levels">
+            {([
+              ["locked", "Locked safeguards", "Cannot be overridden by a project."],
+              ["calculated", "Calculated checks", "Reviewed airflow and engineering evidence."],
+              ["recommended", "Studio recommendations", "Preferred routing and field clarity."],
+              ["project", "Project exceptions", "Visible here; the shared standard stays unchanged."],
+            ] as Array<[DesignStandardRuleLevel, string, string]>).map(([level, label, detail]) => <div key={level}>
+              <i data-level={level}><DraftingCompass size={16} /></i>
+              <span><strong>{label}</strong><small>{detail}</small></span>
+            </div>)}
+          </section>
+
+          <div className="design-standard-rule-list">
+            {designStandard.rules.map((standardRule) => <article key={standardRule.id} className={`design-standard-rule ${standardRule.status}`}>
+              <header>
+                <i>{standardRule.status === "clear" ? <CheckCircle2 size={19} /> : standardRule.status === "blocked" ? <AlertTriangle size={19} /> : <DraftingCompass size={19} />}</i>
+                <div>
+                  <small>{standardRule.level.toUpperCase().replace("-", " ")} · {standardRule.status.toUpperCase().replace("-", " ")}</small>
+                  <h3>{standardRule.title}</h3>
+                </div>
+                <span>{standardRule.overrideAllowed ? "PROJECT EXCEPTION ALLOWED" : "LOCKED"}</span>
+              </header>
+              <p className="design-standard-statement">{standardRule.standard}</p>
+              <div className="design-standard-finding"><strong>Current plan</strong><span>{standardRule.finding}</span></div>
+              <div className="design-standard-action"><strong>Review action</strong><span>{standardRule.action}</span></div>
+              <footer>
+                {standardRule.evidence.map((evidence) => <span key={evidence}><ShieldCheck size={13} /> {evidence}</span>)}
+                {standardRule.drawingIds[0] && <button onClick={() => onFocusDrawing(standardRule.drawingIds[0])}><Crosshair size={14} /> Show on plan</button>}
+              </footer>
+            </article>)}
+          </div>
+
+          <section className="design-standard-boundary">
+            <ShieldCheck size={20} />
+            <div><strong>The Studio Standard recommends; reviewed evidence authorizes.</strong>{designStandard.nonClaims.map((notice) => <p key={notice}>{notice}</p>)}</div>
+          </section>
+        </main>}
 
         {view === "repair-plan" && <main className="repair-plan-workspace" role="tabpanel" id="assistant-panel-repair-plan" aria-labelledby="assistant-tab-repair-plan">
           {stale && <div className="repair-plan-stale" role="alert">

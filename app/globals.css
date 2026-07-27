@@ -8325,3 +8325,308 @@ select { min-height: 40px; color: #e6f0f8; border-color: #35516a; font-size: 11p
 .ai-plan-workspace .ai-relationship-panel small {
   font-size: 13px !important;
 }
+/* v116 — Studio Standard */
+.design-standard-workspace {
+  min-width: 0;
+  height: 100%;
+  overflow: auto;
+  padding: 22px;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(44, 126, 247, .1), transparent 32%),
+    #f4f7fb;
+}
+
+.design-standard-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 22px;
+  border: 1px solid #cad5e4;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(20, 40, 70, .06);
+}
+
+.design-standard-heading small,
+.design-standard-rule small {
+  color: #315d96;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .08em;
+}
+
+.design-standard-heading h3 {
+  margin: 5px 0 4px;
+  color: #17263a;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.design-standard-heading p {
+  margin: 0;
+  color: #50627a;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.design-standard-score {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 124px;
+  padding: 12px 14px;
+  border: 1px solid #8fb5eb;
+  border-radius: 12px;
+  background: #edf5ff;
+  color: #174d91;
+}
+
+.design-standard-score.blocked {
+  border-color: #e6a3a3;
+  background: #fff1f1;
+  color: #a51f2c;
+}
+
+.design-standard-score.review {
+  border-color: #e7c26f;
+  background: #fff9e9;
+  color: #825b00;
+}
+
+.design-standard-score strong {
+  font-size: 31px;
+  line-height: 1;
+}
+
+.design-standard-score span {
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.25;
+  letter-spacing: .08em;
+}
+
+.design-standard-levels {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.design-standard-levels > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #d2dce9;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.design-standard-levels i {
+  display: grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px;
+  background: #e9f2ff;
+  color: #2669bc;
+}
+
+.design-standard-levels i[data-level="locked"] {
+  background: #fff0f1;
+  color: #b02736;
+}
+
+.design-standard-levels i[data-level="calculated"] {
+  background: #eef1ff;
+  color: #4f53b8;
+}
+
+.design-standard-levels i[data-level="project"] {
+  background: #fff6df;
+  color: #906500;
+}
+
+.design-standard-levels span {
+  min-width: 0;
+}
+
+.design-standard-levels strong,
+.design-standard-levels small {
+  display: block;
+}
+
+.design-standard-levels strong {
+  color: #22344b;
+  font-size: 12px;
+}
+
+.design-standard-levels small {
+  margin-top: 2px;
+  color: #63738a;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.design-standard-rule-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.design-standard-rule {
+  overflow: hidden;
+  border: 1px solid #cfdae8;
+  border-left: 4px solid #7c8da4;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.design-standard-rule.clear { border-left-color: #2e9c69; }
+.design-standard-rule.review { border-left-color: #d19a25; }
+.design-standard-rule.blocked { border-left-color: #cc3d4c; }
+
+.design-standard-rule > header {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  padding: 14px 15px 10px;
+}
+
+.design-standard-rule > header > i {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px;
+  background: #eef3f9;
+  color: #556a84;
+}
+
+.design-standard-rule.clear > header > i { color: #227e53; background: #eaf8f1; }
+.design-standard-rule.review > header > i { color: #946300; background: #fff6dd; }
+.design-standard-rule.blocked > header > i { color: #aa2534; background: #fff0f1; }
+
+.design-standard-rule h3 {
+  margin: 3px 0 0;
+  color: #1c2d43;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.design-standard-rule > header > span {
+  padding: 5px 7px;
+  border-radius: 6px;
+  background: #eef3f9;
+  color: #596a80;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .05em;
+}
+
+.design-standard-statement {
+  margin: 0;
+  padding: 0 15px 12px 53px;
+  color: #40536a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.design-standard-finding,
+.design-standard-action {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 9px;
+  margin: 0 15px;
+  padding: 10px 0;
+  border-top: 1px solid #e5ebf2;
+  color: #40536a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.design-standard-finding strong,
+.design-standard-action strong {
+  color: #20334b;
+  font-size: 11px;
+}
+
+.design-standard-rule footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 15px 14px;
+  background: #f8fafc;
+}
+
+.design-standard-rule footer span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #5d6f86;
+  font-size: 10px;
+}
+
+.design-standard-rule footer button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 31px;
+  margin-left: auto;
+  padding: 6px 9px;
+  border: 1px solid #9eb8dc;
+  border-radius: 7px;
+  background: #fff;
+  color: #285f9f;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.design-standard-boundary {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 15px 17px;
+  border: 1px solid #f0c875;
+  border-radius: 11px;
+  background: #fff9e9;
+  color: #6d520e;
+}
+
+.design-standard-boundary strong {
+  font-size: 13px;
+}
+
+.design-standard-boundary p {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1050px) {
+  .design-standard-levels,
+  .design-standard-rule-list {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .design-standard-heading,
+  .design-standard-rule > header {
+    grid-template-columns: 1fr;
+  }
+
+  .design-standard-heading {
+    flex-direction: column;
+  }
+
+  .design-standard-levels,
+  .design-standard-rule-list {
+    grid-template-columns: 1fr;
+  }
+}

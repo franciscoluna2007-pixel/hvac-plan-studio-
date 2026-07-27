@@ -15,6 +15,7 @@ import MarkupAssistantStudio from "./MarkupAssistantStudio";
 import { type FieldPackageSectionId } from "./fieldPackage";
 import type { PlanAnalysis, PlanEvidence } from "./planReader";
 import { buildAdvancedPlanIntelligence } from "./advancedPlanIntelligence";
+import { buildDesignStandardProfile } from "./designStandard";
 import {
   ASSISTANT_REPAIR_VERSION,
   buildRepairPlan,
@@ -9458,6 +9459,42 @@ function HVACPlanStudioApp() {
     scaleVerified,
     designCfm: activeAirflowSetup.targetCfm,
   });
+  const activeDesignStandard = buildDesignStandardProfile({
+    systemId: activeSystem,
+    evidenceFingerprint: stableTextHash(`${systemDrawingSignature(activeSystem)}|design-standard-v116.0`),
+    runs: drawings
+      .filter((drawing) =>
+        drawingSystem(drawing) === activeSystem &&
+        !drawing.fitting &&
+        ["supply", "return", "fresh"].includes(drawing.type)
+      )
+      .map((drawing) => ({
+        id: drawing.id,
+        type: drawing.type as "supply" | "return" | "fresh",
+        size: drawing.size,
+        roomName: drawing.roomName,
+        roomType: drawing.roomType,
+      })),
+    terminals: drawings
+      .filter((drawing) =>
+        drawingSystem(drawing) === activeSystem &&
+        ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "")
+      )
+      .map((drawing) => ({
+        id: drawing.id,
+        kind: drawing.symbol!.kind as "diffuser" | "returnGrille",
+        roomName: drawing.roomName,
+        roomType: drawing.roomType,
+        connected: Boolean(drawing.symbol?.connectedRunId || drawing.symbol?.returnRunId),
+      })),
+    tyFittingIds: drawings
+      .filter((drawing) => drawingSystem(drawing) === activeSystem && drawing.fitting?.kind === "ty")
+      .map((drawing) => drawing.id),
+    motorDamperIds: drawings
+      .filter((drawing) => drawingSystem(drawing) === activeSystem && drawing.symbol?.kind === "motorDamper")
+      .map((drawing) => drawing.id),
+    residentialFlexMax,
+  });
   const markupAssistantSummary = summarizeMarkupAssistant(
     markupRecommendations,
     activePlanIntelligenceFindings,
@@ -12510,7 +12547,7 @@ function HVACPlanStudioApp() {
         <span><i className="online" /> Ready</span>
         <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor · two-finger touch navigates · stylus draws"}</span>
         <span><Ruler size={11} /> {scaleLabel}</span>
-        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · AI Plan Reader v105 · Plan Intelligence v106 · Markup v111 · Sizing v112 · Guided Repair v113 · Receipts v114 · Advanced Evidence v115</span>
+        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · AI Plan Reader v105 · Plan Intelligence v106 · Markup v111 · Sizing v112 · Guided Repair v113 · Receipts v114 · Advanced Evidence v115 · Studio Standard v116</span>
       </footer>
       <ProjectHome
         open={showProjectHome && !showProjectSetup}
@@ -12611,6 +12648,7 @@ function HVACPlanStudioApp() {
         repairRecords={assistantRepairRecords.filter((record) => record.systemId === activeSystem)}
         takeoffImpact={assistantTakeoffImpact}
         advancedIntelligence={activeAdvancedPlanIntelligence}
+        designStandard={activeDesignStandard}
         canUndo={Boolean(undoStack.length)}
         onClose={() => {
           setShowMarkupAssistant(false);

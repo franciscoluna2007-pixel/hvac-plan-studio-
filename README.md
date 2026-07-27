@@ -4,9 +4,15 @@ HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review,
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v115
+## Current release — v116
 
-v113 through v115 make the Intelligent HVAC Markup Assistant materially more helpful without restoring uncontrolled automation.
+v113 through v116 make the Intelligent HVAC Markup Assistant materially more helpful without restoring uncontrolled automation.
+
+### v116 — Studio Standard
+
+The Markup Assistant now evaluates the current system against **HVAC Plan Studio Standard · v1.0**. A dedicated workspace keeps locked safeguards, calculated checks, preferred drafting practices, and project-only exceptions visibly separate. It reviews flex limits, terminal connections, airflow-based sizing, run labels, bedroom return paths, T/Y strategy, and fresh-air controls, with evidence and plan links for each result.
+
+Project numbers are not used as the reusable standard name.
 
 ### v113 — Guided Repair Plan
 
