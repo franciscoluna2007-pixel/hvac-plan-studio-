@@ -116,7 +116,7 @@ test("builds v106 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.doesNotMatch(layout, /Starter Project/);
 });
 
-test("leads solo HVAC operators through one clear five-step job workflow", async () => {
+test("leads solo HVAC operators through plan setup and four clear job steps", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const home = await readFile(new URL("../app/ProjectHome.tsx", import.meta.url), "utf8");
   const palette = await readFile(new URL("../app/ProjectCommandPalette.tsx", import.meta.url), "utf8");
@@ -124,8 +124,8 @@ test("leads solo HVAC operators through one clear five-step job workflow", async
   const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
 
   assert.match(page, /const fieldFirstSteps = \[/);
-  assert.match(page, /label: "Setup"/);
-  assert.match(page, /label: "Draw"/);
+  assert.match(page, /<strong>Plan setup<\/strong>/);
+  assert.match(page, /label: "Connect"/);
   assert.match(page, /label: "Airflow"/);
   assert.match(page, /label: "Check"/);
   assert.match(page, /label: "Finish"/);
@@ -141,10 +141,11 @@ test("leads solo HVAC operators through one clear five-step job workflow", async
   assert.match(palette, /command\.recommended/);
   assert.match(palette, /Find a tool/);
   assert.match(styles, /\.field-first-guide/);
+  assert.match(styles, /\.smart-plan-preflight/);
   assert.match(styles, /\.project-home-hero-visual,[\s\S]*display: none !important/);
   assert.match(styles, /\.left-panel-tabs/);
-  assert.match(layout, /hvac-plan-studio-solo-operator-social\.png/);
-  assert.match(layout, /HVAC superintendents and one-person businesses/);
+  assert.match(layout, /\/og\.png/);
+  assert.match(layout, /Smart Plan Setup & Repair/);
 });
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
@@ -855,10 +856,11 @@ test("provides touch-sized review controls and a mobile full-panel workflow", as
   assert.match(styles, /\.app-shell\.wide-inspector \.right-panel \{ width: 100%; height: 100%;/);
 });
 
-test("keeps the v105/v106 reader foundation and adds v115 inspectable evidence coverage", async () => {
+test("keeps the reader foundation and adds v120 smart plan setup without removing inspectable evidence", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const workspace = await readFile(new URL("../app/AIPlanWorkspace.tsx", import.meta.url), "utf8");
   const reader = await readFile(new URL("../app/planReader.ts", import.meta.url), "utf8");
+  const setup = await readFile(new URL("../app/planSetup.ts", import.meta.url), "utf8");
   const advanced = await readFile(new URL("../app/advancedPlanIntelligence.ts", import.meta.url), "utf8");
   const cloud = await readFile(new URL("../app/cloudProjects.ts", import.meta.url), "utf8");
   const identity = await readFile(new URL("../app/planIntelligence.ts", import.meta.url), "utf8");
@@ -883,10 +885,12 @@ test("keeps the v105/v106 reader foundation and adds v115 inspectable evidence c
   assert.match(page, /reviewDecisionForIssue/);
   assert.match(page, /EVIDENCE CHANGED — REVIEW AGAIN/);
   assert.match(page, /visibleLabels: \{ showCfmLabels, showLengthLabels, showFittingLabels \}/);
-  assert.match(workspace, /HVAC PLAN STUDIO · V115/);
-  assert.match(workspace, /Advanced Plan Intelligence/);
-  assert.match(workspace, /Evidence stays inspectable\./);
-  assert.match(workspace, /\["coverage", "Coverage", ScanSearch\]/);
+  assert.match(workspace, /HVAC PLAN STUDIO · V120/);
+  assert.match(workspace, /Smart Plan Setup &amp; Repair/);
+  assert.match(workspace, /buildSmartPlanSetup\(analysis\)/);
+  assert.match(workspace, /automaticFingerprintRef/);
+  assert.match(workspace, /\["setup", "Plan setup", ScanSearch\]/);
+  assert.match(workspace, /\["coverage", "What.*missing", CircleHelp\]/);
   assert.match(workspace, /ai-coverage-view/);
   assert.match(workspace, /showSource\(row\.page, row\.region\)/);
   assert.match(workspace, /Source-backed quantities/);
@@ -900,6 +904,11 @@ test("keeps the v105/v106 reader foundation and adds v115 inspectable evidence c
   assert.match(reader, /Rectangular duct size/);
   assert.match(reader, /Motorized outside-air damper/);
   assert.match(reader, /No HVAC schedule was detected/);
+  assert.match(reader, /category: "Scale"/);
+  assert.match(reader, /category: "Rooms"/);
+  assert.match(reader, /alwaysScan: true/);
+  assert.match(setup, /smart-plan-setup-v120\.0/);
+  assert.match(setup, /export function buildSmartPlanSetup/);
   assert.match(advanced, /advanced-plan-intelligence-v115\.0/);
   assert.match(advanced, /Evidence readiness is a review heuristic and never authorizes plan mutation by itself/);
   assert.match(advanced, /confirmed: false/);
@@ -1188,7 +1197,7 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(studio, /Receipt/);
   assert.match(studio, /Evidence set/);
   assert.match(studio, /Material basis/);
-  assert.match(studio, /V115 ADVANCED PLAN INTELLIGENCE/);
+  assert.match(studio, /SOURCE READINESS/);
   assert.match(studio, /Evidence coverage before automation/);
   assert.match(studio, /Review-only heuristic/);
   assert.match(studio, /not a probability, approval, or release gate/);

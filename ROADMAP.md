@@ -1,6 +1,6 @@
 # HVAC Plan Studio — Product Overview and Roadmap
 
-Last revised: July 26, 2026
+Last revised: July 27, 2026
 
 ## Product overview
 
@@ -12,13 +12,14 @@ The product is not an autonomous HVAC designer. It makes evidence, calculations,
 
 ## Primary job workflow
 
-The main workspace now presents five plain-language steps:
+The main workspace now starts with an unnumbered **Plan setup** preflight, followed by four plain-language job steps:
 
-1. **Setup** — open the PDF and verify the drawing scale.
-2. **Draw** — place equipment, runs, fittings, devices, and notes.
-3. **Airflow** — review room airflow, connected paths, and duct sizes.
-4. **Check** — use Plan Helper to inspect suggestions and approve any fixes.
-5. **Finish** — review materials and print or share the field package.
+1. **Connect** — place and connect equipment, runs, fittings, devices, and notes.
+2. **Airflow** — review room airflow, connected paths, and duct sizes.
+3. **Check** — use Plan Helper to inspect problems and approve selected fixes.
+4. **Finish** — review materials and print or share the field package.
+
+Plan setup reads the PDF in the background for drawing scales, rooms, ceiling heights, equipment, systems, zones, and missing information. It does not block basic drawing; only work that depends on an unconfirmed fact pauses.
 
 Advanced coordination remains available without crowding the first screen.
 
@@ -62,7 +63,32 @@ Advanced coordination remains available without crowding the first screen.
 | v115 | Advanced Plan Intelligence, source regions, and coverage | Shipped |
 | v116 | My HVAC Rules | Shipped |
 | v116.1 | Solo Operator Workflow and usability simplification | Shipped |
+| v120 | Smart Plan Setup & Repair | Shipped |
 | v117 | Multi-company commercial operations | Planned for later |
+
+## v120 — Smart Plan Setup & Repair
+
+### Outcome
+
+The plan opens with useful setup information already organized, and Step 1 fixes more loose connections without moving placed objects or inventing ductwork.
+
+### Shipped capabilities
+
+- Automatic once-per-PDF plan reading while the drawing stays usable.
+- Source-linked scale detection for architectural, metric, and not-to-scale drawings.
+- Room names, flat or vaulted ceiling heights, equipment tags, tonnage references, systems, and zones.
+- Plain-language fact states: Confirmed, Found on plan, Suggested, and Not found.
+- Exact review questions only when missing or conflicting information controls the next operation.
+- One Plan setup workspace with direct Show source actions.
+- Open T/Y ports can match nearby unused existing run endpoints using distance, direction, alignment, and size signals.
+- Confirmed drawing scale converts Step 1 limits to physical distances: 3 feet for terminals, 4 feet for equipment, and 2 feet for T/Y ports.
+- Saved T/Y connections remain bound to their saved run and never fall back to a different nearby run.
+- Candidate explanations show same sheet/system, duct type, endpoint availability, distance, direction, and size evidence.
+- Apply remains fingerprint-bound and approval-first, creates no branch stub or reroute, moves no placed object, and produces one Undo.
+
+### Honest boundary
+
+Searchable PDF text can identify likely plan facts, but it cannot prove that every drawing view shares one scale or that every nearby note belongs to a room or unit. Conflicts and missing information remain visible for confirmation. Scale is confirmed only by agreeing plan evidence, a supported user-selected scale, or manual calibration.
 
 ## Shipped foundation — v98 through v110
 

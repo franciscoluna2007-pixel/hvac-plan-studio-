@@ -9473,3 +9473,1061 @@ select { min-height: 40px; color: #e6f0f8; border-color: #35516a; font-size: 11p
     display: none !important;
   }
 }
+
+/* v120 — Smart Plan Setup & Repair
+   Setup facts are presented as short field-ready cards with obvious review
+   states. The layout stacks instead of becoming a sideways workflow. */
+.markup-assistant-body.view-setup {
+  display: block;
+  overflow-y: auto;
+  border-top: 0;
+  background: #071620;
+}
+
+.smart-plan-setup-workspace {
+  min-height: 100%;
+  padding: clamp(16px, 2vw, 24px);
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  color: #deedf4;
+  background:
+    radial-gradient(circle at 8% 0, #15394c66, transparent 34%),
+    linear-gradient(180deg, #081924, #07151f);
+}
+
+.smart-plan-setup-heading {
+  min-width: 0;
+  padding: clamp(18px, 2.4vw, 26px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  overflow: hidden;
+  border: 1px solid #31566b;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 92% -40%, #36cce62b, transparent 48%),
+    linear-gradient(125deg, #123449, #0d2231 68%, #0a1b27);
+  box-shadow: inset 0 1px #ffffff0a, 0 16px 34px #020b1233;
+}
+
+.smart-plan-setup-heading > div {
+  min-width: 0;
+  max-width: 780px;
+}
+
+.smart-plan-setup-heading small,
+.smart-plan-question-list header small,
+.smart-plan-fact-list header small {
+  color: #66ddef;
+  font-size: 12px !important;
+  font-weight: 900;
+  line-height: 1.35 !important;
+  letter-spacing: .8px;
+}
+
+.smart-plan-setup-heading h3,
+.smart-plan-question-list h3,
+.smart-plan-fact-list h3 {
+  margin: 6px 0 0;
+  color: #f3f9fc;
+  line-height: 1.24;
+}
+
+.smart-plan-setup-heading h3 {
+  font-size: clamp(22px, 2.5vw, 30px);
+  letter-spacing: -.45px;
+}
+
+.smart-plan-setup-heading p {
+  max-width: 720px;
+  margin: 9px 0 0;
+  color: #aec1cc;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.smart-plan-setup-heading > span {
+  min-width: 142px;
+  min-height: 96px;
+  flex: 0 0 auto;
+  padding: 15px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  border: 1px solid #3e6979;
+  border-radius: 12px;
+  background: #0a2431;
+  text-align: center;
+}
+
+.smart-plan-setup-heading > span strong,
+.smart-plan-setup-heading > span small {
+  display: block;
+}
+
+.smart-plan-setup-heading > span strong {
+  color: #ecfaff;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.smart-plan-setup-heading > span small {
+  margin-top: 8px;
+  color: #9bb5c2;
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+  letter-spacing: .55px;
+}
+
+.smart-plan-setup-heading > span.attention {
+  border-color: #80682f;
+  background: linear-gradient(145deg, #332a16, #171f21);
+}
+
+.smart-plan-setup-heading > span.attention strong { color: #ffdc74; }
+.smart-plan-setup-heading > span.attention small { color: #d8c48a; }
+.smart-plan-setup-heading > span.ready {
+  border-color: #397658;
+  background: linear-gradient(145deg, #123426, #10231e);
+}
+.smart-plan-setup-heading > span.ready strong { color: #79e3ad; }
+
+.smart-plan-setup-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.smart-plan-setup-metrics article {
+  position: relative;
+  min-width: 0;
+  min-height: 124px;
+  padding: 16px 16px 15px 18px;
+  overflow: hidden;
+  border: 1px solid #2b4758;
+  border-radius: 11px;
+  background: linear-gradient(145deg, #0e2432, #0b1c28);
+  box-shadow: inset 3px 0 #47677a;
+}
+
+.smart-plan-setup-metrics article::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 54px;
+  height: 54px;
+  border-radius: 0 0 0 54px;
+  background: #8ca4b20c;
+  content: "";
+}
+
+.smart-plan-setup-metrics article > small,
+.smart-plan-setup-metrics article > strong,
+.smart-plan-setup-metrics article > span {
+  position: relative;
+  z-index: 1;
+  display: block;
+}
+
+.smart-plan-setup-metrics article > small {
+  color: #91a8b5;
+  font-size: 11px !important;
+  font-weight: 900;
+  line-height: 1.35 !important;
+  letter-spacing: .75px;
+}
+
+.smart-plan-setup-metrics article > strong {
+  margin-top: 13px;
+  color: #edf8fc;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.smart-plan-setup-metrics article > span {
+  margin-top: 7px;
+  color: #9fb3be;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.smart-plan-setup-metrics article.confirmed {
+  border-color: #316b50;
+  box-shadow: inset 3px 0 #4ed293;
+}
+.smart-plan-setup-metrics article.confirmed > small,
+.smart-plan-setup-metrics article.confirmed > strong { color: #a5efc7; }
+.smart-plan-setup-metrics article.found {
+  border-color: #2e6679;
+  box-shadow: inset 3px 0 #54cfe4;
+}
+.smart-plan-setup-metrics article.found > small { color: #7de0ed; }
+.smart-plan-setup-metrics article.missing {
+  border-color: #755f2f;
+  box-shadow: inset 3px 0 #e4bb4e;
+}
+.smart-plan-setup-metrics article.missing > small,
+.smart-plan-setup-metrics article.missing > strong { color: #f4d77d; }
+
+.smart-plan-setup-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(310px, .82fr);
+  align-items: start;
+  gap: 12px;
+}
+
+.smart-plan-question-list,
+.smart-plan-fact-list {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #2b495b;
+  border-radius: 12px;
+  background: #0a1b28;
+  box-shadow: 0 12px 28px #020a1024;
+}
+
+.smart-plan-question-list > header,
+.smart-plan-fact-list > header {
+  min-height: 78px;
+  padding: 15px 17px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid #284657;
+  background: linear-gradient(180deg, #102838, #0d2130);
+}
+
+.smart-plan-question-list header h3,
+.smart-plan-fact-list header h3 {
+  font-size: 17px;
+}
+
+.smart-plan-question-list > header button,
+.smart-plan-question-list > article > button,
+.smart-plan-fact-list > article > button,
+.smart-plan-setup-actions button,
+.smart-plan-setup-empty button {
+  min-height: 42px;
+  padding: 0 13px;
+  color: #b8f4fb;
+  border: 1px solid #357187;
+  border-radius: 8px;
+  background: #103143;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.smart-plan-question-list > header button:hover,
+.smart-plan-question-list > article > button:hover,
+.smart-plan-fact-list > article > button:hover {
+  color: #06171e;
+  border-color: #67dcec;
+  background: #5bd9ea;
+}
+
+.smart-plan-question-list > article {
+  min-width: 0;
+  padding: 15px 16px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #1e394a;
+  background: #0b1d2a;
+}
+
+.smart-plan-question-list > article:last-of-type { border-bottom: 0; }
+.smart-plan-question-list > article.required {
+  background: linear-gradient(90deg, #2b2415, #0b1d2a 28%);
+  box-shadow: inset 3px 0 #e2b84b;
+}
+.smart-plan-question-list > article.recommended {
+  box-shadow: inset 3px 0 #44c5dd;
+}
+
+.smart-plan-question-list > article > span {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: #f0c958;
+  border-radius: 9px;
+  background: #332a16;
+}
+
+.smart-plan-question-list > article > div {
+  min-width: 0;
+}
+
+.smart-plan-question-list > article small,
+.smart-plan-question-list > article strong,
+.smart-plan-question-list > article p {
+  display: block;
+}
+
+.smart-plan-question-list > article small {
+  color: #d5bd75;
+  font-size: 11px !important;
+  font-weight: 850;
+  line-height: 1.35 !important;
+  letter-spacing: .45px;
+}
+
+.smart-plan-question-list > article strong {
+  margin-top: 5px;
+  color: #eaf4f8;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.smart-plan-question-list > article p {
+  margin: 5px 0 0;
+  color: #a6bac5;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.smart-plan-fact-list > article {
+  min-width: 0;
+  min-height: 76px;
+  padding: 11px 13px;
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(105px, auto) auto;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid #1e394a;
+}
+
+.smart-plan-fact-list > article:last-of-type { border-bottom: 0; }
+.smart-plan-fact-list > article > span,
+.smart-plan-fact-list > article > b,
+.smart-plan-fact-list > article > span > strong,
+.smart-plan-fact-list > article > span > small,
+.smart-plan-fact-list > article > b > small {
+  min-width: 0;
+  display: block;
+}
+.smart-plan-fact-list > article > span > strong {
+  overflow: hidden;
+  color: #e4f0f5;
+  font-size: 13px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.smart-plan-fact-list > article > span > small {
+  margin-top: 4px;
+  color: #90a6b2;
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+}
+.smart-plan-fact-list > article > b {
+  color: #dae8ee;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: right;
+}
+.smart-plan-fact-list > article > b > small {
+  margin-top: 4px;
+  color: #8da4b0;
+  font-size: 10px !important;
+  font-weight: 750;
+  line-height: 1.3 !important;
+}
+.smart-plan-fact-list > article > b.verified,
+.smart-plan-fact-list > article > b.verified > small { color: #78dfa8; }
+.smart-plan-fact-list > article > b.likely,
+.smart-plan-fact-list > article > b.likely > small { color: #72d8e8; }
+.smart-plan-fact-list > article > b.estimated,
+.smart-plan-fact-list > article > b.estimated > small { color: #f0cb69; }
+.smart-plan-fact-list > article > b.missing,
+.smart-plan-fact-list > article > b.missing > small { color: #ee9b94; }
+
+.smart-plan-clear {
+  min-height: 126px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #66dea2;
+  background: linear-gradient(145deg, #102b21, #0a1d25);
+  text-align: left;
+}
+
+.smart-plan-clear span,
+.smart-plan-clear strong,
+.smart-plan-clear small {
+  display: block;
+}
+.smart-plan-clear strong {
+  color: #dff7ea;
+  font-size: 14px;
+}
+.smart-plan-clear small {
+  margin-top: 4px;
+  color: #9ac4ad;
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+}
+
+.smart-plan-setup-actions {
+  min-height: 76px;
+  padding: 13px 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid #2b4858;
+  border-radius: 11px;
+  background: #0a1c28;
+}
+
+.smart-plan-setup-actions p {
+  max-width: 760px;
+  margin: 0;
+  color: #a4b8c3;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.smart-plan-setup-actions button,
+.smart-plan-setup-empty button {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #06161c;
+  border-color: #60d9e9;
+  background: linear-gradient(180deg, #68e1ef, #42c8dd);
+  white-space: nowrap;
+}
+
+.smart-plan-setup-empty {
+  min-height: 420px;
+  padding: clamp(30px, 6vw, 72px);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  color: #61d8e9;
+  border: 1px dashed #345b6d;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 50% 30%, #153c4e80, transparent 38%),
+    #091a25;
+  text-align: center;
+}
+.smart-plan-setup-empty small {
+  margin-top: 6px;
+  color: #69dbea;
+  font-size: 12px !important;
+  font-weight: 900;
+  letter-spacing: .8px;
+}
+.smart-plan-setup-empty h3 {
+  margin: 2px 0 0;
+  color: #f0f8fb;
+  font-size: clamp(22px, 3vw, 30px);
+}
+.smart-plan-setup-empty p {
+  max-width: 590px;
+  margin: 0 0 10px;
+  color: #a6bbc6;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Full Plan Setup workspace. These classes intentionally share the same
+   card language as the Markup Assistant so the user learns one pattern. */
+.ai-smart-setup {
+  min-height: 100%;
+  padding: clamp(14px, 2vw, 22px);
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  color: #deedf4;
+  background:
+    radial-gradient(circle at 8% 0, #14394d55, transparent 34%),
+    #081722;
+}
+
+.ai-smart-setup-hero,
+.ai-smart-setup > header {
+  min-width: 0;
+  padding: clamp(18px, 2.4vw, 28px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  border: 1px solid #31576b;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 90% -30%, #35cee82b, transparent 48%),
+    linear-gradient(125deg, #12354a, #0c2130 70%);
+}
+
+.ai-smart-setup-hero > div,
+.ai-smart-setup > header > div { min-width: 0; max-width: 820px; }
+.ai-smart-setup-hero small,
+.ai-smart-setup > header small {
+  color: #69dfef;
+  font-size: 12px !important;
+  font-weight: 900;
+  letter-spacing: .75px;
+}
+.ai-smart-setup-hero h3,
+.ai-smart-setup > header h3 {
+  margin: 6px 0 0;
+  color: #f2f9fc;
+  font-size: clamp(23px, 2.7vw, 32px);
+  line-height: 1.22;
+}
+.ai-smart-setup-hero p,
+.ai-smart-setup > header p {
+  max-width: 760px;
+  margin: 8px 0 0;
+  color: #abc0ca;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.ai-smart-setup-hero > span {
+  min-width: 148px;
+  min-height: 92px;
+  flex: 0 0 auto;
+  padding: 14px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  border: 1px solid #3c6879;
+  border-radius: 11px;
+  background: #0a2532;
+  text-align: center;
+}
+.ai-smart-setup-hero > span strong,
+.ai-smart-setup-hero > span small { display: block; }
+.ai-smart-setup-hero > span strong {
+  color: #effaff;
+  font-size: 30px;
+  line-height: 1;
+}
+.ai-smart-setup-hero > span small {
+  margin-top: 7px;
+  color: #9eb7c2;
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+}
+.ai-smart-setup-hero > span.attention {
+  border-color: #80682f;
+  background: linear-gradient(145deg, #332a16, #171f21);
+}
+.ai-smart-setup-hero > span.attention strong { color: #ffdc74; }
+.ai-smart-setup-hero > span.ready {
+  border-color: #397658;
+  background: linear-gradient(145deg, #123426, #10231e);
+}
+.ai-smart-setup-hero > span.ready strong { color: #79e3ad; }
+
+.ai-smart-setup-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.ai-smart-setup-metrics > * {
+  min-width: 0;
+  min-height: 108px;
+  padding: 15px 16px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: center;
+  column-gap: 9px;
+  row-gap: 6px;
+  border: 1px solid #2d4b5c;
+  border-radius: 11px;
+  background: linear-gradient(145deg, #0e2432, #0a1c28);
+}
+.ai-smart-setup-metrics svg {
+  grid-row: 1 / span 3;
+  color: #59d4e8;
+}
+.ai-smart-setup-metrics small,
+.ai-smart-setup-metrics strong,
+.ai-smart-setup-metrics span { display: block; }
+.ai-smart-setup-metrics small {
+  color: #8ea8b5;
+  font-size: 11px !important;
+  font-weight: 900;
+  letter-spacing: .65px;
+}
+.ai-smart-setup-metrics strong { color: #edf8fb; font-size: 19px; line-height: 1.25; }
+.ai-smart-setup-metrics span { color: #9eb3be; font-size: 12px; line-height: 1.4; }
+.ai-smart-setup-metrics > .confirmed {
+  border-color: #316b50;
+  box-shadow: inset 3px 0 #4ed293;
+}
+.ai-smart-setup-metrics > .confirmed svg,
+.ai-smart-setup-metrics > .confirmed small,
+.ai-smart-setup-metrics > .confirmed strong { color: #8be8b6; }
+.ai-smart-setup-metrics > .found {
+  border-color: #2e6679;
+  box-shadow: inset 3px 0 #54cfe4;
+}
+.ai-smart-setup-metrics > .found svg,
+.ai-smart-setup-metrics > .found small { color: #76dfed; }
+.ai-smart-setup-metrics > .missing {
+  border-color: #755f2f;
+  box-shadow: inset 3px 0 #e4bb4e;
+}
+.ai-smart-setup-metrics > .missing svg,
+.ai-smart-setup-metrics > .missing small,
+.ai-smart-setup-metrics > .missing strong { color: #f2d475; }
+
+.ai-smart-setup-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.ai-smart-setup-section {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #2b495b;
+  border-radius: 12px;
+  background: #0a1b28;
+}
+.ai-smart-setup-section.wide { grid-column: 1 / -1; }
+.ai-smart-setup-section > header {
+  min-height: 68px;
+  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #284657;
+  background: linear-gradient(180deg, #102838, #0d2130);
+}
+.ai-smart-setup-section > header small,
+.ai-smart-setup-section > header strong,
+.ai-smart-setup-section > header h3 { display: block; }
+.ai-smart-setup-section > header small {
+  color: #65d8e9;
+  font-size: 11px !important;
+  font-weight: 900;
+  letter-spacing: .65px;
+}
+.ai-smart-setup-section > header strong,
+.ai-smart-setup-section > header h3 {
+  margin: 4px 0 0;
+  color: #eaf4f8;
+  font-size: 16px;
+}
+.ai-smart-setup-section > header > b {
+  min-width: 30px;
+  padding: 5px 8px;
+  color: #071820;
+  border-radius: 999px;
+  background: #62d9e9;
+  font-size: 11px;
+  text-align: center;
+}
+
+.ai-smart-setup-list {
+  min-width: 0;
+  display: grid;
+}
+.ai-smart-setup-question,
+.ai-smart-setup-fact {
+  min-width: 0;
+  min-height: 74px;
+  padding: 13px 15px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #1f3949;
+}
+.ai-smart-setup-question {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.ai-smart-setup-question:last-child,
+.ai-smart-setup-fact:last-child { border-bottom: 0; }
+.ai-smart-setup-question:has(> span.required) {
+  background: linear-gradient(90deg, #2c2516, #0b1d29 34%);
+  box-shadow: inset 3px 0 #e0b74b;
+}
+.ai-smart-setup-question > span {
+  width: 82px;
+  min-height: 30px;
+  padding: 6px 8px;
+  display: inline-grid;
+  place-items: center;
+  color: #a9c2cd;
+  border: 1px solid #365669;
+  border-radius: 999px;
+  background: #102a38;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.25;
+  text-align: center;
+}
+.ai-smart-setup-question > span.required {
+  color: #f3d373;
+  border-color: #75602e;
+  background: #302817;
+}
+.ai-smart-setup-question > span.recommended {
+  color: #8de5f0;
+  border-color: #316b7c;
+  background: #10313d;
+}
+.ai-smart-setup-question strong,
+.ai-smart-setup-question small,
+.ai-smart-setup-question p,
+.ai-smart-setup-fact strong,
+.ai-smart-setup-fact small,
+.ai-smart-setup-fact p { display: block; }
+.ai-smart-setup-question strong,
+.ai-smart-setup-fact strong { color: #e8f3f7; font-size: 14px; line-height: 1.4; }
+.ai-smart-setup-question small,
+.ai-smart-setup-fact small {
+  margin-top: 4px;
+  color: #93aab6;
+  font-size: 11px !important;
+  line-height: 1.4 !important;
+}
+.ai-smart-setup-question p,
+.ai-smart-setup-fact p {
+  margin: 5px 0 0;
+  color: #a5bac4;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ai-smart-setup-fact > div:first-child {
+  min-width: 0;
+}
+.ai-smart-setup-fact .fact-status {
+  width: fit-content;
+  margin-bottom: 6px;
+  padding: 3px 6px;
+  color: #a8bdc7;
+  border: 1px solid #365567;
+  border-radius: 999px;
+  background: #102938;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.3;
+}
+.ai-smart-setup-fact .fact-status.verified {
+  color: #8ce6b5;
+  border-color: #346e53;
+  background: #123124;
+}
+.ai-smart-setup-fact .fact-status.likely {
+  color: #80dfec;
+  border-color: #326b7b;
+  background: #10313d;
+}
+.ai-smart-setup-fact .fact-status.estimated {
+  color: #efd072;
+  border-color: #75602e;
+  background: #302817;
+}
+.ai-smart-setup-fact .fact-status.missing {
+  color: #f0a29b;
+  border-color: #714248;
+  background: #301c21;
+}
+.ai-smart-setup button,
+[class^="ai-smart-setup"] button,
+[class*=" ai-smart-setup"] button {
+  min-height: 42px;
+  padding: 0 13px;
+  color: #baf4fb;
+  border: 1px solid #357187;
+  border-radius: 8px;
+  background: #103143;
+  font-size: 12px;
+  font-weight: 850;
+}
+.ai-smart-setup > .ai-smart-setup-actions {
+  min-height: 72px;
+  padding: 12px 15px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  border: 1px solid #2b4858;
+  border-radius: 11px;
+  background: #0a1c28;
+}
+.ai-smart-setup-fact > .ai-smart-setup-actions {
+  min-height: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+}
+.ai-smart-setup-actions .primary,
+.ai-smart-setup > .ai-smart-setup-actions button:last-child {
+  color: #06161c;
+  border-color: #60d9e9;
+  background: linear-gradient(180deg, #68e1ef, #42c8dd);
+}
+
+/* Compact preflight in the Builder panel. It is intentionally unnumbered:
+   plan setup prepares the workflow but never pretends to be a drawing step. */
+.smart-plan-preflight {
+  min-width: 0;
+  margin: 12px 15px 0;
+  padding: 14px;
+  display: grid;
+  gap: 11px;
+  overflow: hidden;
+  color: #dcebf2;
+  border: 1px solid #356273;
+  border-radius: 11px;
+  background:
+    radial-gradient(circle at 100% 0, #3bcfe322, transparent 42%),
+    linear-gradient(145deg, #0f2a38, #0b1c29);
+  box-shadow: inset 3px 0 #46cee1;
+}
+
+.smart-plan-preflight > header,
+.smart-plan-preflight-heading {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.smart-plan-preflight > header span,
+.smart-plan-preflight-heading span,
+.smart-plan-preflight > header strong,
+.smart-plan-preflight > header small,
+.smart-plan-preflight-heading strong,
+.smart-plan-preflight-heading small {
+  min-width: 0;
+  display: block;
+}
+.smart-plan-preflight > header strong,
+.smart-plan-preflight-heading strong {
+  color: #eff8fb;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.smart-plan-preflight > header small,
+.smart-plan-preflight-heading small {
+  margin-top: 4px;
+  color: #a1b7c2;
+  font-size: 11px !important;
+  line-height: 1.45 !important;
+}
+
+.smart-plan-preflight-metrics,
+.smart-plan-preflight > dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+.smart-plan-preflight-metrics > *,
+.smart-plan-preflight > dl > div {
+  min-width: 0;
+  min-height: 42px;
+  margin: 0;
+  padding: 8px 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #9eb5c1;
+  border: 1px solid #2c4c5e;
+  border-radius: 7px;
+  background: #0a1c28;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.smart-plan-preflight-metrics strong,
+.smart-plan-preflight > dl dd {
+  margin: 0;
+  color: #e6f2f7;
+  font-size: 11px;
+  text-align: right;
+}
+.smart-plan-preflight-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+}
+.smart-plan-preflight button {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  color: #07171e;
+  border: 1px solid #60d8e8;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #65deed, #40c7da);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+.smart-plan-preflight button.secondary,
+.smart-plan-preflight-actions button + button {
+  color: #b8d4df;
+  border-color: #365d70;
+  background: #102c3b;
+}
+
+@media (max-width: 980px) {
+  .smart-plan-setup-metrics,
+  .ai-smart-setup-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .smart-plan-setup-grid,
+  .ai-smart-setup-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-smart-setup-section.wide { grid-column: auto; }
+}
+
+@media (max-width: 700px) {
+  .smart-plan-setup-workspace,
+  .ai-smart-setup {
+    padding: 11px;
+    gap: 11px;
+  }
+
+  .smart-plan-setup-heading,
+  .ai-smart-setup-hero,
+  .ai-smart-setup > header {
+    padding: 17px;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .smart-plan-setup-heading > span {
+    width: 100%;
+    min-height: 70px;
+    grid-template-columns: auto auto;
+    gap: 9px;
+  }
+
+  .smart-plan-setup-heading > span small {
+    margin-top: 0;
+    text-align: left;
+  }
+
+  .smart-plan-setup-metrics,
+  .ai-smart-setup-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .smart-plan-setup-metrics article {
+    min-height: 104px;
+  }
+
+  .smart-plan-question-list > header,
+  .smart-plan-fact-list > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .smart-plan-question-list > header button {
+    width: 100%;
+  }
+
+  .smart-plan-question-list > article {
+    grid-template-columns: 32px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .smart-plan-question-list > article > button {
+    width: 100%;
+    grid-column: 1 / -1;
+  }
+
+  .smart-plan-fact-list > article {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 13px;
+  }
+
+  .smart-plan-fact-list > article > button {
+    width: 100%;
+    grid-column: 1 / -1;
+  }
+
+  .smart-plan-setup-actions,
+  .ai-smart-setup > .ai-smart-setup-actions {
+    padding: 14px;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .smart-plan-setup-actions button,
+  .ai-smart-setup > .ai-smart-setup-actions button {
+    width: 100%;
+  }
+
+  .ai-smart-setup-question {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-smart-setup-question > span {
+    width: fit-content;
+  }
+
+  .ai-smart-setup-question button,
+  .ai-smart-setup-fact button {
+    width: 100%;
+  }
+
+  .ai-smart-setup-fact {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-smart-setup-fact > .ai-smart-setup-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (pointer: coarse) {
+  .smart-plan-setup-workspace button,
+  .ai-smart-setup button,
+  [class^="ai-smart-setup"] button,
+  [class*=" ai-smart-setup"] button,
+  .smart-plan-preflight button,
+  .smart-plan-preflight input,
+  .smart-plan-preflight select {
+    min-height: 44px;
+  }
+
+  .smart-plan-question-list > article,
+  .smart-plan-fact-list > article,
+  .ai-smart-setup-question,
+  .ai-smart-setup-fact {
+    min-height: 72px;
+  }
+}
+
+@media print {
+  .smart-plan-setup-actions,
+  .ai-smart-setup-actions,
+  .smart-plan-preflight-actions {
+    display: none !important;
+  }
+}

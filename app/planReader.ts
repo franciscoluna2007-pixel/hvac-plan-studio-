@@ -1,6 +1,8 @@
 import { Util, type PDFDocumentProxy } from "pdfjs-dist";
 
 export type PlanEvidenceCategory =
+  | "Scale"
+  | "Rooms"
   | "Equipment"
   | "Ductwork"
   | "Air devices"
@@ -41,7 +43,7 @@ export type PlanEvidence = {
     height: number;
     pageWidth: number;
     pageHeight: number;
-    coordinateSpace: "viewport-points";
+    coordinateSpace: "viewport-points" | "pdf-points";
   };
 };
 
@@ -120,9 +122,66 @@ type EvidencePattern = {
   baseConfidence: number;
   maxPerPage?: number;
   contextRequired?: RegExp;
+  alwaysScan?: boolean;
 };
 
 const evidencePatterns: EvidencePattern[] = [
+  {
+    category: "Scale",
+    label: "Architectural scale",
+    expression: /\b(?:SCALE\s*[:=]?\s*)?(?:1\s*\/\s*(?:8|4|2)|3\s*\/\s*16)\s*(?:"|IN(?:CH(?:ES)?)?\.?)\s*=\s*1\s*(?:'|FT\.?|FOOT|FEET)\s*(?:-?\s*0?\s*(?:"|IN\.?))?/gi,
+    baseConfidence: 0.96,
+    maxPerPage: 12,
+    alwaysScan: true,
+  },
+  {
+    category: "Scale",
+    label: "Metric scale",
+    expression: /\bSCALE\s*[:=]?\s*1\s*:\s*(?:20|25|50|100|200)\b/gi,
+    baseConfidence: 0.95,
+    maxPerPage: 12,
+    alwaysScan: true,
+  },
+  {
+    category: "Scale",
+    label: "Not to scale",
+    expression: /\b(?:NOT\s+TO\s+SCALE|N\.?\s*T\.?\s*S\.?)\b/gi,
+    baseConfidence: 0.99,
+    maxPerPage: 12,
+    alwaysScan: true,
+  },
+  {
+    category: "Rooms",
+    label: "Room name",
+    expression: /\b(?:PRIMARY\s+(?:BEDROOM|SUITE|BATH(?:ROOM)?)|MASTER\s+(?:BEDROOM|SUITE|BATH(?:ROOM)?)|BEDROOM\s*(?:#?\s*\d+|[A-Z])?|LIVING\s+ROOM|GREAT\s+ROOM|DINING\s+ROOM|FAMILY\s+ROOM|KITCHEN|BREAKFAST\s+(?:ROOM|NOOK)|OFFICE|STUDY|DEN|BONUS\s+ROOM|GAME\s+ROOM|MEDIA\s+ROOM|LAUNDRY|UTILITY|PANTRY|CLOSET|GARAGE|MECHANICAL\s+ROOM|BATH(?:ROOM)?\s*(?:#?\s*\d+|[A-Z])?|HALL(?:WAY)?|FOYER|ENTRY)\b/gi,
+    baseConfidence: 0.87,
+    maxPerPage: 120,
+    alwaysScan: true,
+  },
+  {
+    category: "Rooms",
+    label: "Ceiling height",
+    expression: /\b(?:(?:CEILING|CLG|C\.?\s*H\.?)\s*(?:HEIGHT|HT\.?)?\s*[:=]?\s*\d{1,2}\s*'\s*(?:-\s*\d{1,2}\s*(?:"|IN\.?))?|\d{1,2}\s*'\s*(?:-\s*\d{1,2}\s*(?:"|IN\.?))?\s*(?:A\.?\s*F\.?\s*F\.?|CEILING|CLG|C\.?\s*H\.?))\b/gi,
+    baseConfidence: 0.92,
+    maxPerPage: 120,
+    alwaysScan: true,
+  },
+  {
+    category: "Rooms",
+    label: "Metric ceiling height",
+    expression: /\b(?:(?:CEILING|CLG|C\.?\s*H\.?)\s*(?:HEIGHT|HT\.?)?\s*[:=]?\s*(?:\d{3,4}\s*MM|\d(?:\.\d{1,2})?\s*M)|(?:\d{3,4}\s*MM|\d(?:\.\d{1,2})?\s*M)\s*(?:A\.?\s*F\.?\s*F\.?\s*)?(?:CEILING|CLG|C\.?\s*H\.?))\b/gi,
+    baseConfidence: 0.92,
+    maxPerPage: 120,
+    alwaysScan: true,
+  },
+  {
+    category: "Rooms",
+    label: "Vaulted ceiling range",
+    expression: /\b(?:VAULT(?:ED)?|SLOPED?)\s+(?:CEILING|CLG)\s*[:=]?\s*\d{1,2}\s*'\s*(?:-\s*\d{1,2}\s*(?:"|IN\.?))?\s*(?:TO|THRU|-)\s*\d{1,2}\s*'\s*(?:-\s*\d{1,2}\s*(?:"|IN\.?))?/gi,
+    baseConfidence: 0.93,
+    maxPerPage: 60,
+    alwaysScan: true,
+  },
   {
     category: "Equipment",
     label: "Equipment tag",
@@ -322,13 +381,18 @@ function regionForMatch(
     height: Math.max(1, bottom - y),
     pageWidth: regions[0].pageWidth,
     pageHeight: regions[0].pageHeight,
-    coordinateSpace: "pdf-points",
+    coordinateSpace: regions[0].coordinateSpace,
   };
 }
 
-function extractEvidence(text: string, page: PlanPageReading, spans: PageTextSpan[]) {
+function extractEvidence(
+  text: string,
+  page: PlanPageReading,
+  spans: PageTextSpan[],
+  patterns: EvidencePattern[] = evidencePatterns,
+) {
   const rows: PlanEvidence[] = [];
-  evidencePatterns.forEach((pattern) => {
+  patterns.forEach((pattern) => {
     const expression = new RegExp(pattern.expression.source, pattern.expression.flags);
     let match: RegExpExecArray | null;
     let count = 0;
@@ -579,9 +643,10 @@ export async function analyzeHvacPlan(input: {
       readable: text.length >= 40,
     };
     pages.push(reading);
-    if (classification.classification !== "Unclassified") {
-      evidence.push(...extractEvidence(text, reading, spans));
-    }
+    const patterns = classification.classification === "Unclassified"
+      ? evidencePatterns.filter((pattern) => pattern.alwaysScan)
+      : evidencePatterns;
+    if (reading.readable) evidence.push(...extractEvidence(text, reading, spans, patterns));
     input.onProgress?.(pageNumber, input.pdf.numPages);
     await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
   }

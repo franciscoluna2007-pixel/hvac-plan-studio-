@@ -15,6 +15,7 @@ import MarkupAssistantStudio from "./MarkupAssistantStudio";
 import { type FieldPackageSectionId } from "./fieldPackage";
 import type { PlanAnalysis, PlanEvidence } from "./planReader";
 import { buildAdvancedPlanIntelligence } from "./advancedPlanIntelligence";
+import { buildSmartPlanSetup } from "./planSetup";
 import { buildDesignStandardProfile } from "./designStandard";
 import {
   ASSISTANT_REPAIR_VERSION,
@@ -1331,7 +1332,7 @@ function HVACPlanStudioApp() {
   const [cloudInitialProjectId, setCloudInitialProjectId] = useState<string | null>(null);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showPlanIntelligence, setShowPlanIntelligence] = useState(false);
-  const [planWorkspaceInitialView, setPlanWorkspaceInitialView] = useState<"reader" | "findings">("reader");
+  const [planWorkspaceInitialView, setPlanWorkspaceInitialView] = useState<"setup" | "reader" | "findings">("setup");
   const [showFieldPackageComposer, setShowFieldPackageComposer] = useState(false);
   const [showSystemBalanceStudio, setShowSystemBalanceStudio] = useState(false);
   const [showMarkupAssistant, setShowMarkupAssistant] = useState(false);
@@ -2962,7 +2963,7 @@ function HVACPlanStudioApp() {
           JSON.stringify({ ...project, activePlanAnalysis: null }),
         );
         setSaveState("saved");
-        setBranchMessage("The drawing was saved. Detailed Plan Intelligence exceeded browser storage and can be regenerated from the PDF.");
+        setBranchMessage("The drawing was saved. Detailed plan setup information exceeded browser storage and can be read again from the PDF.");
       } catch {
         setSaveState("saving");
         setBranchMessage("Browser storage is full. Export or save a cloud revision before closing this plan.");
@@ -5954,20 +5955,34 @@ function HVACPlanStudioApp() {
       }
       if (drawing.fitting) {
         const ports = fittingPortPoints(drawing);
-        drawing.fitting.connectedIds.forEach((runId, port) => {
-          if (!runId || port > 2) return;
+        const axis = drawing.fitting.angle;
+        const branchAxis = drawing.fitting.branchAngle
+          ?? axis + drawing.fitting.side * (drawing.fitting.style === "tee90" ? Math.PI / 2 : Math.PI / 4);
+        const portDirections = [axis + Math.PI, axis, branchAxis];
+        const portSizes = [
+          drawing.fitting.upstreamSize,
+          drawing.fitting.downstreamSize,
+          drawing.fitting.branchSize,
+        ];
+        ([0, 1, 2] as const).forEach((port) => {
+          const runId = drawing.fitting!.connectedIds[port];
           targets.push({
             id: `fitting:${drawing.id}:${port}`,
             kind: "fitting",
             drawingId: drawing.id,
             label: `${drawing.roomName || "T/Y fitting"} · Port ${port + 1}`,
-            detail: "Saved T/Y connection",
+            detail: runId ? "Saved T/Y connection" : "Open T/Y port",
             page: drawing.page,
             systemId: drawingSystem(drawing),
             ductType: "supply",
-            port: port as 0 | 1 | 2,
+            port,
             targetPoint: ports[port],
-            savedRunId: runId,
+            savedRunId: runId || undefined,
+            expectedDirection: {
+              x: Math.cos(portDirections[port]),
+              y: Math.sin(portDirections[port]),
+            },
+            expectedSize: portSizes[port],
           });
         });
       }
@@ -5978,6 +5993,10 @@ function HVACPlanStudioApp() {
       runs,
       targets,
       choices,
+      scale: {
+        verified: scaleVerified,
+        feetPerUnit: scaleFeetPerUnit,
+      },
     });
   }
 
@@ -5999,7 +6018,7 @@ function HVACPlanStudioApp() {
     const totalPorts = fittingConnections.length;
     const healthyPorts = fittingConnections.filter((item) => item.status === "healthy").length;
     const openFittingPorts = fittings.reduce((total, fitting) =>
-      total + fitting.fitting!.connectedIds.filter((runId) => !runId).length, 0);
+      total + ([0, 1, 2] as const).filter((port) => !fitting.fitting!.connectedIds[port]).length, 0);
     const sizing = sizingSuggestions();
     const connectionPercent = deviceConnections.length || totalPorts
       ? Math.round((connectedDevices.length + healthyPorts) / Math.max(1, deviceConnections.length + totalPorts) * 100)
@@ -6123,6 +6142,23 @@ function HVACPlanStudioApp() {
         return;
       }
       run.points[endpointIndex] = { ...operation.to };
+      if (operation.kind === "fitting") {
+        const fitting = next.find((drawing) =>
+          drawing.id === operation.drawingId &&
+          drawing.page === reviewedItem?.page &&
+          drawingSystem(drawing) === activeSystem &&
+          drawing.fitting
+        );
+        if (!fitting?.fitting || operation.port == null) {
+          setBranchMessage("A reviewed T/Y fitting changed. Refresh Step 1 before applying.");
+          return;
+        }
+        fitting.fitting.connectedIds[operation.port] = run.id;
+        if (operation.port === 0) fitting.fitting.upstreamSize = run.size;
+        if (operation.port === 1) fitting.fitting.downstreamSize = run.size;
+        if (operation.port === 2) fitting.fitting.branchSize = run.size;
+        continue;
+      }
       if (operation.kind !== "device") continue;
       const device = next.find((drawing) => drawing.id === operation.drawingId && drawing.symbol);
       if (!device?.symbol) {
@@ -6139,7 +6175,8 @@ function HVACPlanStudioApp() {
     setConnectionCandidateChoices({});
     setConnectionReviewFingerprint("");
     setFocusedConnectionRepairId(null);
-    setBranchMessage(`${batch.operations.length} reviewed connection${batch.operations.length === 1 ? "" : "s"} fixed · placed units and cans stayed put · one Undo restores the batch`);
+    const remainingConnections = Math.max(0, activeConnectionRepairIssues.length - batch.operations.length);
+    setBranchMessage(`${batch.operations.length} connection${batch.operations.length === 1 ? "" : "s"} repaired · ${remainingConnections} still need review · no objects moved and no runs were created · one Undo restores the batch`);
     trackProductEvent("connection_repair_applied", {
       system_id: activeSystem,
       repair_count: batch.operations.length,
@@ -9613,10 +9650,8 @@ function HVACPlanStudioApp() {
     released: activeFieldPackage.released,
     releaseStale: activeFieldPackage.stale,
   });
-  const fieldFirstStep = !pdf || !scaleVerified
-    ? "setup"
-    : !activeBuilderSummary.runs.length || !activeAirflowSetup.primaryUnit
-      ? "draw"
+  const fieldFirstStep = !activeBuilderSummary.runs.length || !activeAirflowSetup.primaryUnit
+      ? "connect"
       : !activeAirflowSetup.supplyBalanced || !activeAirflowSetup.returnBalanced || activeBuilderSummary.sizing.length > 0
         ? "airflow"
         : activeBuilderSummary.audit.counts.critical || activeBuilderSummary.audit.counts.warning
@@ -9624,29 +9659,21 @@ function HVACPlanStudioApp() {
           : "finish";
   const fieldFirstSteps = [
     {
-      id: "setup",
-      label: "Setup",
-      detail: !pdf ? "Open the plan" : scaleVerified ? "Plan and scale ready" : "Verify the plan scale",
-      complete: Boolean(pdf && scaleVerified),
+      id: "connect",
+      label: "Connect",
+      detail: !pdf
+        ? "Open the plan"
+        : !scaleVerified
+          ? "Plan setup needs review · you can still draw"
+          : activeBuilderSummary.runs.length
+            ? `${activeBuilderSummary.runs.length} run${activeBuilderSummary.runs.length === 1 ? "" : "s"} marked`
+            : "Place and connect the unit, cans, and runs",
+      complete: Boolean(activeBuilderSummary.runs.length && activeAirflowSetup.primaryUnit),
       run: () => {
         if (!pdf) {
           setShowProjectHome(true);
           return;
         }
-        setCalibrating(true);
-        setMeasureDraft([]);
-        setActiveTool("measure");
-        openToolsPanel();
-      },
-    },
-    {
-      id: "draw",
-      label: "Draw",
-      detail: activeBuilderSummary.runs.length
-        ? `${activeBuilderSummary.runs.length} run${activeBuilderSummary.runs.length === 1 ? "" : "s"} marked`
-        : "Place unit and runs",
-      complete: Boolean(activeBuilderSummary.runs.length && activeAirflowSetup.primaryUnit),
-      run: () => {
         setActiveTool("select");
         setSelectedId(null);
         openToolsPanel();
@@ -9863,6 +9890,7 @@ function HVACPlanStudioApp() {
       .map((action) => action.blocker || action.title),
   });
   const activeAdvancedPlanIntelligence = buildAdvancedPlanIntelligence(activePlanAnalysis);
+  const activeSmartPlanSetup = buildSmartPlanSetup(activePlanAnalysis);
 
   function prepareAssistantRepairPlan() {
     setAssistantPreparedEvidenceFingerprint(assistantRepairPlan.evidenceFingerprint);
@@ -10082,7 +10110,7 @@ function HVACPlanStudioApp() {
   const modalWorkspaceActive = showProjectHome || showProjectSetup || showPlanIntelligence || showFieldPackageComposer || showSystemBalanceStudio || showDisplaySettings;
   const packagePrintClasses = printPackageSections.map((section) => `package-include-${section}`).join(" ");
 
-  function openAIPlanReader(view: "reader" | "findings" = "reader") {
+  function openAIPlanReader(view: "setup" | "reader" | "findings" = "setup") {
     setShowCommandPalette(false);
     setShowCloudProjects(false);
     setShowFieldPackageComposer(false);
@@ -10094,7 +10122,7 @@ function HVACPlanStudioApp() {
   }
 
   function openPlanIntelligence() {
-    openAIPlanReader("findings");
+    openAIPlanReader("setup");
   }
 
   function openFieldPackageComposer() {
@@ -10225,12 +10253,12 @@ function HVACPlanStudioApp() {
     },
     {
       id: "ai-plan-reader",
-      label: "Read the PDF plan",
-      detail: pdf ? `Read and classify ${pdf.numPages} plan sheet${pdf.numPages === 1 ? "" : "s"} with source evidence` : "Open a plan PDF to start",
+      label: "Review plan setup",
+      detail: pdf ? `Find scale, rooms, ceiling heights, equipment, and missing details across ${pdf.numPages} sheet${pdf.numPages === 1 ? "" : "s"}` : "Open a plan PDF to start",
       group: "Review",
       disabled: !pdf,
       keywords: "ai plan reader sheets evidence schedules takeoff v105",
-      run: () => openAIPlanReader("reader"),
+      run: () => openAIPlanReader("setup"),
     },
     {
       id: "plan-review",
@@ -10318,7 +10346,29 @@ function HVACPlanStudioApp() {
           <small>NEXT STEP</small>
           <strong>{fieldFirstActiveStep.detail}</strong>
         </div>
-        <nav aria-label="Five-step job workflow">
+        <nav aria-label="Plan setup and four job steps">
+          <button
+            className={`field-first-setup ${activePlanAnalysis && scaleVerified && !activeSmartPlanSetup?.counts.requiredReviewItems ? "complete" : ""}`}
+            onClick={() => {
+              if (!pdf) {
+                setShowProjectHome(true);
+                return;
+              }
+              openAIPlanReader("setup");
+            }}
+          >
+            <b>{activePlanAnalysis && scaleVerified && !activeSmartPlanSetup?.counts.requiredReviewItems ? <CheckCircle2 size={14} /> : <ScanSearch size={14} />}</b>
+            <span>
+              <strong>Plan setup</strong>
+              <small>{!pdf
+                ? "Open a plan"
+                : !activePlanAnalysis
+                  ? "Reading plan information"
+                  : scaleVerified && !activeSmartPlanSetup?.counts.requiredReviewItems
+                    ? "Plan information ready"
+                    : `${activeSmartPlanSetup?.counts.reviewItems || 0} detail${activeSmartPlanSetup?.counts.reviewItems === 1 ? "" : "s"} to review`}</small>
+            </span>
+          </button>
           {fieldFirstSteps.map((step, index) => <button
             key={step.id}
             className={`${fieldFirstStep === step.id ? "active" : ""} ${step.complete ? "complete" : ""}`}
@@ -10943,8 +10993,8 @@ function HVACPlanStudioApp() {
             {!leftPanelOpen && <button className="panel-restore" aria-controls="workspace-tools-panel" aria-expanded={leftPanelOpen} onClick={openToolsPanel}><PanelLeftClose size={16} /> Tools</button>}
             {workspaceLayout !== "desktop" && <>
               <button className="tablet-quick-action" onClick={() => void openFromDrive()}><HardDrive size={15} /> Drive</button>
-              <button className="tablet-quick-action" disabled={!pdf} onClick={() => openAIPlanReader("reader")}><ScanSearch size={15} /> AI Reader</button>
-              <button className="tablet-quick-action" disabled={!pdf} onClick={openPlanIntelligence}><Sparkles size={15} /> Review AI</button>
+              <button className="tablet-quick-action" disabled={!pdf} onClick={() => openAIPlanReader("setup")}><ScanSearch size={15} /> Plan setup</button>
+              <button className="tablet-quick-action" disabled={!pdf} onClick={() => openAIPlanReader("findings")}><Sparkles size={15} /> Problems</button>
             </>}
             <div className="canvas-edit-actions" role="group" aria-label="Edit history">
               <button aria-label="Undo" onClick={undo} disabled={!undoStack.length}><Undo2 size={16} /></button>
@@ -11640,6 +11690,35 @@ function HVACPlanStudioApp() {
               </div>
             </div>
 
+            <div className="smart-plan-preflight">
+              <header>
+                <span>
+                  <strong>{activeSmartPlanSetup && scaleVerified && !activeSmartPlanSetup.counts.requiredReviewItems ? "PLAN SETUP READY" : "PLAN SETUP"}</strong>
+                  <small>{!pdf
+                    ? "Open a PDF to find its scale, rooms, ceiling heights, equipment, and systems."
+                    : !activeSmartPlanSetup
+                      ? "Reading the plan in the background. You can keep working."
+                      : activeSmartPlanSetup.summary.detail}</small>
+                </span>
+                {activeSmartPlanSetup && <b>{activeSmartPlanSetup.counts.reviewItems}</b>}
+              </header>
+              <dl>
+                <div><dt>Scale</dt><dd>{scaleVerified ? scaleLabel : activeSmartPlanSetup?.counts.likelyScales || activeSmartPlanSetup?.counts.verifiedScales ? "Found · confirm it" : "Needs review"}</dd></div>
+                <div><dt>Rooms &amp; heights</dt><dd>{activeSmartPlanSetup ? `${activeSmartPlanSetup.counts.rooms} rooms · ${activeSmartPlanSetup.counts.roomHeights} heights` : "Reading…"}</dd></div>
+                <div><dt>Equipment</dt><dd>{activeSmartPlanSetup ? `${activeSmartPlanSetup.counts.equipment} units · ${activeSmartPlanSetup.counts.systems} systems` : "Reading…"}</dd></div>
+                <div><dt>Needs your review</dt><dd>{activeSmartPlanSetup ? `${activeSmartPlanSetup.counts.reviewItems} details` : "Checking…"}</dd></div>
+              </dl>
+              <div className="smart-plan-preflight-actions">
+                <button disabled={!pdf} onClick={() => openAIPlanReader("setup")}>
+                  {activeSmartPlanSetup?.counts.reviewItems
+                    ? `Review ${activeSmartPlanSetup.counts.reviewItems} detail${activeSmartPlanSetup.counts.reviewItems === 1 ? "" : "s"}`
+                    : activeSmartPlanSetup
+                      ? "Review plan information"
+                      : "Open plan setup"}
+                </button>
+              </div>
+            </div>
+
             <div className="markup-assistant-launch">
               <span><Sparkles size={19} /></span>
               <div>
@@ -11674,10 +11753,10 @@ function HVACPlanStudioApp() {
                 <div className="builder-action-icon"><Route size={17} /></div>
                 <span><i>STEP 1</i><strong>Connect &amp; repair the system</strong><small>Review each loose unit, supply can, return grille, and saved T/Y connection. Placed objects stay put, and nothing moves until you approve it.</small></span>
                 <div className="connection-repair-summary">
-                  <b className="ready">{activeConnectionRepairPlan.counts.ready} ready</b>
-                  <b className="choice">{activeConnectionRepairPlan.counts.choice} need a choice</b>
-                  <b className="blocked">{activeConnectionRepairPlan.counts.blocked} manual check</b>
-                  <b className="healthy">{activeConnectionRepairPlan.counts.healthy} connected</b>
+                  <b className="ready">{activeConnectionRepairPlan.counts.ready} can connect</b>
+                  <b className="choice">{activeConnectionRepairPlan.counts.choice} need your choice</b>
+                  <b className="blocked">{activeConnectionRepairPlan.counts.blocked} need a manual check</b>
+                  <b className="healthy">{activeConnectionRepairPlan.counts.healthy} already connected</b>
                 </div>
                 {!connectionReviewOpen ? <button
                   className="builder-primary-action connection-review-launch"
@@ -11728,6 +11807,7 @@ function HVACPlanStudioApp() {
                             onClick={() => chooseConnectionCandidate(item, candidate.id)}
                           >
                             Use {candidate.runSize}&quot; run · {candidate.end} end · {connectionRepairDistanceValue(candidate.distance)}
+                            <small>{candidate.signals.join(" · ")}</small>
                           </button>)}
                         </div>}
 
@@ -11835,10 +11915,10 @@ function HVACPlanStudioApp() {
 
               <div className={`builder-action-card ${activeBuilderSummary.packageSummary.ready ? "complete" : "attention"}`}>
                 <div className="builder-action-icon"><FileText size={17} /></div>
-                <span><i>STEP 4</i><strong>Review plan intelligence &amp; takeoff</strong><small>Inspect source evidence, plan findings, run quantities, air devices, fitting counts, and material allowances before exporting.</small></span>
+                <span><i>STEP 4</i><strong>Review plan problems &amp; takeoff</strong><small>Inspect plan sources, open problems, run quantities, air devices, fitting counts, and material allowances before exporting.</small></span>
                 <div className="builder-action-buttons">
                   <button onClick={() => setRightTab("takeoff")}>Open takeoff</button>
-                  <button disabled={!pdf} onClick={() => openAIPlanReader("findings")}>Plan Intelligence</button>
+                  <button disabled={!pdf} onClick={() => openAIPlanReader("findings")}>Plan problems</button>
                 </div>
               </div>
             </div>
@@ -12970,10 +13050,13 @@ function HVACPlanStudioApp() {
       <AIPlanWorkspace
         open={showPlanIntelligence}
         initialView={planWorkspaceInitialView}
+        autoRun
         pdf={pdf}
         sourceFingerprint={pdfFingerprint || sourceFileName || fileName}
         sourceFileName={sourceFileName || `${fileName}.pdf`}
         projectName={fileName}
+        currentScaleLabel={scaleLabel}
+        scaleVerified={scaleVerified}
         onClose={() => setShowPlanIntelligence(false)}
         onShowPage={(page, region) => {
           setShowPlanIntelligence(false);
@@ -12983,6 +13066,41 @@ function HVACPlanStudioApp() {
         onPrepareMarkup={(page) => {
           goToPage(page);
           openMarkupAssistant();
+        }}
+        onUseDetectedScale={(label, page) => {
+          setShowPlanIntelligence(false);
+          goToPage(page);
+          const supportedScale = [
+            '1/8" = 1\'-0"',
+            '3/16" = 1\'-0"',
+            '1/4" = 1\'-0"',
+            '1/2" = 1\'-0"',
+          ].includes(label);
+          if (supportedScale) {
+            applyScalePreset(label);
+            setBranchMessage(`${label} confirmed from the plan · measured work now uses this scale`);
+            return;
+          }
+          setCalibrating(true);
+          setMeasureDraft([]);
+          setActiveTool("measure");
+          openToolsPanel();
+          setBranchMessage(`${label} was found on the plan · confirm it by picking two points on a known distance`);
+        }}
+        onStartCalibration={(page) => {
+          setShowPlanIntelligence(false);
+          goToPage(page);
+          setCalibrating(true);
+          setMeasureDraft([]);
+          setActiveTool("measure");
+          openToolsPanel();
+          setBranchMessage("Pick two points on a known distance to confirm this drawing scale");
+        }}
+        onOpenConnectionRepair={() => {
+          setShowPlanIntelligence(false);
+          setRightTab("builder");
+          openInspectorPanel();
+          openConnectionRepairReview();
         }}
         cloudProjectConnected={Boolean(workingCloudProjectId)}
         onOpenCloudWorkspace={() => {
@@ -13000,9 +13118,9 @@ function HVACPlanStudioApp() {
               analysis,
             });
             setCloudPlanAnalysisRunId(run.id);
-            setBranchMessage("Plan Intelligence was saved to this cloud project");
+            setBranchMessage("Plan setup was saved to this cloud project");
           } catch {
-            setBranchMessage("Plan Intelligence is available locally. Sign in with edit access to save it to the cloud project.");
+            setBranchMessage("Plan setup is available locally. Sign in with edit access to save it to the cloud project.");
           }
         }}
         onFindingDecision={async (_analysis, finding, decision, note) => {
@@ -13033,6 +13151,8 @@ function HVACPlanStudioApp() {
         repairRecords={assistantRepairRecords.filter((record) => record.systemId === activeSystem)}
         takeoffImpact={assistantTakeoffImpact}
         advancedIntelligence={activeAdvancedPlanIntelligence}
+        smartSetup={activeSmartPlanSetup}
+        scaleVerified={scaleVerified}
         designStandard={activeDesignStandard}
         canUndo={Boolean(undoableAssistantRepairRecord())}
         onClose={() => {
@@ -13082,7 +13202,12 @@ function HVACPlanStudioApp() {
         onUndoRepairBatch={undo}
         onOpenPlanIntelligence={() => {
           setShowMarkupAssistant(false);
-          openAIPlanReader("reader");
+          openAIPlanReader("setup");
+        }}
+        onShowPlanSetupSource={(page, region) => {
+          setShowMarkupAssistant(false);
+          goToPage(page);
+          setPlanEvidenceRegion(region ? { page, region } : null);
         }}
         onApplyRecommendation={(recommendation) => {
           const preview = recommendation.preview;
