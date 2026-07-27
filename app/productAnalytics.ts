@@ -11,6 +11,7 @@ export type ProductEventName =
   | "ai_analysis_failed"
   | "finding_decided"
   | "markup_created"
+  | "connection_repair_applied"
   | "takeoff_exported"
   | "takeoff_package_saved"
   | "cloud_project_saved"

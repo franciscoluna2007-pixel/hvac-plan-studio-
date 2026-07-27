@@ -128,7 +128,7 @@ export default function FieldPackageComposer({
   }
 
   return <div className="field-package-overlay" role="presentation">
-    <button className="field-package-dismiss" aria-label="Close Takeoff Package Composer" tabIndex={-1} aria-hidden="true" onClick={onClose} />
+    <button className="field-package-dismiss" aria-label="Close Print and Share" tabIndex={-1} aria-hidden="true" onClick={onClose} />
     <section
       ref={dialogRef}
       className="field-package-composer"
@@ -140,9 +140,9 @@ export default function FieldPackageComposer({
       <header>
         <div className="field-package-title">
           <span><PackageCheck size={20} /></span>
-          <div><small>PLAN INTELLIGENCE OUTPUT · V112</small><h2 id="field-package-title">Takeoff Package Composer</h2><p>{projectName} · {systemName}</p></div>
+          <div><small>PRINT &amp; SHARE</small><h2 id="field-package-title">Choose what the field needs</h2><p>{projectName} · {systemName}</p></div>
         </div>
-        <button aria-label="Close Takeoff Package Composer" onClick={onClose}><X size={18} /></button>
+        <button aria-label="Close Print and Share" onClick={onClose}><X size={18} /></button>
       </header>
 
       <div className={`field-package-status ${packageState}`}>

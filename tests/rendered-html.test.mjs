@@ -2,6 +2,22 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+let connectionRepairModule;
+async function loadConnectionRepairModule() {
+  if (connectionRepairModule) return connectionRepairModule;
+  const source = await readFile(new URL("../app/connectionRepair.ts", import.meta.url), "utf8");
+  const typescriptImport = await import("typescript");
+  const typescript = typescriptImport.default || typescriptImport;
+  const compiled = typescript.transpileModule(source, {
+    compilerOptions: {
+      module: typescript.ModuleKind.ESNext,
+      target: typescript.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  connectionRepairModule = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
+  return connectionRepairModule;
+}
+
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
 
@@ -40,7 +56,7 @@ test("adds secure cloud projects, revisions, collaborators, and Drive packages",
   const drive = await readFile(new URL("../app/googleDrive.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  assert.match(page, /Project Hub/);
+  assert.match(page, /Saved jobs/);
   assert.match(page, /buildProjectSnapshot/);
   assert.match(page, /restoreCloudRevision/);
   assert.match(panel, /Save current plan as project/);
@@ -68,17 +84,17 @@ test("builds v106 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.match(page, /showProjectHome/);
   assert.match(page, /<ProjectHome/);
   assert.match(page, /<GuidedProjectSetup/);
-  assert.match(page, /AI Plan Reader v105 · Plan Intelligence v106/);
+  assert.match(page, /Nothing changes without your approval/);
   assert.match(page, /applyPendingProjectSetup/);
   assert.match(page, /sourceFileName/);
   assert.match(page, /pendingProjectSetupRef\.current = null/);
   assert.match(page, /addEventListener\("cancel", handleFilePickerCancel\)/);
   assert.match(page, /const modalWorkspaceActive = showProjectHome \|\| showProjectSetup \|\| showPlanIntelligence \|\| showFieldPackageComposer \|\| showSystemBalanceStudio/);
   assert.match(page, /inert=\{modalWorkspaceActive \? true : undefined\}/);
-  assert.match(home, /Turn HVAC plan PDFs into evidence, markups, and source-backed takeoffs/);
-  assert.match(home, /AI plan intelligence &amp; takeoff/);
+  assert.match(home, /Turn a PDF plan into an HVAC markup, material list, and field-ready print/);
+  assert.match(home, /Plans · markup · materials/);
   assert.doesNotMatch(home, /FIELD PRODUCTION|Field-first workflow|Installer-ready/);
-  assert.match(home, /Manual geometry stays manual/);
+  assert.match(home, /Nothing changes without approval/);
   assert.match(home, /PLAN REVIEW QUEUE/);
   assert.match(home, /handleDialogKeyDown/);
   assert.match(home, /onOpenProjectHub\(project\.id\)/);
@@ -98,6 +114,37 @@ test("builds v106 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.match(styles, /prefers-reduced-motion/);
   assert.match(layout, /HVAC Plan Studio/);
   assert.doesNotMatch(layout, /Starter Project/);
+});
+
+test("leads solo HVAC operators through one clear five-step job workflow", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const home = await readFile(new URL("../app/ProjectHome.tsx", import.meta.url), "utf8");
+  const palette = await readFile(new URL("../app/ProjectCommandPalette.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
+
+  assert.match(page, /const fieldFirstSteps = \[/);
+  assert.match(page, /label: "Setup"/);
+  assert.match(page, /label: "Draw"/);
+  assert.match(page, /label: "Airflow"/);
+  assert.match(page, /label: "Check"/);
+  assert.match(page, /label: "Finish"/);
+  assert.match(page, /className="field-first-guide"/);
+  assert.match(page, /const \[rightPanelOpen, setRightPanelOpen\] = useState\(false\)/);
+  assert.match(page, /function openToolsPanel\(\) \{\s*setLeftPanelOpen\(true\);\s*setRightPanelOpen\(false\)/);
+  assert.match(page, /function openInspectorPanel\(\) \{\s*setRightPanelOpen\(true\);\s*setLeftPanelOpen\(false\)/);
+  assert.match(page, /left-panel-tabs/);
+  assert.match(home, /BUILT FOR HVAC OWNERS &amp; SUPERINTENDENTS/);
+  assert.match(home, /Continue current job/);
+  assert.match(home, /Start a new job/);
+  assert.match(home, /Saved jobs/);
+  assert.match(palette, /command\.recommended/);
+  assert.match(palette, /Find a tool/);
+  assert.match(styles, /\.field-first-guide/);
+  assert.match(styles, /\.project-home-hero-visual,[\s\S]*display: none !important/);
+  assert.match(styles, /\.left-panel-tabs/);
+  assert.match(layout, /hvac-plan-studio-solo-operator-social\.png/);
+  assert.match(layout, /HVAC superintendents and one-person businesses/);
 });
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
@@ -264,7 +311,7 @@ test("ships the v100 Project Intelligence Hub with secure coordination and revie
   const migration = await readFile(new URL("../supabase/migrations/20260724140000_project_intelligence_hub.sql", import.meta.url), "utf8");
   const releaseMigration = await readFile(new URL("../supabase/migrations/20260724143000_cloud_field_release_integrity.sql", import.meta.url), "utf8");
 
-  assert.match(page, /AI Plan Reader v105 · Plan Intelligence v106/);
+  assert.match(page, /Nothing changes without your approval/);
   assert.match(page, /ProjectCommandPalette/);
   assert.match(page, /const key = event\.key\.toLowerCase\(\)/);
   assert.match(page, /\(event\.ctrlKey \|\| event\.metaKey\) && key === "k"/);
@@ -275,7 +322,7 @@ test("ships the v100 Project Intelligence Hub with secure coordination and revie
   assert.match(panel, /drawing geometry changes only when you edit it/);
   assert.match(panel, /Project-safe save is locked/);
   assert.match(panel, /mutationLockRef/);
-  assert.match(palette, /Review-only intelligence · geometry stays manual/);
+  assert.match(palette, /Type to search every tool/);
   assert.match(cloud, /from\("project_work_items"\)/);
   assert.match(cloud, /from\("project_comments"\)/);
   assert.match(cloud, /from\("project_approvals"\)/);
@@ -307,7 +354,7 @@ test("ships v107 public guest access, subscription readiness, and protected owne
   const entitlements = await readFile(new URL("../app/entitlements.ts", import.meta.url), "utf8");
   const migration = await readFile(new URL("../supabase/migrations/20260725163857_owner_analytics_and_subscription_readiness.sql", import.meta.url), "utf8");
 
-  assert.match(home, /Open a plan — no account/);
+  assert.match(home, /Open a PDF plan/);
   assert.match(home, /The drawing workspace is open to everyone/);
   assert.match(home, /Save projects in the cloud/);
   assert.match(home, /PROFESSIONAL · COMING SOON/);
@@ -433,6 +480,163 @@ test("supports the field run-first T/Y workflow", async () => {
   assert.match(styles, /\.branch-run-armed-card/);
   assert.match(styles, /\.branch-run-armed \.duct-line/);
   assert.match(styles, /\.branch-run-pick \.duct-line/);
+});
+
+test("builds a deterministic STEP 1 plan with type, sheet, system, and endpoint safeguards", async () => {
+  const { buildConnectionRepairPlan } = await loadConnectionRepairModule();
+  const target = {
+    id: "device:can-1:supply",
+    kind: "device",
+    drawingId: "can-1",
+    label: "Bedroom 2",
+    detail: "Supply can",
+    page: 1,
+    systemId: "system-1",
+    ductType: "supply",
+    slot: "terminal",
+    targetPoint: { x: 10, y: 0 },
+  };
+  const runs = [
+    { id: "wrong-type", page: 1, systemId: "system-1", type: "return", size: "8", points: [{ x: 9, y: 0 }, { x: 50, y: 0 }] },
+    { id: "wrong-page", page: 2, systemId: "system-1", type: "supply", size: "8", points: [{ x: 8, y: 0 }, { x: 50, y: 0 }] },
+    { id: "wrong-system", page: 1, systemId: "system-2", type: "supply", size: "8", points: [{ x: 7, y: 0 }, { x: 50, y: 0 }] },
+    { id: "too-short", page: 1, systemId: "system-1", type: "supply", size: "8", points: [{ x: 10, y: 0 }] },
+    { id: "valid", page: 1, systemId: "system-1", type: "supply", size: "8", points: [{ x: 20, y: 0 }, { x: 80, y: 0 }] },
+  ];
+  const before = JSON.stringify({ runs, target });
+  const plan = buildConnectionRepairPlan({ systemId: "system-1", runs, targets: [target] });
+
+  assert.equal(plan.items[0].status, "ready");
+  assert.equal(plan.items[0].candidate.runId, "valid");
+  assert.equal(plan.items[0].candidate.end, "start");
+  assert.equal(JSON.stringify({ runs, target }), before, "planning must not mutate source geometry");
+});
+
+test("requires a choice for ambiguous STEP 1 matches and stays stable when drawing order changes", async () => {
+  const { buildConnectionRepairPlan } = await loadConnectionRepairModule();
+  const target = {
+    id: "device:return-1:return",
+    kind: "device",
+    drawingId: "return-1",
+    label: "Hall return",
+    detail: "Return grille",
+    page: 1,
+    systemId: "system-1",
+    ductType: "return",
+    slot: "terminal",
+    targetPoint: { x: 0, y: 0 },
+  };
+  const runs = [
+    { id: "run-b", page: 1, systemId: "system-1", type: "return", size: "12", points: [{ x: 6, y: 0 }, { x: 100, y: 0 }] },
+    { id: "run-a", page: 1, systemId: "system-1", type: "return", size: "12", points: [{ x: 5, y: 0 }, { x: -100, y: 0 }] },
+  ];
+  const first = buildConnectionRepairPlan({ systemId: "system-1", runs, targets: [target] });
+  const reversed = buildConnectionRepairPlan({ systemId: "system-1", runs: [...runs].reverse(), targets: [target] });
+
+  assert.equal(first.items[0].status, "choice");
+  assert.deepEqual(
+    first.items[0].candidates.map((candidate) => candidate.id),
+    reversed.items[0].candidates.map((candidate) => candidate.id),
+  );
+  const chosen = buildConnectionRepairPlan({
+    systemId: "system-1",
+    runs,
+    targets: [target],
+    choices: { [target.id]: "run-a:start" },
+  });
+  assert.equal(chosen.items[0].status, "ready");
+  assert.equal(chosen.items[0].candidate.runId, "run-a");
+});
+
+test("repairs only the run already saved to a T/Y port and rejects stale or distant batches", async () => {
+  const { buildConnectionRepairPlan, prepareConnectionRepairBatch } = await loadConnectionRepairModule();
+  const runs = [
+    { id: "saved-run", page: 1, systemId: "system-1", type: "supply", size: "10", points: [{ x: 12, y: 0 }, { x: 100, y: 0 }] },
+    { id: "closer-run", page: 1, systemId: "system-1", type: "supply", size: "8", points: [{ x: 1, y: 0 }, { x: -100, y: 0 }] },
+  ];
+  const target = {
+    id: "fitting:ty-1:2",
+    kind: "fitting",
+    drawingId: "ty-1",
+    label: "T/Y fitting · Port 3",
+    detail: "Saved T/Y connection",
+    page: 1,
+    systemId: "system-1",
+    ductType: "supply",
+    port: 2,
+    targetPoint: { x: 0, y: 0 },
+    savedRunId: "saved-run",
+  };
+  const plan = buildConnectionRepairPlan({ systemId: "system-1", runs, targets: [target] });
+  assert.equal(plan.items[0].status, "ready");
+  assert.equal(plan.items[0].candidate.runId, "saved-run");
+  const batch = prepareConnectionRepairBatch(plan, [target.id], plan.fingerprint);
+  assert.equal(batch.ok, true);
+  assert.deepEqual(batch.operations[0].from, { x: 12, y: 0 });
+  assert.deepEqual(batch.operations[0].to, { x: 0, y: 0 });
+  assert.equal(prepareConnectionRepairBatch(plan, [target.id], "stale-review").ok, false);
+
+  const distant = buildConnectionRepairPlan({
+    systemId: "system-1",
+    runs: [{ ...runs[0], points: [{ x: 49, y: 0 }, { x: 100, y: 0 }] }],
+    targets: [target],
+  });
+  assert.equal(distant.items[0].status, "blocked");
+});
+
+test("reserves occupied run endpoints and never prepares the same endpoint twice", async () => {
+  const { buildConnectionRepairPlan, prepareConnectionRepairBatch } = await loadConnectionRepairModule();
+  const runs = [
+    { id: "shared-run", page: 1, systemId: "system-1", type: "supply", size: "8", points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] },
+  ];
+  const healthy = {
+    id: "device:can-1:supply",
+    kind: "device",
+    drawingId: "can-1",
+    label: "Can 1",
+    detail: "Supply can",
+    page: 1,
+    systemId: "system-1",
+    ductType: "supply",
+    slot: "terminal",
+    targetPoint: { x: 0, y: 0 },
+    savedRunId: "shared-run",
+    savedEnd: "start",
+  };
+  const unbound = {
+    ...healthy,
+    id: "device:can-2:supply",
+    drawingId: "can-2",
+    label: "Can 2",
+    targetPoint: { x: 2, y: 0 },
+    savedRunId: undefined,
+    savedEnd: undefined,
+  };
+  const plan = buildConnectionRepairPlan({ systemId: "system-1", runs, targets: [healthy, unbound] });
+  assert.equal(plan.items.find((item) => item.id === healthy.id).status, "healthy");
+  assert.equal(plan.items.find((item) => item.id === unbound.id).status, "blocked");
+  assert.equal(prepareConnectionRepairBatch(plan, [unbound.id], plan.fingerprint).ok, false);
+});
+
+test("makes STEP 1 preview-first and preserves placed objects and saved T/Y topology", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const repair = await readFile(new URL("../app/connectionRepair.ts", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(page, /Review each loose unit, supply can, return grille, and saved T\/Y connection/);
+  assert.match(page, /Review \$\{activeConnectionRepairIssues\.length\} connection fix/);
+  assert.match(page, /Add this fix/);
+  assert.match(page, /Apply \{selectedReadyConnectionRepairIds\.length\} selected · one Undo/);
+  assert.match(page, /0<\/strong> placed objects move/);
+  assert.match(page, /run\.points\[endpointIndex\] = \{ \.\.\.operation\.to \}/);
+  assert.doesNotMatch(page, /device\.points = \[\{ \.\.\.nearest\.endpoint \}\]/);
+  assert.doesNotMatch(page, /function repairActiveSystemNetwork[\s\S]{0,500}reattachFittingIn/);
+  assert.match(repair, /The saved run end can snap back to this exact T\/Y port/);
+  assert.match(repair, /run\.page === target\.page/);
+  assert.match(repair, /run\.systemId === target\.systemId/);
+  assert.match(repair, /run\.type === target\.ductType/);
+  assert.match(styles, /\.connection-repair-list/);
+  assert.match(styles, /\.step-one-repair-preview/);
 });
 
 test("deletes runs and icons without leaving the page or broken drawing references", async () => {
@@ -661,7 +865,7 @@ test("keeps the v105/v106 reader foundation and adds v115 inspectable evidence c
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   const migration = await readFile(new URL("../supabase/migrations/20260724220000_ai_plan_reader_intelligence.sql", import.meta.url), "utf8");
 
-  assert.match(page, /AI Plan Reader v105 · Plan Intelligence v106/);
+  assert.match(page, /Nothing changes without your approval/);
   assert.match(page, /<AIPlanWorkspace/);
   assert.match(page, /openAIPlanReader/);
   assert.match(page, /saveCloudPlanAnalysis/);
@@ -751,7 +955,7 @@ test("ships v112 System Balance Studio with reviewed calculations and manual geo
   assert.match(page, /function exportSystemBalanceRunCsv\(\)/);
   assert.match(page, /showSystemBalanceStudio && <SystemBalanceStudio/);
   assert.doesNotMatch(page, /const activeSystemBalanceModel = buildSystemBalanceModel\(\)/);
-  assert.match(studio, /SYSTEM BALANCE STUDIO · V112/);
+  assert.match(studio, /AIRFLOW &amp; DUCT SIZES/);
   assert.match(studio, /TRANSPARENT DUCT SIZE REVIEW · V112/);
   assert.match(studio, /Velocity preview only\. Pressure remains unverified\./);
   assert.match(studio, /run\.applyEligible && run\.airflowReviewed && !run\.overCapacity/);
@@ -958,18 +1162,25 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(page, /actions\.length !== requestedIds\.size/);
   assert.match(page, /Apply reviewed terminal CFM first, then rebuild the repair plan before resizing the network/);
   assert.match(page, /setHistory\(next\)/);
-  assert.match(studio, /INTELLIGENT HVAC MARKUP ASSISTANT · V116/);
-  assert.match(studio, /Build the repair plan\. Approve one controlled batch\./);
+  assert.match(studio, /PLAN HELPER/);
+  assert.match(studio, /Check the plan\. Review fixes\. Approve what changes\./);
   assert.match(studio, /aria-modal="false"/);
-  assert.match(studio, /Inspect only/);
-  assert.match(studio, /Build repair plan/);
-  assert.match(studio, /Guided apply/);
+  assert.match(studio, /Check only/);
+  assert.match(studio, /Prepare fixes/);
+  assert.match(studio, /Apply approved fixes/);
   assert.match(studio, /V113 GUIDED REPAIR PLAN/);
   assert.match(studio, /This repair plan is stale\./);
   assert.match(studio, /V114 TAKEOFF IMPACT/);
   assert.match(studio, /Before → after purchasing impact/);
   assert.match(studio, /ONE CONTROLLED TRANSACTION/);
-  assert.match(studio, /I reviewed the selected object diffs and understand this is a planning-screened repair/);
+  assert.match(studio, /I reviewed each selected problem, proposed fix, expected result, and affected plan object/);
+  assert.match(studio, /No fix is selected automatically/);
+  assert.match(studio, /Select all \$\{readyActions\.length\} eligible fixes/);
+  assert.match(studio, /PROBLEM/);
+  assert.match(studio, /PROPOSED FIX/);
+  assert.match(studio, /EXPECTED RESULT/);
+  assert.match(studio, /AFFECTED PLAN OBJECTS/);
+  assert.match(studio, /preparedRepairPlanId !== repairPlan\.id/);
   assert.match(studio, /autonomyMode !== "guided"/);
   assert.match(studio, /onApplyRepairPlan/);
   assert.match(studio, /onUndoRepairBatch/);
@@ -982,7 +1193,11 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(studio, /Review-only heuristic/);
   assert.match(studio, /not a probability, approval, or release gate/);
   assert.doesNotMatch(engineSource, /setHistory|setDrawings|dispatch/);
-  assert.match(repairSource, /guided-repair-v115\.0/);
+  assert.match(repairSource, /guided-repair-v116\.1/);
+  assert.match(page, /assistantPreparedRepairPlanId !== assistantRepairPlan\.id/);
+  assert.match(page, /canUndo=\{Boolean\(undoableAssistantRepairRecord\(\)\)\}/);
+  assert.match(page, /record\.reversedAt[\s\S]{0,400}reversedAt: undefined/);
+  assert.match(engineSource, /must be fixed on the drawing before release/);
   assert.match(takeoffSource, /takeoff-intelligence-v114\.0/);
   assert.match(advancedSource, /advanced-plan-intelligence-v115\.0/);
   assert.match(styles, /v115 final readability guard: working evidence and warnings are never microcopy/);
@@ -992,7 +1207,7 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(roadmap, /\| v115 \| Advanced Plan Intelligence, source regions, and coverage \| Shipped \|/);
 });
 
-test("v113 repair planning stages reviewed CFM before sizing and selects only eligible actions", async () => {
+test("guided repair stages reviewed CFM before sizing and requires explicit fix selection", async () => {
   const repair = await import(new URL("../app/repairPlan.ts", import.meta.url));
   const sizeCandidate = {
     id: "run-12",
@@ -1038,7 +1253,7 @@ test("v113 repair planning stages reviewed CFM before sizing and selects only el
   const staged = repair.buildRepairPlan(stagedInput);
 
   assert.equal(JSON.stringify(stagedInput), before);
-  assert.equal(staged.version, "guided-repair-v115.0");
+  assert.equal(staged.version, "guided-repair-v116.1");
   assert.equal(staged.readyCount, 1);
   assert.equal(staged.needsInputCount, 1);
   const cfmAction = staged.actions.find((action) => action.kind === "terminal-cfm");
@@ -1046,9 +1261,13 @@ test("v113 repair planning stages reviewed CFM before sizing and selects only el
   assert.equal(cfmAction.readiness, "ready");
   assert.equal(cfmAction.cfmSource, "room-target");
   assert.ok(cfmAction.evidence.includes("CFM is not derived from duct diameter"));
+  assert.ok(cfmAction.problem.includes("400 CFM"));
+  assert.ok(cfmAction.proposedFix.includes("640 CFM"));
+  assert.ok(cfmAction.expectedResult.includes("separate review step"));
+  assert.equal(cfmAction.nextStepLabel, "Add this airflow fix");
   assert.equal(blockedSizeAction.readiness, "needs-input");
   assert.match(blockedSizeAction.blocker, /Apply the reviewed terminal CFM first/);
-  assert.deepEqual(staged.selectedByDefault, [cfmAction.id]);
+  assert.deepEqual(staged.selectedByDefault, []);
 
   const rebuilt = repair.buildRepairPlan({
     ...stagedInput,
@@ -1066,16 +1285,35 @@ test("v113 repair planning stages reviewed CFM before sizing and selects only el
   assert.equal(readySizeAction.roomTargetReviewFingerprint, "room-review-current");
   assert.equal(readySizeAction.currentSize, "10");
   assert.equal(readySizeAction.proposedSize, "12");
+  assert.ok(readySizeAction.problem.includes("10\" supply run"));
+  assert.ok(readySizeAction.proposedFix.includes("12\""));
+  assert.ok(readySizeAction.expectedResult.includes("814 FPM"));
+  assert.equal(readySizeAction.nextStepLabel, "Add this size fix");
   assert.ok(readySizeAction.evidence.includes("640 CFM · Saved room target"));
   assert.ok(readySizeAction.evidence.includes("Fingerprint-matched reviewed room-target CFM"));
   assert.ok(readySizeAction.evidence.includes("Room-target review ROOM-REVIEW-CURRENT"));
-  assert.deepEqual(rebuilt.selectedByDefault, [readySizeAction.id]);
+  assert.deepEqual(rebuilt.selectedByDefault, []);
   assert.deepEqual(
     repair.selectedReadyActions(rebuilt, [readySizeAction.id, "unknown"]).map((action) => action.id),
     [readySizeAction.id],
   );
   assert.equal(repair.repairPlanIsStale(rebuilt, "evidence-b"), false);
   assert.equal(repair.repairPlanIsStale(rebuilt, "evidence-c"), true);
+
+  const unchangedCfm = repair.buildRepairPlan({
+    ...stagedInput,
+    evidenceFingerprint: "evidence-no-op",
+    cfmCandidates: [{
+      ...stagedInput.cfmCandidates[0],
+      current: 640,
+      proposed: 640,
+    }],
+    sizeCandidates: [sizeCandidate],
+  });
+  assert.equal(unchangedCfm.actions.some((action) => action.kind === "terminal-cfm"), false);
+  assert.equal(unchangedCfm.actions.find((action) => action.kind === "run-size").readiness, "ready");
+  assert.equal(unchangedCfm.readyCount, 1);
+  assert.deepEqual(unchangedCfm.selectedByDefault, []);
 
   const unreviewed = repair.buildRepairPlan({
     ...stagedInput,
@@ -1257,7 +1495,7 @@ test("v115 Advanced Plan Intelligence keeps source regions, OCR gaps, and relati
   assert.deepEqual(comparison, { changed: true, added: 1, removed: 0, unchanged: 6 });
 });
 
-test("v116 Studio Standard separates locked rules, recommendations, and project-only overrides", async () => {
+test("v116 My HVAC Rules separates locked rules, recommendations, and project-only overrides", async () => {
   const standard = await import(new URL("../app/designStandard.ts", import.meta.url));
   const studio = await readFile(new URL("../app/MarkupAssistantStudio.tsx", import.meta.url), "utf8");
   const roadmap = await readFile(new URL("../ROADMAP.md", import.meta.url), "utf8");
@@ -1286,14 +1524,14 @@ test("v116 Studio Standard separates locked rules, recommendations, and project-
 
   assert.equal(JSON.stringify(input), before);
   assert.equal(profile.engineVersion, "design-standard-v116.0");
-  assert.equal(profile.name, "HVAC Plan Studio Standard");
+  assert.equal(profile.name, "My HVAC Rules");
   assert.equal(profile.profileVersion, "1.0");
   assert.equal(profile.blocked, 2);
   assert.equal(profile.rules.find((row) => row.id === "residential-flex-limit").overrideAllowed, false);
   assert.ok(profile.rules.find((row) => row.id === "bedroom-return-path").drawingIds.includes("diffuser-2"));
   assert.equal(profile.rules.find((row) => row.id === "reviewed-ty-strategy").level, "project");
   assert.match(profile.rules.find((row) => row.id === "fresh-air-control").finding, /without a motorized outside-air damper/);
-  assert.match(studio, /Studio Standard/);
+  assert.match(studio, /My HVAC Rules/);
   assert.match(studio, /Locked safeguards/);
   assert.match(studio, /Project exceptions/);
   assert.doesNotMatch(studio, /4119|119 Company Style/);

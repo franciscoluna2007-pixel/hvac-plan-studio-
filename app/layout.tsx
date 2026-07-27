@@ -13,11 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://hvac-plan-studio.franciscoluna2007.chatgpt.site"),
   title: {
     default: "HVAC Plan Studio",
     template: "%s · HVAC Plan Studio",
   },
-  description: "AI-assisted HVAC plan reading, evidence review, plan markup, and source-backed takeoff in one controlled workspace.",
+  description: "Turn an HVAC plan PDF into a clear markup, airflow and duct-size review, material list, and field-ready print.",
   applicationName: "HVAC Plan Studio",
   keywords: ["HVAC plan reader", "HVAC plan intelligence", "duct plan", "HVAC takeoff", "plan markup"],
   other: {
@@ -26,6 +27,23 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
+  },
+  openGraph: {
+    title: "HVAC Plan Studio",
+    description: "A clear five-step plan workspace for HVAC superintendents and one-person businesses.",
+    type: "website",
+    images: [{
+      url: "/hvac-plan-studio-solo-operator-social.png",
+      width: 1536,
+      height: 1024,
+      alt: "An HVAC superintendent marking supply, return, branch, and fresh-air routes on a plan tablet.",
+    }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "HVAC Plan Studio",
+    description: "From PDF plan to HVAC markup, materials, and field-ready print.",
+    images: ["/hvac-plan-studio-solo-operator-social.png"],
   },
 };
 

@@ -162,7 +162,7 @@ export default function SystemBalanceStudio({
   }
 
   return <div className="system-balance-overlay" role="presentation">
-    <button className="system-balance-dismiss" aria-label="Close System Balance Studio" tabIndex={-1} aria-hidden="true" onClick={onClose} />
+    <button className="system-balance-dismiss" aria-label="Close Airflow and Duct Sizes" tabIndex={-1} aria-hidden="true" onClick={onClose} />
     <section
       ref={panelRef}
       className="system-balance-studio"
@@ -175,14 +175,14 @@ export default function SystemBalanceStudio({
         <div className="system-balance-brand">
           <span><Wind size={20} /></span>
           <div>
-            <small>SYSTEM BALANCE STUDIO · V112</small>
-            <h2 id="system-balance-title">Airflow coordination, sizing review, and evidence</h2>
+            <small>AIRFLOW &amp; DUCT SIZES</small>
+            <h2 id="system-balance-title">Check airflow, connected paths, and recommended sizes</h2>
             <p>{projectName} · {model.systemName}</p>
           </div>
         </div>
         <div className="system-balance-header-actions">
           <span className={summary.tone}><i /> {summary.tone === "clear" ? "COORDINATION READY" : summary.tone === "hold" ? "DESIGN HOLD" : "COORDINATION DRAFT"}</span>
-          <button aria-label="Close System Balance Studio" onClick={onClose}><X size={18} /></button>
+          <button aria-label="Close Airflow and Duct Sizes" onClick={onClose}><X size={18} /></button>
         </div>
       </header>
 
@@ -208,7 +208,7 @@ export default function SystemBalanceStudio({
         <article className={summary.unresolvedNetworks || summary.disconnectedDevices ? "hold" : "clear"}><small>NETWORK HEALTH</small><strong>{summary.unresolvedNetworks + summary.disconnectedDevices}</strong><span>unresolved paths / devices</span></article>
       </div>
 
-      <nav className="system-balance-tabs" role="tablist" aria-label="System Balance Studio sections">
+      <nav className="system-balance-tabs" role="tablist" aria-label="Airflow and Duct Sizes sections">
         {([
           ["overview", "System overview", model.networks.filter((row) => !row.balanced).length],
           ["rooms", "Room CFM", model.cfmProposals.length],

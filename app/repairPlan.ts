@@ -1,7 +1,7 @@
 import type { MarkupRecommendation } from "./markupAssistant";
 import type { TakeoffImpact } from "./takeoffIntelligence";
 
-export const ASSISTANT_REPAIR_VERSION = "guided-repair-v115.0";
+export const ASSISTANT_REPAIR_VERSION = "guided-repair-v116.1";
 
 export type RepairAutonomyMode = "inspect" | "prepare" | "guided";
 export type RepairActionKind =
@@ -17,6 +17,10 @@ type RepairActionBase = {
   title: string;
   location: string;
   detail: string;
+  problem: string;
+  proposedFix: string;
+  expectedResult: string;
+  nextStepLabel: string;
   evidenceFingerprint: string;
   evidence: string[];
   objectIds: string[];
@@ -102,6 +106,9 @@ export type RepairBatchRecord = {
     kind: RepairActionKind;
     title: string;
     detail: string;
+    problem: string;
+    proposedFix: string;
+    expectedResult: string;
     objectIds: string[];
     evidenceFingerprint: string;
   }>;
@@ -184,11 +191,14 @@ export function buildRepairPlan(input: {
   const createdAt = input.createdAt || "evidence-current";
   const actions: RepairPlanAction[] = [];
   const representedRecommendationIds = new Set<string>();
-  const readyCfm = input.cfmCandidates.filter((candidate) =>
+  const cfmChanges = input.cfmCandidates.filter((candidate) =>
+    candidate.current !== candidate.proposed
+  );
+  const readyCfm = cfmChanges.filter((candidate) =>
     input.roomTargetsReviewed && candidate.connected && candidate.proposed > 0
   );
 
-  [...input.cfmCandidates]
+  [...cfmChanges]
     .sort((left, right) => left.room.localeCompare(right.room) || left.drawingId.localeCompare(right.drawingId))
     .forEach((candidate) => {
       const ready = input.roomTargetsReviewed && candidate.connected && candidate.proposed > 0;
@@ -198,6 +208,14 @@ export function buildRepairPlan(input: {
         title: `${candidate.label} airflow`,
         location: candidate.room,
         detail: `${candidate.current || 0} → ${candidate.proposed} CFM`,
+        problem: `${candidate.label} is set to ${candidate.current || 0} CFM, but the reviewed ${candidate.room} target calls for ${candidate.proposed} CFM.`,
+        proposedFix: `Set only this terminal to ${candidate.proposed} CFM from the reviewed room target.`,
+        expectedResult: "The connected network recalculates from reviewed terminal airflow. Duct sizing remains a separate review step.",
+        nextStepLabel: ready ? "Add this airflow fix" : !input.roomTargetsReviewed
+          ? "Review room CFM"
+          : !candidate.connected
+            ? "Repair the connection"
+            : "Enter room CFM",
         evidenceFingerprint: `${input.evidenceFingerprint}:cfm:${candidate.id}:${candidate.current}:${candidate.proposed}`,
         evidence: [
           ready ? "Saved room target" : "Room target not ready",
@@ -213,7 +231,7 @@ export function buildRepairPlan(input: {
             : candidate.proposed <= 0
               ? "Enter a positive room airflow target."
               : undefined,
-        selectedByDefault: ready,
+        selectedByDefault: false,
         drawingId: candidate.drawingId,
         currentCfm: candidate.current,
         proposedCfm: candidate.proposed,
@@ -257,6 +275,10 @@ export function buildRepairPlan(input: {
             ? ` · aligns ${candidate.affectedConnectedRunIds.length} connected run endpoint${candidate.affectedConnectedRunIds.length === 1 ? "" : "s"} to resized fitting ports`
             : ""
         }`,
+        problem: `${candidate.current}" ${candidate.type} run carries ${candidate.cfm} reviewed CFM at approximately ${candidate.currentVelocity} FPM against the ${candidate.limit} FPM project limit.`,
+        proposedFix: `Resize this run to ${candidate.recommended}" and synchronize only the ${candidate.affectedFittingIds?.length || 0} listed fitting${candidate.affectedFittingIds?.length === 1 ? "" : "s"} and ${candidate.affectedConnectedRunIds?.length || 0} attached endpoint${candidate.affectedConnectedRunIds?.length === 1 ? "" : "s"}.`,
+        expectedResult: `The velocity screen changes from approximately ${candidate.currentVelocity} to ${candidate.velocity} FPM. Pressure qualification and field verification remain required.`,
+        nextStepLabel: ready ? "Add this size fix" : "Open sizing inputs",
         evidenceFingerprint: `${input.evidenceFingerprint}:size:${candidate.id}:${candidate.current}:${candidate.recommended}:${candidate.cfm}:${candidate.airflowSource}:${candidate.airflowReviewed}:${candidate.roomTargetReviewFingerprint || "none"}:${[...(candidate.reasonCodes || [])].sort().join(",")}`,
         evidence: [
           `${candidate.cfm} CFM · ${sourceLabel(candidate.airflowSource)}`,
@@ -271,14 +293,14 @@ export function buildRepairPlan(input: {
             ? "OEM ESP, component losses, and critical-path effective length are not verified"
             : "Pressure basis supplied",
         ],
-        objectIds: [
+        objectIds: [...new Set([
           candidate.id,
           ...(candidate.affectedFittingIds || []),
           ...(candidate.affectedConnectedRunIds || []),
-        ],
+        ])],
         readiness: ready ? "ready" : "needs-input",
         blocker,
-        selectedByDefault: ready,
+        selectedByDefault: false,
         drawingId: candidate.id,
         currentSize: candidate.current,
         proposedSize: candidate.recommended,
@@ -311,6 +333,10 @@ export function buildRepairPlan(input: {
         title: `${candidate.style === "wye45" ? "45° wye" : "90° tee"} opportunity ${index + 1}`,
         location: `${candidate.parentSize}″ parent run`,
         detail: "The existing runs align for a fitting proposal. Placement still requires confirmation on the plan.",
+        problem: "Two existing runs align for a junction, but no confirmed fitting connects them.",
+        proposedFix: `Confirm one ${candidate.style === "wye45" ? "45-degree wye" : "90-degree tee"} at the highlighted junction.`,
+        expectedResult: "Only the reviewed fitting is placed between the two existing runs. No new route or branch stub is invented.",
+        nextStepLabel: "Confirm T/Y on plan",
         evidenceFingerprint: candidate.evidenceFingerprint,
         evidence: ["Two existing supply runs", "Same system and sheet", "Fixed plan-space proximity check"],
         objectIds: [candidate.mainRunId, candidate.branchRunId],
@@ -322,6 +348,12 @@ export function buildRepairPlan(input: {
         style: candidate.style,
       });
     });
+
+  if (input.sizeCandidates.length) {
+    input.recommendations
+      .filter((recommendation) => recommendation.category === "Duct sizing")
+      .forEach((recommendation) => representedRecommendationIds.add(recommendation.id));
+  }
 
   input.recommendations
     .filter((recommendation) =>
@@ -336,6 +368,16 @@ export function buildRepairPlan(input: {
         title: recommendation.title,
         location: recommendation.category,
         detail: recommendation.proposedAction,
+        problem: recommendation.detail,
+        proposedFix: recommendation.proposedAction,
+        expectedResult: recommendation.severity === "critical"
+          ? "The blocking condition is corrected on the drawing before release."
+          : "The condition is corrected or resolved through a named review decision.",
+        nextStepLabel: recommendation.action === "sizing-review"
+          ? "Open airflow and duct sizes"
+          : recommendation.drawingId
+            ? "Inspect and fix on plan"
+            : "Open decision record",
         evidenceFingerprint: recommendation.evidenceFingerprint,
         evidence: recommendation.evidence,
         objectIds: recommendation.drawingId ? [recommendation.drawingId] : [],

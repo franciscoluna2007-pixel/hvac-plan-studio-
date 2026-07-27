@@ -75,7 +75,7 @@ function confidenceForFinding(finding: PlanIntelligenceFinding) {
 }
 
 function actionForFinding(finding: PlanIntelligenceFinding): MarkupRecommendationAction {
-  if (finding.category === "Duct sizing") return "sizing-review";
+  if (finding.category === "Duct sizing" || finding.category === "Airflow") return "sizing-review";
   if (finding.drawingId) return "focus";
   return "manual-review";
 }
@@ -201,7 +201,7 @@ export function summarizeMarkupAssistant(
   const critical = openRows.filter((row) => row.severity === "critical").length;
   const warnings = openRows.filter((row) => row.severity === "warning").length;
   const headline = critical
-    ? `${critical} condition${critical === 1 ? "" : "s"} block release until corrected or documented`
+    ? `${critical} condition${critical === 1 ? "" : "s"} must be fixed on the drawing before release`
     : warnings
       ? `${warnings} recommendation${warnings === 1 ? "" : "s"} need your review`
       : openRows.length

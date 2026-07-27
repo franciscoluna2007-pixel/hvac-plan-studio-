@@ -1,5 +1,5 @@
 export const DESIGN_STANDARD_ENGINE_VERSION = "design-standard-v116.0";
-export const DESIGN_STANDARD_NAME = "HVAC Plan Studio Standard";
+export const DESIGN_STANDARD_NAME = "My HVAC Rules";
 export const DESIGN_STANDARD_PROFILE_VERSION = "1.0";
 
 export type DesignStandardRuleLevel = "locked" | "calculated" | "recommended" | "project";
@@ -238,7 +238,7 @@ export function buildDesignStandardProfile(input: BuildDesignStandardInput): Des
       level: "project" as const,
       finding: `Project override: ${overrides[row.id]}`,
       status: row.status === "blocked" ? row.status : "review" as const,
-      evidence: [...row.evidence, "Project-only override; the Studio Standard is unchanged"],
+      evidence: [...row.evidence, "Project-only exception; My HVAC Rules is unchanged"],
     }
     : row);
 
@@ -260,7 +260,7 @@ export function buildDesignStandardProfile(input: BuildDesignStandardInput): Des
     blocked,
     rules,
     nonClaims: [
-      "The Studio Standard is a drafting and review profile, not an automatic HVAC design approval.",
+      "My HVAC Rules is a drafting and review profile, not an automatic HVAC design approval.",
       "Geometry, airflow, pressure, equipment, code, and field conditions remain separately reviewable evidence.",
       "Project overrides never rewrite the shared standard unless an authorized person publishes a new profile version.",
     ],
