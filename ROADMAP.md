@@ -1,16 +1,28 @@
 # HVAC Plan Studio — Product Overview and Roadmap
 
-Last revised: July 25, 2026
+Last revised: July 26, 2026
 
 ## Product overview
 
-HVAC Plan Studio is a plan-markup, airflow-coordination, review, takeoff, and field-release workspace for HVAC contractors, estimators, reviewers, and field teams.
+HVAC Plan Studio is a plan-markup, airflow-coordination, review, takeoff, and field-release workspace built first for HVAC superintendents and one-person businesses. Larger-company administration remains a later-stage product area.
 
 The product keeps the source PDF and editable HVAC overlay together. A user can trace supply, return, and fresh-air systems; place equipment and air devices; connect T/Y fittings; coordinate room CFM; review connected-network sizing; prepare purchasing quantities; and release a controlled field package.
 
 The product is not an autonomous HVAC designer. It makes evidence, calculations, assumptions, object changes, and human decisions visible. Manual geometry remains authoritative, and every physical assistant change is previewed, fingerprint-bound, revalidated at commit time, and undoable.
 
-## Core product workflow
+## Primary job workflow
+
+The main workspace now presents five plain-language steps:
+
+1. **Setup** — open the PDF and verify the drawing scale.
+2. **Draw** — place equipment, runs, fittings, devices, and notes.
+3. **Airflow** — review room airflow, connected paths, and duct sizes.
+4. **Check** — use Plan Helper to inspect suggestions and approve any fixes.
+5. **Finish** — review materials and print or share the field package.
+
+Advanced coordination remains available without crowding the first screen.
+
+## Detailed product workflow
 
 1. Open a local or Google Drive plan PDF.
 2. Confirm the source revision, working system, and scale.
@@ -46,8 +58,9 @@ The product is not an autonomous HVAC designer. It makes evidence, calculations,
 | v113 | Guided Repair Plan and controlled network resizing | Shipped |
 | v114 | Repair receipts and before/after takeoff intelligence | Shipped |
 | v115 | Advanced Plan Intelligence, source regions, and coverage | Shipped |
-| v116 | Studio Standard | Shipped |
-| v117 | Multi-company commercial operations | Planned |
+| v116 | My HVAC Rules | Shipped |
+| v116.1 | Solo Operator Workflow and usability simplification | Shipped |
+| v117 | Multi-company commercial operations | Planned for later |
 
 ## Shipped foundation — v98 through v110
 
@@ -175,11 +188,11 @@ The plan reader explains what searchable evidence exists, where it appears, what
 
 v115 detects searchable PDF text. It does not claim that OCR ran, that a nearby tonnage belongs to a nearby CFM value, that a regex score is a calibrated probability, or that a text count equals purchasing quantity. Extracted evidence remains draft until a person confirms it.
 
-## v116 — Studio Standard
+## v116 — My HVAC Rules
 
 ### Goal
 
-Turn proven HVAC drafting preferences into visible, evidence-linked QA rules and review actions under **HVAC Plan Studio Standard · v1.0**.
+Turn proven HVAC drafting preferences into visible, evidence-linked QA rules and review actions under the plain-language name **My HVAC Rules**.
 
 ### Shipped profile
 
@@ -194,17 +207,34 @@ Turn proven HVAC drafting preferences into visible, evidence-linked QA rules and
 - Bedroom return-path review.
 - Extra review for west glass, sliders, high ceilings, and door-closed rooms.
 
-The Markup Assistant now includes a dedicated Studio Standard workspace. It separates locked safeguards, calculated checks, studio recommendations, and project-only exceptions; scores the current system; links affected objects back to the plan; and keeps engineering evidence and approval gates independent.
+Plan Helper now includes a dedicated My HVAC Rules workspace. It separates locked safeguards, calculated checks, company preferences, and project-only exceptions; scores the current system; links affected objects back to the plan; and keeps engineering evidence and approval gates independent.
 
 Project numbers remain source examples and are not used as the name of the reusable standard.
 
 Standard rules create findings and review actions; they do not silently redraw the plan or infer airflow from diameter.
 
+## v116.1 — Solo Operator Workflow
+
+### Goal
+
+Make the existing power understandable to a superintendent or one-person HVAC business without requiring them to learn the product’s internal release names or enterprise workflow language.
+
+### Shipped capabilities
+
+- One persistent five-step job guide: Setup, Draw, Airflow, Check, and Finish.
+- A simplified Jobs home with Continue current job, Start a new job, Open a PDF plan, and Open from Drive.
+- Plain-language navigation: Saved jobs, Plan Helper, Airflow & Duct Sizes, Materials, Check, Print & Share, and My HVAC Rules.
+- One side panel at a time so the plan remains the visual center of the workspace.
+- Draw, Symbols, and Selected tabs in the plan-tools panel instead of one long mixed list.
+- A short list of common actions in Find a tool; typing still searches the complete professional toolset.
+- Enterprise analytics, promotional, review-queue, and collaboration detail removed from the first view while the underlying cloud features remain available.
+- Readable workflow labels, buttons, helper copy, and phone/tablet behavior.
+
 ## v117 — Commercial Product Operations
 
 ### Goal
 
-Prepare HVAC Plan Studio for dependable multi-company production use.
+Prepare HVAC Plan Studio for dependable multi-company production use after the solo-operator workflow is proven in real jobs.
 
 ### Planned capabilities
 

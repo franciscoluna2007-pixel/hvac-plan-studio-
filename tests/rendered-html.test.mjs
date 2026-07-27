@@ -40,7 +40,7 @@ test("adds secure cloud projects, revisions, collaborators, and Drive packages",
   const drive = await readFile(new URL("../app/googleDrive.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  assert.match(page, /Project Hub/);
+  assert.match(page, /Saved jobs/);
   assert.match(page, /buildProjectSnapshot/);
   assert.match(page, /restoreCloudRevision/);
   assert.match(panel, /Save current plan as project/);
@@ -68,17 +68,17 @@ test("builds v106 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.match(page, /showProjectHome/);
   assert.match(page, /<ProjectHome/);
   assert.match(page, /<GuidedProjectSetup/);
-  assert.match(page, /AI Plan Reader v105 · Plan Intelligence v106/);
+  assert.match(page, /Nothing changes without your approval/);
   assert.match(page, /applyPendingProjectSetup/);
   assert.match(page, /sourceFileName/);
   assert.match(page, /pendingProjectSetupRef\.current = null/);
   assert.match(page, /addEventListener\("cancel", handleFilePickerCancel\)/);
   assert.match(page, /const modalWorkspaceActive = showProjectHome \|\| showProjectSetup \|\| showPlanIntelligence \|\| showFieldPackageComposer \|\| showSystemBalanceStudio/);
   assert.match(page, /inert=\{modalWorkspaceActive \? true : undefined\}/);
-  assert.match(home, /Turn HVAC plan PDFs into evidence, markups, and source-backed takeoffs/);
-  assert.match(home, /AI plan intelligence &amp; takeoff/);
+  assert.match(home, /Turn a PDF plan into an HVAC markup, material list, and field-ready print/);
+  assert.match(home, /Plans · markup · materials/);
   assert.doesNotMatch(home, /FIELD PRODUCTION|Field-first workflow|Installer-ready/);
-  assert.match(home, /Manual geometry stays manual/);
+  assert.match(home, /Nothing changes without approval/);
   assert.match(home, /PLAN REVIEW QUEUE/);
   assert.match(home, /handleDialogKeyDown/);
   assert.match(home, /onOpenProjectHub\(project\.id\)/);
@@ -98,6 +98,37 @@ test("builds v106 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.match(styles, /prefers-reduced-motion/);
   assert.match(layout, /HVAC Plan Studio/);
   assert.doesNotMatch(layout, /Starter Project/);
+});
+
+test("leads solo HVAC operators through one clear five-step job workflow", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const home = await readFile(new URL("../app/ProjectHome.tsx", import.meta.url), "utf8");
+  const palette = await readFile(new URL("../app/ProjectCommandPalette.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
+
+  assert.match(page, /const fieldFirstSteps = \[/);
+  assert.match(page, /label: "Setup"/);
+  assert.match(page, /label: "Draw"/);
+  assert.match(page, /label: "Airflow"/);
+  assert.match(page, /label: "Check"/);
+  assert.match(page, /label: "Finish"/);
+  assert.match(page, /className="field-first-guide"/);
+  assert.match(page, /const \[rightPanelOpen, setRightPanelOpen\] = useState\(false\)/);
+  assert.match(page, /function openToolsPanel\(\) \{\s*setLeftPanelOpen\(true\);\s*setRightPanelOpen\(false\)/);
+  assert.match(page, /function openInspectorPanel\(\) \{\s*setRightPanelOpen\(true\);\s*setLeftPanelOpen\(false\)/);
+  assert.match(page, /left-panel-tabs/);
+  assert.match(home, /BUILT FOR HVAC OWNERS &amp; SUPERINTENDENTS/);
+  assert.match(home, /Continue current job/);
+  assert.match(home, /Start a new job/);
+  assert.match(home, /Saved jobs/);
+  assert.match(palette, /command\.recommended/);
+  assert.match(palette, /Find a tool/);
+  assert.match(styles, /\.field-first-guide/);
+  assert.match(styles, /\.project-home-hero-visual,[\s\S]*display: none !important/);
+  assert.match(styles, /\.left-panel-tabs/);
+  assert.match(layout, /hvac-plan-studio-solo-operator-social\.png/);
+  assert.match(layout, /HVAC superintendents and one-person businesses/);
 });
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
@@ -264,7 +295,7 @@ test("ships the v100 Project Intelligence Hub with secure coordination and revie
   const migration = await readFile(new URL("../supabase/migrations/20260724140000_project_intelligence_hub.sql", import.meta.url), "utf8");
   const releaseMigration = await readFile(new URL("../supabase/migrations/20260724143000_cloud_field_release_integrity.sql", import.meta.url), "utf8");
 
-  assert.match(page, /AI Plan Reader v105 · Plan Intelligence v106/);
+  assert.match(page, /Nothing changes without your approval/);
   assert.match(page, /ProjectCommandPalette/);
   assert.match(page, /const key = event\.key\.toLowerCase\(\)/);
   assert.match(page, /\(event\.ctrlKey \|\| event\.metaKey\) && key === "k"/);
@@ -275,7 +306,7 @@ test("ships the v100 Project Intelligence Hub with secure coordination and revie
   assert.match(panel, /drawing geometry changes only when you edit it/);
   assert.match(panel, /Project-safe save is locked/);
   assert.match(panel, /mutationLockRef/);
-  assert.match(palette, /Review-only intelligence · geometry stays manual/);
+  assert.match(palette, /Type to search every tool/);
   assert.match(cloud, /from\("project_work_items"\)/);
   assert.match(cloud, /from\("project_comments"\)/);
   assert.match(cloud, /from\("project_approvals"\)/);
@@ -307,7 +338,7 @@ test("ships v107 public guest access, subscription readiness, and protected owne
   const entitlements = await readFile(new URL("../app/entitlements.ts", import.meta.url), "utf8");
   const migration = await readFile(new URL("../supabase/migrations/20260725163857_owner_analytics_and_subscription_readiness.sql", import.meta.url), "utf8");
 
-  assert.match(home, /Open a plan — no account/);
+  assert.match(home, /Open a PDF plan/);
   assert.match(home, /The drawing workspace is open to everyone/);
   assert.match(home, /Save projects in the cloud/);
   assert.match(home, /PROFESSIONAL · COMING SOON/);
@@ -661,7 +692,7 @@ test("keeps the v105/v106 reader foundation and adds v115 inspectable evidence c
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   const migration = await readFile(new URL("../supabase/migrations/20260724220000_ai_plan_reader_intelligence.sql", import.meta.url), "utf8");
 
-  assert.match(page, /AI Plan Reader v105 · Plan Intelligence v106/);
+  assert.match(page, /Nothing changes without your approval/);
   assert.match(page, /<AIPlanWorkspace/);
   assert.match(page, /openAIPlanReader/);
   assert.match(page, /saveCloudPlanAnalysis/);
@@ -751,7 +782,7 @@ test("ships v112 System Balance Studio with reviewed calculations and manual geo
   assert.match(page, /function exportSystemBalanceRunCsv\(\)/);
   assert.match(page, /showSystemBalanceStudio && <SystemBalanceStudio/);
   assert.doesNotMatch(page, /const activeSystemBalanceModel = buildSystemBalanceModel\(\)/);
-  assert.match(studio, /SYSTEM BALANCE STUDIO · V112/);
+  assert.match(studio, /AIRFLOW &amp; DUCT SIZES/);
   assert.match(studio, /TRANSPARENT DUCT SIZE REVIEW · V112/);
   assert.match(studio, /Velocity preview only\. Pressure remains unverified\./);
   assert.match(studio, /run\.applyEligible && run\.airflowReviewed && !run\.overCapacity/);
@@ -958,12 +989,12 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(page, /actions\.length !== requestedIds\.size/);
   assert.match(page, /Apply reviewed terminal CFM first, then rebuild the repair plan before resizing the network/);
   assert.match(page, /setHistory\(next\)/);
-  assert.match(studio, /INTELLIGENT HVAC MARKUP ASSISTANT · V116/);
-  assert.match(studio, /Build the repair plan\. Approve one controlled batch\./);
+  assert.match(studio, /PLAN HELPER/);
+  assert.match(studio, /Check the plan\. Review fixes\. Approve what changes\./);
   assert.match(studio, /aria-modal="false"/);
-  assert.match(studio, /Inspect only/);
-  assert.match(studio, /Build repair plan/);
-  assert.match(studio, /Guided apply/);
+  assert.match(studio, /Check only/);
+  assert.match(studio, /Prepare fixes/);
+  assert.match(studio, /Apply approved fixes/);
   assert.match(studio, /V113 GUIDED REPAIR PLAN/);
   assert.match(studio, /This repair plan is stale\./);
   assert.match(studio, /V114 TAKEOFF IMPACT/);
@@ -1257,7 +1288,7 @@ test("v115 Advanced Plan Intelligence keeps source regions, OCR gaps, and relati
   assert.deepEqual(comparison, { changed: true, added: 1, removed: 0, unchanged: 6 });
 });
 
-test("v116 Studio Standard separates locked rules, recommendations, and project-only overrides", async () => {
+test("v116 My HVAC Rules separates locked rules, recommendations, and project-only overrides", async () => {
   const standard = await import(new URL("../app/designStandard.ts", import.meta.url));
   const studio = await readFile(new URL("../app/MarkupAssistantStudio.tsx", import.meta.url), "utf8");
   const roadmap = await readFile(new URL("../ROADMAP.md", import.meta.url), "utf8");
@@ -1286,14 +1317,14 @@ test("v116 Studio Standard separates locked rules, recommendations, and project-
 
   assert.equal(JSON.stringify(input), before);
   assert.equal(profile.engineVersion, "design-standard-v116.0");
-  assert.equal(profile.name, "HVAC Plan Studio Standard");
+  assert.equal(profile.name, "My HVAC Rules");
   assert.equal(profile.profileVersion, "1.0");
   assert.equal(profile.blocked, 2);
   assert.equal(profile.rules.find((row) => row.id === "residential-flex-limit").overrideAllowed, false);
   assert.ok(profile.rules.find((row) => row.id === "bedroom-return-path").drawingIds.includes("diffuser-2"));
   assert.equal(profile.rules.find((row) => row.id === "reviewed-ty-strategy").level, "project");
   assert.match(profile.rules.find((row) => row.id === "fresh-air-control").finding, /without a motorized outside-air damper/);
-  assert.match(studio, /Studio Standard/);
+  assert.match(studio, /My HVAC Rules/);
   assert.match(studio, /Locked safeguards/);
   assert.match(studio, /Project exceptions/);
   assert.doesNotMatch(studio, /4119|119 Company Style/);

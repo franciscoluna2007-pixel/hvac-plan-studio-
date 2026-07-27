@@ -305,22 +305,22 @@ export default function MarkupAssistantStudio({
         <div className="markup-assistant-brand">
           <span><Sparkles size={22} /></span>
           <div>
-            <small>INTELLIGENT HVAC MARKUP ASSISTANT · V116</small>
-            <h2 id="markup-assistant-title">Build the repair plan. Approve one controlled batch.</h2>
+            <small>PLAN HELPER</small>
+            <h2 id="markup-assistant-title">Check the plan. Review fixes. Approve what changes.</h2>
             <p>{projectName} · {systemName}</p>
           </div>
         </div>
         <div className="markup-assistant-header-actions">
-          <span><ShieldCheck size={14} /> {autonomyMode === "inspect" ? "INSPECT ONLY" : autonomyMode === "prepare" ? "REPAIR PLAN PREVIEW" : "GUIDED APPLY · FINAL CONFIRMATION"}</span>
-          <button className="markup-assistant-close" aria-label="Close Intelligent Markup Assistant" onClick={onClose}><X size={20} /></button>
+          <span><ShieldCheck size={14} /> {autonomyMode === "inspect" ? "CHECK ONLY" : autonomyMode === "prepare" ? "FIXES READY TO REVIEW" : "APPLY WITH FINAL CONFIRMATION"}</span>
+          <button className="markup-assistant-close" aria-label="Close Plan Helper" onClick={onClose}><X size={20} /></button>
         </div>
       </header>
 
       <section className="assistant-mode-strip" aria-label="Assistant autonomy mode">
         {([
-          ["inspect", "Inspect only", "Highlight and explain; no plan changes."],
-          ["prepare", "Build repair plan", "Recommended · gather every eligible fix."],
-          ["guided", "Guided apply", "Apply selected planning changes in one Undo."],
+          ["inspect", "Check only", "Show possible problems without changing the plan."],
+          ["prepare", "Prepare fixes", "Gather eligible fixes for you to review."],
+          ["guided", "Apply approved fixes", "Make selected changes together with one Undo."],
         ] as Array<[RepairAutonomyMode, string, string]>).map(([id, label, detail]) => <button
           key={id}
           className={autonomyMode === id ? "active" : ""}
@@ -339,10 +339,10 @@ export default function MarkupAssistantStudio({
           <span>PLAN<br />SCORE</span>
         </div>
         <div>
-          <small>{stale ? "REPAIR PLAN STALE" : autonomyMode === "inspect" ? "NEXT REVIEW ACTION" : "CURRENT REPAIR PLAN"}</small>
+          <small>{stale ? "FIX LIST NEEDS REFRESHING" : autonomyMode === "inspect" ? "WHAT TO CHECK NEXT" : "CURRENT FIX LIST"}</small>
           <h3>{stale ? "The plan changed after calculation" : autonomyMode === "inspect" ? summary.headline : repairPlan.headline}</h3>
           <p>{stale
-            ? "Rebuild the repair plan before applying. No stale action can change the drawing."
+            ? "Refresh the fix list before applying. An outdated suggestion cannot change the drawing."
             : "The assistant can prepare and apply reviewed CFM, size, and fitting-port changes in one undoable batch. It creates no new route; any attached endpoint alignment is included in the reviewed object diff."}</p>
         </div>
         <button onClick={() => {
@@ -356,17 +356,17 @@ export default function MarkupAssistantStudio({
             performPrimaryAction(active);
           }
         }}>
-          {stale ? "Refresh plan" : autonomyMode === "inspect" ? "Review next" : "Open repair plan"} <ArrowRight size={17} />
+          {stale ? "Refresh fixes" : autonomyMode === "inspect" ? "Check next" : "Review fixes"} <ArrowRight size={17} />
         </button>
       </section>
 
       <nav className="assistant-workspace-tabs" aria-label="Markup assistant views" role="tablist" onKeyDown={handleViewKeyDown}>
         {([
-          ["recommendations", "Recommendations", recommendations.length],
-          ["standards", "Studio Standard", designStandard.review + designStandard.blocked],
-          ["repair-plan", "Repair plan", repairPlan.readyCount],
-          ["history", "History", repairRecords.length],
-          ["evidence", "Evidence", advancedIntelligence?.readinessScore ?? 0],
+          ["recommendations", "Suggestions", recommendations.length],
+          ["standards", "My HVAC Rules", designStandard.review + designStandard.blocked],
+          ["repair-plan", "Review fixes", repairPlan.readyCount],
+          ["history", "Undo history", repairRecords.length],
+          ["evidence", "Plan source", advancedIntelligence?.coverage.length ?? 0],
         ] as Array<[AssistantView, string, number]>).map(([id, label, count]) => <button
           key={id}
           id={`assistant-tab-${id}`}
@@ -445,8 +445,8 @@ export default function MarkupAssistantStudio({
         {view === "standards" && <main className="design-standard-workspace" role="tabpanel" id="assistant-panel-standards" aria-labelledby="assistant-tab-standards">
           <header className="design-standard-heading">
             <div>
-              <small>V116 · {designStandard.name.toUpperCase()} · V{designStandard.profileVersion}</small>
-              <h3>Your drafting standards, checked against the current system</h3>
+              <small>{designStandard.name.toUpperCase()}</small>
+              <h3>Your usual way of doing the job, checked against this system</h3>
               <p>Locked safeguards, calculated checks, recommendations, and project-only exceptions stay visibly separate.</p>
             </div>
             <div className={`design-standard-score ${designStandard.blocked ? "blocked" : designStandard.review ? "review" : "clear"}`}>
@@ -459,7 +459,7 @@ export default function MarkupAssistantStudio({
             {([
               ["locked", "Locked safeguards", "Cannot be overridden by a project."],
               ["calculated", "Calculated checks", "Reviewed airflow and engineering evidence."],
-              ["recommended", "Studio recommendations", "Preferred routing and field clarity."],
+              ["recommended", "Company preferences", "Preferred routing and field clarity."],
               ["project", "Project exceptions", "Visible here; the shared standard stays unchanged."],
             ] as Array<[DesignStandardRuleLevel, string, string]>).map(([level, label, detail]) => <div key={level}>
               <i data-level={level}><DraftingCompass size={16} /></i>
@@ -489,7 +489,7 @@ export default function MarkupAssistantStudio({
 
           <section className="design-standard-boundary">
             <ShieldCheck size={20} />
-            <div><strong>The Studio Standard recommends; reviewed evidence authorizes.</strong>{designStandard.nonClaims.map((notice) => <p key={notice}>{notice}</p>)}</div>
+            <div><strong>Your HVAC rules can suggest; reviewed plan evidence authorizes.</strong>{designStandard.nonClaims.map((notice) => <p key={notice}>{notice}</p>)}</div>
           </section>
         </main>}
 

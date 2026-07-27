@@ -281,19 +281,18 @@ export default function ProjectHome({
           <span><Wind size={22} strokeWidth={2.4} /></span>
           <div>
             <strong>HVAC Plan Studio</strong>
-            <small>AI plan intelligence &amp; takeoff</small>
+            <small>Plans · markup · materials</small>
           </div>
         </button>
         <nav className="project-home-nav" aria-label="Primary workspace">
-          <button className="active"><LayoutDashboard size={15} /> Home</button>
-          <button onClick={() => onOpenProjectHub()}><FolderKanban size={15} /> Projects</button>
-          <button disabled={!hasPlan} onClick={closeHome}><FileText size={15} /> Studio</button>
-          <button onClick={() => onOpenProjectHub()}><ShieldCheck size={15} /> Reviews</button>
+          <button className="active"><LayoutDashboard size={15} /> Jobs</button>
+          <button onClick={() => onOpenProjectHub()}><FolderKanban size={15} /> Saved jobs</button>
+          <button disabled={!hasPlan} onClick={closeHome}><FileText size={15} /> Plan</button>
         </nav>
         <div className="project-home-header-actions">
           <button className="home-command" onClick={onOpenCommand}>
             <Search size={15} />
-            <span>Search or run a command</span>
+            <span>Find a tool</span>
             <kbd>⌘K</kbd>
           </button>
           <span className={`home-cloud-state ${cloud.status}`}>
@@ -311,20 +310,22 @@ export default function ProjectHome({
         <div className="project-home-content">
           <section className="project-home-hero">
             <div className="project-home-hero-copy">
-              <span className="home-eyebrow"><Sparkles size={13} /> AI PLAN READER · PLAN INTELLIGENCE</span>
-              <h1>Turn HVAC plan PDFs into evidence, markups, and source-backed takeoffs.</h1>
+              <span className="home-eyebrow"><Sparkles size={13} /> BUILT FOR HVAC OWNERS &amp; SUPERINTENDENTS</span>
+              <h1>Turn a PDF plan into an HVAC markup, material list, and field-ready print.</h1>
               <p>
-                Read HVAC sheets, review every AI finding against its source, mark the plan, and keep takeoffs ready for the next revision.
+                Open a plan, draw the system, check airflow and duct sizes, then print what you need for the job.
               </p>
               <div className="project-home-primary-actions">
-                <button data-home-primary className="home-primary" onClick={onOpenLocal}><FileText size={17} /> Open a plan — no account</button>
-                <button onClick={onNewProject}><Plus size={17} /> Guided setup</button>
-                <button onClick={onOpenDrive} disabled={driveConfigured === false}><HardDrive size={17} /> Import source from Drive</button>
+                {hasPlan
+                  ? <button data-home-primary className="home-primary" onClick={closeHome}><ArrowRight size={17} /> Continue current job</button>
+                  : <button data-home-primary className="home-primary" onClick={onNewProject}><Plus size={17} /> Start a new job</button>}
+                <button onClick={onOpenLocal}><FileText size={17} /> Open a PDF plan</button>
+                <button onClick={onOpenDrive} disabled={driveConfigured === false}><HardDrive size={17} /> Open from Drive</button>
               </div>
               <div className="project-home-trust-row">
-                <span><CheckCircle2 size={14} /> Manual geometry stays manual</span>
-                <span><ShieldCheck size={14} /> Evidence-backed findings</span>
-                <span><Workflow size={14} /> Plan-first workflow</span>
+                <span><CheckCircle2 size={14} /> Your drawing stays under your control</span>
+                <span><ShieldCheck size={14} /> Nothing changes without approval</span>
+                <span><Workflow size={14} /> One job, five clear steps</span>
               </div>
             </div>
 
@@ -418,10 +419,10 @@ export default function ProjectHome({
           {hasPlan && <section className="project-home-continue">
             <div className="home-section-heading">
               <div>
-                <span>CONTINUE WORKING</span>
-                <h2>Your current plan is exactly where you left it.</h2>
+                <span>CONTINUE THIS JOB</span>
+                <h2>Pick up right where you left off.</h2>
               </div>
-              <button onClick={closeHome}>Enter Studio <ArrowRight size={16} /></button>
+              <button onClick={closeHome}>Open plan <ArrowRight size={16} /></button>
             </div>
             <article className="continue-project-card">
               <span className="continue-project-mark"><Wind size={24} /></span>
@@ -442,10 +443,10 @@ export default function ProjectHome({
             <div className="project-home-projects">
               <div className="home-section-heading">
                 <div>
-                  <span>RECENT PROJECTS</span>
-                  <h2>Resume your plan review.</h2>
+                  <span>RECENT JOBS</span>
+                  <h2>Open a saved job.</h2>
                 </div>
-                <button onClick={() => onOpenProjectHub()}>View all projects <ArrowRight size={15} /></button>
+                <button onClick={() => onOpenProjectHub()}>View all saved jobs <ArrowRight size={15} /></button>
               </div>
 
               {cloud.status === "loading" ? <div className="home-project-skeletons" aria-label="Loading recent projects">
@@ -475,7 +476,7 @@ export default function ProjectHome({
                   <strong>{cloud.status === "signed-out" ? "Save this work when it becomes valuable" : "Create your first cloud plan project"}</strong>
                   <p>{cloud.message}</p>
                 </div>
-                <button onClick={() => onOpenProjectHub()}>{cloud.status === "signed-out" ? "Create free workspace" : "Open Project Hub"} <ArrowRight size={15} /></button>
+                <button onClick={() => onOpenProjectHub()}>{cloud.status === "signed-out" ? "Save jobs online" : "Open saved jobs"} <ArrowRight size={15} /></button>
               </div>}
             </div>
 
@@ -569,9 +570,9 @@ export default function ProjectHome({
         </div>
 
         <footer className="project-home-footer">
-              <span><Wind size={14} /> HVAC Plan Studio v112</span>
-          <p>AI reads · people decide · plan geometry stays under your control</p>
-          <button onClick={onOpenCommand}><Command size={14} /> Command palette</button>
+          <span><Wind size={14} /> Solo operator workspace</span>
+          <p>Nothing changes without your approval.</p>
+          <button onClick={onOpenCommand}><Command size={14} /> Find a tool</button>
         </footer>
       </div>
     </section>

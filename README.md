@@ -1,18 +1,28 @@
 # HVAC Plan Studio
 
-HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review, takeoff, and field-release workspace for HVAC contractors, estimators, reviewers, and field teams.
+HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review, takeoff, and field-release workspace built first for HVAC superintendents and one-person businesses.
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v116
+## Current release — v116.1
 
-v113 through v116 make the Intelligent HVAC Markup Assistant materially more helpful without restoring uncontrolled automation.
+v116.1 reorganizes the existing professional tools around one understandable job. The primary workspace now leads with Setup → Draw → Airflow → Check → Finish, keeps only one side panel open, and uses plain-language names instead of release terminology.
 
-### v116 — Studio Standard
+### v116.1 — Solo Operator Workflow
 
-The Markup Assistant now evaluates the current system against **HVAC Plan Studio Standard · v1.0**. A dedicated workspace keeps locked safeguards, calculated checks, preferred drafting practices, and project-only exceptions visibly separate. It reviews flex limits, terminal connections, airflow-based sizing, run labels, bedroom return paths, T/Y strategy, and fresh-air controls, with evidence and plan links for each result.
+- Jobs home: Continue current job, Start a new job, Open a PDF plan, Open from Drive, and Saved jobs.
+- Persistent five-step guide with one recommended next action.
+- Draw, Symbols, and Selected plan-tool groups.
+- Plan Helper, Airflow & Duct Sizes, Materials, Check, Print & Share, and My HVAC Rules.
+- Find a tool starts with common actions and searches the full toolset as the user types.
+- Enterprise analytics, commercial promotion, and review dashboards stay out of the first view.
+- Cloud projects, Google Drive, Supabase security, calculations, and approval gates remain intact.
 
-Project numbers are not used as the reusable standard name.
+### v116 — My HVAC Rules
+
+Plan Helper evaluates the current system against **My HVAC Rules**. A dedicated workspace keeps locked safeguards, calculated checks, preferred drafting practices, and project-only exceptions visibly separate. It reviews flex limits, terminal connections, airflow-based sizing, run labels, bedroom return paths, T/Y strategy, and fresh-air controls, with evidence and plan links for each result.
+
+Project numbers and internal release labels are not used as the user-facing rules name.
 
 ### v113 — Guided Repair Plan
 
@@ -180,4 +190,4 @@ node --test tests/rendered-html.test.mjs
 npm run build
 ```
 
-See [ROADMAP.md](./ROADMAP.md) for the complete product overview, release outcomes, safety gates, evidence basis, and planned v116–v117 work.
+See [ROADMAP.md](./ROADMAP.md) for the complete product overview, release outcomes, safety gates, evidence basis, and later multi-company work.

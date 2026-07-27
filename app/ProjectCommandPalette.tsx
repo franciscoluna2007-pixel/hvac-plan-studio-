@@ -11,6 +11,7 @@ export type ProjectCommand = {
   shortcut?: string;
   keywords?: string;
   disabled?: boolean;
+  recommended?: boolean;
   run: () => void;
 };
 
@@ -28,7 +29,7 @@ export default function ProjectCommandPalette({ open, commands, onClose }: Props
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const visible = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized) return commands.filter((command) => !command.disabled);
+    if (!normalized) return commands.filter((command) => !command.disabled && command.recommended).slice(0, 6);
     return commands.filter((command) => !command.disabled &&
       `${command.label} ${command.detail} ${command.group} ${command.keywords || ""}`.toLowerCase().includes(normalized));
   }, [commands, query]);
@@ -82,13 +83,13 @@ export default function ProjectCommandPalette({ open, commands, onClose }: Props
     }
   }
 
-  return <div className="command-palette-overlay" role="dialog" aria-modal="true" aria-label="HVAC Plan Studio command palette" onKeyDown={handleDialogKeyDown}>
-    <button className="command-palette-dismiss" aria-label="Close command palette" tabIndex={-1} aria-hidden="true" onClick={close} />
+  return <div className="command-palette-overlay" role="dialog" aria-modal="true" aria-label="Find a tool" onKeyDown={handleDialogKeyDown}>
+    <button className="command-palette-dismiss" aria-label="Close tool search" tabIndex={-1} aria-hidden="true" onClick={close} />
     <section ref={paletteRef} className="command-palette">
       <header>
         <span><Command size={18} /></span>
-        <div><strong>HVAC Plan Studio</strong><small>Project command center</small></div>
-        <button aria-label="Close command palette" onClick={close}><X size={18} /></button>
+        <div><strong>Find a tool</strong><small>Start with a common action or type what you need</small></div>
+        <button aria-label="Close tool search" onClick={close}><X size={18} /></button>
       </header>
       <label className="command-palette-search">
         <Search size={19} />
@@ -110,7 +111,7 @@ export default function ProjectCommandPalette({ open, commands, onClose }: Props
               execute(visible[activeCursor]);
             }
           }}
-          placeholder="Search tools, systems, review, field, or project actions…"
+          placeholder="Try “draw supply,” “check plan,” or “materials”…"
         />
         <kbd>ESC</kbd>
       </label>
@@ -126,9 +127,9 @@ export default function ProjectCommandPalette({ open, commands, onClose }: Props
           <div><strong>{command.label}</strong><small>{command.detail}</small></div>
           {command.shortcut ? <kbd>{command.shortcut}</kbd> : <ArrowRight size={16} />}
         </button>)}
-        {!visible.length && <div className="command-palette-empty"><Search size={22} /><strong>No matching command</strong><span>Try “supply,” “review,” “field,” or a system name.</span></div>}
+        {!visible.length && <div className="command-palette-empty"><Search size={22} /><strong>No matching tool</strong><span>Try “supply,” “check,” “materials,” or a system name.</span></div>}
       </div>
-      <footer><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><b>Review-only intelligence · geometry stays manual</b></footer>
+      <footer><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span><b>Type to search every tool</b></footer>
     </section>
   </div>;
 }
