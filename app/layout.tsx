@@ -18,9 +18,9 @@ export const metadata: Metadata = {
     default: "HVAC Plan Studio",
     template: "%s · HVAC Plan Studio",
   },
-  description: "Turn an HVAC plan PDF into a clear markup, airflow and duct-size review, material list, and field-ready print.",
+  description: "Read an HVAC plan, confirm scale and room information, find problems, and approve safe markup repairs.",
   applicationName: "HVAC Plan Studio",
-  keywords: ["HVAC plan reader", "HVAC plan intelligence", "duct plan", "HVAC takeoff", "plan markup"],
+  keywords: ["HVAC plan setup", "HVAC plan reader", "duct plan", "HVAC takeoff", "plan markup"],
   other: {
     "codex-preview": "development",
   },
@@ -29,21 +29,21 @@ export const metadata: Metadata = {
     shortcut: "/favicon.svg",
   },
   openGraph: {
-    title: "HVAC Plan Studio",
-    description: "A clear five-step plan workspace for HVAC superintendents and one-person businesses.",
+    title: "HVAC Plan Studio · Smart Plan Setup & Repair",
+    description: "Read the plan. Find what’s missing. Fix with approval.",
     type: "website",
     images: [{
-      url: "/hvac-plan-studio-solo-operator-social.png",
-      width: 1536,
-      height: 1024,
-      alt: "An HVAC superintendent marking supply, return, branch, and fresh-air routes on a plan tablet.",
+      url: "/og.png",
+      width: 1731,
+      height: 909,
+      alt: "HVAC Plan Studio v120 showing a connected supply-and-return system over a floor plan.",
     }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "HVAC Plan Studio",
-    description: "From PDF plan to HVAC markup, materials, and field-ready print.",
-    images: ["/hvac-plan-studio-solo-operator-social.png"],
+    title: "HVAC Plan Studio · Smart Plan Setup & Repair",
+    description: "Read the plan. Find what’s missing. Fix with approval.",
+    images: ["/og.png"],
   },
 };
 

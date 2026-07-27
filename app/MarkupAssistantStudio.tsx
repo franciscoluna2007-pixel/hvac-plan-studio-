@@ -14,6 +14,7 @@ import {
   ListChecks,
   RefreshCw,
   Route,
+  ScanSearch,
   ShieldCheck,
   Sparkles,
   Undo2,
@@ -29,10 +30,11 @@ import type {
   RepairPlan,
   RepairPlanAction,
 } from "./repairPlan";
+import type { PlanFactStatus, SmartPlanSetup } from "./planSetup";
 import type { TakeoffImpact } from "./takeoffIntelligence";
 
 type RecommendationFilter = "open" | "critical" | "all";
-type AssistantView = "recommendations" | "standards" | "repair-plan" | "history" | "evidence";
+type AssistantView = "setup" | "recommendations" | "standards" | "repair-plan" | "history" | "evidence";
 
 type Props = {
   open: boolean;
@@ -48,6 +50,8 @@ type Props = {
   repairRecords: RepairBatchRecord[];
   takeoffImpact: TakeoffImpact;
   advancedIntelligence: AdvancedPlanIntelligence | null;
+  smartSetup: SmartPlanSetup | null;
+  scaleVerified: boolean;
   designStandard: DesignStandardProfile;
   canUndo: boolean;
   onClose: () => void;
@@ -69,6 +73,15 @@ type Props = {
   }) => boolean | Promise<boolean>;
   onUndoRepairBatch: () => void;
   onOpenPlanIntelligence: () => void;
+  onShowPlanSetupSource: (page: number, region?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    pageWidth: number;
+    pageHeight: number;
+    coordinateSpace: "viewport-points" | "pdf-points";
+  }) => void;
 };
 
 function confidenceLabel(value: number) {
@@ -99,6 +112,13 @@ function formatFeet(value: number) {
   return `${value.toFixed(1)} ft`;
 }
 
+function planFactLabel(status: PlanFactStatus) {
+  if (status === "verified") return "Confirmed";
+  if (status === "likely") return "Found on plan";
+  if (status === "estimated") return "Suggested";
+  return "Not found";
+}
+
 export default function MarkupAssistantStudio({
   open,
   projectName,
@@ -113,6 +133,8 @@ export default function MarkupAssistantStudio({
   repairRecords,
   takeoffImpact,
   advancedIntelligence,
+  smartSetup,
+  scaleVerified,
   designStandard,
   canUndo,
   onClose,
@@ -128,13 +150,14 @@ export default function MarkupAssistantStudio({
   onApplyRepairPlan,
   onUndoRepairBatch,
   onOpenPlanIntelligence,
+  onShowPlanSetupSource,
 }: Props) {
   const panelRef = useRef<HTMLElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const previewKeyRef = useRef("");
   const [filter, setFilter] = useState<RecommendationFilter>("open");
   const [activeId, setActiveId] = useState("");
-  const [view, setView] = useState<AssistantView>("recommendations");
+  const [view, setView] = useState<AssistantView>("setup");
   const [reviewer, setReviewer] = useState("");
   const [note, setNote] = useState("");
   const [confirmedKey, setConfirmedKey] = useState("");
@@ -196,7 +219,17 @@ export default function MarkupAssistantStudio({
     action.kind === "run-size" && action.requiresPlanningOverride
   );
   const planningOverrideConfirmed = !requiresPlanningOverride || planningOverrideKey === confirmationKey;
-  const viewOrder: AssistantView[] = ["recommendations", "standards", "repair-plan", "history", "evidence"];
+  const viewOrder: AssistantView[] = ["setup", "recommendations", "repair-plan", "history", "standards"];
+  const planFactSources = useMemo(() => {
+    const sources = [
+      ...(smartSetup?.scales.flatMap((scale) => scale.candidates.flatMap((candidate) => candidate.sources)) || []),
+      ...(smartSetup?.rooms.flatMap((room) => room.sources) || []),
+      ...(smartSetup?.equipment.flatMap((equipment) => equipment.sources) || []),
+      ...(smartSetup?.systems.flatMap((system) => system.sources) || []),
+      ...(smartSetup?.unassignedCeilingHeights.flatMap((height) => height.sources) || []),
+    ];
+    return new Map(sources.map((source) => [source.id, source]));
+  }, [smartSetup]);
 
   const filtered = recommendations.filter((recommendation) => {
     if (filter === "critical") return !recommendation.resolved && recommendation.severity === "critical";
@@ -436,11 +469,11 @@ export default function MarkupAssistantStudio({
 
       <nav className="assistant-workspace-tabs" aria-label="Markup assistant views" role="tablist" onKeyDown={handleViewKeyDown}>
         {([
-          ["recommendations", "Suggestions", recommendations.length],
+          ["setup", "Plan setup", smartSetup?.counts.reviewItems ?? 0],
+          ["recommendations", "Problems", recommendations.length],
+          ["repair-plan", "Fixes", repairPlan.readyCount],
+          ["history", "Undo", repairRecords.length],
           ["standards", "My HVAC Rules", designStandard.review + designStandard.blocked],
-          ["repair-plan", "Review fixes", repairPlan.readyCount],
-          ["history", "Undo history", repairRecords.length],
-          ["evidence", "Plan source", advancedIntelligence?.coverage.length ?? 0],
         ] as Array<[AssistantView, string, number]>).map(([id, label, count]) => <button
           key={id}
           id={`assistant-tab-${id}`}
@@ -456,6 +489,103 @@ export default function MarkupAssistantStudio({
       </nav>
 
       <div className={`markup-assistant-body view-${view}`}>
+        {view === "setup" && <main className="smart-plan-setup-workspace" role="tabpanel" id="assistant-panel-setup" aria-labelledby="assistant-tab-setup">
+          {smartSetup ? <>
+            <header className="smart-plan-setup-heading">
+              <div>
+                <small>V120 · SMART PLAN SETUP</small>
+                <h3>{smartSetup.summary.headline}</h3>
+                <p>{smartSetup.summary.detail}</p>
+              </div>
+              <span className={smartSetup.counts.requiredReviewItems ? "attention" : "ready"}>
+                <strong>{smartSetup.counts.reviewItems}</strong>
+                <small>NEED YOUR REVIEW</small>
+              </span>
+            </header>
+
+            <div className="smart-plan-setup-metrics">
+              <article className={scaleVerified ? "confirmed" : smartSetup.counts.verifiedScales + smartSetup.counts.likelyScales ? "found" : "missing"}>
+                <small>SCALE</small>
+                <strong>{scaleVerified ? "Confirmed" : `${smartSetup.counts.verifiedScales + smartSetup.counts.likelyScales} of ${smartSetup.counts.sheets} found`}</strong>
+                <span>{scaleVerified ? "Measurements enabled" : "Confirm before measured work"}</span>
+              </article>
+              <article className={smartSetup.counts.roomHeights ? "found" : "missing"}>
+                <small>ROOMS &amp; HEIGHTS</small>
+                <strong>{smartSetup.counts.rooms} rooms</strong>
+                <span>{smartSetup.counts.roomHeights} ceiling heights found</span>
+              </article>
+              <article className={smartSetup.counts.equipment ? "found" : "missing"}>
+                <small>EQUIPMENT</small>
+                <strong>{smartSetup.counts.equipment} unit{smartSetup.counts.equipment === 1 ? "" : "s"}</strong>
+                <span>{smartSetup.counts.systems} system label{smartSetup.counts.systems === 1 ? "" : "s"}</span>
+              </article>
+              <article className={smartSetup.counts.requiredReviewItems ? "missing" : "confirmed"}>
+                <small>NEXT</small>
+                <strong>{smartSetup.counts.requiredReviewItems ? `${smartSetup.counts.requiredReviewItems} required` : "Ready for Step 1"}</strong>
+                <span>{smartSetup.counts.requiredReviewItems ? "Only dependent work pauses" : "Connection preview remains approval-first"}</span>
+              </article>
+            </div>
+
+            <div className="smart-plan-setup-grid">
+              <section className="smart-plan-question-list">
+                <header>
+                  <div><small>NEEDS YOUR REVIEW</small><h3>Only the details that matter next</h3></div>
+                  <button onClick={onOpenPlanIntelligence}>Review all</button>
+                </header>
+                {smartSetup.reviewQuestions.slice(0, 6).map((question) => {
+                  const source = question.sourceIds.map((id) => planFactSources.get(id)).find(Boolean);
+                  return <article className={question.priority} key={question.id}>
+                    <span><AlertTriangle size={16} /></span>
+                    <div>
+                      <small>{question.priority === "required" ? "NEEDED FOR THE NEXT STEP" : "RECOMMENDED"}{question.sheetNumber ? ` · ${question.sheetNumber}` : ""}</small>
+                      <strong>{question.title}</strong>
+                      <p>{question.prompt}</p>
+                    </div>
+                    {source && <button onClick={() => onShowPlanSetupSource(source.page, source.region)}>Show source</button>}
+                  </article>;
+                })}
+                {!smartSetup.reviewQuestions.length && <div className="smart-plan-clear">
+                  <CheckCircle2 size={22} />
+                  <span><strong>Plan setup is ready</strong><small>Detected facts can now support preview-first connection repair.</small></span>
+                </div>}
+              </section>
+
+              <aside className="smart-plan-fact-list">
+                <header><small>WHAT I FOUND</small><h3>Source-backed plan facts</h3></header>
+                {smartSetup.scales.slice(0, 4).map((scale) => {
+                  const selected = scale.candidates.find((candidate) => candidate.id === scale.selectedCandidateId);
+                  const source = selected?.sources[0];
+                  return <article key={`scale-${scale.page}`}>
+                    <span><strong>{scale.sheetNumber}</strong><small>{scale.title}</small></span>
+                    <b className={scale.status}>{scale.selectedLabel || "Scale not found"}<small>{planFactLabel(scale.status)}</small></b>
+                    {source && <button onClick={() => onShowPlanSetupSource(source.page, source.region)}>Source</button>}
+                  </article>;
+                })}
+                {smartSetup.rooms.slice(0, 6).map((room) => <article key={room.id}>
+                  <span><strong>{room.name}</strong><small>{room.sheetNumber}</small></span>
+                  <b className={room.status}>{room.ceilingHeight?.label || "Height not found"}<small>{planFactLabel(room.status)}</small></b>
+                  {room.sources[0] && <button onClick={() => onShowPlanSetupSource(room.sources[0].page, room.sources[0].region)}>Source</button>}
+                </article>)}
+                {!smartSetup.scales.length && !smartSetup.rooms.length && <div className="smart-plan-clear">
+                  <FileSearch size={22} />
+                  <span><strong>No setup facts found yet</strong><small>Read the PDF or visually confirm the scanned sheets.</small></span>
+                </div>}
+              </aside>
+            </div>
+
+            <footer className="smart-plan-setup-actions">
+              <p>Suggested or missing information is never silently accepted. Ceiling height informs room review; reviewed airflow still controls duct sizing.</p>
+              <button onClick={onOpenPlanIntelligence}><FileSearch size={16} /> Review plan information</button>
+            </footer>
+          </> : <div className="smart-plan-setup-empty">
+            <ScanSearch size={38} />
+            <small>V120 · SMART PLAN SETUP</small>
+            <h3>Let Plan Helper read the plan first</h3>
+            <p>It will look for each drawing scale, room and ceiling-height notes, equipment, systems, and the few details you still need to answer.</p>
+            <button onClick={onOpenPlanIntelligence}>Read this plan</button>
+          </div>}
+        </main>}
+
         {view === "recommendations" && <>
           <aside className="markup-assistant-queue" aria-label="Recommendation queue">
             <div className="markup-assistant-filter" aria-label="Recommendation filters">
@@ -776,7 +906,7 @@ export default function MarkupAssistantStudio({
 
         {view === "evidence" && <main className="assistant-evidence-workspace" role="tabpanel" id="assistant-panel-evidence" aria-labelledby="assistant-tab-evidence">
           <header>
-            <div><small>V115 ADVANCED PLAN INTELLIGENCE</small><h3>Evidence coverage before automation</h3><p>The assistant shows what is source-backed and what still requires OCR, visual confirmation, or a reviewed schedule value.</p></div>
+            <div><small>SOURCE READINESS</small><h3>Evidence coverage before automation</h3><p>The assistant shows what is source-backed and what still requires OCR, visual confirmation, or a reviewed schedule value.</p></div>
             <button onClick={onOpenPlanIntelligence}><FileSearch size={16} /> Open full plan intelligence</button>
           </header>
           {advancedIntelligence ? <>
@@ -807,7 +937,7 @@ export default function MarkupAssistantStudio({
               </article>)}
               {!advancedIntelligence.relationships.length && <p>No exact-tag cross-sheet relationship is available. The assistant will not guess from nearby values.</p>}
             </section>
-          </> : <div className="markup-assistant-clear"><FileSearch size={36} /><h3>Run Advanced Plan Intelligence</h3><p>Analyze the loaded PDF to add sheet coverage, exact text regions, OCR gaps, and source relationships to this repair plan.</p><button onClick={onOpenPlanIntelligence}>Analyze plan evidence</button></div>}
+          </> : <div className="markup-assistant-clear"><FileSearch size={36} /><h3>Read the plan first</h3><p>Plan Setup reads the loaded PDF for scale, rooms, equipment, sheet coverage, text regions, OCR gaps, and source relationships.</p><button onClick={onOpenPlanIntelligence}>Open Plan Setup</button></div>}
         </main>}
       </div>
 

@@ -4,9 +4,21 @@ HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review,
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v116.1
+## Current release — v120
 
-v116.1 reorganizes the existing professional tools around one understandable job. The primary workspace now leads with Setup → Draw → Airflow → Check → Finish, keeps only one side panel open, and uses plain-language names instead of release terminology.
+v120 adds Smart Plan Setup & Repair. The primary workspace now starts with an unnumbered Plan setup preflight, then leads through Connect → Airflow → Check → Finish.
+
+### v120 — Smart Plan Setup & Repair
+
+- Reads each new PDF automatically while the drawing stays usable.
+- Finds plan scales, room names, ceiling heights, equipment, systems, zones, and source-linked HVAC information.
+- Separates Confirmed, Found on plan, Suggested, and Not found facts.
+- Asks only for missing or conflicting information that controls the next operation.
+- Keeps Show source beside setup facts and problems.
+- Lets open T/Y ports match nearby unused existing run endpoints without creating branch stubs or rerouting ductwork.
+- Uses confirmed scale for physical Step 1 snap distances and explains every candidate match.
+- Keeps saved T/Y connections bound to the saved run.
+- Applies only an approved, current repair batch; placed objects never move and one Undo restores the batch.
 
 ### v116.1 — Solo Operator Workflow
 
