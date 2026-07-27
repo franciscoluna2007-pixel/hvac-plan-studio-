@@ -16,6 +16,8 @@ v116.1 reorganizes the existing professional tools around one understandable job
 - Plan Helper, Airflow & Duct Sizes, Materials, Check, Print & Share, and My HVAC Rules.
 - Find a tool starts with common actions and searches the full toolset as the user types.
 - Plan Helper now turns each finding into a clear problem, proposed fix, expected result, and complete affected-object list.
+- Builder Step 1 previews each loose equipment, can, grille, and saved T/Y connection; users choose exact fixes before one-Undo apply.
+- Step 1 keeps placed objects fixed, reserves run endpoints against reuse, and sends ambiguous or out-of-scope matches to manual review instead of guessing.
 - No repair is selected automatically; the user adds individual fixes or explicitly selects the current eligible set.
 - Prepared fixes are bound to both the evidence fingerprint and the exact repair-plan ID. Unchanged CFM proposals are omitted.
 - Repair-history Undo is enabled only when the latest plan state matches the recorded batch; Redo restores the receipt state.
@@ -172,6 +174,7 @@ HVAC Plan Studio is not:
 - `app/page.tsx` — workspace orchestration, geometry, airflow, repair apply, takeoff, and release integration
 - `app/MarkupAssistantStudio.tsx` — v113–v115 repair-plan, receipt, and evidence workspace
 - `app/repairPlan.ts` — deterministic evidence-bound repair planner
+- `app/connectionRepair.ts` — deterministic preview-first endpoint and saved T/Y connection planner
 - `app/ductSizing.ts` — versioned sizing and pressure-screening calculations
 - `app/takeoffIntelligence.ts` — numeric before/after purchasing impact
 - `app/planReader.ts` — searchable-PDF evidence and viewport regions

@@ -231,6 +231,8 @@ Make the existing power understandable to a superintendent or one-person HVAC bu
 - A short list of common actions in Find a tool; typing still searches the complete professional toolset.
 - Plan Helper shows the problem, proposed fix, expected result, and every affected plan object before selection.
 - Every suggestion now identifies whether a fix is ready, needs an input, needs plan confirmation, or remains manual, with a direct next-step button.
+- Step 1 uses a per-connection review queue for equipment supply/return, supply cans, return grilles, and saved T/Y ports.
+- Connection fixes preserve placed objects, move only approved run endpoints, reject ambiguous or occupied matches, and never substitute a different run for a saved T/Y connection.
 - Unchanged terminal CFM is not presented as a repair and does not unnecessarily block a current sizing review.
 - Repair-history Undo can target only the latest matching repair batch; Redo restores that batch receipt state.
 - Enterprise analytics, promotional, review-queue, and collaboration detail removed from the first view while the underlying cloud features remain available.

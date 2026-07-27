@@ -2,6 +2,22 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+let connectionRepairModule;
+async function loadConnectionRepairModule() {
+  if (connectionRepairModule) return connectionRepairModule;
+  const source = await readFile(new URL("../app/connectionRepair.ts", import.meta.url), "utf8");
+  const typescriptImport = await import("typescript");
+  const typescript = typescriptImport.default || typescriptImport;
+  const compiled = typescript.transpileModule(source, {
+    compilerOptions: {
+      module: typescript.ModuleKind.ESNext,
+      target: typescript.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  connectionRepairModule = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
+  return connectionRepairModule;
+}
+
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
 
@@ -464,6 +480,163 @@ test("supports the field run-first T/Y workflow", async () => {
   assert.match(styles, /\.branch-run-armed-card/);
   assert.match(styles, /\.branch-run-armed \.duct-line/);
   assert.match(styles, /\.branch-run-pick \.duct-line/);
+});
+
+test("builds a deterministic STEP 1 plan with type, sheet, system, and endpoint safeguards", async () => {
+  const { buildConnectionRepairPlan } = await loadConnectionRepairModule();
+  const target = {
+    id: "device:can-1:supply",
+    kind: "device",
+    drawingId: "can-1",
+    label: "Bedroom 2",
+    detail: "Supply can",
+    page: 1,
+    systemId: "system-1",
+    ductType: "supply",
+    slot: "terminal",
+    targetPoint: { x: 10, y: 0 },
+  };
+  const runs = [
+    { id: "wrong-type", page: 1, systemId: "system-1", type: "return", size: "8", points: [{ x: 9, y: 0 }, { x: 50, y: 0 }] },
+    { id: "wrong-page", page: 2, systemId: "system-1", type: "supply", size: "8", points: [{ x: 8, y: 0 }, { x: 50, y: 0 }] },
+    { id: "wrong-system", page: 1, systemId: "system-2", type: "supply", size: "8", points: [{ x: 7, y: 0 }, { x: 50, y: 0 }] },
+    { id: "too-short", page: 1, systemId: "system-1", type: "supply", size: "8", points: [{ x: 10, y: 0 }] },
+    { id: "valid", page: 1, systemId: "system-1", type: "supply", size: "8", points: [{ x: 20, y: 0 }, { x: 80, y: 0 }] },
+  ];
+  const before = JSON.stringify({ runs, target });
+  const plan = buildConnectionRepairPlan({ systemId: "system-1", runs, targets: [target] });
+
+  assert.equal(plan.items[0].status, "ready");
+  assert.equal(plan.items[0].candidate.runId, "valid");
+  assert.equal(plan.items[0].candidate.end, "start");
+  assert.equal(JSON.stringify({ runs, target }), before, "planning must not mutate source geometry");
+});
+
+test("requires a choice for ambiguous STEP 1 matches and stays stable when drawing order changes", async () => {
+  const { buildConnectionRepairPlan } = await loadConnectionRepairModule();
+  const target = {
+    id: "device:return-1:return",
+    kind: "device",
+    drawingId: "return-1",
+    label: "Hall return",
+    detail: "Return grille",
+    page: 1,
+    systemId: "system-1",
+    ductType: "return",
+    slot: "terminal",
+    targetPoint: { x: 0, y: 0 },
+  };
+  const runs = [
+    { id: "run-b", page: 1, systemId: "system-1", type: "return", size: "12", points: [{ x: 6, y: 0 }, { x: 100, y: 0 }] },
+    { id: "run-a", page: 1, systemId: "system-1", type: "return", size: "12", points: [{ x: 5, y: 0 }, { x: -100, y: 0 }] },
+  ];
+  const first = buildConnectionRepairPlan({ systemId: "system-1", runs, targets: [target] });
+  const reversed = buildConnectionRepairPlan({ systemId: "system-1", runs: [...runs].reverse(), targets: [target] });
+
+  assert.equal(first.items[0].status, "choice");
+  assert.deepEqual(
+    first.items[0].candidates.map((candidate) => candidate.id),
+    reversed.items[0].candidates.map((candidate) => candidate.id),
+  );
+  const chosen = buildConnectionRepairPlan({
+    systemId: "system-1",
+    runs,
+    targets: [target],
+    choices: { [target.id]: "run-a:start" },
+  });
+  assert.equal(chosen.items[0].status, "ready");
+  assert.equal(chosen.items[0].candidate.runId, "run-a");
+});
+
+test("repairs only the run already saved to a T/Y port and rejects stale or distant batches", async () => {
+  const { buildConnectionRepairPlan, prepareConnectionRepairBatch } = await loadConnectionRepairModule();
+  const runs = [
+    { id: "saved-run", page: 1, systemId: "system-1", type: "supply", size: "10", points: [{ x: 12, y: 0 }, { x: 100, y: 0 }] },
+    { id: "closer-run", page: 1, systemId: "system-1", type: "supply", size: "8", points: [{ x: 1, y: 0 }, { x: -100, y: 0 }] },
+  ];
+  const target = {
+    id: "fitting:ty-1:2",
+    kind: "fitting",
+    drawingId: "ty-1",
+    label: "T/Y fitting · Port 3",
+    detail: "Saved T/Y connection",
+    page: 1,
+    systemId: "system-1",
+    ductType: "supply",
+    port: 2,
+    targetPoint: { x: 0, y: 0 },
+    savedRunId: "saved-run",
+  };
+  const plan = buildConnectionRepairPlan({ systemId: "system-1", runs, targets: [target] });
+  assert.equal(plan.items[0].status, "ready");
+  assert.equal(plan.items[0].candidate.runId, "saved-run");
+  const batch = prepareConnectionRepairBatch(plan, [target.id], plan.fingerprint);
+  assert.equal(batch.ok, true);
+  assert.deepEqual(batch.operations[0].from, { x: 12, y: 0 });
+  assert.deepEqual(batch.operations[0].to, { x: 0, y: 0 });
+  assert.equal(prepareConnectionRepairBatch(plan, [target.id], "stale-review").ok, false);
+
+  const distant = buildConnectionRepairPlan({
+    systemId: "system-1",
+    runs: [{ ...runs[0], points: [{ x: 49, y: 0 }, { x: 100, y: 0 }] }],
+    targets: [target],
+  });
+  assert.equal(distant.items[0].status, "blocked");
+});
+
+test("reserves occupied run endpoints and never prepares the same endpoint twice", async () => {
+  const { buildConnectionRepairPlan, prepareConnectionRepairBatch } = await loadConnectionRepairModule();
+  const runs = [
+    { id: "shared-run", page: 1, systemId: "system-1", type: "supply", size: "8", points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] },
+  ];
+  const healthy = {
+    id: "device:can-1:supply",
+    kind: "device",
+    drawingId: "can-1",
+    label: "Can 1",
+    detail: "Supply can",
+    page: 1,
+    systemId: "system-1",
+    ductType: "supply",
+    slot: "terminal",
+    targetPoint: { x: 0, y: 0 },
+    savedRunId: "shared-run",
+    savedEnd: "start",
+  };
+  const unbound = {
+    ...healthy,
+    id: "device:can-2:supply",
+    drawingId: "can-2",
+    label: "Can 2",
+    targetPoint: { x: 2, y: 0 },
+    savedRunId: undefined,
+    savedEnd: undefined,
+  };
+  const plan = buildConnectionRepairPlan({ systemId: "system-1", runs, targets: [healthy, unbound] });
+  assert.equal(plan.items.find((item) => item.id === healthy.id).status, "healthy");
+  assert.equal(plan.items.find((item) => item.id === unbound.id).status, "blocked");
+  assert.equal(prepareConnectionRepairBatch(plan, [unbound.id], plan.fingerprint).ok, false);
+});
+
+test("makes STEP 1 preview-first and preserves placed objects and saved T/Y topology", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const repair = await readFile(new URL("../app/connectionRepair.ts", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(page, /Review each loose unit, supply can, return grille, and saved T\/Y connection/);
+  assert.match(page, /Review \$\{activeConnectionRepairIssues\.length\} connection fix/);
+  assert.match(page, /Add this fix/);
+  assert.match(page, /Apply \{selectedReadyConnectionRepairIds\.length\} selected · one Undo/);
+  assert.match(page, /0<\/strong> placed objects move/);
+  assert.match(page, /run\.points\[endpointIndex\] = \{ \.\.\.operation\.to \}/);
+  assert.doesNotMatch(page, /device\.points = \[\{ \.\.\.nearest\.endpoint \}\]/);
+  assert.doesNotMatch(page, /function repairActiveSystemNetwork[\s\S]{0,500}reattachFittingIn/);
+  assert.match(repair, /The saved run end can snap back to this exact T\/Y port/);
+  assert.match(repair, /run\.page === target\.page/);
+  assert.match(repair, /run\.systemId === target\.systemId/);
+  assert.match(repair, /run\.type === target\.ductType/);
+  assert.match(styles, /\.connection-repair-list/);
+  assert.match(styles, /\.step-one-repair-preview/);
 });
 
 test("deletes runs and icons without leaving the page or broken drawing references", async () => {

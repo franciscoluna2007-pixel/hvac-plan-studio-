@@ -54,6 +54,13 @@ import {
   type MarkupRecommendation,
 } from "./markupAssistant";
 import {
+  buildConnectionRepairPlan,
+  prepareConnectionRepairBatch,
+  type ConnectionRepairItem,
+  type ConnectionRepairTarget,
+  type ConnectionRunSnapshot,
+} from "./connectionRepair";
+import {
   BALANCE_CALCULATION_VERSION,
   summarizeSystemBalance,
   type BalanceReviewRecord,
@@ -1304,6 +1311,11 @@ function HVACPlanStudioApp() {
   const [branchHoverRunId, setBranchHoverRunId] = useState<string | null>(null);
   const [branchStyle, setBranchStyle] = useState<"auto" | "wye45" | "tee90">("auto");
   const [branchMatchChoices, setBranchMatchChoices] = useState<Record<string, string>>({});
+  const [connectionReviewOpen, setConnectionReviewOpen] = useState(false);
+  const [connectionReviewFingerprint, setConnectionReviewFingerprint] = useState("");
+  const [selectedConnectionRepairIds, setSelectedConnectionRepairIds] = useState<string[]>([]);
+  const [focusedConnectionRepairId, setFocusedConnectionRepairId] = useState<string | null>(null);
+  const [connectionCandidateChoices, setConnectionCandidateChoices] = useState<Record<string, string>>({});
   const [scaleFeetPerUnit, setScaleFeetPerUnit] = useState(1 / 24.3);
   const [scaleLabel, setScaleLabel] = useState('1/4" = 1\'-0"');
   const [scaleLocked, setScaleLocked] = useState(true);
@@ -1691,9 +1703,24 @@ function HVACPlanStudioApp() {
     () => fieldPackageSummary(activeReviewSummary, activeFieldConnections),
     [activeFieldConnections, activeReviewSummary, activeSystem, cloudProjectRisk, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, supplyVelocityLimit, workingCloudProjectId, workingCloudRevisionFingerprint, workingCloudRevisionId],
   );
+  const activeConnectionRepairPlan = useMemo(
+    () => buildActiveConnectionRepairPlan(),
+    // The planner reads only these reactive values; geometry helpers are pure function declarations in this component.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeSystem, connectionCandidateChoices, drawings],
+  );
   const activeBuilderSummary = useMemo(
-    () => systemBuilderSummary(activeValidationDashboard, activeFieldPackage),
-    [activeFieldPackage, activeSystem, activeValidationDashboard, drawings, residentialFlexMax, returnVelocityLimit, supplyVelocityLimit],
+    () => systemBuilderSummary(activeValidationDashboard, activeFieldPackage, activeConnectionRepairPlan),
+    [activeConnectionRepairPlan, activeFieldPackage, activeSystem, activeValidationDashboard, drawings, residentialFlexMax, returnVelocityLimit, supplyVelocityLimit],
+  );
+  const activeConnectionRepairIssues = activeConnectionRepairPlan.items.filter((item) => item.status !== "healthy");
+  const focusedConnectionRepairItem = activeConnectionRepairPlan.items.find((item) => item.id === focusedConnectionRepairId);
+  const selectedReadyConnectionRepairIds = selectedConnectionRepairIds.filter((id) =>
+    activeConnectionRepairPlan.items.some((item) => item.id === id && item.status === "ready")
+  );
+  const connectionReviewStale = Boolean(
+    connectionReviewFingerprint &&
+    connectionReviewFingerprint !== activeConnectionRepairPlan.fingerprint
   );
   const projectCommandSnapshot = useMemo(
     () => projectCommandSummary(),
@@ -5853,9 +5880,111 @@ function HVACPlanStudioApp() {
       .sort((a, b) => b.releasedAt.localeCompare(a.releasedAt))[0];
   }
 
+  function buildActiveConnectionRepairPlan(
+    choices: Record<string, string> = connectionCandidateChoices,
+  ) {
+    const runs: ConnectionRunSnapshot[] = drawings
+      .filter((drawing) =>
+        drawingSystem(drawing) === activeSystem &&
+        (drawing.type === "supply" || drawing.type === "return") &&
+        !drawing.fitting &&
+        drawing.points.length >= 2
+      )
+      .map((drawing) => ({
+        id: drawing.id,
+        page: drawing.page,
+        systemId: drawingSystem(drawing),
+        type: drawing.type as "supply" | "return",
+        size: drawing.size,
+        points: drawing.points,
+      }));
+    const targets: ConnectionRepairTarget[] = [];
+
+    for (const drawing of drawings.filter((candidate) => drawingSystem(candidate) === activeSystem)) {
+      if (drawing.symbol?.kind === "diffuser" || drawing.symbol?.kind === "returnGrille") {
+        const ductType = drawing.symbol.kind === "returnGrille" ? "return" : "supply";
+        const objectName = drawing.symbol.kind === "returnGrille" ? "Return grille" : "Supply can";
+        targets.push({
+          id: `device:${drawing.id}:${ductType}`,
+          kind: "device",
+          drawingId: drawing.id,
+          label: drawing.roomName || drawing.symbol.label || objectName,
+          detail: objectName,
+          page: drawing.page,
+          systemId: drawingSystem(drawing),
+          ductType,
+          slot: "terminal",
+          targetPoint: drawing.points[0],
+          savedRunId: drawing.symbol.connectedRunId,
+          savedEnd: drawing.symbol.connectedEnd,
+        });
+        continue;
+      }
+      if (isPrimaryAirflowEquipment(drawing)) {
+        const ports = equipmentPlenumPorts(drawing);
+        const equipmentLabel = drawing.symbol?.label || equipmentTypeName(drawing.symbol?.variant) || "HVAC unit";
+        targets.push({
+          id: `device:${drawing.id}:supply`,
+          kind: "device",
+          drawingId: drawing.id,
+          label: `${equipmentLabel} supply`,
+          detail: "Equipment supply plenum",
+          page: drawing.page,
+          systemId: drawingSystem(drawing),
+          ductType: "supply",
+          slot: "equipment-supply",
+          targetPoint: ports.supply,
+          savedRunId: drawing.symbol?.connectedRunId,
+          savedEnd: drawing.symbol?.connectedEnd,
+        }, {
+          id: `device:${drawing.id}:return`,
+          kind: "device",
+          drawingId: drawing.id,
+          label: `${equipmentLabel} return`,
+          detail: "Equipment return plenum",
+          page: drawing.page,
+          systemId: drawingSystem(drawing),
+          ductType: "return",
+          slot: "equipment-return",
+          targetPoint: ports.return,
+          savedRunId: drawing.symbol?.returnRunId,
+          savedEnd: drawing.symbol?.returnEnd,
+        });
+        continue;
+      }
+      if (drawing.fitting) {
+        const ports = fittingPortPoints(drawing);
+        drawing.fitting.connectedIds.forEach((runId, port) => {
+          if (!runId || port > 2) return;
+          targets.push({
+            id: `fitting:${drawing.id}:${port}`,
+            kind: "fitting",
+            drawingId: drawing.id,
+            label: `${drawing.roomName || "T/Y fitting"} · Port ${port + 1}`,
+            detail: "Saved T/Y connection",
+            page: drawing.page,
+            systemId: drawingSystem(drawing),
+            ductType: "supply",
+            port: port as 0 | 1 | 2,
+            targetPoint: ports[port],
+            savedRunId: runId,
+          });
+        });
+      }
+    }
+
+    return buildConnectionRepairPlan({
+      systemId: activeSystem,
+      runs,
+      targets,
+      choices,
+    });
+  }
+
   function systemBuilderSummary(
     audit = validationDashboard(),
     packageSummary = fieldPackageSummary(),
+    connectionPlan = buildActiveConnectionRepairPlan(),
   ) {
     const scoped = drawings.filter((drawing) => drawingSystem(drawing) === activeSystem);
     const runs = scoped.filter((drawing) => ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting);
@@ -5864,24 +5993,16 @@ function HVACPlanStudioApp() {
       ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") ||
       isPrimaryAirflowEquipment(drawing)
     );
-    const connectedDevices = devices.filter((drawing) =>
-      drawing.symbol?.connectedRunId &&
-      drawings.some((candidate) => candidate.id === drawing.symbol?.connectedRunId)
-    );
-    const totalPorts = fittings.length * 3;
-    const healthyPorts = fittings.reduce((total, fitting) => {
-      const ports = fittingPortPoints(fitting);
-      return total + fitting.fitting!.connectedIds.filter((runId, port) => {
-        const run = drawings.find((drawing) => drawing.id === runId);
-        if (!run) return false;
-        return [run.points[0], run.points[run.points.length - 1]].some((point) =>
-          Math.hypot(point.x - ports[port].x, point.y - ports[port].y) < 2
-        );
-      }).length;
-    }, 0);
+    const deviceConnections = connectionPlan.items.filter((item) => item.kind === "device");
+    const fittingConnections = connectionPlan.items.filter((item) => item.kind === "fitting");
+    const connectedDevices = deviceConnections.filter((item) => item.status === "healthy");
+    const totalPorts = fittingConnections.length;
+    const healthyPorts = fittingConnections.filter((item) => item.status === "healthy").length;
+    const openFittingPorts = fittings.reduce((total, fitting) =>
+      total + fitting.fitting!.connectedIds.filter((runId) => !runId).length, 0);
     const sizing = sizingSuggestions();
-    const connectionPercent = devices.length || totalPorts
-      ? Math.round((connectedDevices.length + healthyPorts) / Math.max(1, devices.length + totalPorts) * 100)
+    const connectionPercent = deviceConnections.length || totalPorts
+      ? Math.round((connectedDevices.length + healthyPorts) / Math.max(1, deviceConnections.length + totalPorts) * 100)
       : 0;
     const sizingPercent = runs.length ? Math.round((runs.length - sizing.length) / runs.length * 100) : 0;
     const packagePercent = packageSummary.ready
@@ -5893,10 +6014,12 @@ function HVACPlanStudioApp() {
       fittings,
       devices,
       connectedDevices,
-      unconnectedDevices: devices.length - connectedDevices.length,
+      unconnectedDevices: deviceConnections.length - connectedDevices.length,
       totalPorts,
       healthyPorts,
       brokenPorts: totalPorts - healthyPorts,
+      openFittingPorts,
+      connectionPlan,
       sizing,
       audit,
       packageSummary,
@@ -5907,103 +6030,120 @@ function HVACPlanStudioApp() {
     };
   }
 
-  function autoConnectActiveSystemDevices() {
+  function refreshConnectionRepairReview() {
+    const plan = buildActiveConnectionRepairPlan({});
+    const firstIssue = plan.items.find((item) => item.status !== "healthy");
+    setConnectionCandidateChoices({});
+    setSelectedConnectionRepairIds([]);
+    setConnectionReviewFingerprint(plan.fingerprint);
+    setFocusedConnectionRepairId(firstIssue?.id || null);
+  }
+
+  function openConnectionRepairReview() {
+    refreshConnectionRepairReview();
+    setConnectionReviewOpen(true);
+  }
+
+  function focusConnectionRepair(item: ConnectionRepairItem) {
+    setFocusedConnectionRepairId(item.id);
+    focusDrawingOnPlan(item.drawingId);
+  }
+
+  function chooseConnectionCandidate(item: ConnectionRepairItem, candidateId: string) {
+    setConnectionCandidateChoices((current) => ({ ...current, [item.id]: candidateId }));
+    setSelectedConnectionRepairIds((current) => current.filter((id) => id !== item.id));
+    setFocusedConnectionRepairId(item.id);
+    focusDrawingOnPlan(item.drawingId);
+  }
+
+  function toggleConnectionRepair(item: ConnectionRepairItem) {
+    if (item.status !== "ready") return;
+    setSelectedConnectionRepairIds((current) =>
+      current.includes(item.id)
+        ? current.filter((id) => id !== item.id)
+        : [...current, item.id]
+    );
+    setFocusedConnectionRepairId(item.id);
+  }
+
+  function selectAllReadyConnectionRepairs() {
+    setSelectedConnectionRepairIds(
+      activeConnectionRepairPlan.items
+        .filter((item) => item.status === "ready")
+        .map((item) => item.id)
+    );
+  }
+
+  function connectionRepairDistanceValue(distance: number) {
+    if (!scaleVerified) return `${distance.toFixed(0)} plan units`;
+    const feet = distance * scaleFeetPerUnit;
+    return feet < 1 ? `${Math.max(1, Math.round(feet * 12))} in gap` : `${feet.toFixed(1)} ft gap`;
+  }
+
+  function connectionRepairDistance(item: ConnectionRepairItem) {
+    const candidate = item.candidate || item.candidates[0];
+    return candidate ? connectionRepairDistanceValue(candidate.distance) : "";
+  }
+
+  function applySelectedConnectionRepairs() {
+    const currentPlan = buildActiveConnectionRepairPlan(connectionCandidateChoices);
+    const batch = prepareConnectionRepairBatch(
+      currentPlan,
+      selectedConnectionRepairIds,
+      connectionReviewFingerprint,
+    );
+    if (!batch.ok) {
+      setBranchMessage(batch.reason);
+      return;
+    }
     const next = drawings.map((drawing) => ({
       ...drawing,
       points: drawing.points.map((point) => ({ ...point })),
       symbol: drawing.symbol ? { ...drawing.symbol } : undefined,
+      fitting: drawing.fitting ? { ...drawing.fitting, connectedIds: [...drawing.fitting.connectedIds] } : undefined,
     }));
-    let connected = 0;
-    for (const device of next.filter((drawing) =>
-      drawingSystem(drawing) === activeSystem &&
-      (["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") || isPrimaryAirflowEquipment(drawing))
-    )) {
-      if (isPrimaryAirflowEquipment(device)) {
-        for (const ductType of ["supply", "return"] as const) {
-          const port = equipmentPlenumPorts(device)[ductType];
-          const candidates = next
-            .filter((drawing) =>
-              drawing.page === device.page &&
-              drawingSystem(drawing) === activeSystem &&
-              drawing.type === ductType &&
-              !drawing.fitting &&
-              drawing.points.length > 1
-            )
-            .flatMap((run) => [
-              { run, endpoint: run.points[0], end: "start" as const },
-              { run, endpoint: run.points[run.points.length - 1], end: "end" as const },
-            ])
-            .map((candidate) => ({
-              ...candidate,
-              distance: Math.hypot(candidate.endpoint.x - port.x, candidate.endpoint.y - port.y),
-            }))
-            .sort((a, b) => a.distance - b.distance);
-          const nearest = candidates[0];
-          if (!nearest || nearest.distance > 90 / zoomRef.current) continue;
-          const savedRunId = ductType === "supply" ? device.symbol!.connectedRunId : device.symbol!.returnRunId;
-          const savedEnd = ductType === "supply" ? device.symbol!.connectedEnd : device.symbol!.returnEnd;
-          if (savedRunId === nearest.run.id && savedEnd === nearest.end && nearest.distance < 2) continue;
-          const endpointIndex = nearest.end === "start" ? 0 : nearest.run.points.length - 1;
-          nearest.run.points = nearest.run.points.map((point, index) => index === endpointIndex ? { ...port } : point);
-          device.symbol = ductType === "supply"
-            ? { ...device.symbol!, connectedRunId: nearest.run.id, connectedEnd: nearest.end }
-            : { ...device.symbol!, returnRunId: nearest.run.id, returnEnd: nearest.end };
-          connected += 1;
-        }
-        continue;
+    for (const operation of batch.operations) {
+      const reviewedItem = currentPlan.items.find((item) => item.id === operation.itemId);
+      const run = next.find((drawing) =>
+        drawing.id === operation.runId &&
+        drawing.page === reviewedItem?.page &&
+        drawingSystem(drawing) === activeSystem &&
+        drawing.type === reviewedItem?.ductType &&
+        !drawing.fitting &&
+        drawing.points.length >= 2
+      );
+      if (!run) {
+        setBranchMessage("A reviewed run changed. Refresh Step 1 before applying.");
+        return;
       }
-      const desiredType = device.symbol!.kind === "returnGrille" ? "return" : "supply";
-      const candidates = next
-        .filter((drawing) =>
-          drawing.page === device.page &&
-          drawingSystem(drawing) === activeSystem &&
-          drawing.type === desiredType &&
-          !drawing.fitting &&
-          drawing.points.length > 1
-        )
-        .flatMap((run) => [
-          { run, endpoint: run.points[0], end: "start" as const },
-          { run, endpoint: run.points[run.points.length - 1], end: "end" as const },
-        ])
-        .map((candidate) => ({
-          ...candidate,
-          distance: Math.hypot(candidate.endpoint.x - device.points[0].x, candidate.endpoint.y - device.points[0].y),
-        }))
-        .sort((a, b) => a.distance - b.distance);
-      const nearest = candidates[0];
-      const maximumDistance = 70 / zoomRef.current;
-      if (!nearest || nearest.distance > maximumDistance) continue;
-      const alreadyConnected = device.symbol!.connectedRunId === nearest.run.id &&
-        device.symbol!.connectedEnd === nearest.end &&
-        nearest.distance < 2;
-      if (alreadyConnected) continue;
-      device.points = [{ ...nearest.endpoint }];
-      device.symbol = {
-        ...device.symbol!,
-        connectedRunId: nearest.run.id,
-        connectedEnd: nearest.end,
-      };
-      connected += 1;
-    }
-    if (!connected) {
-      setBranchMessage("No nearby equipment, supply cans, or return cans need connection");
-      return;
+      const endpointIndex = operation.end === "start" ? 0 : run.points.length - 1;
+      const endpoint = run.points[endpointIndex];
+      if (Math.hypot(endpoint.x - operation.from.x, endpoint.y - operation.from.y) > .01) {
+        setBranchMessage("A reviewed endpoint moved. Refresh Step 1 before applying.");
+        return;
+      }
+      run.points[endpointIndex] = { ...operation.to };
+      if (operation.kind !== "device") continue;
+      const device = next.find((drawing) => drawing.id === operation.drawingId && drawing.symbol);
+      if (!device?.symbol) {
+        setBranchMessage("A reviewed device changed. Refresh Step 1 before applying.");
+        return;
+      }
+      device.symbol = operation.slot === "equipment-return"
+        ? { ...device.symbol, returnRunId: run.id, returnEnd: operation.end }
+        : { ...device.symbol, connectedRunId: run.id, connectedEnd: operation.end };
     }
     setHistory(next);
-    setBranchMessage(`${connected} nearby HVAC device${connected === 1 ? "" : "s"} connected · no duct runs were created or rerouted`);
-  }
-
-  function repairActiveSystemNetwork() {
-    let next = drawings;
-    for (const fitting of drawings.filter((drawing) => drawing.fitting && drawingSystem(drawing) === activeSystem)) {
-      next = reattachFittingIn(next, fitting.id).drawings;
-    }
-    if (JSON.stringify(next) === JSON.stringify(drawings)) {
-      setBranchMessage("All connected T/Y ports are already aligned");
-      return;
-    }
-    setHistory(next);
-    setBranchMessage(`${systemLabel(activeSystem)} repaired · existing runs snapped back to their saved fitting ports`);
+    setConnectionReviewOpen(false);
+    setSelectedConnectionRepairIds([]);
+    setConnectionCandidateChoices({});
+    setConnectionReviewFingerprint("");
+    setFocusedConnectionRepairId(null);
+    setBranchMessage(`${batch.operations.length} reviewed connection${batch.operations.length === 1 ? "" : "s"} fixed · placed units and cans stayed put · one Undo restores the batch`);
+    trackProductEvent("connection_repair_applied", {
+      system_id: activeSystem,
+      repair_count: batch.operations.length,
+    });
   }
 
   function openSystemSizingWorkflow() {
@@ -11330,6 +11470,23 @@ function HVACPlanStudioApp() {
                     {alignmentGuides.map((guide, index) => guide.axis === "x"
                       ? <line key={`guide-${index}`} className="alignment-guide" x1={guide.value} y1={0} x2={guide.value} y2={renderSize.height} />
                       : <line key={`guide-${index}`} className="alignment-guide" x1={0} y1={guide.value} x2={renderSize.width} y2={guide.value} />)}
+                    {connectionReviewOpen && focusedConnectionRepairItem?.page === pageNumber && (() => {
+                      const candidate = focusedConnectionRepairItem.candidate || focusedConnectionRepairItem.candidates[0];
+                      if (!candidate) return null;
+                      const target = focusedConnectionRepairItem.targetPoint;
+                      const midpointX = (candidate.point.x + target.x) / 2;
+                      const midpointY = (candidate.point.y + target.y) / 2;
+                      const markerScale = 1 / Math.max(.1, zoom);
+                      return <g className={`step-one-repair-preview ${focusedConnectionRepairItem.status}`} aria-hidden="true">
+                        <path d={`M ${candidate.point.x} ${candidate.point.y} L ${target.x} ${target.y}`} />
+                        <circle className="current-end" cx={candidate.point.x} cy={candidate.point.y} r={7 * markerScale} />
+                        <circle className="proposed-end" cx={target.x} cy={target.y} r={9 * markerScale} />
+                        <g transform={`translate(${midpointX} ${midpointY}) scale(${markerScale})`}>
+                          <rect x="-62" y="-27" width="124" height="22" rx="5" />
+                          <text x="0" y="-13" textAnchor="middle">{focusedConnectionRepairItem.status === "choice" ? "CHOOSE THIS RUN?" : "REVIEWED ENDPOINT MOVE"}</text>
+                        </g>
+                      </g>;
+                    })()}
                     {(branchRepairPreview.detached.length > 0 || branchRepairPreview.missing.length > 0) && <g className="network-repair-preview">
                       {branchRepairPreview.detached.map((gap) => <g key={gap.id}>
                         <path d={`M ${gap.endpoint.x} ${gap.endpoint.y} L ${gap.portPoint.x} ${gap.portPoint.y}`} />
@@ -11506,20 +11663,112 @@ function HVACPlanStudioApp() {
             <div className="builder-metrics">
               <div><span>Runs</span><strong>{activeBuilderSummary.runs.length}</strong></div>
               <div><span>T/Y fittings</span><strong>{activeBuilderSummary.fittings.length}</strong></div>
-              <div className={activeBuilderSummary.unconnectedDevices ? "attention" : "good"}><span>Open devices</span><strong>{activeBuilderSummary.unconnectedDevices}</strong></div>
-              <div className={activeBuilderSummary.brokenPorts ? "attention" : "good"}><span>Broken ports</span><strong>{activeBuilderSummary.brokenPorts}</strong></div>
+              <div className={activeBuilderSummary.unconnectedDevices ? "attention" : "good"}><span>Loose ends</span><strong>{activeBuilderSummary.unconnectedDevices}</strong></div>
+              <div className={activeBuilderSummary.brokenPorts ? "attention" : "good"}><span>Loose T/Y ports</span><strong>{activeBuilderSummary.brokenPorts}</strong></div>
               <div className={activeBuilderSummary.sizing.length ? "attention" : "good"}><span>Size reviews</span><strong>{activeBuilderSummary.sizing.length}</strong></div>
               <div className={activeBuilderSummary.audit.counts.critical ? "critical" : "good"}><span>Critical</span><strong>{activeBuilderSummary.audit.counts.critical}</strong></div>
             </div>
 
             <div className="builder-workflow">
-              <div className={`builder-action-card ${activeBuilderSummary.unconnectedDevices || activeBuilderSummary.brokenPorts ? "attention" : "complete"}`}>
+              <div className={`builder-action-card connection-repair-card ${activeBuilderSummary.unconnectedDevices || activeBuilderSummary.brokenPorts ? "attention" : "complete"}`}>
                 <div className="builder-action-icon"><Route size={17} /></div>
-                <span><i>STEP 1</i><strong>Connect &amp; repair the system</strong><small>Snaps nearby equipment, supply cans, and return cans to existing run endpoints. Repairs saved T/Y ports without creating branch stubs or rerouting ductwork.</small></span>
-                <div className="builder-action-buttons">
-                  <button disabled={!activeBuilderSummary.unconnectedDevices} onClick={autoConnectActiveSystemDevices}>Connect nearby</button>
-                  <button disabled={!activeBuilderSummary.brokenPorts} onClick={repairActiveSystemNetwork}>Repair all ports</button>
+                <span><i>STEP 1</i><strong>Connect &amp; repair the system</strong><small>Review each loose unit, supply can, return grille, and saved T/Y connection. Placed objects stay put, and nothing moves until you approve it.</small></span>
+                <div className="connection-repair-summary">
+                  <b className="ready">{activeConnectionRepairPlan.counts.ready} ready</b>
+                  <b className="choice">{activeConnectionRepairPlan.counts.choice} need a choice</b>
+                  <b className="blocked">{activeConnectionRepairPlan.counts.blocked} manual check</b>
+                  <b className="healthy">{activeConnectionRepairPlan.counts.healthy} connected</b>
                 </div>
+                {!connectionReviewOpen ? <button
+                  className="builder-primary-action connection-review-launch"
+                  disabled={!activeConnectionRepairIssues.length}
+                  onClick={openConnectionRepairReview}
+                >
+                  {activeConnectionRepairIssues.length
+                    ? `Review ${activeConnectionRepairIssues.length} connection fix${activeConnectionRepairIssues.length === 1 ? "" : "es"}`
+                    : "All saved connections are aligned"}
+                </button> : <div className="connection-repair-review">
+                  <div className="connection-review-heading">
+                    <div>
+                      <strong>Connection review</strong>
+                      <small>Red is the loose run end. Green is where it will connect.</small>
+                    </div>
+                    <button onClick={() => setConnectionReviewOpen(false)} aria-label="Close connection review"><X size={15} /></button>
+                  </div>
+
+                  {connectionReviewStale && <div className="connection-review-stale">
+                    <AlertTriangle size={15} />
+                    <span><strong>The plan changed</strong><small>Refresh this review before selecting or applying fixes.</small></span>
+                    <button onClick={refreshConnectionRepairReview}>Refresh</button>
+                  </div>}
+
+                  <div className="connection-repair-list">
+                    {activeConnectionRepairIssues.map((item) => {
+                      const selected = selectedReadyConnectionRepairIds.includes(item.id);
+                      const distanceLabel = connectionRepairDistance(item);
+                      return <article className={`connection-repair-row ${item.status} ${focusedConnectionRepairId === item.id ? "focused" : ""}`} key={item.id}>
+                        <button className="connection-repair-focus" onClick={() => focusConnectionRepair(item)}>
+                          <span className="connection-repair-state" aria-hidden="true">
+                            {item.status === "ready" ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
+                          </span>
+                          <span>
+                            <strong>{item.label}</strong>
+                            <small>{item.detail} · Sheet {item.page}</small>
+                            <em>{item.reason}{distanceLabel ? ` · ${distanceLabel}` : ""}</em>
+                          </span>
+                          <b>{item.status === "ready" ? "READY" : item.status === "choice" ? "CHOOSE A RUN" : "CHECK ON PLAN"}</b>
+                        </button>
+
+                        {item.status === "choice" && <div className="connection-candidate-choices">
+                          {item.candidates.map((candidate) => <button
+                            className={connectionCandidateChoices[item.id] === candidate.id ? "selected" : ""}
+                            key={candidate.id}
+                            disabled={connectionReviewStale}
+                            aria-pressed={connectionCandidateChoices[item.id] === candidate.id}
+                            onClick={() => chooseConnectionCandidate(item, candidate.id)}
+                          >
+                            Use {candidate.runSize}&quot; run · {candidate.end} end · {connectionRepairDistanceValue(candidate.distance)}
+                          </button>)}
+                        </div>}
+
+                        <div className="connection-repair-row-actions">
+                          <button onClick={() => focusConnectionRepair(item)}>Show on plan</button>
+                          {item.status === "ready" && <button
+                            className={selected ? "selected" : ""}
+                            disabled={connectionReviewStale}
+                            aria-pressed={selected}
+                            onClick={() => toggleConnectionRepair(item)}
+                          >
+                            {selected ? "Selected" : "Add this fix"}
+                          </button>}
+                        </div>
+                      </article>;
+                    })}
+                    {!activeConnectionRepairIssues.length && <div className="connection-review-clear">
+                      <CheckCircle2 size={18} />
+                      <span><strong>No loose saved connections</strong><small>Every unit connection, can, grille, and saved T/Y port is aligned.</small></span>
+                    </div>}
+                  </div>
+
+                  <div className="connection-repair-scope">
+                    <span><strong>{selectedReadyConnectionRepairIds.length}</strong> run endpoint{selectedReadyConnectionRepairIds.length === 1 ? "" : "s"} will move</span>
+                    <span><strong>0</strong> placed objects move</span>
+                    <span><strong>0</strong> runs created</span>
+                  </div>
+                  <div className="connection-repair-footer">
+                    <button
+                      disabled={connectionReviewStale || !activeConnectionRepairPlan.counts.ready}
+                      onClick={selectAllReadyConnectionRepairs}
+                    >Select ready fixes</button>
+                    <button
+                      className="apply"
+                      disabled={connectionReviewStale || !selectedReadyConnectionRepairIds.length}
+                      onClick={applySelectedConnectionRepairs}
+                    >
+                      Apply {selectedReadyConnectionRepairIds.length} selected · one Undo
+                    </button>
+                  </div>
+                </div>}
               </div>
 
               <div className={`builder-action-card ${activeBuilderSummary.sizing.length ? "attention" : "complete"}`}>

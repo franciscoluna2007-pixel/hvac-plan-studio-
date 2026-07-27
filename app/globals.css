@@ -8122,6 +8122,311 @@ select { min-height: 40px; color: #e6f0f8; border-color: #35516a; font-size: 11p
 .builder-safety-note { margin: 13px 15px 0; padding: 13px; color: #a4b6c3; font-size: 10px; line-height: 1.55; }
 .builder-safety-note strong { color: #e0edf4; }
 
+.connection-repair-summary,
+.connection-review-launch,
+.connection-repair-review {
+  grid-column: 1 / -1;
+}
+
+.connection-repair-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.connection-repair-summary b {
+  padding: 7px 5px;
+  color: #b7c8d3;
+  border: 1px solid #345064;
+  border-radius: 999px;
+  background: #0b1924;
+  font-size: 9px;
+  text-align: center;
+}
+
+.connection-repair-summary .ready { color: #8ce9b8; border-color: #286846; background: #102b20; }
+.connection-repair-summary .choice { color: #ffe08c; border-color: #6c5824; background: #2b2412; }
+.connection-repair-summary .blocked { color: #ffaaa5; border-color: #704046; background: #2d191d; }
+.connection-repair-summary .healthy { color: #a5c1d0; }
+.connection-review-launch { width: 100%; }
+
+.connection-repair-review {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #38596e;
+  border-radius: 10px;
+  background: #08151f;
+}
+
+.connection-review-heading {
+  min-height: 54px;
+  padding: 10px 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid #294656;
+  background: #0d202d;
+}
+
+.connection-review-heading strong,
+.connection-review-heading small,
+.connection-review-clear strong,
+.connection-review-clear small,
+.connection-review-stale strong,
+.connection-review-stale small {
+  display: block;
+}
+
+.connection-review-heading strong { color: #edf8fc; font-size: 12px; }
+.connection-review-heading small { margin-top: 3px; color: #9cb2bf; font-size: 10px; line-height: 1.4; }
+.connection-review-heading > button {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  color: #bad0dc;
+  border: 1px solid #38586b;
+  border-radius: 7px;
+  background: #102737;
+}
+
+.connection-review-stale {
+  margin: 10px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: #ffd970;
+  border: 1px solid #765f25;
+  border-radius: 8px;
+  background: #2b2412;
+}
+
+.connection-review-stale strong { color: #fff0b7; font-size: 11px; }
+.connection-review-stale small { margin-top: 2px; color: #d7c58f; font-size: 9px; line-height: 1.4; }
+.connection-review-stale button {
+  min-height: 36px;
+  padding: 0 10px;
+  color: #161205;
+  border: 0;
+  border-radius: 6px;
+  background: #f4c84b;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.connection-repair-list {
+  max-height: 390px;
+  padding: 9px;
+  display: grid;
+  gap: 8px;
+  overflow: auto;
+}
+
+.connection-repair-row {
+  overflow: hidden;
+  border: 1px solid #304d60;
+  border-radius: 9px;
+  background: #0d1d29;
+}
+
+.connection-repair-row.focused { border-color: #3e9ab4; box-shadow: inset 0 0 0 1px #3e9ab466; }
+.connection-repair-row.choice { border-color: #6b5726; }
+.connection-repair-row.blocked { border-color: #6a3b42; }
+
+.connection-repair-focus {
+  width: 100%;
+  padding: 11px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.connection-repair-state {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: #52d894;
+  border-radius: 50%;
+  background: #143425;
+}
+
+.connection-repair-row.choice .connection-repair-state { color: #f3c650; background: #332a13; }
+.connection-repair-row.blocked .connection-repair-state { color: #ff8c87; background: #371c21; }
+.connection-repair-focus span strong,
+.connection-repair-focus span small,
+.connection-repair-focus span em { display: block; }
+.connection-repair-focus span strong { color: #eef8fc; font-size: 11px; line-height: 1.35; }
+.connection-repair-focus span small { margin-top: 2px; color: #a0b5c2; font-size: 9px; }
+.connection-repair-focus span em { margin-top: 5px; color: #9cb0bd; font-size: 9px; font-style: normal; line-height: 1.45; }
+.connection-repair-focus > b {
+  padding: 5px 7px;
+  color: #7ee2ad;
+  border: 1px solid #2d684a;
+  border-radius: 999px;
+  background: #102e21;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.connection-repair-row.choice .connection-repair-focus > b { color: #f9d66f; border-color: #705c28; background: #302713; }
+.connection-repair-row.blocked .connection-repair-focus > b { color: #ffaaa5; border-color: #714048; background: #301a1f; }
+
+.connection-candidate-choices {
+  padding: 0 10px 9px 42px;
+  display: grid;
+  gap: 6px;
+}
+
+.connection-candidate-choices button {
+  min-height: 36px;
+  padding: 7px 9px;
+  color: #e4cf8b;
+  border: 1px solid #65562c;
+  border-radius: 6px;
+  background: #2a2415;
+  font-size: 9px;
+  font-weight: 750;
+  text-align: left;
+}
+
+.connection-candidate-choices button:hover,
+.connection-candidate-choices button.selected { color: #fff4c9; border-color: #d4ae38; background: #443817; }
+.connection-candidate-choices button:disabled { opacity: .45; }
+
+.connection-repair-row-actions {
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  border-top: 1px solid #253e4e;
+  background: #0a1721;
+}
+
+.connection-repair-row-actions button {
+  min-height: 36px;
+  color: #b7cfdb;
+  border: 1px solid #35566a;
+  border-radius: 6px;
+  background: #102636;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.connection-repair-row-actions button.selected {
+  color: #06170f;
+  border-color: #67d99c;
+  background: #61d795;
+}
+
+.connection-review-clear {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #57d994;
+  border: 1px solid #2b6849;
+  border-radius: 8px;
+  background: #102a20;
+}
+
+.connection-review-clear strong { color: #dff8ea; font-size: 11px; }
+.connection-review-clear small { margin-top: 3px; color: #9bc8ae; font-size: 9px; line-height: 1.45; }
+
+.connection-repair-scope {
+  padding: 9px 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  border-top: 1px solid #294553;
+  background: #0a1923;
+}
+
+.connection-repair-scope span {
+  padding: 8px 5px;
+  color: #9db1bd;
+  border: 1px solid #294657;
+  border-radius: 6px;
+  background: #0c202c;
+  font-size: 8px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.connection-repair-scope strong { display: block; color: #e4f2f7; font-size: 13px; }
+
+.connection-repair-footer {
+  padding: 10px;
+  display: grid;
+  grid-template-columns: .8fr 1.4fr;
+  gap: 8px;
+  border-top: 1px solid #294553;
+  background: #0d202c;
+}
+
+.connection-repair-footer button {
+  min-height: 42px;
+  color: #bdd2dc;
+  border: 1px solid #37596b;
+  border-radius: 7px;
+  background: #102838;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.connection-repair-footer .apply { color: #06170f; border-color: #66d99b; background: #62d795; }
+.connection-repair-footer button:disabled { color: #59717e; border-color: #2c414c; background: #132029; }
+
+.step-one-repair-preview { pointer-events: none; }
+.step-one-repair-preview > path {
+  fill: none;
+  stroke: #f4c54d;
+  stroke-width: 3;
+  stroke-dasharray: 8 6;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px #f4c54d);
+}
+.step-one-repair-preview .current-end {
+  fill: #ffe5e4;
+  stroke: #ed4e57;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+.step-one-repair-preview .proposed-end {
+  fill: #dff9ea;
+  stroke: #25b46d;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+.step-one-repair-preview rect { fill: #0b1b27; stroke: #6d8a9d; stroke-width: 1px; }
+.step-one-repair-preview text { fill: #f5fbfd; font-size: 10px; font-weight: 900; }
+
+@media (max-width: 899px) {
+  .connection-repair-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .connection-repair-summary b { min-height: 36px; display: grid; place-items: center; font-size: 11px; }
+  .connection-review-heading { min-height: 60px; }
+  .connection-review-heading strong { font-size: 14px; }
+  .connection-review-heading small { font-size: 11px; }
+  .connection-repair-list { max-height: min(46vh, 440px); }
+  .connection-repair-focus { min-height: 76px; }
+  .connection-repair-focus span strong { font-size: 13px; }
+  .connection-repair-focus span small,
+  .connection-repair-focus span em { font-size: 11px; }
+  .connection-repair-row-actions button,
+  .connection-candidate-choices button,
+  .connection-repair-footer button { min-height: 48px; font-size: 12px; }
+  .connection-repair-footer { grid-template-columns: 1fr; }
+  .connection-repair-scope span { font-size: 10px; }
+}
+
 @media (min-width: 1360px) {
   .app-shell:not(.tablet-layout) .workspace { grid-template-columns: 300px minmax(640px, 1fr) 440px; }
   .app-shell:not(.tablet-layout).left-closed .workspace { grid-template-columns: minmax(640px, 1fr) 440px; }
