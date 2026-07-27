@@ -1000,7 +1000,14 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(studio, /V114 TAKEOFF IMPACT/);
   assert.match(studio, /Before → after purchasing impact/);
   assert.match(studio, /ONE CONTROLLED TRANSACTION/);
-  assert.match(studio, /I reviewed the selected object diffs and understand this is a planning-screened repair/);
+  assert.match(studio, /I reviewed each selected problem, proposed fix, expected result, and affected plan object/);
+  assert.match(studio, /No fix is selected automatically/);
+  assert.match(studio, /Select all \$\{readyActions\.length\} eligible fixes/);
+  assert.match(studio, /PROBLEM/);
+  assert.match(studio, /PROPOSED FIX/);
+  assert.match(studio, /EXPECTED RESULT/);
+  assert.match(studio, /AFFECTED PLAN OBJECTS/);
+  assert.match(studio, /preparedRepairPlanId !== repairPlan\.id/);
   assert.match(studio, /autonomyMode !== "guided"/);
   assert.match(studio, /onApplyRepairPlan/);
   assert.match(studio, /onUndoRepairBatch/);
@@ -1013,7 +1020,11 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(studio, /Review-only heuristic/);
   assert.match(studio, /not a probability, approval, or release gate/);
   assert.doesNotMatch(engineSource, /setHistory|setDrawings|dispatch/);
-  assert.match(repairSource, /guided-repair-v115\.0/);
+  assert.match(repairSource, /guided-repair-v116\.1/);
+  assert.match(page, /assistantPreparedRepairPlanId !== assistantRepairPlan\.id/);
+  assert.match(page, /canUndo=\{Boolean\(undoableAssistantRepairRecord\(\)\)\}/);
+  assert.match(page, /record\.reversedAt[\s\S]{0,400}reversedAt: undefined/);
+  assert.match(engineSource, /must be fixed on the drawing before release/);
   assert.match(takeoffSource, /takeoff-intelligence-v114\.0/);
   assert.match(advancedSource, /advanced-plan-intelligence-v115\.0/);
   assert.match(styles, /v115 final readability guard: working evidence and warnings are never microcopy/);
@@ -1023,7 +1034,7 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(roadmap, /\| v115 \| Advanced Plan Intelligence, source regions, and coverage \| Shipped \|/);
 });
 
-test("v113 repair planning stages reviewed CFM before sizing and selects only eligible actions", async () => {
+test("guided repair stages reviewed CFM before sizing and requires explicit fix selection", async () => {
   const repair = await import(new URL("../app/repairPlan.ts", import.meta.url));
   const sizeCandidate = {
     id: "run-12",
@@ -1069,7 +1080,7 @@ test("v113 repair planning stages reviewed CFM before sizing and selects only el
   const staged = repair.buildRepairPlan(stagedInput);
 
   assert.equal(JSON.stringify(stagedInput), before);
-  assert.equal(staged.version, "guided-repair-v115.0");
+  assert.equal(staged.version, "guided-repair-v116.1");
   assert.equal(staged.readyCount, 1);
   assert.equal(staged.needsInputCount, 1);
   const cfmAction = staged.actions.find((action) => action.kind === "terminal-cfm");
@@ -1077,9 +1088,13 @@ test("v113 repair planning stages reviewed CFM before sizing and selects only el
   assert.equal(cfmAction.readiness, "ready");
   assert.equal(cfmAction.cfmSource, "room-target");
   assert.ok(cfmAction.evidence.includes("CFM is not derived from duct diameter"));
+  assert.ok(cfmAction.problem.includes("400 CFM"));
+  assert.ok(cfmAction.proposedFix.includes("640 CFM"));
+  assert.ok(cfmAction.expectedResult.includes("separate review step"));
+  assert.equal(cfmAction.nextStepLabel, "Add this airflow fix");
   assert.equal(blockedSizeAction.readiness, "needs-input");
   assert.match(blockedSizeAction.blocker, /Apply the reviewed terminal CFM first/);
-  assert.deepEqual(staged.selectedByDefault, [cfmAction.id]);
+  assert.deepEqual(staged.selectedByDefault, []);
 
   const rebuilt = repair.buildRepairPlan({
     ...stagedInput,
@@ -1097,16 +1112,35 @@ test("v113 repair planning stages reviewed CFM before sizing and selects only el
   assert.equal(readySizeAction.roomTargetReviewFingerprint, "room-review-current");
   assert.equal(readySizeAction.currentSize, "10");
   assert.equal(readySizeAction.proposedSize, "12");
+  assert.ok(readySizeAction.problem.includes("10\" supply run"));
+  assert.ok(readySizeAction.proposedFix.includes("12\""));
+  assert.ok(readySizeAction.expectedResult.includes("814 FPM"));
+  assert.equal(readySizeAction.nextStepLabel, "Add this size fix");
   assert.ok(readySizeAction.evidence.includes("640 CFM · Saved room target"));
   assert.ok(readySizeAction.evidence.includes("Fingerprint-matched reviewed room-target CFM"));
   assert.ok(readySizeAction.evidence.includes("Room-target review ROOM-REVIEW-CURRENT"));
-  assert.deepEqual(rebuilt.selectedByDefault, [readySizeAction.id]);
+  assert.deepEqual(rebuilt.selectedByDefault, []);
   assert.deepEqual(
     repair.selectedReadyActions(rebuilt, [readySizeAction.id, "unknown"]).map((action) => action.id),
     [readySizeAction.id],
   );
   assert.equal(repair.repairPlanIsStale(rebuilt, "evidence-b"), false);
   assert.equal(repair.repairPlanIsStale(rebuilt, "evidence-c"), true);
+
+  const unchangedCfm = repair.buildRepairPlan({
+    ...stagedInput,
+    evidenceFingerprint: "evidence-no-op",
+    cfmCandidates: [{
+      ...stagedInput.cfmCandidates[0],
+      current: 640,
+      proposed: 640,
+    }],
+    sizeCandidates: [sizeCandidate],
+  });
+  assert.equal(unchangedCfm.actions.some((action) => action.kind === "terminal-cfm"), false);
+  assert.equal(unchangedCfm.actions.find((action) => action.kind === "run-size").readiness, "ready");
+  assert.equal(unchangedCfm.readyCount, 1);
+  assert.deepEqual(unchangedCfm.selectedByDefault, []);
 
   const unreviewed = repair.buildRepairPlan({
     ...stagedInput,

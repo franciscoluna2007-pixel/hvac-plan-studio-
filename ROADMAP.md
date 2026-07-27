@@ -44,6 +44,8 @@ Advanced coordination remains available without crowding the first screen.
 - Equipment, walls, rooms, new routes, intermediate route vertices, and cross-zone changes remain manual. Listed attached endpoints may align to resized fitting ports inside an approved batch.
 - T/Y topology changes require confirmation on the live plan.
 - A changed evidence fingerprint applies zero stale actions.
+- A prepared batch is bound to the exact repair-plan ID as well as its evidence fingerprint.
+- No eligible fix is selected automatically; the user chooses each fix or explicitly selects the current eligible set.
 - A guided batch changes only the reviewed object set and creates one Undo entry.
 - Planning calculations never become a Manual J, S, D, or T result by changing a label.
 - Warning, evidence, and consequence text is workstation-readable: 15 px working copy, 13 px metadata, 12 px labels, 44 px controls.
@@ -227,6 +229,10 @@ Make the existing power understandable to a superintendent or one-person HVAC bu
 - One side panel at a time so the plan remains the visual center of the workspace.
 - Draw, Symbols, and Selected tabs in the plan-tools panel instead of one long mixed list.
 - A short list of common actions in Find a tool; typing still searches the complete professional toolset.
+- Plan Helper shows the problem, proposed fix, expected result, and every affected plan object before selection.
+- Every suggestion now identifies whether a fix is ready, needs an input, needs plan confirmation, or remains manual, with a direct next-step button.
+- Unchanged terminal CFM is not presented as a repair and does not unnecessarily block a current sizing review.
+- Repair-history Undo can target only the latest matching repair batch; Redo restores that batch receipt state.
 - Enterprise analytics, promotional, review-queue, and collaboration detail removed from the first view while the underlying cloud features remain available.
 - Readable workflow labels, buttons, helper copy, and phone/tablet behavior.
 

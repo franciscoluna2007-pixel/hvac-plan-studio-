@@ -44,6 +44,7 @@ type Props = {
   autonomyMode: RepairAutonomyMode;
   selectedActionIds: string[];
   preparedEvidenceFingerprint: string;
+  preparedRepairPlanId: string;
   repairRecords: RepairBatchRecord[];
   takeoffImpact: TakeoffImpact;
   advancedIntelligence: AdvancedPlanIntelligence | null;
@@ -108,6 +109,7 @@ export default function MarkupAssistantStudio({
   autonomyMode,
   selectedActionIds,
   preparedEvidenceFingerprint,
+  preparedRepairPlanId,
   repairRecords,
   takeoffImpact,
   advancedIntelligence,
@@ -140,13 +142,22 @@ export default function MarkupAssistantStudio({
   const [applying, setApplying] = useState(false);
   const stale = Boolean(
     preparedEvidenceFingerprint &&
-    preparedEvidenceFingerprint !== repairPlan.evidenceFingerprint
+    (
+      preparedEvidenceFingerprint !== repairPlan.evidenceFingerprint ||
+      preparedRepairPlanId !== repairPlan.id
+    )
   );
   const selected = useMemo(() => new Set(selectedActionIds), [selectedActionIds]);
-  const readySelected = repairPlan.actions.filter((action) =>
+  const readyActions = repairPlan.actions.filter((action) => action.readiness === "ready");
+  const readySelected = readyActions.filter((action) =>
     action.readiness === "ready" && selected.has(action.id)
   );
+  const allReadySelected = Boolean(
+    readyActions.length &&
+    readyActions.every((action) => selected.has(action.id))
+  );
   const confirmationKey = [
+    repairPlan.id,
     repairPlan.evidenceFingerprint,
     readySelected.map((action) => JSON.stringify({
       id: action.id,
@@ -154,6 +165,9 @@ export default function MarkupAssistantStudio({
       evidenceFingerprint: action.evidenceFingerprint,
       objectIds: [...action.objectIds].sort(),
       detail: action.detail,
+      problem: action.problem,
+      proposedFix: action.proposedFix,
+      expectedResult: action.expectedResult,
       ...(action.kind === "terminal-cfm"
         ? { currentCfm: action.currentCfm, proposedCfm: action.proposedCfm }
         : action.kind === "run-size"
@@ -190,6 +204,11 @@ export default function MarkupAssistantStudio({
     return true;
   });
   const active = filtered.find((recommendation) => recommendation.id === activeId) || filtered[0];
+  const activeRepairActions = active ? repairActionsForRecommendation(active) : [];
+  const activeRepairAction =
+    activeRepairActions.find((action) => action.readiness === "ready") ||
+    activeRepairActions.find((action) => action.readiness === "needs-input") ||
+    activeRepairActions[0];
   const previewKey = active ? `${active.id}:${active.evidenceFingerprint}` : "";
 
   useEffect(() => {
@@ -252,6 +271,57 @@ export default function MarkupAssistantStudio({
     onOpenManualReview(recommendation);
   }
 
+  function repairActionsForRecommendation(recommendation: MarkupRecommendation) {
+    return repairPlan.actions.filter((action) => {
+      if (action.kind === "manual-follow-up") {
+        return action.recommendationId === recommendation.id;
+      }
+      if (action.kind === "branch-junction" && recommendation.preview?.kind === "branch-junction") {
+        return (
+          action.mainRunId === recommendation.preview.mainRunId &&
+          action.branchRunId === recommendation.preview.branchRunId
+        );
+      }
+      if (recommendation.category === "Duct sizing") return action.kind === "run-size";
+      return Boolean(recommendation.drawingId && action.objectIds.includes(recommendation.drawingId));
+    });
+  }
+
+  function recommendationStatus(recommendation: MarkupRecommendation) {
+    if (recommendation.resolved) return "RESOLVED";
+    const action = repairActionsForRecommendation(recommendation)[0];
+    return action ? readinessLabel(action) : "REVIEW NEEDED";
+  }
+
+  function openRepairAction(action: RepairPlanAction, recommendation?: MarkupRecommendation) {
+    if (action.readiness === "ready") {
+      onAutonomyModeChange("prepare");
+      const refreshNeeded = !preparedEvidenceFingerprint || stale;
+      if (refreshNeeded) onPrepareRepairPlan();
+      onSelectedActionIdsChange(
+        refreshNeeded
+          ? [action.id]
+          : selected.has(action.id)
+            ? selectedActionIds
+            : [...selectedActionIds, action.id]
+      );
+      setView("repair-plan");
+      return;
+    }
+    if (action.kind === "terminal-cfm" || action.kind === "run-size") {
+      onOpenSizingReview();
+      return;
+    }
+    if (action.kind === "branch-junction" && recommendation) {
+      onApplyRecommendation(recommendation);
+      return;
+    }
+    if (recommendation) {
+      if ("drawingId" in action && action.drawingId) onFocusDrawing(action.drawingId);
+      onOpenManualReview(recommendation);
+    }
+  }
+
   function chooseMode(mode: RepairAutonomyMode) {
     onAutonomyModeChange(mode);
     if (mode !== "inspect") {
@@ -267,6 +337,10 @@ export default function MarkupAssistantStudio({
         ? selectedActionIds.filter((id) => id !== action.id)
         : [...selectedActionIds, action.id],
     );
+  }
+
+  function selectAllReadyActions() {
+    onSelectedActionIdsChange(allReadySelected ? [] : readyActions.map((action) => action.id));
   }
 
   async function applySelected() {
@@ -404,7 +478,11 @@ export default function MarkupAssistantStudio({
                 onClick={() => setActiveId(recommendation.id)}
               >
                 <i>{recommendation.resolved ? <CheckCircle2 size={16} /> : recommendation.severity === "critical" ? <AlertTriangle size={16} /> : recommendation.category === "Duct sizing" ? <Gauge size={16} /> : recommendation.category === "Branch strategy" ? <Route size={16} /> : <Crosshair size={16} />}</i>
-                <span><small>{recommendation.category}</small><strong>{recommendation.title}</strong><em>{confidenceLabel(recommendation.confidence)} confidence · {recommendation.evidence[0]}</em></span>
+                <span>
+                  <small>{recommendation.category}</small>
+                  <strong>{recommendation.title}</strong>
+                  <em>{recommendationStatus(recommendation)} · {confidenceLabel(recommendation.confidence)} evidence · {recommendation.evidence[0]}</em>
+                </span>
                 <ChevronRight size={17} />
               </button>)}
               {!filtered.length && <div className="markup-assistant-empty">
@@ -425,6 +503,23 @@ export default function MarkupAssistantStudio({
               <section><small>OBSERVED CONDITION</small><p>{active.detail}</p></section>
               <section><small>WHY IT MATTERS</small><p>{active.whyItMatters}</p></section>
               <section className="markup-proposed-action"><small>PROPOSED REPAIR</small><p>{active.proposedAction}</p></section>
+              {activeRepairAction && <section className={`markup-fix-path ${activeRepairAction.readiness}`}>
+                <header>
+                  <small>HOW THIS GETS FIXED</small>
+                  <b>{readinessLabel(activeRepairAction)}</b>
+                </header>
+                <p>{activeRepairAction.blocker || activeRepairAction.proposedFix}</p>
+                <div>
+                  <span>
+                    {activeRepairActions.length > 1
+                      ? `${activeRepairActions.length} related fix items`
+                      : `${activeRepairAction.objectIds.length} affected plan object${activeRepairAction.objectIds.length === 1 ? "" : "s"}`}
+                  </span>
+                  <button onClick={() => openRepairAction(activeRepairAction, active)}>
+                    {activeRepairAction.nextStepLabel} <ArrowRight size={15} />
+                  </button>
+                </div>
+              </section>}
               <section><small>EVIDENCE USED</small><ul>{active.evidence.map((evidence) => <li key={evidence}><ShieldCheck size={14} /> {evidence}</li>)}</ul></section>
               <div className="markup-detail-actions">
                 {active.drawingId && <button onClick={() => onFocusDrawing(active.drawingId!)}><Crosshair size={16} /> Show on plan</button>}
@@ -512,9 +607,21 @@ export default function MarkupAssistantStudio({
             </div>
           </header>
 
+          <section className="repair-plan-toolbar" aria-label="Repair selection controls">
+            <div>
+              <strong>{readySelected.length} of {readyActions.length} eligible fixes selected</strong>
+              <span>No fix is selected automatically. Add one fix at a time or select the current eligible set.</span>
+            </div>
+            <button disabled={!readyActions.length || stale} onClick={selectAllReadyActions}>
+              <ListChecks size={16} /> {allReadySelected ? "Clear selected fixes" : `Select all ${readyActions.length} eligible fixes`}
+            </button>
+            <button disabled={!selectedActionIds.length} onClick={() => onSelectedActionIdsChange([])}>Clear</button>
+          </section>
+
           <div className="repair-action-list">
             {repairPlan.actions.map((action) => <article
               key={action.id}
+              id={action.id}
               className={`repair-action ${action.readiness} ${selected.has(action.id) ? "selected" : ""}`}
             >
               <button
@@ -527,18 +634,32 @@ export default function MarkupAssistantStudio({
                 <span>
                   <small>{readinessLabel(action)}</small>
                   <strong>{action.title} · {action.location}</strong>
-                  <em>{action.detail}</em>
+                  <em>{action.problem}</em>
                 </span>
-                {action.readiness === "ready" && <b>{selected.has(action.id) ? "SELECTED" : "ADD"}</b>}
+                {action.readiness === "ready" && <b>{selected.has(action.id) ? "SELECTED" : "ADD FIX"}</b>}
               </button>
+              <div className="repair-action-fix">
+                <div><small>PROBLEM</small><p>{action.problem}</p></div>
+                <div><small>PROPOSED FIX</small><p>{action.proposedFix}</p></div>
+                <div><small>EXPECTED RESULT</small><p>{action.expectedResult}</p></div>
+                <div className="repair-action-objects">
+                  <small>AFFECTED PLAN OBJECTS · {action.objectIds.length}</small>
+                  {action.objectIds.length
+                    ? <span>{action.objectIds.map((objectId, index) => <button
+                      key={objectId}
+                      title={objectId}
+                      onClick={() => onFocusDrawing(objectId)}
+                    ><Crosshair size={14} /> Inspect object {index + 1}</button>)}</span>
+                    : <p>No drawing object is linked. Use the decision record and source evidence.</p>}
+                </div>
+              </div>
               <div className="repair-action-evidence">
                 {action.evidence.map((evidence) => <span key={evidence}><ShieldCheck size={13} /> {evidence}</span>)}
                 {action.blocker && <p><AlertTriangle size={14} /> {action.blocker}</p>}
               </div>
               <div className="repair-action-actions">
-                {action.objectIds[0] && <button onClick={() => onFocusDrawing(action.objectIds[0])}><Crosshair size={15} /> Show on plan</button>}
-                {action.kind === "terminal-cfm" && action.readiness !== "ready" && <button onClick={onOpenSizingReview}><Gauge size={15} /> Review room CFM</button>}
-                {action.kind === "run-size" && action.readiness !== "ready" && <button onClick={onOpenSizingReview}><Gauge size={15} /> Open sizing inputs</button>}
+                {action.kind === "terminal-cfm" && action.readiness !== "ready" && <button onClick={onOpenSizingReview}><Gauge size={15} /> {action.nextStepLabel}</button>}
+                {action.kind === "run-size" && action.readiness !== "ready" && <button onClick={onOpenSizingReview}><Gauge size={15} /> {action.nextStepLabel}</button>}
                 {action.kind === "branch-junction" && (() => {
                   const recommendation = recommendations.find((row) =>
                     row.preview?.kind === "branch-junction" &&
@@ -546,13 +667,13 @@ export default function MarkupAssistantStudio({
                     row.preview.branchRunId === action.branchRunId
                   );
                   return recommendation
-                    ? <button onClick={() => onApplyRecommendation(recommendation)}><Route size={15} /> Confirm T/Y on plan</button>
+                    ? <button onClick={() => onApplyRecommendation(recommendation)}><Route size={15} /> {action.nextStepLabel}</button>
                     : null;
                 })()}
                 {action.kind === "manual-follow-up" && (() => {
                   const recommendation = recommendations.find((row) => row.id === action.recommendationId);
                   return recommendation
-                    ? <button onClick={() => onOpenManualReview(recommendation)}><ShieldCheck size={15} /> Open manual review</button>
+                    ? <button onClick={() => openRepairAction(action, recommendation)}><ShieldCheck size={15} /> {action.nextStepLabel}</button>
                     : null;
                 })()}
               </div>
@@ -595,7 +716,7 @@ export default function MarkupAssistantStudio({
                 checked={confirmed}
                 onChange={(event) => setConfirmedKey(event.target.checked ? confirmationKey : "")}
               />
-              <span>I reviewed the selected object diffs and understand this is a planning-screened repair.</span>
+              <span>I reviewed each selected problem, proposed fix, expected result, and affected plan object. I understand this is a planning-screened repair.</span>
             </label>
             {requiresPlanningOverride && <label className="repair-final-confirmation pressure-override">
               <input

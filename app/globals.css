@@ -6209,6 +6209,24 @@ footer span { display: flex; align-items: center; gap: 5px; }
   .repair-action-actions {
     padding-left: 16px;
   }
+  .repair-plan-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+  .repair-plan-toolbar > div {
+    grid-column: 1 / -1;
+  }
+  .repair-action-fix {
+    padding-left: 16px;
+    grid-template-columns: 1fr;
+  }
+  .repair-action-fix .repair-action-objects {
+    grid-column: auto;
+  }
+  .markup-fix-path > header,
+  .markup-fix-path > div {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 /* v113–v115 — readable guided repair, durable review, and evidence coverage. */
@@ -6360,7 +6378,7 @@ footer span { display: flex; align-items: center; gap: 5px; }
   min-height: 54px;
   margin: 10px 18px 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border-bottom: 1px solid #2a4c5e;
 }
 .assistant-workspace-tabs button {
@@ -6463,6 +6481,51 @@ footer span { display: flex; align-items: center; gap: 5px; }
   margin-top: 18px;
   gap: 9px;
 }
+.markup-fix-path {
+  border-color: #326474 !important;
+  background: #0a2230 !important;
+}
+.markup-fix-path.ready {
+  border-color: #39755c !important;
+  background: #0b261d !important;
+}
+.markup-fix-path.needs-input {
+  border-color: #745d2d !important;
+  background: #251f12 !important;
+}
+.markup-fix-path > header,
+.markup-fix-path > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.markup-fix-path > header b {
+  color: #78e3ef;
+  font-size: var(--assistant-meta);
+}
+.markup-fix-path.ready > header b {
+  color: #72e5a9;
+}
+.markup-fix-path > div {
+  margin-top: 12px;
+}
+.markup-fix-path > div > span {
+  color: #a9bec9;
+  font-size: var(--assistant-meta);
+}
+.markup-fix-path button {
+  min-height: 42px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #e6f8fb;
+  border: 1px solid #3c7a8c;
+  border-radius: 8px;
+  background: #123b4a;
+  font-weight: 800;
+}
 .repair-plan-workspace,
 .repair-history-workspace,
 .assistant-evidence-workspace {
@@ -6542,6 +6605,47 @@ footer span { display: flex; align-items: center; gap: 5px; }
   color: #eef8fb;
   font-size: 19px;
 }
+.repair-plan-toolbar {
+  margin-top: 16px;
+  padding: 13px 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #2c5365;
+  border-radius: 10px;
+  background: #0a202c;
+}
+.repair-plan-toolbar strong,
+.repair-plan-toolbar span {
+  display: block;
+}
+.repair-plan-toolbar strong {
+  color: #eef7fa;
+  font-size: 15px;
+}
+.repair-plan-toolbar span {
+  margin-top: 4px;
+  color: #a8bdca;
+  font-size: var(--assistant-meta);
+}
+.repair-plan-toolbar button {
+  padding-inline: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #dff7fb;
+  border: 1px solid #357389;
+  border-radius: 8px;
+  background: #123746;
+  font-weight: 800;
+}
+.repair-plan-toolbar button:last-child {
+  color: #afc3cd;
+  border-color: #34505e;
+  background: #0b1a23;
+}
 .repair-action-list {
   margin-top: 18px;
   display: grid;
@@ -6616,6 +6720,56 @@ footer span { display: flex; align-items: center; gap: 5px; }
   color: #79eab4;
   font-size: 12px;
   letter-spacing: .5px;
+}
+.repair-action-fix {
+  padding: 0 16px 14px 65px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+.repair-action-fix > div {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid #274757;
+  border-radius: 8px;
+  background: #071720;
+}
+.repair-action-fix small,
+.repair-action-fix p {
+  display: block;
+}
+.repair-action-fix small {
+  color: #78d8e5;
+  font-size: var(--assistant-label) !important;
+  font-weight: 900;
+  letter-spacing: .55px;
+}
+.repair-action-fix p {
+  margin: 6px 0 0;
+  color: #c6d8df;
+  font-size: var(--assistant-body) !important;
+  line-height: 1.55;
+}
+.repair-action-fix .repair-action-objects {
+  grid-column: 1 / -1;
+}
+.repair-action-objects > span {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.repair-action-objects button {
+  min-height: 38px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #bcecf2;
+  border: 1px solid #316575;
+  border-radius: 7px;
+  background: #0d2d39;
+  font-size: var(--assistant-meta);
 }
 .repair-action-evidence {
   padding: 11px 16px 14px 65px;

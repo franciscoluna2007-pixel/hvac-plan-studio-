@@ -1327,6 +1327,7 @@ function HVACPlanStudioApp() {
   const [assistantAutonomyMode, setAssistantAutonomyMode] = useState<RepairAutonomyMode>("prepare");
   const [assistantSelectedActionIds, setAssistantSelectedActionIds] = useState<string[]>([]);
   const [assistantPreparedEvidenceFingerprint, setAssistantPreparedEvidenceFingerprint] = useState("");
+  const [assistantPreparedRepairPlanId, setAssistantPreparedRepairPlanId] = useState("");
   const [assistantRepairRecords, setAssistantRepairRecords] = useState<RepairBatchRecord[]>([]);
   const [activePlanAnalysis, setActivePlanAnalysis] = useState<PlanAnalysis | null>(null);
   const [planEvidenceRegion, setPlanEvidenceRegion] = useState<{
@@ -1876,6 +1877,7 @@ function HVACPlanStudioApp() {
     setAssistantAutonomyMode("prepare");
     setAssistantSelectedActionIds([]);
     setAssistantPreparedEvidenceFingerprint("");
+    setAssistantPreparedRepairPlanId("");
     setAssistantRepairRecords([]);
     setActivePlanAnalysis(null);
     setSelectedCfmProposalIds([]);
@@ -1926,6 +1928,7 @@ function HVACPlanStudioApp() {
     setAssistantAutonomyMode(project.assistantAutonomyMode || "prepare");
     setAssistantSelectedActionIds([]);
     setAssistantPreparedEvidenceFingerprint("");
+    setAssistantPreparedRepairPlanId("");
     setAssistantRepairRecords(Array.isArray(project.assistantRepairRecords) ? project.assistantRepairRecords : []);
     setActivePlanAnalysis(
       project.activePlanAnalysis &&
@@ -4566,6 +4569,7 @@ function HVACPlanStudioApp() {
     }
     setAssistantAutonomyMode("guided");
     setAssistantPreparedEvidenceFingerprint(assistantRepairPlan.evidenceFingerprint);
+    setAssistantPreparedRepairPlanId(assistantRepairPlan.id);
     setAssistantSelectedActionIds(repairActionIds);
     setSelectedSizingIds([]);
     setShowSizingReview(false);
@@ -7818,6 +7822,18 @@ function HVACPlanStudioApp() {
     setDraft((points) => [...points, point]);
   }
 
+  function undoableAssistantRepairRecord(previous = undoStack.at(-1)) {
+    if (!previous) return undefined;
+    const currentFingerprint = systemDrawingSignatureFor(drawings, activeSystem);
+    const previousFingerprint = systemDrawingSignatureFor(previous, activeSystem);
+    return [...assistantRepairRecords].reverse().find((record) =>
+      record.systemId === activeSystem &&
+      !record.reversedAt &&
+      record.afterDrawingFingerprint === currentFingerprint &&
+      record.beforeDrawingFingerprint === previousFingerprint
+    );
+  }
+
   function undo() {
     if (draft.length) {
       setDraft((points) => points.slice(0, -1));
@@ -7825,14 +7841,7 @@ function HVACPlanStudioApp() {
     }
     const previous = undoStack.at(-1);
     if (!previous) return;
-    const currentFingerprint = systemDrawingSignatureFor(drawings, activeSystem);
-    const previousFingerprint = systemDrawingSignatureFor(previous, activeSystem);
-    const reversibleRecord = [...assistantRepairRecords].reverse().find((record) =>
-      record.systemId === activeSystem &&
-      !record.reversedAt &&
-      record.afterDrawingFingerprint === currentFingerprint &&
-      record.beforeDrawingFingerprint === previousFingerprint
-    );
+    const reversibleRecord = undoableAssistantRepairRecord(previous);
     if (reversibleRecord) {
       setAssistantRepairRecords((records) => records.map((record) =>
         record.id === reversibleRecord.id
@@ -7852,6 +7861,21 @@ function HVACPlanStudioApp() {
   function redo() {
     const next = redoStack.at(-1);
     if (!next) return;
+    const currentFingerprint = systemDrawingSignatureFor(drawings, activeSystem);
+    const nextFingerprint = systemDrawingSignatureFor(next, activeSystem);
+    const redoneRecord = [...assistantRepairRecords].reverse().find((record) =>
+      record.systemId === activeSystem &&
+      Boolean(record.reversedAt) &&
+      record.beforeDrawingFingerprint === currentFingerprint &&
+      record.afterDrawingFingerprint === nextFingerprint
+    );
+    if (redoneRecord) {
+      setAssistantRepairRecords((records) => records.map((record) =>
+        record.id === redoneRecord.id
+          ? { ...record, reversedAt: undefined }
+          : record
+      ));
+    }
     setUndoStack((stack) => [...stack, drawings]);
     setDrawings(next);
     setRedoStack((stack) => stack.slice(0, -1));
@@ -9658,6 +9682,7 @@ function HVACPlanStudioApp() {
     action.kind === "run-size" &&
     action.readiness === "ready" &&
     assistantPreparedEvidenceFingerprint === assistantRepairPlan.evidenceFingerprint &&
+    assistantPreparedRepairPlanId === assistantRepairPlan.id &&
     assistantSelectedActionIds.includes(action.id)
   );
   const assistantPreviewSizeChanges = new Map(
@@ -9701,6 +9726,7 @@ function HVACPlanStudioApp() {
 
   function prepareAssistantRepairPlan() {
     setAssistantPreparedEvidenceFingerprint(assistantRepairPlan.evidenceFingerprint);
+    setAssistantPreparedRepairPlanId(assistantRepairPlan.id);
     setAssistantSelectedActionIds(assistantRepairPlan.selectedByDefault);
     setBranchMessage(
       assistantRepairPlan.readyCount
@@ -9726,7 +9752,8 @@ function HVACPlanStudioApp() {
     }
     if (
       input.evidenceFingerprint !== assistantRepairPlan.evidenceFingerprint ||
-      assistantPreparedEvidenceFingerprint !== assistantRepairPlan.evidenceFingerprint
+      assistantPreparedEvidenceFingerprint !== assistantRepairPlan.evidenceFingerprint ||
+      assistantPreparedRepairPlanId !== assistantRepairPlan.id
     ) {
       setBranchMessage("The repair plan changed before commit. Zero actions were applied · refresh and review the new evidence.");
       return false;
@@ -9863,6 +9890,9 @@ function HVACPlanStudioApp() {
         kind: action.kind,
         title: action.title,
         detail: action.detail,
+        problem: action.problem,
+        proposedFix: action.proposedFix,
+        expectedResult: action.expectedResult,
         objectIds: action.objectIds,
         evidenceFingerprint: action.evidenceFingerprint,
       })),
@@ -9878,6 +9908,7 @@ function HVACPlanStudioApp() {
     setAssistantRepairRecords((current) => [...current, record]);
     setAssistantSelectedActionIds([]);
     setAssistantPreparedEvidenceFingerprint("");
+    setAssistantPreparedRepairPlanId("");
     setBranchMessage(
       `${actions.length} reviewed planning change${actions.length === 1 ? "" : "s"} applied in one undoable batch` +
       (sizeActions.length ? ` · ${appliedTakeoffImpact.affectedFittings} fitting port${appliedTakeoffImpact.affectedFittings === 1 ? "" : "s"} synchronized` : "") +
@@ -9960,6 +9991,7 @@ function HVACPlanStudioApp() {
     setActiveMarkupRecommendation(undefined);
     if (!assistantPreparedEvidenceFingerprint && assistantAutonomyMode !== "inspect") {
       setAssistantPreparedEvidenceFingerprint(assistantRepairPlan.evidenceFingerprint);
+      setAssistantPreparedRepairPlanId(assistantRepairPlan.id);
       setAssistantSelectedActionIds(assistantRepairPlan.selectedByDefault);
     }
     setShowMarkupAssistant(true);
@@ -12748,11 +12780,12 @@ function HVACPlanStudioApp() {
         autonomyMode={assistantAutonomyMode}
         selectedActionIds={assistantSelectedActionIds}
         preparedEvidenceFingerprint={assistantPreparedEvidenceFingerprint}
+        preparedRepairPlanId={assistantPreparedRepairPlanId}
         repairRecords={assistantRepairRecords.filter((record) => record.systemId === activeSystem)}
         takeoffImpact={assistantTakeoffImpact}
         advancedIntelligence={activeAdvancedPlanIntelligence}
         designStandard={activeDesignStandard}
-        canUndo={Boolean(undoStack.length)}
+        canUndo={Boolean(undoableAssistantRepairRecord())}
         onClose={() => {
           setShowMarkupAssistant(false);
           setActiveMarkupRecommendation(undefined);

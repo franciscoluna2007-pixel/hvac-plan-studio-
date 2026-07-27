@@ -15,6 +15,10 @@ v116.1 reorganizes the existing professional tools around one understandable job
 - Draw, Symbols, and Selected plan-tool groups.
 - Plan Helper, Airflow & Duct Sizes, Materials, Check, Print & Share, and My HVAC Rules.
 - Find a tool starts with common actions and searches the full toolset as the user types.
+- Plan Helper now turns each finding into a clear problem, proposed fix, expected result, and complete affected-object list.
+- No repair is selected automatically; the user adds individual fixes or explicitly selects the current eligible set.
+- Prepared fixes are bound to both the evidence fingerprint and the exact repair-plan ID. Unchanged CFM proposals are omitted.
+- Repair-history Undo is enabled only when the latest plan state matches the recorded batch; Redo restores the receipt state.
 - Enterprise analytics, commercial promotion, and review dashboards stay out of the first view.
 - Cloud projects, Google Drive, Supabase security, calculations, and approval gates remain intact.
 
@@ -124,6 +128,7 @@ Guided apply requires:
 - only eligible active-system objects;
 - explicit reviewer identity;
 - final object-diff confirmation;
+- an exact prepared repair-plan ID, not only a shared evidence fingerprint;
 - a separate velocity-only override when pressure evidence is missing.
 
 ## Engineering boundary
