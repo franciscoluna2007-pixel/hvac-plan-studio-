@@ -36,8 +36,20 @@ import type { TakeoffImpact } from "./takeoffIntelligence";
 type RecommendationFilter = "open" | "critical" | "all";
 type AssistantView = "setup" | "recommendations" | "standards" | "repair-plan" | "history" | "evidence";
 
+export type PlanHelperPrimaryView = "setup" | "problems" | "fixes";
+
+const PRIMARY_VIEW_ORDER: AssistantView[] = ["setup", "recommendations", "repair-plan"];
+const PRIMARY_VIEW_GRID_STYLE = { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" };
+
+function assistantViewForPrimaryView(view: PlanHelperPrimaryView = "setup"): AssistantView {
+  if (view === "problems") return "recommendations";
+  if (view === "fixes") return "repair-plan";
+  return "setup";
+}
+
 type Props = {
   open: boolean;
+  initialView?: PlanHelperPrimaryView;
   projectName: string;
   systemName: string;
   recommendations: MarkupRecommendation[];
@@ -52,12 +64,13 @@ type Props = {
   advancedIntelligence: AdvancedPlanIntelligence | null;
   smartSetup: SmartPlanSetup | null;
   scaleVerified: boolean;
+  onUseDetectedScale: (label: string, page: number) => void;
+  onStartCalibration: (page: number) => void;
   designStandard: DesignStandardProfile;
   canUndo: boolean;
   onClose: () => void;
   onFocusDrawing: (drawingId: string) => void;
   onOpenManualReview: (recommendation: MarkupRecommendation) => void;
-  onStartBranchPass: () => void;
   onOpenSizingReview: () => void;
   onActiveRecommendationChange: (recommendation?: MarkupRecommendation) => void;
   onApplyRecommendation: (recommendation: MarkupRecommendation) => void;
@@ -72,7 +85,6 @@ type Props = {
     planningOverrideAcknowledged: boolean;
   }) => boolean | Promise<boolean>;
   onUndoRepairBatch: () => void;
-  onOpenPlanIntelligence: () => void;
   onShowPlanSetupSource: (page: number, region?: {
     x: number;
     y: number;
@@ -121,6 +133,7 @@ function planFactLabel(status: PlanFactStatus) {
 
 export default function MarkupAssistantStudio({
   open,
+  initialView = "setup",
   projectName,
   systemName,
   recommendations,
@@ -135,12 +148,13 @@ export default function MarkupAssistantStudio({
   advancedIntelligence,
   smartSetup,
   scaleVerified,
+  onUseDetectedScale,
+  onStartCalibration,
   designStandard,
   canUndo,
   onClose,
   onFocusDrawing,
   onOpenManualReview,
-  onStartBranchPass,
   onOpenSizingReview,
   onActiveRecommendationChange,
   onApplyRecommendation,
@@ -149,15 +163,15 @@ export default function MarkupAssistantStudio({
   onPrepareRepairPlan,
   onApplyRepairPlan,
   onUndoRepairBatch,
-  onOpenPlanIntelligence,
   onShowPlanSetupSource,
 }: Props) {
   const panelRef = useRef<HTMLElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const previewKeyRef = useRef("");
+  const wasOpenRef = useRef(open);
   const [filter, setFilter] = useState<RecommendationFilter>("open");
   const [activeId, setActiveId] = useState("");
-  const [view, setView] = useState<AssistantView>("setup");
+  const [view, setView] = useState<AssistantView>(() => assistantViewForPrimaryView(initialView));
   const [reviewer, setReviewer] = useState("");
   const [note, setNote] = useState("");
   const [confirmedKey, setConfirmedKey] = useState("");
@@ -219,7 +233,6 @@ export default function MarkupAssistantStudio({
     action.kind === "run-size" && action.requiresPlanningOverride
   );
   const planningOverrideConfirmed = !requiresPlanningOverride || planningOverrideKey === confirmationKey;
-  const viewOrder: AssistantView[] = ["setup", "recommendations", "repair-plan", "history", "standards"];
   const planFactSources = useMemo(() => {
     const sources = [
       ...(smartSetup?.scales.flatMap((scale) => scale.candidates.flatMap((candidate) => candidate.sources)) || []),
@@ -243,6 +256,12 @@ export default function MarkupAssistantStudio({
     activeRepairActions.find((action) => action.readiness === "needs-input") ||
     activeRepairActions[0];
   const previewKey = active ? `${active.id}:${active.evidenceFingerprint}` : "";
+
+  useEffect(() => {
+    const opening = open && !wasOpenRef.current;
+    wasOpenRef.current = open;
+    if (opening) setView(assistantViewForPrimaryView(initialView));
+  }, [initialView, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -275,33 +294,19 @@ export default function MarkupAssistantStudio({
   function handleViewKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const currentIndex = viewOrder.indexOf(view);
+    const currentIndex = PRIMARY_VIEW_ORDER.indexOf(view);
     const nextIndex = event.key === "Home"
       ? 0
       : event.key === "End"
-        ? viewOrder.length - 1
-        : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + viewOrder.length) % viewOrder.length;
-    const nextView = viewOrder[nextIndex];
+        ? PRIMARY_VIEW_ORDER.length - 1
+        : currentIndex < 0
+          ? 0
+          : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + PRIMARY_VIEW_ORDER.length) % PRIMARY_VIEW_ORDER.length;
+    const nextView = PRIMARY_VIEW_ORDER[nextIndex];
     setView(nextView);
     requestAnimationFrame(() =>
       panelRef.current?.querySelector<HTMLElement>(`#assistant-tab-${nextView}`)?.focus()
     );
-  }
-
-  function performPrimaryAction(recommendation: MarkupRecommendation) {
-    if (recommendation.action === "branch-pass") {
-      onStartBranchPass();
-      return;
-    }
-    if (recommendation.action === "sizing-review") {
-      onOpenSizingReview();
-      return;
-    }
-    if (recommendation.drawingId) {
-      onFocusDrawing(recommendation.drawingId);
-      return;
-    }
-    onOpenManualReview(recommendation);
   }
 
   function repairActionsForRecommendation(recommendation: MarkupRecommendation) {
@@ -418,62 +423,22 @@ export default function MarkupAssistantStudio({
           </div>
         </div>
         <div className="markup-assistant-header-actions">
-          <span><ShieldCheck size={14} /> {autonomyMode === "inspect" ? "CHECK ONLY" : autonomyMode === "prepare" ? "FIXES READY TO REVIEW" : "APPLY WITH FINAL CONFIRMATION"}</span>
+          <span><ShieldCheck size={14} /> NOTHING CHANGES WITHOUT APPROVAL</span>
           <button className="markup-assistant-close" aria-label="Close Plan Helper" onClick={onClose}><X size={20} /></button>
         </div>
       </header>
 
-      <section className="assistant-mode-strip" aria-label="Assistant autonomy mode">
-        {([
-          ["inspect", "Check only", "Show possible problems without changing the plan."],
-          ["prepare", "Prepare fixes", "Gather eligible fixes for you to review."],
-          ["guided", "Apply approved fixes", "Make selected changes together with one Undo."],
-        ] as Array<[RepairAutonomyMode, string, string]>).map(([id, label, detail]) => <button
-          key={id}
-          className={autonomyMode === id ? "active" : ""}
-          aria-pressed={autonomyMode === id}
-          onClick={() => chooseMode(id)}
-        >
-          <span>{id === "inspect" ? <FileSearch size={17} /> : id === "prepare" ? <ListChecks size={17} /> : <ShieldCheck size={17} />}</span>
-          <strong>{label}</strong>
-          <small>{detail}</small>
-        </button>)}
-      </section>
-
-      <section className={`markup-assistant-command ${stale ? "stale" : ""}`}>
-        <div className={`markup-assistant-score ${summary.critical ? "critical" : summary.warnings ? "attention" : "clear"}`}>
-          <strong>{summary.score}</strong>
-          <span>PLAN<br />SCORE</span>
-        </div>
-        <div>
-          <small>{stale ? "FIX LIST NEEDS REFRESHING" : autonomyMode === "inspect" ? "WHAT TO CHECK NEXT" : "CURRENT FIX LIST"}</small>
-          <h3>{stale ? "The plan changed after calculation" : autonomyMode === "inspect" ? summary.headline : repairPlan.headline}</h3>
-          <p>{stale
-            ? "Refresh the fix list before applying. An outdated suggestion cannot change the drawing."
-            : "The assistant can prepare and apply reviewed CFM, size, and fitting-port changes in one undoable batch. It creates no new route; any attached endpoint alignment is included in the reviewed object diff."}</p>
-        </div>
-        <button onClick={() => {
-          if (stale) {
-            onPrepareRepairPlan();
-            setView("repair-plan");
-          } else if (autonomyMode !== "inspect") {
-            if (!preparedEvidenceFingerprint) onPrepareRepairPlan();
-            setView("repair-plan");
-          } else if (active) {
-            performPrimaryAction(active);
-          }
-        }}>
-          {stale ? "Refresh fixes" : autonomyMode === "inspect" ? "Check next" : "Review fixes"} <ArrowRight size={17} />
-        </button>
-      </section>
-
-      <nav className="assistant-workspace-tabs" aria-label="Markup assistant views" role="tablist" onKeyDown={handleViewKeyDown}>
+      <nav
+        className="assistant-workspace-tabs"
+        aria-label="Plan Helper"
+        role="tablist"
+        style={PRIMARY_VIEW_GRID_STYLE}
+        onKeyDown={handleViewKeyDown}
+      >
         {([
           ["setup", "Plan setup", smartSetup?.counts.reviewItems ?? 0],
           ["recommendations", "Problems", recommendations.length],
           ["repair-plan", "Fixes", repairPlan.readyCount],
-          ["history", "Undo", repairRecords.length],
-          ["standards", "My HVAC Rules", designStandard.review + designStandard.blocked],
         ] as Array<[AssistantView, string, number]>).map(([id, label, count]) => <button
           key={id}
           id={`assistant-tab-${id}`}
@@ -481,7 +446,25 @@ export default function MarkupAssistantStudio({
           role="tab"
           aria-selected={view === id}
           aria-controls={`assistant-panel-${id}`}
-          tabIndex={view === id ? 0 : -1}
+          tabIndex={view === id || (!PRIMARY_VIEW_ORDER.includes(view) && id === "setup") ? 0 : -1}
+          onClick={() => setView(id)}
+        >
+          {label}<b>{count}</b>
+        </button>)}
+      </nav>
+
+      <nav className="markup-assistant-filter assistant-more-tools" aria-label="More Plan Helper tools">
+        <span className="assistant-more-label"><strong>More</strong><small>Records, rules, and source details</small></span>
+        {([
+          ["history", "History & Undo", repairRecords.length],
+          ["standards", "My HVAC Rules", designStandard.review + designStandard.blocked],
+          ["evidence", "Source details", advancedIntelligence?.blockers.length ?? 0],
+        ] as Array<[AssistantView, string, number]>).map(([id, label, count]) => <button
+          key={id}
+          id={`assistant-tab-${id}`}
+          className={view === id ? "active" : ""}
+          aria-pressed={view === id}
+          aria-controls={`assistant-panel-${id}`}
           onClick={() => setView(id)}
         >
           {label}<b>{count}</b>
@@ -493,7 +476,7 @@ export default function MarkupAssistantStudio({
           {smartSetup ? <>
             <header className="smart-plan-setup-heading">
               <div>
-                <small>V120 · SMART PLAN SETUP</small>
+                <small>SMART PLAN SETUP</small>
                 <h3>{smartSetup.summary.headline}</h3>
                 <p>{smartSetup.summary.detail}</p>
               </div>
@@ -530,7 +513,7 @@ export default function MarkupAssistantStudio({
               <section className="smart-plan-question-list">
                 <header>
                   <div><small>NEEDS YOUR REVIEW</small><h3>Only the details that matter next</h3></div>
-                  <button onClick={onOpenPlanIntelligence}>Review all</button>
+                  <button onClick={() => setView("evidence")}>Review sources</button>
                 </header>
                 {smartSetup.reviewQuestions.slice(0, 6).map((question) => {
                   const source = question.sourceIds.map((id) => planFactSources.get(id)).find(Boolean);
@@ -553,12 +536,24 @@ export default function MarkupAssistantStudio({
               <aside className="smart-plan-fact-list">
                 <header><small>WHAT I FOUND</small><h3>Source-backed plan facts</h3></header>
                 {smartSetup.scales.slice(0, 4).map((scale) => {
-                  const selected = scale.candidates.find((candidate) => candidate.id === scale.selectedCandidateId);
+                  const selected =
+                    scale.candidates.find((candidate) => candidate.id === scale.selectedCandidateId) ||
+                    scale.candidates[0];
                   const source = selected?.sources[0];
                   return <article key={`scale-${scale.page}`}>
                     <span><strong>{scale.sheetNumber}</strong><small>{scale.title}</small></span>
-                    <b className={scale.status}>{scale.selectedLabel || "Scale not found"}<small>{planFactLabel(scale.status)}</small></b>
-                    {source && <button onClick={() => onShowPlanSetupSource(source.page, source.region)}>Source</button>}
+                    <b className={scale.status}>
+                      {scale.conflict
+                        ? `${scale.candidates.length} scales found`
+                        : scale.selectedLabel || selected?.label || "Scale not found"}
+                      <small>{scale.conflict ? "Needs your choice" : planFactLabel(scale.status)}</small>
+                    </b>
+                    <div className="smart-plan-fact-actions">
+                      {source && <button onClick={() => onShowPlanSetupSource(source.page, source.region)}>Source</button>}
+                      {selected && selected.kind !== "not-to-scale" && !scale.conflict
+                        ? <button className="primary" onClick={() => onUseDetectedScale(selected.label, scale.page)}>Use scale</button>
+                        : <button className="primary" onClick={() => onStartCalibration(scale.page)}>Calibrate</button>}
+                    </div>
                   </article>;
                 })}
                 {smartSetup.rooms.slice(0, 6).map((room) => <article key={room.id}>
@@ -575,14 +570,14 @@ export default function MarkupAssistantStudio({
 
             <footer className="smart-plan-setup-actions">
               <p>Suggested or missing information is never silently accepted. Ceiling height informs room review; reviewed airflow still controls duct sizing.</p>
-              <button onClick={onOpenPlanIntelligence}><FileSearch size={16} /> Review plan information</button>
+              <button onClick={() => setView("evidence")}><FileSearch size={16} /> Review source details</button>
             </footer>
           </> : <div className="smart-plan-setup-empty">
             <ScanSearch size={38} />
-            <small>V120 · SMART PLAN SETUP</small>
+            <small>SMART PLAN SETUP</small>
             <h3>Let Plan Helper read the plan first</h3>
             <p>It will look for each drawing scale, room and ceiling-height notes, equipment, systems, and the few details you still need to answer.</p>
-            <button onClick={onOpenPlanIntelligence}>Read this plan</button>
+            <p>Plan reading starts automatically after you open a PDF.</p>
           </div>}
         </main>}
 
@@ -719,6 +714,40 @@ export default function MarkupAssistantStudio({
         </main>}
 
         {view === "repair-plan" && <main className="repair-plan-workspace" role="tabpanel" id="assistant-panel-repair-plan" aria-labelledby="assistant-tab-repair-plan">
+          <section className="assistant-mode-strip" aria-label="Fix permission">
+            {([
+              ["inspect", "Check only", "Show possible problems without changing the plan."],
+              ["prepare", "Prepare fixes", "Gather eligible fixes for you to review."],
+              ["guided", "Apply approved fixes", "Make selected changes together with one Undo."],
+            ] as Array<[RepairAutonomyMode, string, string]>).map(([id, label, detail]) => <button
+              key={id}
+              className={autonomyMode === id ? "active" : ""}
+              aria-pressed={autonomyMode === id}
+              onClick={() => chooseMode(id)}
+            >
+              <span>{id === "inspect" ? <FileSearch size={17} /> : id === "prepare" ? <ListChecks size={17} /> : <ShieldCheck size={17} />}</span>
+              <strong>{label}</strong>
+              <small>{detail}</small>
+            </button>)}
+          </section>
+
+          <section className={`markup-assistant-command ${stale ? "stale" : ""}`}>
+            <div className={`markup-assistant-score ${summary.critical ? "critical" : summary.warnings ? "attention" : "clear"}`}>
+              <strong>{summary.score}</strong>
+              <span>PLAN<br />SCORE</span>
+            </div>
+            <div>
+              <small>{stale ? "FIX LIST NEEDS REFRESHING" : "CURRENT FIX LIST"}</small>
+              <h3>{stale ? "The plan changed after calculation" : repairPlan.headline}</h3>
+              <p>{stale
+                ? "Refresh the fix list before applying. An outdated suggestion cannot change the drawing."
+                : "Review the proposed CFM, size, and fitting-port changes here. No new route is created, and every applied batch has one Undo."}</p>
+            </div>
+            <button onClick={onPrepareRepairPlan}>
+              {stale ? "Refresh fixes" : preparedEvidenceFingerprint ? "Refresh fix list" : "Prepare fixes"} <ArrowRight size={17} />
+            </button>
+          </section>
+
           {stale && <div className="repair-plan-stale" role="alert">
             <AlertTriangle size={20} />
             <span><strong>This repair plan is stale.</strong> Geometry or evidence changed after the plan was prepared.</span>
@@ -726,7 +755,7 @@ export default function MarkupAssistantStudio({
           </div>}
           <header className="repair-plan-heading">
             <div>
-              <small>V113 GUIDED REPAIR PLAN</small>
+              <small>GUIDED REPAIR PLAN</small>
               <h3>{repairPlan.headline}</h3>
               <p>Ready actions can be applied together. Input-dependent and topology-changing actions stay outside the batch.</p>
             </div>
@@ -812,7 +841,7 @@ export default function MarkupAssistantStudio({
 
           <section className="takeoff-delta-panel">
             <header>
-              <div><small>V114 TAKEOFF IMPACT</small><h3>Before → after purchasing impact</h3></div>
+              <div><small>MATERIAL IMPACT</small><h3>Before → after purchasing impact</h3></div>
               <span>{takeoffImpact.affectedFittings} fitting port{takeoffImpact.affectedFittings === 1 ? "" : "s"} to synchronize</span>
             </header>
             <div className="takeoff-delta-summary">
@@ -875,7 +904,7 @@ export default function MarkupAssistantStudio({
 
         {view === "history" && <main className="repair-history-workspace" role="tabpanel" id="assistant-panel-history" aria-labelledby="assistant-tab-history">
           <header>
-            <div><small>V114 APPLICATION RECEIPTS</small><h3>Repair checkpoints and apply receipts</h3><p>Every applied batch preserves the evidence fingerprint, object list, calculation version, and takeoff impact.</p></div>
+            <div><small>REPAIR HISTORY &amp; UNDO</small><h3>Repair checkpoints and apply receipts</h3><p>Every applied batch preserves the evidence fingerprint, object list, calculation version, and takeoff impact.</p></div>
             <button disabled={!canUndo} onClick={onUndoRepairBatch}><Undo2 size={16} /> Undo latest plan change</button>
           </header>
           <div className="repair-history-list">
@@ -907,7 +936,7 @@ export default function MarkupAssistantStudio({
         {view === "evidence" && <main className="assistant-evidence-workspace" role="tabpanel" id="assistant-panel-evidence" aria-labelledby="assistant-tab-evidence">
           <header>
             <div><small>SOURCE READINESS</small><h3>Evidence coverage before automation</h3><p>The assistant shows what is source-backed and what still requires OCR, visual confirmation, or a reviewed schedule value.</p></div>
-            <button onClick={onOpenPlanIntelligence}><FileSearch size={16} /> Open full plan intelligence</button>
+            <button onClick={() => setView("setup")}><FileSearch size={16} /> Back to Plan Setup</button>
           </header>
           {advancedIntelligence ? <>
             <div className={`assistant-evidence-score ${advancedIntelligence.blockers.length ? "attention" : "clear"}`}>
@@ -937,7 +966,7 @@ export default function MarkupAssistantStudio({
               </article>)}
               {!advancedIntelligence.relationships.length && <p>No exact-tag cross-sheet relationship is available. The assistant will not guess from nearby values.</p>}
             </section>
-          </> : <div className="markup-assistant-clear"><FileSearch size={36} /><h3>Read the plan first</h3><p>Plan Setup reads the loaded PDF for scale, rooms, equipment, sheet coverage, text regions, OCR gaps, and source relationships.</p><button onClick={onOpenPlanIntelligence}>Open Plan Setup</button></div>}
+          </> : <div className="markup-assistant-clear"><FileSearch size={36} /><h3>Read the plan first</h3><p>Plan Setup reads the loaded PDF automatically for scale, rooms, equipment, sheet coverage, text regions, OCR gaps, and source relationships.</p><button onClick={() => setView("setup")}>Back to Plan Setup</button></div>}
         </main>}
       </div>
 

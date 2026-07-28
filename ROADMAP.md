@@ -12,12 +12,13 @@ The product is not an autonomous HVAC designer. It makes evidence, calculations,
 
 ## Primary job workflow
 
-The main workspace now starts with an unnumbered **Plan setup** preflight, followed by four plain-language job steps:
+Every primary workspace now uses the same five plain-language job steps:
 
-1. **Connect** — place and connect equipment, runs, fittings, devices, and notes.
-2. **Airflow** — review room airflow, connected paths, and duct sizes.
-3. **Check** — use Plan Helper to inspect problems and approve selected fixes.
-4. **Finish** — review materials and print or share the field package.
+1. **Plan Setup** — read the PDF and review only missing or conflicting plan information.
+2. **Mark & Connect** — place and connect equipment, runs, fittings, devices, and notes.
+3. **Airflow & Sizes** — review room airflow, connected paths, and duct sizes.
+4. **Fix Problems** — use Plan Helper to inspect problems and approve selected fixes.
+5. **Materials & Print** — review materials, blockers, and the field package.
 
 Plan setup reads the PDF in the background for drawing scales, rooms, ceiling heights, equipment, systems, zones, and missing information. It does not block basic drawing; only work that depends on an unconfirmed fact pauses.
 
@@ -64,7 +65,24 @@ Advanced coordination remains available without crowding the first screen.
 | v116 | My HVAC Rules | Shipped |
 | v116.1 | Solo Operator Workflow and usability simplification | Shipped |
 | v120 | Smart Plan Setup & Repair | Shipped |
+| v121 | Simple Job Workflow | Shipped |
 | v117 | Multi-company commercial operations | Planned for later |
+
+## v121 — Simple Job Workflow
+
+### Outcome
+
+A superintendent or one-person HVAC business sees one current job, one current step, and one primary action instead of coordinating several overlapping workspaces.
+
+### Shipped capabilities
+
+- Operational Project Home centered on resuming work, opening a PDF, and saved jobs.
+- One canonical five-step workflow and one source of truth for connection completion.
+- One Plan Helper for Setup, Problems, and Fixes, with rules and Undo retained as supporting views.
+- Plan Setup and source review stay beside the live drawing instead of opening a competing AI workspace.
+- Duplicate workflow strips, metrics, and future-step cards are removed from the current-step panel.
+- Workstation-readable text, stronger muted contrast, larger repair controls, and a persistent mobile Continue action.
+- Existing approval, stale-evidence, repair scope, Undo, and geometry protections remain unchanged.
 
 ## v120 — Smart Plan Setup & Repair
 
@@ -250,7 +268,7 @@ Make the existing power understandable to a superintendent or one-person HVAC bu
 ### Shipped capabilities
 
 - One persistent five-step job guide: Setup, Draw, Airflow, Check, and Finish.
-- A simplified Jobs home with Continue current job, Start a new job, Open a PDF plan, and Open from Drive.
+- A simplified Jobs home with Resume current job, Start job from PDF, Open saved jobs, and Open from Drive.
 - Plain-language navigation: Saved jobs, Plan Helper, Airflow & Duct Sizes, Materials, Check, Print & Share, and My HVAC Rules.
 - One side panel at a time so the plan remains the visual center of the workspace.
 - Draw, Symbols, and Selected tabs in the plan-tools panel instead of one long mixed list.

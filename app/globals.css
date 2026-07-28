@@ -10531,3 +10531,436 @@ select { min-height: 40px; color: #e6f0f8; border-color: #35516a; font-size: 11p
     display: none !important;
   }
 }
+
+/* v121 - Field readability and mobile continuation
+   Working copy is sized for a superintendent reading at arm's length. Compact
+   metadata stays secondary without dropping below 12px, and the canvas keeps
+   its space by using a persistent mobile action instead of another tall row. */
+.field-first-workspace {
+  --v121-text: #edf6fb;
+  --v121-muted: #b7c8d4;
+  --v121-subtle: #9fb4c3;
+  --v121-focus: #78e6f4;
+}
+
+.field-first-workspace .panel-heading span,
+.field-first-workspace .library-title span,
+.field-first-workspace .run-size-default span,
+.field-first-workspace .smart-plan-preflight > header strong,
+.field-first-workspace .smart-plan-preflight-heading strong {
+  color: var(--v121-text);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.field-first-workspace .left-panel small,
+.field-first-workspace .right-panel small,
+.field-first-workspace .field-first-guide small,
+.ai-plan-workspace small,
+.markup-assistant-studio small,
+.smart-plan-setup-workspace small,
+.ai-smart-setup small {
+  color: var(--v121-subtle);
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+}
+
+.field-first-workspace .tool,
+.field-first-workspace .left-panel-tabs button,
+.field-first-workspace .right-tabs button,
+.field-first-workspace .property-input,
+.field-first-workspace select,
+.field-first-workspace input,
+.field-first-workspace textarea {
+  font-size: 14px;
+}
+
+.field-first-guide > nav > button strong {
+  color: var(--v121-text);
+  font-size: 14px;
+}
+
+.field-first-guide > nav > button small {
+  color: var(--v121-subtle);
+  font-size: 12px;
+}
+
+.field-first-next strong {
+  color: #f6fbff;
+  font-size: 15px;
+}
+
+.field-first-primary {
+  min-height: 48px;
+  font-size: 15px;
+}
+
+.builder-hero-heading strong,
+.workflow-next-action strong,
+.builder-action-card > span strong,
+.airflow-setup-heading strong,
+.connection-review-heading strong {
+  color: var(--v121-text);
+  font-size: 15px;
+}
+
+.field-first-workspace .builder-hero-heading small,
+.field-first-workspace .workflow-next-action span,
+.field-first-workspace .builder-metrics span,
+.field-first-workspace .builder-action-card > span i,
+.field-first-workspace .airflow-setup-heading small,
+.field-first-workspace .builder-action-stats,
+.field-first-workspace .builder-audit-strip > * {
+  color: var(--v121-subtle);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.field-first-workspace .workflow-next-action small,
+.field-first-workspace .builder-action-card > span small,
+.field-first-workspace .airflow-field-guidance span,
+.field-first-workspace .system-airflow-setup > p {
+  color: var(--v121-muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.field-first-workspace .builder-safety-note,
+.field-first-workspace .balance-workspace-note,
+.field-first-workspace .takeoff-note,
+.field-first-workspace .auxiliary-equipment-note,
+.field-first-workspace .planning-assumption-note,
+.markup-stale-warning,
+.ai-plan-error,
+.ai-takeoff-warning,
+.assistant-evidence-blocker {
+  color: #e3edf3;
+  font-size: 14px !important;
+  line-height: 1.65 !important;
+}
+
+.connection-repair-summary b,
+.connection-repair-scope span,
+.connection-repair-focus > b {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.connection-review-heading small,
+.connection-repair-focus span small,
+.connection-repair-focus span em,
+.connection-review-clear small,
+.connection-review-stale small {
+  color: var(--v121-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.connection-repair-focus span strong,
+.connection-review-clear strong {
+  color: var(--v121-text);
+  font-size: 14px;
+}
+
+.connection-review-stale strong {
+  color: #fff1bc;
+  font-size: 15px;
+}
+
+.connection-candidate-choices button,
+.connection-repair-row-actions button,
+.connection-repair-footer button,
+.connection-review-stale button {
+  min-height: 48px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.connection-review-heading > button {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.ai-plan-brand small,
+.ai-plan-start > section > small,
+.ai-plan-start > aside > small,
+.ai-overview-hero small,
+.ai-table-view header small,
+.ai-finding-queue header small,
+.ai-table-head,
+.ai-finding-detail > section > small {
+  color: #78dff0;
+  font-size: 12px !important;
+  line-height: 1.4;
+}
+
+.ai-plan-brand p,
+.ai-plan-policy,
+.ai-plan-start > section > p,
+.ai-plan-capabilities strong,
+.ai-overview-hero p,
+.ai-table-view header p,
+.ai-table-row,
+.ai-table-row span b,
+.ai-table-row span strong,
+.ai-finding-queue button span strong,
+.ai-finding-queue button span em,
+.ai-finding-detail p,
+.ai-finding-sources strong {
+  color: var(--v121-muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.ai-plan-capabilities span,
+.ai-table-row span small,
+.ai-finding-queue button span small,
+.ai-finding-queue button > b,
+.ai-finding-detail > header > small,
+.ai-finding-sources small {
+  color: var(--v121-subtle);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.markup-assistant-list > button strong {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.markup-assistant-list > button em,
+.markup-assistant-empty span,
+.markup-assistant-clear p {
+  color: var(--v121-muted);
+  font-size: 14px !important;
+  line-height: 1.55 !important;
+}
+
+.smart-plan-question-list > article p,
+.smart-plan-fact-list > article > span > strong,
+.smart-plan-setup-actions p,
+.ai-smart-setup-question p,
+.ai-smart-setup-fact p,
+.smart-plan-preflight > header small,
+.smart-plan-preflight-heading small {
+  color: var(--v121-muted);
+  font-size: 14px !important;
+  line-height: 1.55 !important;
+}
+
+.smart-plan-preflight-metrics > *,
+.smart-plan-preflight > dl > div,
+.smart-plan-preflight-metrics strong,
+.smart-plan-preflight > dl dd {
+  font-size: 12px;
+}
+
+.field-first-workspace .canvas-toolbar button,
+.field-first-workspace .top-actions button,
+.field-first-workspace .panel-heading button,
+.field-first-workspace .left-panel-tabs button,
+.field-first-workspace .right-tabs button,
+.field-first-workspace .workflow-next-action button,
+.field-first-workspace .builder-action-buttons button,
+.field-first-workspace .builder-primary-action,
+.field-first-workspace .connection-review-launch,
+.markup-assistant-studio button,
+.ai-plan-workspace button,
+.smart-plan-setup-workspace button,
+.ai-smart-setup button,
+.smart-plan-preflight button {
+  min-height: 44px;
+}
+
+.field-first-workspace .workflow-next-action button,
+.field-first-workspace .builder-primary-action,
+.field-first-workspace .connection-review-launch,
+.markup-assistant-command > button,
+.markup-detail-actions button,
+.markup-assistant-footer button,
+.ai-analyze-button,
+.smart-plan-setup-actions button,
+.ai-smart-setup-actions button,
+.smart-plan-preflight button {
+  min-height: 48px;
+  font-size: 14px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid #78e6f4;
+  outline-offset: 3px;
+}
+
+.builder-current-step-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 12px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #51d7e733;
+  border-radius: 12px;
+  background: #102934;
+}
+
+.builder-current-step-summary span {
+  color: #78e6f4;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.builder-current-step-summary strong {
+  color: var(--v121-text);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.builder-current-step-summary button {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  min-height: 44px;
+  padding: 0 14px;
+}
+
+.builder-workflow .builder-action-card.other-step {
+  display: none;
+}
+
+.smart-plan-fact-actions {
+  display: grid;
+  justify-items: stretch;
+  gap: 6px;
+}
+
+.smart-plan-fact-actions button {
+  min-height: 44px;
+  padding: 0 12px;
+  color: #b8f4fb;
+  border: 1px solid #357187;
+  border-radius: 8px;
+  background: #103143;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.smart-plan-fact-actions button.primary {
+  color: #06161c;
+  border-color: #60d9e9;
+  background: linear-gradient(180deg, #68e1ef, #42c8dd);
+}
+
+.repair-plan-workspace > .assistant-mode-strip,
+.repair-plan-workspace > .markup-assistant-command {
+  margin: 12px;
+}
+
+.project-home-brand:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+@media (max-width: 760px) {
+  .field-first-workspace {
+    grid-template-rows: 56px 58px minmax(0, 1fr) 24px;
+  }
+
+  .field-first-guide {
+    min-height: 58px;
+    padding: 5px 8px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .field-first-guide > nav {
+    grid-template-columns: repeat(5, minmax(92px, 1fr));
+    gap: 5px;
+    scroll-snap-type: x proximity;
+  }
+
+  .field-first-guide > nav > button {
+    min-height: 48px;
+    padding: 4px 6px;
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 5px;
+    scroll-snap-align: start;
+  }
+
+  .field-first-guide > nav > button > b {
+    width: 22px;
+    height: 22px;
+    font-size: 11px;
+  }
+
+  .field-first-guide > nav > button strong {
+    font-size: 12px;
+  }
+
+  .field-first-guide > nav > button small {
+    display: none;
+  }
+
+  .field-first-primary {
+    position: fixed;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: calc(30px + max(10px, env(safe-area-inset-bottom)));
+    left: max(12px, env(safe-area-inset-left));
+    z-index: 140;
+    min-height: 56px;
+    padding: 0 20px;
+    display: flex;
+    border-radius: 12px;
+    font-size: 16px;
+    box-shadow: 0 16px 38px #000a, 0 0 0 1px #a3f3fb38;
+  }
+
+  .app-shell.tablet-layout .left-panel,
+  .app-shell.tablet-layout .right-panel {
+    padding-bottom: calc(92px + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(92px + env(safe-area-inset-bottom));
+  }
+
+  .builder-current-step-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .builder-current-step-summary button {
+    grid-column: 1;
+    grid-row: auto;
+    width: 100%;
+  }
+
+  .smart-plan-fact-actions {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .assistant-more-tools {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(138px, 1fr));
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .assistant-more-tools .assistant-more-label {
+    grid-column: 1 / -1;
+  }
+
+  .assistant-more-tools button {
+    min-width: 138px;
+  }
+}
+
+@media print {
+  .field-first-primary {
+    display: none !important;
+  }
+}

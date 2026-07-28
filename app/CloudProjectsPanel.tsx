@@ -107,6 +107,9 @@ type Props = {
   onWorkingProjectChange: (projectId: string | null) => void;
   onWorkingRevisionSaved: (revision: CloudRevision) => void;
   onProjectRiskChange: (risk: CloudProjectRisk | null) => void;
+  currentStepLabel: string;
+  currentStepDetail: string;
+  currentStepProgress: number;
   onContinueWorkflow: () => void;
   onClose: () => void;
 };
@@ -142,6 +145,9 @@ export default function CloudProjectsPanel({
   onWorkingProjectChange,
   onWorkingRevisionSaved,
   onProjectRiskChange,
+  currentStepLabel,
+  currentStepDetail,
+  currentStepProgress,
   onContinueWorkflow,
   onClose,
 }: Props) {
@@ -777,7 +783,7 @@ export default function CloudProjectsPanel({
                 </section>
 
                 <section className="cloud-executive-metrics" aria-label="Project review metrics">
-                  <article><span>PLAN PROGRESS</span><strong>{workflow?.progress || 0}%</strong><small>{workflow?.systems.length || 0} reviewed system{workflow?.systems.length === 1 ? "" : "s"}</small></article>
+                  <article><span>JOB PROGRESS</span><strong>{currentStepProgress}%</strong><small>Five plain-language job steps</small></article>
                   <article><span>OPEN REVIEW ITEMS</span><strong>{intelligence.counts.open}</strong><small>{intelligence.counts.critical} critical · {intelligence.counts.blocked} blocked</small></article>
                   <article><span>PENDING REVIEWS</span><strong>{intelligence.counts.pendingApprovals}</strong><small>{approvals.filter((approval) => approval.status === "approved").length} approved</small></article>
                   <article><span>SOURCE-BACKED PACKAGE</span><strong>{syncedRevisionNumber ? `R${syncedRevisionNumber}` : "—"}</strong><small>{driveStateLabel}</small></article>
@@ -786,13 +792,11 @@ export default function CloudProjectsPanel({
                 <div className="cloud-dashboard-grid">
                   <article className="cloud-next-action-card">
                     <span>{intelligence.health === "critical" ? <AlertTriangle size={19} /> : <Target size={19} />}</span>
-                    <div><small>NEXT SAFE ACTION</small><strong>{intelligence.headline}</strong><p>{intelligence.detail} Every recommendation is review-only; drawing geometry changes only when you edit it.</p></div>
+                    <div><small>CURRENT JOB STEP</small><strong>{currentStepLabel}</strong><p>{currentStepDetail} Plan Helper changes drawing geometry only after you approve selected fixes.</p></div>
                     <button onClick={() =>
                       !workingProjectMatchesActive
                         ? setView("revisions")
-                        : intelligence.action === "command"
-                          ? onContinueWorkflow()
-                          : setView(intelligence.action)
+                        : onContinueWorkflow()
                     }>
                       {workingProjectMatchesActive ? "Continue" : "Open project revision"} <ChevronRight size={14} />
                     </button>
@@ -811,14 +815,14 @@ export default function CloudProjectsPanel({
                   </article>
                 </div>
 
-                {workflow?.systems.length ? <div className="cloud-system-progress">
-                  <div><strong>System review progress</strong><span>Evidence from revision {latestRevisionNumber || "—"}</span></div>
-                  {workflow.systems.map((system) => <article key={system.id}>
-                    <b>{system.name}</b>
-                    <span><i><em style={{ width: `${system.progress}%` }} /></i><small>{system.stage} · {system.blockers} blocker{system.blockers === 1 ? "" : "s"}</small></span>
-                    <strong>{system.progress}%</strong>
-                  </article>)}
-                </div> : <div className="cloud-empty-state"><LayoutDashboard size={22} /><strong>Project intelligence is ready to activate</strong><span>Save a named cloud revision to establish the first trusted review checkpoint.</span></div>}
+                <div className="cloud-system-progress">
+                  <div><strong>Current job workflow</strong><span>Plan Setup → Mark &amp; Connect → Airflow &amp; Sizes → Fix Problems → Materials &amp; Print</span></div>
+                  <article>
+                    <b>{currentStepLabel}</b>
+                    <span><i><em style={{ width: `${currentStepProgress}%` }} /></i><small>{currentStepDetail}</small></span>
+                    <strong>{currentStepProgress}%</strong>
+                  </article>
+                </div>
                 <section className="cloud-recent-coordination">
                   <div><strong>Recent plan findings</strong><button onClick={() => setView("work")}>Open review queue <ChevronRight size={13} /></button></div>
                   {workItems.slice(0, 4).map((item) => <article key={item.id}>

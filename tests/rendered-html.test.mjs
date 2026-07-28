@@ -21,7 +21,7 @@ async function loadConnectionRepairModule() {
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
 
-test("renders development preview metadata", async () => {
+test("renders production v121 metadata without the development preview marker", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -46,7 +46,10 @@ test("renders development preview metadata", async () => {
     response.headers.get("content-type") ?? "",
     /^text\/html\b/i,
   );
-  assert.match(await response.text(), developmentPreviewMeta);
+  const html = await response.text();
+  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Simple Job Workflow"\/>/i);
+  assert.match(html, /<meta property="og:description" content="One job\. One clear next step\."\/>/i);
+  assert.doesNotMatch(html, developmentPreviewMeta);
 });
 
 test("adds secure cloud projects, revisions, collaborators, and Drive packages", async () => {
@@ -91,11 +94,11 @@ test("builds v106 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.match(page, /addEventListener\("cancel", handleFilePickerCancel\)/);
   assert.match(page, /const modalWorkspaceActive = showProjectHome \|\| showProjectSetup \|\| showPlanIntelligence \|\| showFieldPackageComposer \|\| showSystemBalanceStudio/);
   assert.match(page, /inert=\{modalWorkspaceActive \? true : undefined\}/);
-  assert.match(home, /Turn a PDF plan into an HVAC markup, material list, and field-ready print/);
-  assert.match(home, /Plans · markup · materials/);
+  assert.match(home, /Open a PDF and HVAC Plan Studio will help you set up, mark, check, and finish the job/);
+  assert.match(home, /Jobs · plans · materials/);
   assert.doesNotMatch(home, /FIELD PRODUCTION|Field-first workflow|Installer-ready/);
-  assert.match(home, /Nothing changes without approval/);
-  assert.match(home, /PLAN REVIEW QUEUE/);
+  assert.match(home, /Resume current job/);
+  assert.doesNotMatch(home, /PLAN REVIEW QUEUE|PROFESSIONAL · COMING SOON/);
   assert.match(home, /handleDialogKeyDown/);
   assert.match(home, /onOpenProjectHub\(project\.id\)/);
   assert.match(setup, /Guided setup · about 60 seconds/);
@@ -125,27 +128,27 @@ test("leads solo HVAC operators through plan setup and four clear job steps", as
 
   assert.match(page, /const fieldFirstSteps = \[/);
   assert.match(page, /<strong>Plan setup<\/strong>/);
-  assert.match(page, /label: "Connect"/);
-  assert.match(page, /label: "Airflow"/);
-  assert.match(page, /label: "Check"/);
-  assert.match(page, /label: "Finish"/);
+  assert.match(page, /label: "Mark & Connect"/);
+  assert.match(page, /label: "Airflow & Sizes"/);
+  assert.match(page, /label: "Fix Problems"/);
+  assert.match(page, /label: "Materials & Print"/);
   assert.match(page, /className="field-first-guide"/);
   assert.match(page, /const \[rightPanelOpen, setRightPanelOpen\] = useState\(false\)/);
   assert.match(page, /function openToolsPanel\(\) \{\s*setLeftPanelOpen\(true\);\s*setRightPanelOpen\(false\)/);
   assert.match(page, /function openInspectorPanel\(\) \{\s*setRightPanelOpen\(true\);\s*setLeftPanelOpen\(false\)/);
   assert.match(page, /left-panel-tabs/);
-  assert.match(home, /BUILT FOR HVAC OWNERS &amp; SUPERINTENDENTS/);
-  assert.match(home, /Continue current job/);
-  assert.match(home, /Start a new job/);
-  assert.match(home, /Saved jobs/);
+  assert.match(home, /YOUR JOBS/);
+  assert.match(home, /Resume current job/);
+  assert.match(home, /Start job from PDF/);
+  assert.match(home, /Open saved jobs/);
   assert.match(palette, /command\.recommended/);
   assert.match(palette, /Find a tool/);
   assert.match(styles, /\.field-first-guide/);
   assert.match(styles, /\.smart-plan-preflight/);
   assert.match(styles, /\.project-home-hero-visual,[\s\S]*display: none !important/);
   assert.match(styles, /\.left-panel-tabs/);
-  assert.match(layout, /\/og\.png/);
-  assert.match(layout, /Smart Plan Setup & Repair/);
+  assert.match(layout, /\/og-v121\.png/);
+  assert.match(layout, /Simple Job Workflow/);
 });
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
@@ -269,8 +272,10 @@ test("keeps the system completion engine with plan-focused defaults", async () =
 
   assert.match(workflow, /export function buildSystemWorkflow/);
   assert.match(workflow, /"runs"[\s\S]*"branches"[\s\S]*"connections"[\s\S]*"airflow"[\s\S]*"review"[\s\S]*"release"/);
-  assert.match(page, /NEXT SAFE ACTION/);
-  assert.match(page, /Continue system/);
+  assert.match(page, /NEXT STEP/);
+  assert.match(page, /CURRENT JOB STEP/);
+  assert.match(page, /builder-current-step-summary/);
+  assert.doesNotMatch(page, /Continue system/);
   assert.doesNotMatch(page, /className="field-workflow-hud"/);
   assert.match(page, /workflowSummary:/);
   assert.match(page, /const \[showCfmLabels, setShowCfmLabels\] = useState\(false\)/);
@@ -320,7 +325,7 @@ test("ships the v100 Project Intelligence Hub with secure coordination and revie
   assert.match(panel, /Plan review items/);
   assert.match(panel, /Revision approvals/);
   assert.match(panel, /PROJECT EVIDENCE/);
-  assert.match(panel, /drawing geometry changes only when you edit it/);
+  assert.match(panel, /changes drawing geometry only after you approve selected fixes/);
   assert.match(panel, /Project-safe save is locked/);
   assert.match(panel, /mutationLockRef/);
   assert.match(palette, /Type to search every tool/);
@@ -355,11 +360,10 @@ test("ships v107 public guest access, subscription readiness, and protected owne
   const entitlements = await readFile(new URL("../app/entitlements.ts", import.meta.url), "utf8");
   const migration = await readFile(new URL("../supabase/migrations/20260725163857_owner_analytics_and_subscription_readiness.sql", import.meta.url), "utf8");
 
-  assert.match(home, /Open a PDF plan/);
-  assert.match(home, /The drawing workspace is open to everyone/);
-  assert.match(home, /Save projects in the cloud/);
-  assert.match(home, /PROFESSIONAL · COMING SOON/);
-  assert.match(home, /Make every new plan revision faster to review/);
+  assert.match(home, /Start job from PDF/);
+  assert.match(home, /Open saved jobs/);
+  assert.match(home, /Your PDF work can stay on this device/);
+  assert.doesNotMatch(home, /PROFESSIONAL · COMING SOON|Make every new plan revision faster to review/);
   assert.match(panel, /Continue without an account/);
   assert.match(panel, /Sign-in is only required for cloud projects, cross-device access, revision history, and collaboration/);
   assert.match(panel, /no limits enforced yet/);
@@ -885,8 +889,8 @@ test("keeps the reader foundation and adds v120 smart plan setup without removin
   assert.match(page, /reviewDecisionForIssue/);
   assert.match(page, /EVIDENCE CHANGED — REVIEW AGAIN/);
   assert.match(page, /visibleLabels: \{ showCfmLabels, showLengthLabels, showFittingLabels \}/);
-  assert.match(workspace, /HVAC PLAN STUDIO · V120/);
-  assert.match(workspace, /Smart Plan Setup &amp; Repair/);
+  assert.match(workspace, /HVAC PLAN STUDIO/);
+  assert.match(workspace, /Plan Setup &amp; Source Review/);
   assert.match(workspace, /buildSmartPlanSetup\(analysis\)/);
   assert.match(workspace, /automaticFingerprintRef/);
   assert.match(workspace, /\["setup", "Plan setup", ScanSearch\]/);
@@ -1159,7 +1163,7 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   const roadmap = await readFile(new URL("../ROADMAP.md", import.meta.url), "utf8");
 
-  assert.match(page, /import MarkupAssistantStudio from "\.\/MarkupAssistantStudio"/);
+  assert.match(page, /import MarkupAssistantStudio, \{ type PlanHelperPrimaryView \} from "\.\/MarkupAssistantStudio"/);
   assert.match(page, /buildRepairPlan/);
   assert.match(page, /buildTakeoffImpact/);
   assert.match(page, /buildAdvancedPlanIntelligence/);
@@ -1177,9 +1181,9 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(studio, /Check only/);
   assert.match(studio, /Prepare fixes/);
   assert.match(studio, /Apply approved fixes/);
-  assert.match(studio, /V113 GUIDED REPAIR PLAN/);
+  assert.match(studio, /GUIDED REPAIR PLAN/);
   assert.match(studio, /This repair plan is stale\./);
-  assert.match(studio, /V114 TAKEOFF IMPACT/);
+  assert.match(studio, /MATERIAL IMPACT/);
   assert.match(studio, /Before → after purchasing impact/);
   assert.match(studio, /ONE CONTROLLED TRANSACTION/);
   assert.match(studio, /I reviewed each selected problem, proposed fix, expected result, and affected plan object/);
@@ -1193,7 +1197,7 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(studio, /autonomyMode !== "guided"/);
   assert.match(studio, /onApplyRepairPlan/);
   assert.match(studio, /onUndoRepairBatch/);
-  assert.match(studio, /V114 APPLICATION RECEIPTS/);
+  assert.match(studio, /REPAIR HISTORY &amp; UNDO/);
   assert.match(studio, /Receipt/);
   assert.match(studio, /Evidence set/);
   assert.match(studio, /Material basis/);
@@ -1809,7 +1813,7 @@ test("ships v108 tablet gestures, stylus protection, responsive drawers, and bou
   assert.match(styles, /min-width: 44px; min-height: 44px/);
   assert.match(styles, /@media \(min-width: 2560px\)/);
   assert.match(styles, /height: 100dvh/);
-  assert.match(analytics, /app_version: "112"/);
+  assert.match(analytics, /app_version: "121"/);
 
   const pinch = pinchCamera({
     anchorPlan: { x: 100, y: 200 },
@@ -1845,4 +1849,105 @@ test("ships v108 tablet gestures, stylus protection, responsive drawers, and bou
   assert.equal(workspaceLayoutFor(1024, 768, true), "tablet-landscape");
   assert.equal(workspaceLayoutFor(768, 1024, true), "tablet-portrait");
   assert.equal(workspaceLayoutFor(1920, 1080, false), "desktop");
+});
+
+test("v121 keeps working text readable and restores a persistent mobile Continue action", async () => {
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const marker = "/* v121 - Field readability and mobile continuation";
+  const sectionStart = styles.indexOf(marker);
+
+  assert.ok(sectionStart >= 0, "expected the v121 readability override section");
+  const v121Styles = styles.slice(sectionStart);
+
+  assert.match(
+    v121Styles,
+    /\.field-first-workspace \.left-panel small,[\s\S]*?font-size: 12px !important;/,
+  );
+  assert.match(
+    v121Styles,
+    /\.connection-repair-focus span strong,[\s\S]*?font-size: 14px;/,
+  );
+  assert.match(
+    v121Styles,
+    /\.connection-candidate-choices button,[\s\S]*?min-height: 48px;[\s\S]*?font-size: 14px;/,
+  );
+  assert.match(
+    v121Styles,
+    /button:focus-visible,[\s\S]*?outline: 3px solid #78e6f4;[\s\S]*?outline-offset: 3px;/,
+  );
+  assert.match(
+    v121Styles,
+    /@media \(max-width: 760px\) \{[\s\S]*?\.field-first-guide > nav \{[\s\S]*?grid-template-columns: repeat\(5, minmax\(92px, 1fr\)\);/,
+  );
+  assert.match(
+    v121Styles,
+    /@media \(max-width: 760px\) \{[\s\S]*?\.field-first-primary \{[\s\S]*?position: fixed;[\s\S]*?min-height: 56px;[\s\S]*?display: flex;[\s\S]*?font-size: 16px;/,
+  );
+});
+
+test("v121 presents one job workflow and one Plan Helper without weakening approvals", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const home = await readFile(new URL("../app/ProjectHome.tsx", import.meta.url), "utf8");
+  const cloud = await readFile(new URL("../app/CloudProjectsPanel.tsx", import.meta.url), "utf8");
+  const helper = await readFile(new URL("../app/MarkupAssistantStudio.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
+
+  assert.match(page, /label: "Mark & Connect"/);
+  assert.match(page, /label: "Airflow & Sizes"/);
+  assert.match(page, /label: "Fix Problems"/);
+  assert.match(page, /label: "Materials & Print"/);
+  assert.match(page, /const fieldFirstProgress = Math\.round\(/);
+  assert.match(page, /const airflowStepComplete = Boolean\(/);
+  assert.match(page, /openMarkupAssistant\("problems"\)/);
+  assert.match(page, /onUseDetectedScale=\{applyDetectedPlanScale\}/);
+  assert.match(page, /onStartCalibration=\{startPlanScaleCalibration\}/);
+  assert.match(page, /const planSetupComplete = Boolean\(\s*activePlanAnalysis &&\s*scaleVerified\s*\)/);
+  assert.match(page, /currentStepLabel=\{fieldFirstActiveStep\.label\}/);
+  assert.match(page, /currentStepProgress=\{fieldFirstProgress\}/);
+  assert.match(page, /onContinueWorkflow=\{\(\) => \{\s*setShowCloudProjects\(false\);\s*fieldFirstActiveStep\.run\(\)/);
+  assert.match(page, /window\.matchMedia\("\(max-width: 560px\)"\)\.matches/);
+  assert.match(page, /connectionsComplete \? "complete" : "attention"/);
+  assert.match(page, /airflowStepComplete \? "complete" : "attention"/);
+
+  assert.match(home, /Resume current job/);
+  assert.match(home, /Start job from PDF/);
+  assert.match(home, /Open saved jobs/);
+  assert.match(home, /Drive unavailable/);
+  assert.match(home, /disabled=\{!hasPlan\}/);
+  assert.doesNotMatch(home, /PLAN REVIEW QUEUE|PROFESSIONAL · COMING SOON|Owner analytics/);
+
+  assert.match(cloud, /CURRENT JOB STEP/);
+  assert.match(cloud, /currentStepLabel/);
+  assert.match(cloud, /currentStepDetail/);
+  assert.match(cloud, /currentStepProgress/);
+  assert.doesNotMatch(cloud, /NEXT SAFE ACTION/);
+
+  assert.match(helper, /export type PlanHelperPrimaryView = "setup" \| "problems" \| "fixes"/);
+  assert.match(helper, /\["setup", "Plan setup"/);
+  assert.match(helper, /\["recommendations", "Problems"/);
+  assert.match(helper, /\["repair-plan", "Fixes"/);
+  assert.match(helper, /\["history", "History & Undo"/);
+  assert.match(helper, /\["standards", "My HVAC Rules"/);
+  assert.match(helper, /\["evidence", "Source details"/);
+  assert.match(helper, /onUseDetectedScale\(selected\.label, scale\.page\)/);
+  assert.match(helper, /onStartCalibration\(scale\.page\)/);
+  assert.match(helper, /scale\.conflict\s*\? `\$\{scale\.candidates\.length\} scales found`/);
+  assert.doesNotMatch(helper, />V(?:113|114|120)</);
+  assert.ok(
+    helper.indexOf('id="assistant-panel-repair-plan"') < helper.indexOf('className="assistant-mode-strip"'),
+    "fix permission controls should live inside the Fixes panel",
+  );
+
+  assert.match(styles, /\.builder-workflow \.builder-action-card\.other-step \{\s*display: none;/);
+  assert.match(styles, /\.builder-current-step-summary/);
+  assert.match(styles, /\.app-shell\.tablet-layout \.left-panel,[\s\S]*?padding-bottom: calc\(92px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(styles, /\.assistant-more-tools \{[\s\S]*?overflow-x: auto;/);
+  assert.match(layout, /HVAC Plan Studio · Simple Job Workflow/);
+  assert.match(layout, /\/og-v121\.png/);
+
+  assert.match(helper, /No fix is selected automatically/);
+  assert.match(helper, /preparedRepairPlanId !== repairPlan\.id/);
+  assert.match(helper, /autonomyMode !== "guided"/);
+  assert.match(helper, /onUndoRepairBatch/);
 });
