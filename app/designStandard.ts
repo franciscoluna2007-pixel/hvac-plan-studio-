@@ -39,6 +39,8 @@ export type BuildDesignStandardInput = {
     id: string;
     type: "supply" | "return" | "fresh";
     size: string;
+    runNumber?: string;
+    sizeReviewed?: boolean;
     roomName?: string;
     roomType?: "general" | "bedroom" | "bathroom" | "closet";
   }>;
@@ -77,7 +79,10 @@ function rule(
 
 export function buildDesignStandardProfile(input: BuildDesignStandardInput): DesignStandardProfile {
   const oversized = input.runs.filter((run) => asNumber(run.size) > 16);
-  const unlabeled = input.runs.filter((run) => !run.size.trim());
+  const unreviewedLabels = input.runs.filter((run) =>
+    !run.size.trim() ||
+    (run.type !== "fresh" && (!run.runNumber?.trim() || run.sizeReviewed === false))
+  );
   const freshRuns = input.runs.filter((run) => run.type === "fresh");
   const supplyRuns = input.runs.filter((run) => run.type === "supply");
   const bedroomSupplies = input.terminals.filter((terminal) =>
@@ -154,17 +159,17 @@ export function buildDesignStandardProfile(input: BuildDesignStandardInput): Des
     rule({
       id: "field-readable-run-labels",
       level: "recommended",
-      title: "Every run has a field-readable size",
-      standard: "Place a readable black size label beside every supply, return, and fresh-air run.",
-      status: unlabeled.length ? "review" : input.runs.length ? "clear" : "not-evaluated",
-      finding: unlabeled.length
-        ? `${unlabeled.length} run${unlabeled.length === 1 ? "" : "s"} need a size label.`
+      title: "Every run has a field-readable number and size",
+      standard: "After routing, place a readable run number and reviewed size beside each supply and return; keep fresh-air sizes visible.",
+      status: unreviewedLabels.length ? "review" : input.runs.length ? "clear" : "not-evaluated",
+      finding: unreviewedLabels.length
+        ? `${unreviewedLabels.length} run${unreviewedLabels.length === 1 ? "" : "s"} need a number or reviewed size.`
         : input.runs.length
-          ? "Every marked run has a size value available for its plan label."
+          ? "Every marked run has its required field-readable detail."
           : "No runs are available to evaluate.",
-      action: "Add or restore the missing run-size label without changing route geometry.",
-      evidence: [`${input.runs.length - unlabeled.length} of ${input.runs.length} runs labeled`],
-      drawingIds: unlabeled.map((run) => run.id),
+      action: "Use the post-draw detail pass to add the missing number or confirm the size without changing route geometry.",
+      evidence: [`${input.runs.length - unreviewedLabels.length} of ${input.runs.length} runs detailed`],
+      drawingIds: unreviewedLabels.map((run) => run.id),
     }),
     rule({
       id: "bedroom-return-path",

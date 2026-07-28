@@ -21,7 +21,7 @@ async function loadConnectionRepairModule() {
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
 
-test("renders production v121 metadata without the development preview marker", async () => {
+test("renders production v122 metadata without the development preview marker", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -47,8 +47,8 @@ test("renders production v121 metadata without the development preview marker", 
     /^text\/html\b/i,
   );
   const html = await response.text();
-  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Simple Job Workflow"\/>/i);
-  assert.match(html, /<meta property="og:description" content="One job\. One clear next step\."\/>/i);
+  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Draw-First Detail Workflow"\/>/i);
+  assert.match(html, /<meta property="og:description" content="Draw routes first\. Add numbers, reviewed sizes, returns, and connections in order\."\/>/i);
   assert.doesNotMatch(html, developmentPreviewMeta);
 });
 
@@ -128,7 +128,7 @@ test("leads solo HVAC operators through plan setup and four clear job steps", as
 
   assert.match(page, /const fieldFirstSteps = \[/);
   assert.match(page, /<strong>Plan setup<\/strong>/);
-  assert.match(page, /label: "Mark & Connect"/);
+  assert.match(page, /label: "Draw & Detail"/);
   assert.match(page, /label: "Airflow & Sizes"/);
   assert.match(page, /label: "Fix Problems"/);
   assert.match(page, /label: "Materials & Print"/);
@@ -147,8 +147,8 @@ test("leads solo HVAC operators through plan setup and four clear job steps", as
   assert.match(styles, /\.smart-plan-preflight/);
   assert.match(styles, /\.project-home-hero-visual,[\s\S]*display: none !important/);
   assert.match(styles, /\.left-panel-tabs/);
-  assert.match(layout, /\/og-v121\.png/);
-  assert.match(layout, /Simple Job Workflow/);
+  assert.match(layout, /\/og-v122\.png/);
+  assert.match(layout, /Draw-First Detail Workflow/);
 });
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
@@ -225,7 +225,7 @@ test("makes run size primary, supports one-inch size choices, and directly resiz
 
   assert.match(source, /const runSizeOptions = \["4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"\]/);
   assert.match(source, /className={`run-size-default \$\{selectedRun \? "editing" : ""\}`}/);
-  assert.match(source, /NEW RUN DEFAULT/);
+  assert.match(source, /PROVISIONAL · CONFIRM AFTER DRAWING/);
   assert.match(source, /scaleX\?: number/);
   assert.match(source, /scaleY\?: number/);
   assert.match(source, /kind: "symbol-resize"/);
@@ -628,7 +628,7 @@ test("makes STEP 1 preview-first and preserves placed objects and saved T/Y topo
   const repair = await readFile(new URL("../app/connectionRepair.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  assert.match(page, /Review each loose unit, supply can, return grille, and saved T\/Y connection/);
+  assert.match(page, /Equipment, cans, and T\/Y ports/);
   assert.match(page, /Review \$\{activeConnectionRepairIssues\.length\} connection fix/);
   assert.match(page, /Add this fix/);
   assert.match(page, /Apply \{selectedReadyConnectionRepairIds\.length\} selected · one Undo/);
@@ -953,7 +953,7 @@ test("ships v112 System Balance Studio with reviewed calculations and manual geo
   assert.match(page, /const hasManualOverride = drawing\.cfmSource === "manual"/);
   assert.match(page, /function roomAirflowTargetsAreReviewed/);
   assert.match(page, /Review and save the room coordination targets before applying terminal CFM/);
-  assert.match(page, /scaleVerified && pressure\.pressureDrop > \.15/);
+  assert.match(page, /scaleStateForPage\(drawing\.page\)\.verified && pressure\.pressureDrop > \.15/);
   assert.match(page, /cfmSource: "planning-seed"/);
   assert.match(page, /cfmSource: "manual"/);
   assert.match(page, /cfmSource: "room-target"/);
@@ -1813,7 +1813,7 @@ test("ships v108 tablet gestures, stylus protection, responsive drawers, and bou
   assert.match(styles, /min-width: 44px; min-height: 44px/);
   assert.match(styles, /@media \(min-width: 2560px\)/);
   assert.match(styles, /height: 100dvh/);
-  assert.match(analytics, /app_version: "121"/);
+  assert.match(analytics, /app_version: "122"/);
 
   const pinch = pinchCamera({
     anchorPlan: { x: 100, y: 200 },
@@ -1885,15 +1885,17 @@ test("v121 keeps working text readable and restores a persistent mobile Continue
   );
 });
 
-test("v121 presents one job workflow and one Plan Helper without weakening approvals", async () => {
+test("v122 adds a draw-first detail workflow and stable scale setup without weakening approvals", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const home = await readFile(new URL("../app/ProjectHome.tsx", import.meta.url), "utf8");
   const cloud = await readFile(new URL("../app/CloudProjectsPanel.tsx", import.meta.url), "utf8");
   const helper = await readFile(new URL("../app/MarkupAssistantStudio.tsx", import.meta.url), "utf8");
+  const drawingScale = await readFile(new URL("../app/drawingScale.ts", import.meta.url), "utf8");
+  const jobWorkflow = await readFile(new URL("../app/jobWorkflow.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
 
-  assert.match(page, /label: "Mark & Connect"/);
+  assert.match(page, /label: "Draw & Detail"/);
   assert.match(page, /label: "Airflow & Sizes"/);
   assert.match(page, /label: "Fix Problems"/);
   assert.match(page, /label: "Materials & Print"/);
@@ -1907,8 +1909,55 @@ test("v121 presents one job workflow and one Plan Helper without weakening appro
   assert.match(page, /currentStepProgress=\{fieldFirstProgress\}/);
   assert.match(page, /onContinueWorkflow=\{\(\) => \{\s*setShowCloudProjects\(false\);\s*fieldFirstActiveStep\.run\(\)/);
   assert.match(page, /window\.matchMedia\("\(max-width: 560px\)"\)\.matches/);
-  assert.match(page, /connectionsComplete \? "complete" : "attention"/);
+  assert.match(page, /const drawFirstWorkflow = deriveDrawFirstWorkflow\(\{/);
+  assert.match(page, /const drawStepComplete = drawFirstWorkflow\.complete/);
+  assert.match(page, /const airflowStepComplete = Boolean\(\s*drawStepComplete &&/);
   assert.match(page, /airflowStepComplete \? "complete" : "attention"/);
+  assert.match(page, /runNumber\?: string/);
+  assert.match(page, /sizeReviewed\?: boolean/);
+  assert.match(page, /type SheetScaleState = \{/);
+  assert.match(page, /version: 1 \| 2 \| 3 \| 4 \| 5/);
+  assert.match(page, /sheetScales\?: Record<string, SheetScaleState>/);
+  assert.match(page, /version: 5/);
+  assert.match(page, /restoredSheetScales\["1"\] = legacyScale/);
+  assert.doesNotMatch(page, /legacyPages/);
+  assert.match(page, /activateSheetScale\(nextPage\)/);
+  assert.match(page, /rememberActiveSheetScale\(page, \{/);
+  assert.match(page, /scaleStateForPage\(drawing\.page\)\.feetPerUnit/);
+  assert.match(page, /sizeReviewed: activeTool === "fresh" \? true : false/);
+  assert.match(page, /drawing\.sizeReviewed === false \? "SIZE LATER"/);
+  assert.match(page, /POST-DRAW DETAIL PASS/);
+  assert.match(page, /function assignRunNumbers\(type: "supply" \| "return"\)/);
+  assert.match(page, /function confirmSelectedRunSize\(\)/);
+  assert.match(page, /function focusNextRunDetail\(type\?: "supply" \| "return"\)/);
+  assert.match(page, /id: "draw",\s*label: "Draw & Detail"/);
+  const postDrawSizeBody = page.slice(
+    page.indexOf("function updateSelectedSize"),
+    page.indexOf("function updateRunLineWeight"),
+  );
+  assert.match(
+    postDrawSizeBody,
+    /synchronizeFittingSizes\(resized, drawings, \{ snapEndpoints: false \}\)/,
+    "post-draw size review must update fitting metadata without moving run endpoints",
+  );
+
+  const drawFirstLabels = [
+    "Draw routes",
+    "Flex details",
+    "Add returns",
+    "Connect &amp; repair",
+  ];
+  let previousDrawFirstLabel = -1;
+  for (const label of drawFirstLabels) {
+    const labelIndex = page.indexOf(label);
+    assert.ok(labelIndex > previousDrawFirstLabel, `${label} should appear in draw-first stage order`);
+    previousDrawFirstLabel = labelIndex;
+  }
+
+  assert.match(jobWorkflow, /export type DrawFirstStage =\s*\| "routes"\s*\| "flex-details"\s*\| "returns"\s*\| "connections"\s*\| "complete"/);
+  assert.match(jobWorkflow, /if \(input\.pendingSupplyNumbers \|\| input\.pendingSupplySizes\)/);
+  assert.match(jobWorkflow, /input\.pendingReturnNumbers \|\|\s*input\.pendingReturnSizes/);
+  assert.match(jobWorkflow, /if \(!input\.connectionsComplete \|\| input\.connectionProblems\)/);
 
   assert.match(home, /Resume current job/);
   assert.match(home, /Start job from PDF/);
@@ -1930,7 +1979,15 @@ test("v121 presents one job workflow and one Plan Helper without weakening appro
   assert.match(helper, /\["history", "History & Undo"/);
   assert.match(helper, /\["standards", "My HVAC Rules"/);
   assert.match(helper, /\["evidence", "Source details"/);
-  assert.match(helper, /onUseDetectedScale\(selected\.label, scale\.page\)/);
+  assert.match(helper, /onUseDetectedScale: \(candidate: PlanScaleCandidate, page: number\) => void/);
+  assert.match(helper, /onUseDetectedScale\(selected, scale\.page\)/);
+  assert.match(helper, /onUseDetectedScale\(candidate, scale\.page\)/);
+  assert.doesNotMatch(helper, /onUseDetectedScale\(selected\.label, scale\.page\)/);
+  assert.match(helper, /const usableCandidates = scale\.candidates\.filter/);
+  assert.match(helper, /scale\.conflict && usableCandidates\.map\(\(candidate\)/);
+  assert.match(helper, /className="primary scale-choice"/);
+  assert.match(helper, /const appliedScaleLabel = confirmedScaleByPage\[String\(scale\.page\)\]/);
+  assert.match(helper, /disabled=\{appliedScaleLabel === candidate\.label\}/);
   assert.match(helper, /onStartCalibration\(scale\.page\)/);
   assert.match(helper, /scale\.conflict\s*\? `\$\{scale\.candidates\.length\} scales found`/);
   assert.doesNotMatch(helper, />V(?:113|114|120)</);
@@ -1943,8 +2000,19 @@ test("v121 presents one job workflow and one Plan Helper without weakening appro
   assert.match(styles, /\.builder-current-step-summary/);
   assert.match(styles, /\.app-shell\.tablet-layout \.left-panel,[\s\S]*?padding-bottom: calc\(92px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(styles, /\.assistant-more-tools \{[\s\S]*?overflow-x: auto;/);
-  assert.match(layout, /HVAC Plan Studio · Simple Job Workflow/);
-  assert.match(layout, /\/og-v121\.png/);
+  assert.match(layout, /HVAC Plan Studio · Draw-First Detail Workflow/);
+  assert.match(layout, /\/og-v122\.png/);
+
+  assert.match(page, /function applyDetectedPlanScale\(candidate: PlanScaleCandidate, page: number\)/);
+  assert.match(page, /if \(applyResolvedScale\(candidate, page\)\)/);
+  assert.match(page, /startPlanScaleCalibration\(page, candidate\.label\)/);
+  assert.match(page, /const \[scaleHelperReturnPending, setScaleHelperReturnPending\] = useState\(false\)/);
+  assert.match(page, /function startPlanScaleCalibration[\s\S]{0,300}setScaleHelperReturnPending\(true\)/);
+  assert.match(page, /function cancelPlanScaleCalibration[\s\S]{0,400}openMarkupAssistant\("setup"\)/);
+  assert.match(page, /if \(returnToHelper\) window\.requestAnimationFrame\(\(\) => openMarkupAssistant\("setup"\)\)/);
+  assert.match(page, /Cancel &amp; return to Plan Helper/);
+  assert.match(drawingScale, /candidate\.ratio && candidate\.ratio > 0\s*\? candidate\.ratio\s*: scaleRatioFromLabel\(candidate\.label\)/);
+  assert.match(drawingScale, /ratio \/ \(12 \* PDF_POINTS_PER_INCH \* viewportScale\)/);
 
   assert.match(helper, /No fix is selected automatically/);
   assert.match(helper, /preparedRepairPlanId !== repairPlan\.id/);

@@ -42,6 +42,7 @@ import { buildAdvancedPlanIntelligence } from "./advancedPlanIntelligence";
 import {
   buildSmartPlanSetup,
   type PlanFactStatus,
+  type PlanScaleCandidate,
 } from "./planSetup";
 
 type WorkspaceView = "setup" | "overview" | "sheets" | "evidence" | "coverage" | "findings" | "takeoff";
@@ -59,7 +60,7 @@ type Props = {
   onPrepareMarkup: (page: number, note?: string) => void;
   currentScaleLabel: string;
   scaleVerified: boolean;
-  onUseDetectedScale: (label: string, page: number) => void;
+  onUseDetectedScale: (candidate: PlanScaleCandidate, page: number) => void;
   onStartCalibration: (page: number) => void;
   onOpenConnectionRepair: () => void;
   cloudProjectConnected?: boolean;
@@ -547,7 +548,7 @@ export default function AIPlanWorkspace({
                       <div className="ai-smart-setup-actions">
                         {source && <button onClick={() => showSource(source.page, source.region)}><Eye size={14} /> Show source</button>}
                         {selected && selected.kind !== "not-to-scale" && !scale.conflict
-                          ? <button className="primary" onClick={() => onUseDetectedScale(selected.label, scale.page)}>Use this scale</button>
+                          ? <button className="primary" onClick={() => onUseDetectedScale(selected, scale.page)}>Use this scale</button>
                           : <button className="primary" onClick={() => onStartCalibration(scale.page)}>Calibrate this drawing</button>}
                       </div>
                     </article>;

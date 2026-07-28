@@ -30,7 +30,7 @@ import type {
   RepairPlan,
   RepairPlanAction,
 } from "./repairPlan";
-import type { PlanFactStatus, SmartPlanSetup } from "./planSetup";
+import type { PlanFactStatus, PlanScaleCandidate, SmartPlanSetup } from "./planSetup";
 import type { TakeoffImpact } from "./takeoffIntelligence";
 
 type RecommendationFilter = "open" | "critical" | "all";
@@ -64,7 +64,8 @@ type Props = {
   advancedIntelligence: AdvancedPlanIntelligence | null;
   smartSetup: SmartPlanSetup | null;
   scaleVerified: boolean;
-  onUseDetectedScale: (label: string, page: number) => void;
+  confirmedScaleByPage: Record<string, string>;
+  onUseDetectedScale: (candidate: PlanScaleCandidate, page: number) => void;
   onStartCalibration: (page: number) => void;
   designStandard: DesignStandardProfile;
   canUndo: boolean;
@@ -148,6 +149,7 @@ export default function MarkupAssistantStudio({
   advancedIntelligence,
   smartSetup,
   scaleVerified,
+  confirmedScaleByPage,
   onUseDetectedScale,
   onStartCalibration,
   designStandard,
@@ -540,6 +542,10 @@ export default function MarkupAssistantStudio({
                     scale.candidates.find((candidate) => candidate.id === scale.selectedCandidateId) ||
                     scale.candidates[0];
                   const source = selected?.sources[0];
+                  const usableCandidates = scale.candidates.filter((candidate) =>
+                    candidate.kind !== "not-to-scale" && candidate.ratio && candidate.ratio > 0
+                  );
+                  const appliedScaleLabel = confirmedScaleByPage[String(scale.page)];
                   return <article key={`scale-${scale.page}`}>
                     <span><strong>{scale.sheetNumber}</strong><small>{scale.title}</small></span>
                     <b className={scale.status}>
@@ -550,9 +556,24 @@ export default function MarkupAssistantStudio({
                     </b>
                     <div className="smart-plan-fact-actions">
                       {source && <button onClick={() => onShowPlanSetupSource(source.page, source.region)}>Source</button>}
-                      {selected && selected.kind !== "not-to-scale" && !scale.conflict
-                        ? <button className="primary" onClick={() => onUseDetectedScale(selected.label, scale.page)}>Use scale</button>
-                        : <button className="primary" onClick={() => onStartCalibration(scale.page)}>Calibrate</button>}
+                      {!scale.conflict && selected && usableCandidates.length
+                        ? <button
+                          className="primary"
+                          disabled={appliedScaleLabel === selected.label}
+                          onClick={() => onUseDetectedScale(selected, scale.page)}
+                        >
+                          {appliedScaleLabel === selected.label ? "Scale applied ✓" : "Apply recommended scale"}
+                        </button>
+                        : null}
+                      {scale.conflict && usableCandidates.map((candidate) => <button
+                        className="primary scale-choice"
+                        key={candidate.id}
+                        disabled={appliedScaleLabel === candidate.label}
+                        onClick={() => onUseDetectedScale(candidate, scale.page)}
+                      >
+                        {appliedScaleLabel === candidate.label ? `${candidate.label} applied ✓` : `Use ${candidate.label}`}
+                      </button>)}
+                      {(!usableCandidates.length || scale.conflict) && <button onClick={() => onStartCalibration(scale.page)}>Calibrate instead</button>}
                     </div>
                   </article>;
                 })}

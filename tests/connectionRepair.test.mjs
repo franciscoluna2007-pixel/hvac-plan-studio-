@@ -242,6 +242,45 @@ test("verified plan scale converts physical snap limits to plan units", () => {
   assert.notEqual(scaledPlan.fingerprint, unverifiedScalePlan.fingerprint);
 });
 
+test("per-sheet scale uses the target sheet threshold instead of the global or page-one scale", () => {
+  const runs = [supplyRun({
+    page: 2,
+    points: [{ x: -50, y: 0 }, { x: -90, y: 0 }],
+  })];
+  const targets = [terminalTarget({ page: 2 })];
+  const globalScalePlan = buildConnectionRepairPlan({
+    systemId: "system-1",
+    runs,
+    targets,
+    scale: { verified: true, feetPerUnit: .01 },
+  });
+  const perSheetScalePlan = buildConnectionRepairPlan({
+    systemId: "system-1",
+    runs,
+    targets,
+    scale: {
+      verified: true,
+      feetPerUnit: .01,
+      byPage: {
+        "1": { verified: true, feetPerUnit: .01 },
+        "2": { verified: true, feetPerUnit: .1 },
+      },
+    },
+  });
+
+  assert.notEqual(
+    globalScalePlan.items[0].status,
+    "blocked",
+    "the global/page-one scale would allow a 50-unit snap",
+  );
+  assert.equal(
+    perSheetScalePlan.items[0].status,
+    "blocked",
+    "page 2 uses its own 3 ft / .1 = 30-unit terminal limit",
+  );
+  assert.notEqual(perSheetScalePlan.fingerprint, globalScalePlan.fingerprint);
+});
+
 test("candidate signals explain scope, availability, duct type, and scaled distance", () => {
   const plan = buildConnectionRepairPlan({
     systemId: "system-1",

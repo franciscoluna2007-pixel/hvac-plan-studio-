@@ -15,7 +15,7 @@ The product is not an autonomous HVAC designer. It makes evidence, calculations,
 Every primary workspace now uses the same five plain-language job steps:
 
 1. **Plan Setup** — read the PDF and review only missing or conflicting plan information.
-2. **Mark & Connect** — place and connect equipment, runs, fittings, devices, and notes.
+2. **Draw & Detail** — draw supply routes first, number and confirm flex runs, add returns, then connect and repair.
 3. **Airflow & Sizes** — review room airflow, connected paths, and duct sizes.
 4. **Fix Problems** — use Plan Helper to inspect problems and approve selected fixes.
 5. **Materials & Print** — review materials, blockers, and the field package.
@@ -28,14 +28,15 @@ Advanced coordination remains available without crowding the first screen.
 
 1. Open a local or Google Drive plan PDF.
 2. Confirm the source revision, working system, and scale.
-3. Draw or edit HVAC runs, fittings, devices, rooms, and notes.
-4. Assign reviewed room or terminal airflow.
-5. Trace airflow through physically connected equipment-rooted networks.
-6. Inspect findings and build an evidence-bound repair plan.
-7. Apply only the selected eligible planning changes in one Undo.
-8. Review the actual takeoff delta and durable repair receipt.
-9. Resolve RFIs, punch items, connections, approvals, and field checks.
-10. Save a named cloud revision and issue the field package.
+3. Draw the supply routes before stopping to enter every run detail.
+4. Number the flex runs, confirm their sizes, add return runs and grilles, then connect and repair loose endpoints.
+5. Assign reviewed room or terminal airflow.
+6. Trace airflow through physically connected equipment-rooted networks.
+7. Inspect findings and build an evidence-bound repair plan.
+8. Apply only the selected eligible planning changes in one Undo.
+9. Review the actual takeoff delta and durable repair receipt.
+10. Resolve RFIs, punch items, connections, approvals, and field checks.
+11. Save a named cloud revision and issue the field package.
 
 ## Permanent operating principles
 
@@ -66,7 +67,26 @@ Advanced coordination remains available without crowding the first screen.
 | v116.1 | Solo Operator Workflow and usability simplification | Shipped |
 | v120 | Smart Plan Setup & Repair | Shipped |
 | v121 | Simple Job Workflow | Shipped |
+| v122 | Smart Scale & Draw-First Workflow | Shipped |
 | v117 | Multi-company commercial operations | Planned for later |
+
+## v122 — Smart Scale & Draw-First Workflow
+
+### Outcome
+
+A superintendent or one-person HVAC business can accept the scale the plan actually provides and move through drafting in a natural order: draw the supply routes first, add their field details, add returns, and only then repair connections.
+
+### Shipped capabilities
+
+- Any valid numeric scale candidate can apply directly, including metric and uncommon architectural scales.
+- Each PDF sheet retains its own confirmed scale; mixed-scale sets cannot silently reuse the current sheet's measurements.
+- Conflicting scale evidence presents each candidate as an explicit choice instead of silently choosing one.
+- Not-to-scale sheets and sheets without usable numeric evidence still use two-point calibration.
+- Completing or canceling a Plan Helper calibration returns the user to Plan Helper instead of losing setup context.
+- The Draw & Detail step guides four passes: supply routes, flex run numbers and confirmed sizes, returns, then connection repair.
+- New supply and return sizes remain visibly provisional until confirmed during the post-draw detail pass.
+- Post-draw number and size edits preserve every route endpoint and intermediate vertex.
+- Existing approval, evidence, geometry, repair-scope, and one-Undo protections remain unchanged.
 
 ## v121 — Simple Job Workflow
 
