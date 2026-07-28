@@ -260,7 +260,7 @@ export default function ProjectHome({
                   disabled={busy || driveConfigured === false}
                   title={driveConfigured === false ? "Google Drive is not available for this workspace" : undefined}
                 >
-                  <HardDrive size={17} /> {driveConfigured === false ? "Drive unavailable" : "Open from Drive"}
+                  <HardDrive size={17} /> {driveConfigured === false ? "Drive unavailable" : "Open from Drive directly"}
                 </button>
               </div>
 

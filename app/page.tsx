@@ -12390,7 +12390,7 @@ function HVACPlanStudioApp() {
               <p>{error || "Upload a construction PDF to begin HVAC plan reading, markup, and takeoff."}</p>
               <div className="upload-actions">
                 <button className="primary-button" disabled={loading} onClick={() => startDirectLocalPdf("workspace")}><FolderOpen size={17} /> Open PDF and start drawing</button>
-                <button className="drive-upload-button" disabled={loading} onClick={() => void openFromDrive()}><HardDrive size={17} /> Open from Drive</button>
+                <button className="drive-upload-button" disabled={loading} onClick={() => void openFromDrive()}><HardDrive size={17} /> Open from Drive directly</button>
                 <button className="drive-upload-button" disabled={loading} onClick={() => setShowProjectSetup(true)}><ScanSearch size={17} /> Guided setup</button>
               </div>
               <span>or drag and drop a file here</span>
