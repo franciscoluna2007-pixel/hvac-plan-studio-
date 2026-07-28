@@ -377,8 +377,8 @@ export default function AIPlanWorkspace({
         <div className="ai-plan-brand">
           <span><ScanSearch size={22} /></span>
           <div>
-            <small>HVAC PLAN STUDIO · V120</small>
-            <h2 id="ai-plan-title">Smart Plan Setup &amp; Repair</h2>
+            <small>HVAC PLAN STUDIO · PLAN READER</small>
+            <h2 id="ai-plan-title">Plan Setup &amp; Source Review</h2>
             <p>{projectName} · {sourceFileName || "No plan loaded"}</p>
           </div>
         </div>

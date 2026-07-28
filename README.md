@@ -4,9 +4,19 @@ HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review,
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v120
+## Current release — v121
 
-v120 adds Smart Plan Setup & Repair. The primary workspace now starts with an unnumbered Plan setup preflight, then leads through Connect → Airflow → Check → Finish.
+v121 turns the accumulated plan tools into one simpler solo-operator workflow: Plan Setup → Mark & Connect → Airflow & Sizes → Fix Problems → Materials & Print.
+
+### v121 — Simple Job Workflow
+
+- Simplifies Project Home around resume, open PDF, saved jobs, and recent work.
+- Uses one canonical five-step job guide across the top rail, current-step panel, command search, and Plan Helper.
+- Hides duplicate progress strips, conflicting next actions, and future job cards.
+- Combines Plan Setup, Problems, and Fixes into one Plan Helper while retaining rules, history, source evidence, approval, and Undo.
+- Keeps the plan visible while reviewing setup sources and problems.
+- Raises field-working text and touch targets and restores a large mobile Continue action.
+- Does not change plan geometry, repair eligibility, fingerprint checks, or approval boundaries.
 
 ### v120 — Smart Plan Setup & Repair
 
@@ -76,16 +86,11 @@ Project numbers and internal release labels are not used as the user-facing rule
 
 ## Product workflow
 
-1. Open a local or Google Drive PDF.
-2. Confirm the source revision, system, and scale.
-3. Draw or edit supply, return, fresh-air, equipment, device, fitting, room, and note objects.
-4. Save reviewed room or terminal airflow.
-5. Trace airflow through physically connected networks.
-6. Inspect findings and build a repair plan.
-7. Review affected objects, CFM provenance, velocity screen, pressure limitations, and takeoff delta.
-8. Apply selected eligible planning changes in one Undo.
-9. Resolve RFIs, punch items, connections, approvals, and field checks.
-10. Save a named cloud revision and prepare the field package.
+1. **Plan Setup** — open a local or Google Drive PDF, read its source information, and confirm the drawing scale.
+2. **Mark & Connect** — place or edit equipment, runs, fittings, devices, rooms, and notes, then review loose endpoints.
+3. **Airflow & Sizes** — save reviewed room or terminal airflow and inspect connected-network size candidates.
+4. **Fix Problems** — use Plan Helper to inspect findings, review affected objects and evidence, and apply only selected eligible fixes in one Undo.
+5. **Materials & Print** — review the takeoff, remaining release blockers, named revision, and field package.
 
 ## Core capabilities
 

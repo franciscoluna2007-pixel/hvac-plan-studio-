@@ -11,7 +11,7 @@ import ProjectCommandPalette, { type ProjectCommand } from "./ProjectCommandPale
 import ProjectHome from "./ProjectHome";
 import { trackProductEvent } from "./productAnalytics";
 import SystemBalanceStudio from "./SystemBalanceStudio";
-import MarkupAssistantStudio from "./MarkupAssistantStudio";
+import MarkupAssistantStudio, { type PlanHelperPrimaryView } from "./MarkupAssistantStudio";
 import { type FieldPackageSectionId } from "./fieldPackage";
 import type { PlanAnalysis, PlanEvidence } from "./planReader";
 import { buildAdvancedPlanIntelligence } from "./advancedPlanIntelligence";
@@ -87,7 +87,7 @@ import {
   type CloudRepairBatch,
   type CloudRevision,
 } from "./cloudProjects";
-import { buildSystemWorkflow, type WorkflowStageId, type WorkflowSummary } from "./workflowEngine";
+import { buildSystemWorkflow, type WorkflowSummary } from "./workflowEngine";
 import {
   AirVent,
   AlertTriangle,
@@ -1336,6 +1336,7 @@ function HVACPlanStudioApp() {
   const [showFieldPackageComposer, setShowFieldPackageComposer] = useState(false);
   const [showSystemBalanceStudio, setShowSystemBalanceStudio] = useState(false);
   const [showMarkupAssistant, setShowMarkupAssistant] = useState(false);
+  const [assistantInitialView, setAssistantInitialView] = useState<PlanHelperPrimaryView>("setup");
   const [activeMarkupRecommendation, setActiveMarkupRecommendation] = useState<MarkupRecommendation | undefined>();
   const [assistantAutonomyMode, setAssistantAutonomyMode] = useState<RepairAutonomyMode>("prepare");
   const [assistantSelectedActionIds, setAssistantSelectedActionIds] = useState<string[]>([]);
@@ -6976,38 +6977,6 @@ function HVACPlanStudioApp() {
     setRightTab("field");
   }
 
-  function continueSystemWorkflow(stage: WorkflowStageId) {
-    openInspectorPanel();
-    if (stage === "runs") {
-      setRightTab("builder");
-      setActiveTool("supply");
-      setBranchMessage("Continue drawing supply, return, or fresh-air runs. Left-click draws; right-click pans");
-      return;
-    }
-    if (stage === "branches") {
-      setRightTab("builder");
-      setActiveTool("branch");
-      setBranchMessage("T/Y placement ready · split finished runs, then attach Port 3 to an existing branch run");
-      return;
-    }
-    if (stage === "connections") {
-      setRightTab("builder");
-      setActiveTool("select");
-      setBranchMessage("Review open devices and saved T/Y ports below. Nothing reconnects until you press its action");
-      return;
-    }
-    if (stage === "airflow") {
-      openSystemBalanceStudio();
-      return;
-    }
-    if (stage === "review") {
-      openSystemAuditWorkflow();
-      return;
-    }
-    setFieldView("release");
-    setRightTab("field");
-  }
-
   function openReleaseGate(gateId: string) {
     if (gateId === "cloud") {
       setShowCloudProjects(true);
@@ -9635,24 +9604,24 @@ function HVACPlanStudioApp() {
     openRfis: 0,
     progress: 0,
   };
-  const activeWorkflow = buildSystemWorkflow({
-    runs: activeBuilderSummary.runs.length,
-    fittings: activeBuilderSummary.fittings.length,
-    devices: activeBuilderSummary.devices.length,
-    openConnections: activeBuilderSummary.unconnectedDevices,
-    brokenPorts: activeBuilderSummary.brokenPorts,
-    hasPrimaryUnit: Boolean(activeAirflowSetup.primaryUnit),
-    airflowBalanced: activeAirflowSetup.supplyBalanced && activeAirflowSetup.returnBalanced,
-    sizingReviews: activeBuilderSummary.sizing.length,
-    criticalIssues: activeBuilderSummary.audit.counts.critical,
-    warningIssues: activeBuilderSummary.audit.counts.warning,
-    releaseReady: activeFieldPackage.gatesClear,
-    released: activeFieldPackage.released,
-    releaseStale: activeFieldPackage.stale,
-  });
-  const fieldFirstStep = !activeBuilderSummary.runs.length || !activeAirflowSetup.primaryUnit
+  const planSetupComplete = Boolean(
+    activePlanAnalysis &&
+    scaleVerified
+  );
+  const connectionsComplete = Boolean(
+    activeBuilderSummary.runs.length &&
+    activeAirflowSetup.primaryUnit &&
+    !activeBuilderSummary.unconnectedDevices &&
+    !activeBuilderSummary.brokenPorts
+  );
+  const airflowStepComplete = Boolean(
+    activeAirflowSetup.supplyBalanced &&
+    activeAirflowSetup.returnBalanced &&
+    !activeBuilderSummary.sizing.length
+  );
+  const fieldFirstStep = !connectionsComplete
       ? "connect"
-      : !activeAirflowSetup.supplyBalanced || !activeAirflowSetup.returnBalanced || activeBuilderSummary.sizing.length > 0
+      : !airflowStepComplete
         ? "airflow"
         : activeBuilderSummary.audit.counts.critical || activeBuilderSummary.audit.counts.warning
           ? "check"
@@ -9660,15 +9629,17 @@ function HVACPlanStudioApp() {
   const fieldFirstSteps = [
     {
       id: "connect",
-      label: "Connect",
+      label: "Mark & Connect",
       detail: !pdf
         ? "Open the plan"
         : !scaleVerified
           ? "Plan setup needs review · you can still draw"
-          : activeBuilderSummary.runs.length
-            ? `${activeBuilderSummary.runs.length} run${activeBuilderSummary.runs.length === 1 ? "" : "s"} marked`
+          : connectionsComplete
+            ? "Runs, equipment, cans, and T/Y ports connected"
+            : activeBuilderSummary.runs.length
+              ? `${activeBuilderSummary.unconnectedDevices + activeBuilderSummary.brokenPorts} connection${activeBuilderSummary.unconnectedDevices + activeBuilderSummary.brokenPorts === 1 ? "" : "s"} need review`
             : "Place and connect the unit, cans, and runs",
-      complete: Boolean(activeBuilderSummary.runs.length && activeAirflowSetup.primaryUnit),
+      complete: connectionsComplete,
       run: () => {
         if (!pdf) {
           setShowProjectHome(true);
@@ -9681,30 +9652,36 @@ function HVACPlanStudioApp() {
     },
     {
       id: "airflow",
-      label: "Airflow",
-      detail: activeAirflowSetup.supplyBalanced && activeAirflowSetup.returnBalanced && !activeBuilderSummary.sizing.length
+      label: "Airflow & Sizes",
+      detail: airflowStepComplete
         ? "Airflow and sizes checked"
         : "Check CFM and duct sizes",
-      complete: Boolean(
-        activeAirflowSetup.supplyBalanced &&
-        activeAirflowSetup.returnBalanced &&
-        !activeBuilderSummary.sizing.length
-      ),
+      complete: airflowStepComplete,
       run: openSystemBalanceStudio,
     },
     {
       id: "check",
-      label: "Check",
-      detail: activeBuilderSummary.audit.counts.critical || activeBuilderSummary.audit.counts.warning
-        ? `${activeBuilderSummary.audit.counts.critical + activeBuilderSummary.audit.counts.warning} item${activeBuilderSummary.audit.counts.critical + activeBuilderSummary.audit.counts.warning === 1 ? "" : "s"} need attention`
-        : "Plan checks clear",
-      complete: !activeBuilderSummary.audit.counts.critical && !activeBuilderSummary.audit.counts.warning,
-      run: openMarkupAssistant,
+      label: "Fix Problems",
+      detail: !pdf
+        ? "Available after the plan is opened"
+        : activeBuilderSummary.audit.counts.critical || activeBuilderSummary.audit.counts.warning
+          ? `${activeBuilderSummary.audit.counts.critical + activeBuilderSummary.audit.counts.warning} item${activeBuilderSummary.audit.counts.critical + activeBuilderSummary.audit.counts.warning === 1 ? "" : "s"} need attention`
+          : "Plan checks clear",
+      complete: Boolean(
+        pdf &&
+        !activeBuilderSummary.audit.counts.critical &&
+        !activeBuilderSummary.audit.counts.warning
+      ),
+      run: () => openMarkupAssistant("problems"),
     },
     {
       id: "finish",
-      label: "Finish",
-      detail: activeFieldPackage.gatesClear ? "Ready to print or share" : "Materials and field print",
+      label: "Materials & Print",
+      detail: !pdf
+        ? "Available after the plan is opened"
+        : activeFieldPackage.gatesClear
+          ? "Ready to print or share"
+          : "Review materials and printing blockers",
       complete: Boolean(activeFieldPackage.released && !activeFieldPackage.stale),
       run: () => {
         setRightTab("takeoff");
@@ -9712,7 +9689,34 @@ function HVACPlanStudioApp() {
       },
     },
   ] as const;
-  const fieldFirstActiveStep = fieldFirstSteps.find((step) => step.id === fieldFirstStep) || fieldFirstSteps[0];
+  const planSetupStep = {
+    id: "setup",
+    label: "Plan Setup",
+    detail: !pdf
+      ? "Open a PDF plan"
+      : !activePlanAnalysis
+        ? "Read the plan information"
+        : !scaleVerified
+          ? "Confirm the drawing scale"
+          : activeSmartPlanSetup?.counts.reviewItems
+            ? `${activeSmartPlanSetup.counts.reviewItems} detail${activeSmartPlanSetup.counts.reviewItems === 1 ? "" : "s"} can be reviewed as you work`
+            : "Plan information ready",
+    complete: planSetupComplete,
+    run: () => {
+      if (!pdf) {
+        setShowProjectHome(true);
+        return;
+      }
+      openAIPlanReader("setup");
+    },
+  } as const;
+  const fieldFirstActiveStep = !planSetupComplete
+    ? planSetupStep
+    : fieldFirstSteps.find((step) => step.id === fieldFirstStep) || fieldFirstSteps[0];
+  const fieldFirstProgress = Math.round(
+    [planSetupComplete, ...fieldFirstSteps.map((step) => step.complete)]
+      .filter(Boolean).length / 5 * 100
+  );
   const assistantBranchOpportunities = branchOpportunities().filter((opportunity) => {
     const run = drawings.find((drawing) => drawing.id === opportunity.mainRunId);
     return run && drawingSystem(run) === activeSystem;
@@ -10111,18 +10115,37 @@ function HVACPlanStudioApp() {
   const packagePrintClasses = printPackageSections.map((section) => `package-include-${section}`).join(" ");
 
   function openAIPlanReader(view: "setup" | "reader" | "findings" = "setup") {
-    setShowCommandPalette(false);
-    setShowCloudProjects(false);
-    setShowFieldPackageComposer(false);
-    setShowMarkupAssistant(false);
-    setShowProjectHome(false);
-    setShowProjectSetup(false);
     setPlanWorkspaceInitialView(view);
-    setShowPlanIntelligence(true);
+    setShowPlanIntelligence(false);
+    openMarkupAssistant(view === "setup" ? "setup" : "problems");
   }
 
-  function openPlanIntelligence() {
-    openAIPlanReader("setup");
+  function applyDetectedPlanScale(label: string, page: number) {
+    goToPage(page);
+    const supportedScale = [
+      '1/8" = 1\'-0"',
+      '3/16" = 1\'-0"',
+      '1/4" = 1\'-0"',
+      '1/2" = 1\'-0"',
+    ].includes(label);
+    if (supportedScale) {
+      applyScalePreset(label);
+      setBranchMessage(`${label} confirmed from the plan · measured work now uses this scale`);
+      return;
+    }
+    startPlanScaleCalibration(page, label);
+  }
+
+  function startPlanScaleCalibration(page: number, detectedLabel?: string) {
+    goToPage(page);
+    setShowMarkupAssistant(false);
+    setCalibrating(true);
+    setMeasureDraft([]);
+    setActiveTool("measure");
+    openToolsPanel();
+    setBranchMessage(detectedLabel
+      ? `${detectedLabel} was found on the plan · confirm it by picking two points on a known distance`
+      : "Pick two points on a known distance to confirm this drawing scale");
   }
 
   function openFieldPackageComposer() {
@@ -10148,7 +10171,7 @@ function HVACPlanStudioApp() {
     setShowSystemBalanceStudio(true);
   }
 
-  function openMarkupAssistant() {
+  function openMarkupAssistant(initialView: PlanHelperPrimaryView = "problems") {
     setShowCommandPalette(false);
     setShowCloudProjects(false);
     setShowPlanIntelligence(false);
@@ -10156,6 +10179,7 @@ function HVACPlanStudioApp() {
     setShowSystemBalanceStudio(false);
     setShowProjectHome(false);
     setShowProjectSetup(false);
+    setAssistantInitialView(initialView);
     setActiveMarkupRecommendation(undefined);
     if (!assistantPreparedEvidenceFingerprint && assistantAutonomyMode !== "inspect") {
       setAssistantPreparedEvidenceFingerprint(assistantRepairPlan.evidenceFingerprint);
@@ -10201,12 +10225,12 @@ function HVACPlanStudioApp() {
     },
     {
       id: "continue-work",
-      label: activeWorkflow.nextAction,
-      detail: `${systemLabel(activeSystem)} · continue the next safe system step`,
+      label: fieldFirstActiveStep.label,
+      detail: `${systemLabel(activeSystem)} · ${fieldFirstActiveStep.detail}`,
       group: "Project",
       shortcut: "↵",
       recommended: true,
-      run: () => continueSystemWorkflow(activeWorkflow.activeStage),
+      run: fieldFirstActiveStep.run,
     },
     {
       id: "supply-run",
@@ -10239,8 +10263,8 @@ function HVACPlanStudioApp() {
       detail: `${markupAssistantSummary.open} suggestion${markupAssistantSummary.open === 1 ? "" : "s"} to review · nothing changes until approval`,
       group: "Systems",
       recommended: true,
-      keywords: "v111 markup assistant routing return branch ty recommendations approval",
-      run: openMarkupAssistant,
+      keywords: "plan helper setup problems fixes routing return branch ty recommendations approval",
+      run: () => openMarkupAssistant("problems"),
     },
     {
       id: "airflow",
@@ -10266,15 +10290,6 @@ function HVACPlanStudioApp() {
       detail: "Prioritized, explainable plan findings with human approval",
       group: "Review",
       run: openSystemAuditWorkflow,
-    },
-    {
-      id: "plan-intelligence",
-      label: "Review plan sources",
-      detail: "Source-linked findings, confidence, and manual review decisions",
-      group: "Review",
-      disabled: !pdf,
-      keywords: "explainable findings evidence confidence ai plan v106",
-      run: openPlanIntelligence,
     },
     {
       id: "sheets",
@@ -10348,7 +10363,8 @@ function HVACPlanStudioApp() {
         </div>
         <nav aria-label="Plan setup and four job steps">
           <button
-            className={`field-first-setup ${activePlanAnalysis && scaleVerified && !activeSmartPlanSetup?.counts.requiredReviewItems ? "complete" : ""}`}
+            className={`field-first-setup ${planSetupComplete ? "complete" : "active"}`}
+            aria-current={!planSetupComplete ? "step" : undefined}
             onClick={() => {
               if (!pdf) {
                 setShowProjectHome(true);
@@ -10357,22 +10373,24 @@ function HVACPlanStudioApp() {
               openAIPlanReader("setup");
             }}
           >
-            <b>{activePlanAnalysis && scaleVerified && !activeSmartPlanSetup?.counts.requiredReviewItems ? <CheckCircle2 size={14} /> : <ScanSearch size={14} />}</b>
+            <b>{planSetupComplete ? <CheckCircle2 size={14} /> : <ScanSearch size={14} />}</b>
             <span>
               <strong>Plan setup</strong>
               <small>{!pdf
                 ? "Open a plan"
                 : !activePlanAnalysis
                   ? "Reading plan information"
-                  : scaleVerified && !activeSmartPlanSetup?.counts.requiredReviewItems
-                    ? "Plan information ready"
-                    : `${activeSmartPlanSetup?.counts.reviewItems || 0} detail${activeSmartPlanSetup?.counts.reviewItems === 1 ? "" : "s"} to review`}</small>
+                  : !scaleVerified
+                    ? "Confirm the drawing scale"
+                    : activeSmartPlanSetup?.counts.reviewItems
+                      ? `${activeSmartPlanSetup.counts.reviewItems} detail${activeSmartPlanSetup.counts.reviewItems === 1 ? "" : "s"} can be reviewed later`
+                      : "Plan information ready"}</small>
             </span>
           </button>
           {fieldFirstSteps.map((step, index) => <button
             key={step.id}
-            className={`${fieldFirstStep === step.id ? "active" : ""} ${step.complete ? "complete" : ""}`}
-            aria-current={fieldFirstStep === step.id ? "step" : undefined}
+            className={`${planSetupComplete && fieldFirstStep === step.id ? "active" : ""} ${step.complete ? "complete" : ""}`}
+            aria-current={planSetupComplete && fieldFirstStep === step.id ? "step" : undefined}
             onClick={step.run}
           >
             <b>{step.complete ? <CheckCircle2 size={14} /> : index + 1}</b>
@@ -11662,35 +11680,29 @@ function HVACPlanStudioApp() {
 
         <aside id="workspace-inspector-panel" className="right-panel" aria-label="HVAC plan inspector">
           <div className="right-tabs" role="tablist" aria-label="HVAC workspace panels">
-            <button role="tab" aria-selected={rightTab === "builder"} className={rightTab === "builder" ? "active" : ""} onClick={() => setRightTab("builder")}>Job steps</button>
+            <button role="tab" aria-selected={rightTab === "builder"} className={rightTab === "builder" ? "active" : ""} onClick={() => setRightTab("builder")}>Current step</button>
             <button role="tab" aria-selected={rightTab === "layers"} className={rightTab === "layers" ? "active" : ""} onClick={() => setRightTab("layers")}>Layers</button>
             <button role="tab" aria-selected={rightTab === "rooms"} className={rightTab === "rooms" ? "active" : ""} onClick={() => openSystemBalanceWorkspace("system")}>Airflow</button>
             <button role="tab" aria-selected={rightTab === "takeoff"} className={rightTab === "takeoff" ? "active" : ""} onClick={() => setRightTab("takeoff")}>Materials</button>
-            <button role="tab" aria-selected={rightTab === "checks"} className={rightTab === "checks" ? "active" : ""} onClick={() => setRightTab("checks")}>Check</button>
+            <button role="tab" aria-selected={rightTab === "checks"} className={rightTab === "checks" ? "active" : ""} onClick={() => setRightTab("checks")}>Problems</button>
             <button className="right-collapse" aria-label="Collapse inspector" aria-controls="workspace-inspector-panel" aria-expanded={rightPanelOpen} onClick={() => setRightPanelOpen(false)}><PanelRightClose size={15} /></button>
           </div>
           {rightTab === "builder" ? <div className="system-builder-panel">
             <div className="builder-hero">
               <div className="builder-hero-heading">
                 <span><Sparkles size={17} /></span>
-                <div><strong>JOB STEPS</strong><small>{systemLabel(activeSystem)} · follow one step at a time</small></div>
-                <b>{activeWorkflow.progress}%</b>
+                <div><strong>CURRENT JOB STEP</strong><small>{systemLabel(activeSystem)} · one clear action at a time</small></div>
+                <b>{fieldFirstProgress}%</b>
               </div>
-              <div className="builder-progress"><i style={{ width: `${activeWorkflow.progress}%` }} /></div>
-              <div className="builder-stage-strip">
-                {activeWorkflow.stages.map((stage) => <button
-                  className={stage.status}
-                  key={stage.id}
-                  onClick={() => continueSystemWorkflow(stage.id)}
-                  title={stage.detail}
-                >
-                  <b>{stage.status === "complete" ? <CheckCircle2 size={9} /> : stage.number}</b>
-                  {stage.shortLabel}
-                </button>)}
+              <div className="builder-progress"><i style={{ width: `${fieldFirstProgress}%` }} /></div>
+              <div className="builder-current-step-summary">
+                <span>{fieldFirstActiveStep.label}</span>
+                <strong>{fieldFirstActiveStep.detail}</strong>
+                <button onClick={fieldFirstActiveStep.run}>Continue <ArrowRight size={14} /></button>
               </div>
             </div>
 
-            <div className="smart-plan-preflight">
+            {!planSetupComplete && <div className="smart-plan-preflight">
               <header>
                 <span>
                   <strong>{activeSmartPlanSetup && scaleVerified && !activeSmartPlanSetup.counts.requiredReviewItems ? "PLAN SETUP READY" : "PLAN SETUP"}</strong>
@@ -11717,39 +11729,21 @@ function HVACPlanStudioApp() {
                       : "Open plan setup"}
                 </button>
               </div>
-            </div>
+            </div>}
 
             <div className="markup-assistant-launch">
               <span><Sparkles size={19} /></span>
               <div>
-                <small>PLAN HELPER · NOTHING CHANGES WITHOUT APPROVAL</small>
-                <strong>Help me check this plan</strong>
-                <p>{markupAssistantSummary.headline}. See each suggestion on the plan, then choose what to do.</p>
+                <small>ONE PLAN HELPER · NOTHING CHANGES WITHOUT APPROVAL</small>
+                <strong>Setup, problems, and fixes in one place</strong>
+                <p>{markupAssistantSummary.headline}. Review plan information, see problems on the drawing, and approve eligible fixes.</p>
               </div>
               <b>{markupAssistantSummary.open}</b>
-              <button onClick={openMarkupAssistant}>Open Plan Helper <ArrowRight size={14} /></button>
-            </div>
-
-            <div className="workflow-next-action">
-              <div>
-                <span>NEXT SAFE ACTION</span>
-                <strong>{activeWorkflow.nextAction}</strong>
-                <small>{activeWorkflow.stages.find((stage) => stage.status === "active")?.detail}</small>
-              </div>
-              <button onClick={() => continueSystemWorkflow(activeWorkflow.activeStage)}>Continue system <ArrowRight size={13} /></button>
-            </div>
-
-            <div className="builder-metrics">
-              <div><span>Runs</span><strong>{activeBuilderSummary.runs.length}</strong></div>
-              <div><span>T/Y fittings</span><strong>{activeBuilderSummary.fittings.length}</strong></div>
-              <div className={activeBuilderSummary.unconnectedDevices ? "attention" : "good"}><span>Loose ends</span><strong>{activeBuilderSummary.unconnectedDevices}</strong></div>
-              <div className={activeBuilderSummary.brokenPorts ? "attention" : "good"}><span>Loose T/Y ports</span><strong>{activeBuilderSummary.brokenPorts}</strong></div>
-              <div className={activeBuilderSummary.sizing.length ? "attention" : "good"}><span>Size reviews</span><strong>{activeBuilderSummary.sizing.length}</strong></div>
-              <div className={activeBuilderSummary.audit.counts.critical ? "critical" : "good"}><span>Critical</span><strong>{activeBuilderSummary.audit.counts.critical}</strong></div>
+              <button onClick={() => openMarkupAssistant("problems")}>Open Plan Helper <ArrowRight size={14} /></button>
             </div>
 
             <div className="builder-workflow">
-              <div className={`builder-action-card connection-repair-card ${activeBuilderSummary.unconnectedDevices || activeBuilderSummary.brokenPorts ? "attention" : "complete"}`}>
+              <div className={`builder-action-card connection-repair-card ${planSetupComplete && fieldFirstStep === "connect" ? "current" : "other-step"} ${connectionsComplete ? "complete" : "attention"}`}>
                 <div className="builder-action-icon"><Route size={17} /></div>
                 <span><i>STEP 1</i><strong>Connect &amp; repair the system</strong><small>Review each loose unit, supply can, return grille, and saved T/Y connection. Placed objects stay put, and nothing moves until you approve it.</small></span>
                 <div className="connection-repair-summary">
@@ -11760,12 +11754,23 @@ function HVACPlanStudioApp() {
                 </div>
                 {!connectionReviewOpen ? <button
                   className="builder-primary-action connection-review-launch"
-                  disabled={!activeConnectionRepairIssues.length}
-                  onClick={openConnectionRepairReview}
+                  disabled={connectionsComplete}
+                  onClick={() => {
+                    if (activeConnectionRepairIssues.length) {
+                      openConnectionRepairReview();
+                      return;
+                    }
+                    setActiveTool("select");
+                    openToolsPanel();
+                  }}
                 >
                   {activeConnectionRepairIssues.length
                     ? `Review ${activeConnectionRepairIssues.length} connection fix${activeConnectionRepairIssues.length === 1 ? "" : "es"}`
-                    : "All saved connections are aligned"}
+                    : !activeBuilderSummary.runs.length
+                      ? "Start by marking the unit and runs"
+                      : !activeAirflowSetup.primaryUnit
+                        ? "Select or place the system unit"
+                        : "All saved connections are aligned"}
                 </button> : <div className="connection-repair-review">
                   <div className="connection-review-heading">
                     <div>
@@ -11851,7 +11856,7 @@ function HVACPlanStudioApp() {
                 </div>}
               </div>
 
-              <div className={`builder-action-card ${activeBuilderSummary.sizing.length ? "attention" : "complete"}`}>
+              <div className={`builder-action-card ${planSetupComplete && fieldFirstStep === "airflow" ? "current" : "other-step"} ${airflowStepComplete ? "complete" : "attention"}`}>
                 <div className="builder-action-icon"><Gauge size={17} /></div>
                 <span><i>STEP 2</i><strong>Calculate CFM &amp; review duct sizes</strong><small>Propagates reviewed terminal airflow through continuous T/Y paths and prepares velocity-screened candidates using your limits and 16″ residential maximum.</small></span>
                 <div className={`system-airflow-setup ${!activeAirflowSetup.primaryUnit ? "missing-unit" : ""}`}>
@@ -11902,7 +11907,7 @@ function HVACPlanStudioApp() {
                 </div>
               </div>
 
-              <div className={`builder-action-card ${activeBuilderSummary.audit.counts.critical ? "critical" : activeBuilderSummary.audit.counts.warning ? "attention" : "complete"}`}>
+              <div className={`builder-action-card ${planSetupComplete && fieldFirstStep === "check" ? "current" : "other-step"} ${activeBuilderSummary.audit.counts.critical ? "critical" : activeBuilderSummary.audit.counts.warning ? "attention" : "complete"}`}>
                 <div className="builder-action-icon"><ShieldAlert size={17} /></div>
                 <span><i>STEP 3</i><strong>Run the HVAC plan audit</strong><small>Checks disconnected cans, airflow balance, velocity, size progression, return paths, elevations, fresh air, controls, and accidental zone connections.</small></span>
                 <div className="builder-audit-strip">
@@ -11913,7 +11918,7 @@ function HVACPlanStudioApp() {
                 <button className="builder-primary-action" onClick={openSystemAuditWorkflow}>Open audit &amp; select first issue</button>
               </div>
 
-              <div className={`builder-action-card ${activeBuilderSummary.packageSummary.ready ? "complete" : "attention"}`}>
+              <div className={`builder-action-card ${planSetupComplete && fieldFirstStep === "finish" ? "current" : "other-step"} ${activeBuilderSummary.packageSummary.ready ? "complete" : "attention"}`}>
                 <div className="builder-action-icon"><FileText size={17} /></div>
                 <span><i>STEP 4</i><strong>Review plan problems &amp; takeoff</strong><small>Inspect plan sources, open problems, run quantities, air devices, fitting counts, and material allowances before exporting.</small></span>
                 <div className="builder-action-buttons">
@@ -13026,10 +13031,6 @@ function HVACPlanStudioApp() {
           setError("");
           setShowProjectSetup(true);
         }}
-        onOpenLocal={() => {
-          setError("");
-          inputRef.current?.click();
-        }}
         onOpenDrive={() => {
           setError("");
           void openFromDrive();
@@ -13039,7 +13040,6 @@ function HVACPlanStudioApp() {
           setShowProjectHome(false);
           setShowCloudProjects(true);
         }}
-        onOpenCommand={() => setShowCommandPalette(true)}
       />
       {showProjectSetup && <GuidedProjectSetup
         open
@@ -13069,32 +13069,11 @@ function HVACPlanStudioApp() {
         }}
         onUseDetectedScale={(label, page) => {
           setShowPlanIntelligence(false);
-          goToPage(page);
-          const supportedScale = [
-            '1/8" = 1\'-0"',
-            '3/16" = 1\'-0"',
-            '1/4" = 1\'-0"',
-            '1/2" = 1\'-0"',
-          ].includes(label);
-          if (supportedScale) {
-            applyScalePreset(label);
-            setBranchMessage(`${label} confirmed from the plan · measured work now uses this scale`);
-            return;
-          }
-          setCalibrating(true);
-          setMeasureDraft([]);
-          setActiveTool("measure");
-          openToolsPanel();
-          setBranchMessage(`${label} was found on the plan · confirm it by picking two points on a known distance`);
+          applyDetectedPlanScale(label, page);
         }}
         onStartCalibration={(page) => {
           setShowPlanIntelligence(false);
-          goToPage(page);
-          setCalibrating(true);
-          setMeasureDraft([]);
-          setActiveTool("measure");
-          openToolsPanel();
-          setBranchMessage("Pick two points on a known distance to confirm this drawing scale");
+          startPlanScaleCalibration(page);
         }}
         onOpenConnectionRepair={() => {
           setShowPlanIntelligence(false);
@@ -13139,6 +13118,7 @@ function HVACPlanStudioApp() {
       />
       <MarkupAssistantStudio
         open={showMarkupAssistant}
+        initialView={assistantInitialView}
         projectName={fileName}
         systemName={systemLabel(activeSystem)}
         recommendations={markupRecommendations}
@@ -13153,6 +13133,8 @@ function HVACPlanStudioApp() {
         advancedIntelligence={activeAdvancedPlanIntelligence}
         smartSetup={activeSmartPlanSetup}
         scaleVerified={scaleVerified}
+        onUseDetectedScale={applyDetectedPlanScale}
+        onStartCalibration={startPlanScaleCalibration}
         designStandard={activeDesignStandard}
         canUndo={Boolean(undoableAssistantRepairRecord())}
         onClose={() => {
@@ -13182,14 +13164,6 @@ function HVACPlanStudioApp() {
           }
           setBranchMessage("This recommendation needs a manual plan decision before geometry can change");
         }}
-        onStartBranchPass={() => {
-          setShowMarkupAssistant(false);
-          setActiveMarkupRecommendation(undefined);
-          finishDrawing();
-          setBranchWorkflow("run-first");
-          setActiveTool("branch");
-          setBranchMessage("Run-first branch pass opened from an approved preview · choose the highlighted existing runs");
-        }}
         onOpenSizingReview={() => {
           setShowMarkupAssistant(false);
           setActiveMarkupRecommendation(undefined);
@@ -13200,14 +13174,12 @@ function HVACPlanStudioApp() {
         onPrepareRepairPlan={prepareAssistantRepairPlan}
         onApplyRepairPlan={applyAssistantRepairPlan}
         onUndoRepairBatch={undo}
-        onOpenPlanIntelligence={() => {
-          setShowMarkupAssistant(false);
-          openAIPlanReader("setup");
-        }}
         onShowPlanSetupSource={(page, region) => {
-          setShowMarkupAssistant(false);
           goToPage(page);
           setPlanEvidenceRegion(region ? { page, region } : null);
+          if (window.matchMedia("(max-width: 560px)").matches) {
+            setShowMarkupAssistant(false);
+          }
         }}
         onApplyRecommendation={(recommendation) => {
           const preview = recommendation.preview;
@@ -13312,9 +13284,12 @@ function HVACPlanStudioApp() {
           );
         }}
         onProjectRiskChange={setCloudProjectRisk}
+        currentStepLabel={fieldFirstActiveStep.label}
+        currentStepDetail={fieldFirstActiveStep.detail}
+        currentStepProgress={fieldFirstProgress}
         onContinueWorkflow={() => {
           setShowCloudProjects(false);
-          continueSystemWorkflow(activeWorkflow.activeStage);
+          fieldFirstActiveStep.run();
         }}
         onClose={() => {
           setShowCloudProjects(false);

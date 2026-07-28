@@ -21,29 +21,26 @@ export const metadata: Metadata = {
   description: "Read an HVAC plan, confirm scale and room information, find problems, and approve safe markup repairs.",
   applicationName: "HVAC Plan Studio",
   keywords: ["HVAC plan setup", "HVAC plan reader", "duct plan", "HVAC takeoff", "plan markup"],
-  other: {
-    "codex-preview": "development",
-  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
   openGraph: {
-    title: "HVAC Plan Studio · Smart Plan Setup & Repair",
-    description: "Read the plan. Find what’s missing. Fix with approval.",
+    title: "HVAC Plan Studio · Simple Job Workflow",
+    description: "One job. One clear next step.",
     type: "website",
     images: [{
-      url: "/og.png",
-      width: 1731,
-      height: 909,
-      alt: "HVAC Plan Studio v120 showing a connected supply-and-return system over a floor plan.",
+      url: "/og-v121.png",
+      width: 1717,
+      height: 916,
+      alt: "HVAC Plan Studio showing one five-step job workflow over a connected HVAC plan.",
     }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "HVAC Plan Studio · Smart Plan Setup & Repair",
-    description: "Read the plan. Find what’s missing. Fix with approval.",
-    images: ["/og.png"],
+    title: "HVAC Plan Studio · Simple Job Workflow",
+    description: "One job. One clear next step.",
+    images: ["/og-v121.png"],
   },
 };
 
