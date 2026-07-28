@@ -75,7 +75,29 @@ Advanced coordination remains available without crowding the first screen.
 | v124 | Open PDF & Draw | Shipped |
 | v125 | Setup When You Need It | Shipped |
 | v126 | Direct Symbol Editing | Shipped |
+| v127 | Compact Symbol Workflow | Shipped |
 | v117 | Multi-company commercial operations | Planned for later |
+
+## v127 — Compact Symbol Workflow
+
+### Outcome
+
+A superintendent can keep supply, return, and equipment markup proportional to the construction plan, resize it directly, and route ductwork without provisional size text covering the drawing.
+
+### Shipped capabilities
+
+- Icon resizing extends to 20 percent and label resizing extends to 30 percent.
+- Compact defaults for newly placed terminals, controls, and their labels.
+- The nearby symbol wheel adds a Compact action while retaining all v126 actions.
+- Separate Smaller and Larger controls for icons and labels.
+- One undoable action compacts every supply and return terminal on the active sheet.
+- Zoom-independent selection and resize targets keep compact symbols usable with mouse, touch, and pen.
+- The label halo scales down with the label instead of overwhelming small text.
+- Unconfirmed supply and return runs remain unlabeled until the post-draw detail pass confirms their size.
+
+### Safety boundary
+
+Compacting changes only icon and label presentation. It does not alter scheduled face dimensions, CFM, duct geometry, run connections, system assignment, or source-plan content. Legacy sizes remain unchanged until a user resizes or explicitly compacts them.
 
 ## v126 — Direct Symbol Editing
 
@@ -176,7 +198,7 @@ A superintendent or one-person HVAC business can accept the scale the plan actua
 - Not-to-scale sheets and sheets without usable numeric evidence still use two-point calibration.
 - Completing or canceling a Plan Helper calibration returns the user to Plan Helper instead of losing setup context.
 - The Draw & Detail step guides four passes: supply routes, flex run numbers and confirmed sizes, returns, then connection repair.
-- New supply and return sizes remain visibly provisional until confirmed during the post-draw detail pass.
+- New supply and return runs remain unlabeled until their size is confirmed during the post-draw detail pass.
 - Post-draw number and size edits preserve every route endpoint and intermediate vertex.
 - Existing approval, evidence, geometry, repair-scope, and one-Undo protections remain unchanged.
 
