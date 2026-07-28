@@ -54,6 +54,8 @@ function terminalTarget(overrides = {}) {
   };
 }
 
+const verifiedScale = { verified: true, feetPerUnit: .1 };
+
 test("unsaved T/Y port prepares a high-confidence existing-endpoint repair", () => {
   const runs = [supplyRun()];
   const originalRuns = structuredClone(runs);
@@ -61,9 +63,10 @@ test("unsaved T/Y port prepares a high-confidence existing-endpoint repair", () 
     systemId: "system-1",
     runs,
     targets: [fittingTarget()],
+    scale: verifiedScale,
   });
 
-  assert.equal(plan.version, "connection-repair-v120.0");
+  assert.equal(plan.version, "connection-repair-v123.0");
   assert.equal(plan.counts.ready, 1);
   assert.equal(plan.items[0].status, "ready");
   assert.equal(plan.items[0].candidate.runId, "run-1");
@@ -120,6 +123,7 @@ test("similar nearby endpoints remain an explicit user choice", () => {
       }),
     ],
     targets: [fittingTarget()],
+    scale: verifiedScale,
   });
 
   assert.equal(plan.counts.choice, 1);
@@ -141,6 +145,7 @@ test("same-sheet, same-system, and matching-duct guards reject other runs", () =
       supplyRun({ id: "return-run", type: "return" }),
     ],
     targets: [fittingTarget()],
+    scale: verifiedScale,
   });
 
   assert.equal(plan.counts.blocked, 1);
@@ -163,6 +168,7 @@ test("size and direction signals deterministically favor the compatible endpoint
       }),
     ],
     targets: [fittingTarget()],
+    scale: verifiedScale,
   });
 
   assert.equal(plan.items[0].status, "ready");
@@ -187,6 +193,7 @@ test("two targets cannot automatically claim the same run endpoint", () => {
         targetPoint: { x: 0, y: .5 },
       }),
     ],
+    scale: verifiedScale,
   });
 
   assert.equal(plan.counts.choice, 2);
@@ -198,6 +205,7 @@ test("stale fingerprints stop a reviewed endpoint operation", () => {
     systemId: "system-1",
     runs: [supplyRun()],
     targets: [fittingTarget()],
+    scale: verifiedScale,
   });
   const batch = prepareConnectionRepairBatch(
     plan,
@@ -235,9 +243,9 @@ test("verified plan scale converts physical snap limits to plan units", () => {
     scale: { verified: false, feetPerUnit: .1 },
   });
 
-  assert.notEqual(legacyPlan.items[0].status, "blocked", "legacy 70-unit terminal limit remains the fallback");
+  assert.equal(legacyPlan.items[0].status, "blocked", "endpoint movement waits for a verified sheet scale");
   assert.equal(scaledPlan.items[0].status, "blocked", "3 ft becomes a 30-unit terminal limit");
-  assert.notEqual(unverifiedScalePlan.items[0].status, "blocked", "unverified scale must not change snap limits");
+  assert.equal(unverifiedScalePlan.items[0].status, "blocked", "unverified scale cannot authorize endpoint movement");
   assert.notEqual(scaledPlan.fingerprint, legacyPlan.fingerprint);
   assert.notEqual(scaledPlan.fingerprint, unverifiedScalePlan.fingerprint);
 });
@@ -296,4 +304,45 @@ test("candidate signals explain scope, availability, duct type, and scaled dista
   assert.ok(signals.includes("supply run"));
   assert.ok(signals.includes("endpoint unused"));
   assert.ok(signals.includes("1 ft away"));
+});
+
+test("an unsaved device match requires an explicit choice even with verified scale", () => {
+  const baseInput = {
+    systemId: "system-1",
+    runs: [supplyRun()],
+    targets: [terminalTarget()],
+    scale: verifiedScale,
+  };
+  const review = buildConnectionRepairPlan(baseInput);
+
+  assert.equal(review.items[0].status, "choice");
+  assert.equal(review.items[0].candidate, undefined);
+  assert.match(review.items[0].reason, /Choose the correct unused run end/);
+
+  const chosen = buildConnectionRepairPlan({
+    ...baseInput,
+    choices: { [review.items[0].id]: review.items[0].candidates[0].id },
+  });
+  assert.equal(chosen.items[0].status, "ready");
+  assert.equal(chosen.items[0].candidate.runId, "run-1");
+});
+
+test("an unverified sheet blocks both saved and unsaved endpoint movement", () => {
+  const unsaved = buildConnectionRepairPlan({
+    systemId: "system-1",
+    runs: [supplyRun()],
+    targets: [terminalTarget()],
+    scale: { verified: false, feetPerUnit: .1 },
+  });
+  const saved = buildConnectionRepairPlan({
+    systemId: "system-1",
+    runs: [supplyRun()],
+    targets: [terminalTarget({ savedRunId: "run-1", savedEnd: "start" })],
+    scale: { verified: false, feetPerUnit: .1 },
+  });
+
+  assert.equal(unsaved.items[0].status, "blocked");
+  assert.equal(saved.items[0].status, "blocked");
+  assert.match(unsaved.items[0].reason, /Verify this sheet's scale/);
+  assert.match(saved.items[0].reason, /Verify this sheet's scale/);
 });

@@ -44,11 +44,11 @@ Advanced coordination remains available without crowding the first screen.
 - The assistant may inspect, prepare, or guided-apply; it never silently mutates a plan.
 - Diameter never creates CFM. Reviewed airflow flows into the network; the network can then produce size candidates.
 - Terminal CFM changes and network-size changes are separate stages. New CFM invalidates old size candidates.
-- Equipment, walls, rooms, new routes, intermediate route vertices, and cross-zone changes remain manual. Listed attached endpoints may align to resized fitting ports inside an approved batch.
+- Equipment, walls, rooms, new routes, route endpoints, intermediate vertices, and cross-zone changes remain manual. Approved size fixes update size metadata without moving route points.
 - T/Y topology changes require confirmation on the live plan.
 - A changed evidence fingerprint applies zero stale actions.
 - A prepared batch is bound to the exact repair-plan ID as well as its evidence fingerprint.
-- No eligible fix is selected automatically; the user chooses each fix or explicitly selects the current eligible set.
+- No safe fix is selected automatically; the user chooses each fix or explicitly selects the compatible fixes in the current step.
 - A guided batch changes only the reviewed object set and creates one Undo entry.
 - Planning calculations never become a Manual J, S, D, or T result by changing a label.
 - Warning, evidence, and consequence text is workstation-readable: 15 px working copy, 13 px metadata, 12 px labels, 44 px controls.
@@ -68,7 +68,33 @@ Advanced coordination remains available without crowding the first screen.
 | v120 | Smart Plan Setup & Repair | Shipped |
 | v121 | Simple Job Workflow | Shipped |
 | v122 | Smart Scale & Draw-First Workflow | Shipped |
+| v123 | Markup Assistant Fixes 2.0 | Shipped |
 | v117 | Multi-company commercial operations | Planned for later |
+
+## v123 — Markup Assistant Fixes 2.0
+
+### Outcome
+
+A superintendent or one-person HVAC business sees what must be fixed first, what the assistant can safely prepare now, and what still needs a field decision. Every selectable repair includes an exact before-and-after preview and a plain-language boundary before approval.
+
+### Shipped capabilities
+
+- Deterministic Do first, Next, and Later priorities with an explanation for the order.
+- Do first, Can fix, Needs answer, and All problem views with open-item counts.
+- Exact recommendation-to-action mapping instead of category-wide sizing matches.
+- Ready now, Needs information, and Fix on plan repair groups.
+- Typed before-and-after change previews, affected-object links, safety scope, stage, and geometry status.
+- Terminal-linked F/R numbering that fills blanks only, preserves existing labels, surfaces duplicates, and excludes trunks and unknown-role segments.
+- Stage-safe selection: connections, airflow, and sizes recalculate separately; no action is selected automatically.
+- Source-only airflow repair promotes a matching planning seed to reviewed room-target provenance before sizing.
+- Field-level mutation allowlists and whole-batch rejection for any unreviewed field or object change.
+- Size and fitting-size metadata synchronization with endpoint snapping disabled.
+- Verified per-sheet scale required before endpoint movement; unsaved device matches always require an explicit choice.
+- No-op size candidates are omitted, and unrelated duplicate labels do not block a safe non-colliding blank label.
+- Explicit tri-state size review; a changed or unknown size is not presented as reviewed.
+- Confirmed-scale requirement for applied size changes and purchasing quantities.
+- Return-air choices remain documented human decisions; the assistant never draws a return path or reroutes a trunk.
+- Append-only receipts derive exact applied field changes, including CFM source and fitting-port metadata, and carry priority, stage, change scope, and geometry status.
 
 ## v122 — Smart Scale & Draw-First Workflow
 

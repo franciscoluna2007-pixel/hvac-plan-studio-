@@ -30,10 +30,11 @@ import type {
   RepairPlan,
   RepairPlanAction,
 } from "./repairPlan";
+import { safeStepActions, validateRepairSelection } from "./repairPlan";
 import type { PlanFactStatus, PlanScaleCandidate, SmartPlanSetup } from "./planSetup";
 import type { TakeoffImpact } from "./takeoffIntelligence";
 
-type RecommendationFilter = "open" | "critical" | "all";
+type RecommendationFilter = "do-first" | "can-fix" | "needs-answer" | "all";
 type AssistantView = "setup" | "recommendations" | "standards" | "repair-plan" | "history" | "evidence";
 
 export type PlanHelperPrimaryView = "setup" | "problems" | "fixes";
@@ -117,12 +118,20 @@ function readinessLabel(action: RepairPlanAction) {
 function actionIcon(action: RepairPlanAction) {
   if (action.kind === "terminal-cfm") return <Gauge size={16} />;
   if (action.kind === "run-size") return <Route size={16} />;
+  if (action.kind === "run-number") return <ClipboardCheck size={16} />;
   if (action.kind === "branch-junction") return <Crosshair size={16} />;
   return <AlertTriangle size={16} />;
 }
 
 function formatFeet(value: number) {
   return `${value.toFixed(1)} ft`;
+}
+
+function priorityLabel(action: RepairPlanAction | MarkupRecommendation) {
+  const priority = "priority" in action ? action.priority : action.priorityTier;
+  if (priority === "do-first") return "DO FIRST";
+  if (priority === "next") return "NEXT";
+  return "LATER";
 }
 
 function planFactLabel(status: PlanFactStatus) {
@@ -171,7 +180,7 @@ export default function MarkupAssistantStudio({
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const previewKeyRef = useRef("");
   const wasOpenRef = useRef(open);
-  const [filter, setFilter] = useState<RecommendationFilter>("open");
+  const [filter, setFilter] = useState<RecommendationFilter>("do-first");
   const [activeId, setActiveId] = useState("");
   const [view, setView] = useState<AssistantView>(() => assistantViewForPrimaryView(initialView));
   const [reviewer, setReviewer] = useState("");
@@ -187,7 +196,7 @@ export default function MarkupAssistantStudio({
     )
   );
   const selected = useMemo(() => new Set(selectedActionIds), [selectedActionIds]);
-  const readyActions = repairPlan.actions.filter((action) => action.readiness === "ready");
+  const readyActions = safeStepActions(repairPlan);
   const readySelected = readyActions.filter((action) =>
     action.readiness === "ready" && selected.has(action.id)
   );
@@ -222,6 +231,8 @@ export default function MarkupAssistantStudio({
             requiresPlanningOverride: action.requiresPlanningOverride,
           }
           : {}),
+      stage: action.stage,
+      changes: action.changes,
     })).sort().join("|"),
     takeoffImpact.version,
     takeoffImpact.wastePercent,
@@ -235,6 +246,17 @@ export default function MarkupAssistantStudio({
     action.kind === "run-size" && action.requiresPlanningOverride
   );
   const planningOverrideConfirmed = !requiresPlanningOverride || planningOverrideKey === confirmationKey;
+  const repairActionsByRecommendation = useMemo(() => {
+    const grouped = new Map<string, RepairPlanAction[]>();
+    repairPlan.actions.forEach((action) => {
+      if (!action.recommendationId) return;
+      grouped.set(action.recommendationId, [
+        ...(grouped.get(action.recommendationId) || []),
+        action,
+      ]);
+    });
+    return grouped;
+  }, [repairPlan.actions]);
   const planFactSources = useMemo(() => {
     const sources = [
       ...(smartSetup?.scales.flatMap((scale) => scale.candidates.flatMap((candidate) => candidate.sources)) || []),
@@ -247,8 +269,11 @@ export default function MarkupAssistantStudio({
   }, [smartSetup]);
 
   const filtered = recommendations.filter((recommendation) => {
-    if (filter === "critical") return !recommendation.resolved && recommendation.severity === "critical";
-    if (filter === "open") return !recommendation.resolved;
+    if (recommendation.resolved) return filter === "all";
+    const related = repairActionsForRecommendation(recommendation);
+    if (filter === "do-first") return recommendation.priorityTier === "do-first";
+    if (filter === "can-fix") return related.some((action) => action.readiness === "ready" && action.safeForBatch);
+    if (filter === "needs-answer") return related.some((action) => action.readiness !== "ready");
     return true;
   });
   const active = filtered.find((recommendation) => recommendation.id === activeId) || filtered[0];
@@ -258,12 +283,49 @@ export default function MarkupAssistantStudio({
     activeRepairActions.find((action) => action.readiness === "needs-input") ||
     activeRepairActions[0];
   const previewKey = active ? `${active.id}:${active.evidenceFingerprint}` : "";
+  const repairGroups = [
+    {
+      id: "ready",
+      label: "Ready now",
+      detail: "Exact changes you can select and approve.",
+      actions: repairPlan.actions.filter((action) => action.readiness === "ready"),
+    },
+    {
+      id: "input",
+      label: "Needs information",
+      detail: "Answer or confirm one item before it can change the plan.",
+      actions: repairPlan.actions.filter((action) => action.readiness === "needs-input"),
+    },
+    {
+      id: "plan",
+      label: "Fix on plan",
+      detail: "Route, fitting, and judgment calls stay under your control.",
+      actions: repairPlan.actions.filter((action) =>
+        action.readiness === "confirm-on-plan" || action.readiness === "manual"
+      ),
+    },
+  ].filter((group) => group.actions.length);
+  const hasDoFirstRecommendation = recommendations.some((recommendation) =>
+    !recommendation.resolved && recommendation.priorityTier === "do-first"
+  );
+  const hasSafeRepairAction = repairPlan.actions.some((action) =>
+    action.readiness === "ready" && action.safeForBatch
+  );
 
   useEffect(() => {
     const opening = open && !wasOpenRef.current;
     wasOpenRef.current = open;
-    if (opening) setView(assistantViewForPrimaryView(initialView));
-  }, [initialView, open]);
+    if (opening) {
+      setView(assistantViewForPrimaryView(initialView));
+      setFilter(
+        hasDoFirstRecommendation
+          ? "do-first"
+          : hasSafeRepairAction
+            ? "can-fix"
+            : "all"
+      );
+    }
+  }, [hasDoFirstRecommendation, hasSafeRepairAction, initialView, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -312,19 +374,7 @@ export default function MarkupAssistantStudio({
   }
 
   function repairActionsForRecommendation(recommendation: MarkupRecommendation) {
-    return repairPlan.actions.filter((action) => {
-      if (action.kind === "manual-follow-up") {
-        return action.recommendationId === recommendation.id;
-      }
-      if (action.kind === "branch-junction" && recommendation.preview?.kind === "branch-junction") {
-        return (
-          action.mainRunId === recommendation.preview.mainRunId &&
-          action.branchRunId === recommendation.preview.branchRunId
-        );
-      }
-      if (recommendation.category === "Duct sizing") return action.kind === "run-size";
-      return Boolean(recommendation.drawingId && action.objectIds.includes(recommendation.drawingId));
-    });
+    return repairActionsByRecommendation.get(recommendation.id) || [];
   }
 
   function recommendationStatus(recommendation: MarkupRecommendation) {
@@ -371,12 +421,12 @@ export default function MarkupAssistantStudio({
   }
 
   function toggleAction(action: RepairPlanAction) {
-    if (action.readiness !== "ready") return;
-    onSelectedActionIdsChange(
-      selected.has(action.id)
-        ? selectedActionIds.filter((id) => id !== action.id)
-        : [...selectedActionIds, action.id],
-    );
+    if (action.readiness !== "ready" || !action.safeForBatch) return;
+    const proposed = selected.has(action.id)
+      ? selectedActionIds.filter((id) => id !== action.id)
+      : [...selectedActionIds, action.id];
+    const validation = validateRepairSelection(repairPlan, proposed);
+    if (!proposed.length || validation.valid) onSelectedActionIdsChange(proposed);
   }
 
   function selectAllReadyActions() {
@@ -606,9 +656,18 @@ export default function MarkupAssistantStudio({
           <aside className="markup-assistant-queue" aria-label="Recommendation queue">
             <div className="markup-assistant-filter" aria-label="Recommendation filters">
               {([
-                ["open", "Open", recommendations.filter((row) => !row.resolved).length],
-                ["critical", "Critical", recommendations.filter((row) => !row.resolved && row.severity === "critical").length],
-                ["all", "All", recommendations.length],
+                ["do-first", "Do first", recommendations.filter((row) => !row.resolved && row.priorityTier === "do-first").length],
+                ["can-fix", "Can fix", recommendations.filter((row) =>
+                  !row.resolved && repairActionsForRecommendation(row).some((action) =>
+                    action.readiness === "ready" && action.safeForBatch
+                  )
+                ).length],
+                ["needs-answer", "Needs answer", recommendations.filter((row) =>
+                  !row.resolved && repairActionsForRecommendation(row).some((action) =>
+                    action.readiness !== "ready"
+                  )
+                ).length],
+                ["all", "All", recommendations.filter((row) => !row.resolved).length],
               ] as Array<[RecommendationFilter, string, number]>).map(([id, label, count]) => <button
                 key={id}
                 aria-pressed={filter === id}
@@ -625,7 +684,7 @@ export default function MarkupAssistantStudio({
               >
                 <i>{recommendation.resolved ? <CheckCircle2 size={16} /> : recommendation.severity === "critical" ? <AlertTriangle size={16} /> : recommendation.category === "Duct sizing" ? <Gauge size={16} /> : recommendation.category === "Branch strategy" ? <Route size={16} /> : <Crosshair size={16} />}</i>
                 <span>
-                  <small>{recommendation.category}</small>
+                  <small>{priorityLabel(recommendation)} · {recommendation.category}</small>
                   <strong>{recommendation.title}</strong>
                   <em>{recommendationStatus(recommendation)} · {confidenceLabel(recommendation.confidence)} evidence · {recommendation.evidence[0]}</em>
                 </span>
@@ -642,10 +701,11 @@ export default function MarkupAssistantStudio({
           <main className="markup-assistant-detail" role="tabpanel" id="assistant-panel-recommendations" aria-labelledby="assistant-tab-recommendations">
             {active ? <>
               <div className="markup-detail-heading">
-                <div><small>{active.category} · {active.severity.toUpperCase()}</small><h3>{active.title}</h3></div>
+                <div><small>{priorityLabel(active)} · {active.category}</small><h3>{active.title}</h3></div>
                 <span>{confidenceLabel(active.confidence)} evidence confidence</span>
               </div>
               {(active.decisionStale || stale) && <div className="markup-stale-warning"><AlertTriangle size={18} /><span><strong>Evidence changed.</strong> Refresh the plan before relying on this action.</span></div>}
+              <section className="markup-priority-reason"><small>WHY THIS ORDER</small><p>{active.priorityReason}</p></section>
               <section><small>OBSERVED CONDITION</small><p>{active.detail}</p></section>
               <section><small>WHY IT MATTERS</small><p>{active.whyItMatters}</p></section>
               <section className="markup-proposed-action"><small>PROPOSED REPAIR</small><p>{active.proposedAction}</p></section>
@@ -762,7 +822,7 @@ export default function MarkupAssistantStudio({
               <h3>{stale ? "The plan changed after calculation" : repairPlan.headline}</h3>
               <p>{stale
                 ? "Refresh the fix list before applying. An outdated suggestion cannot change the drawing."
-                : "Review the proposed CFM, size, and fitting-port changes here. No new route is created, and every applied batch has one Undo."}</p>
+                : `${summary.doFirst} must be checked first · ${readyActions.length} safe now · ${repairPlan.needsInputCount} need an answer. No new route is created, and every applied batch has one Undo.`}</p>
             </div>
             <button onClick={onPrepareRepairPlan}>
               {stale ? "Refresh fixes" : preparedEvidenceFingerprint ? "Refresh fix list" : "Prepare fixes"} <ArrowRight size={17} />
@@ -778,7 +838,7 @@ export default function MarkupAssistantStudio({
             <div>
               <small>GUIDED REPAIR PLAN</small>
               <h3>{repairPlan.headline}</h3>
-              <p>Ready actions can be applied together. Input-dependent and topology-changing actions stay outside the batch.</p>
+              <p>Ready fixes are grouped by step. Route and fitting decisions stay on the plan for your approval.</p>
             </div>
             <div className="repair-plan-counts">
               <span><b>{repairPlan.readyCount}</b> ready</span>
@@ -787,19 +847,25 @@ export default function MarkupAssistantStudio({
             </div>
           </header>
 
-          <section className="repair-plan-toolbar" aria-label="Repair selection controls">
+          <section className="repair-plan-toolbar" aria-label="Repair selection controls" aria-live="polite">
             <div>
-              <strong>{readySelected.length} of {readyActions.length} eligible fixes selected</strong>
-              <span>No fix is selected automatically. Add one fix at a time or select the current eligible set.</span>
+              <strong>{readySelected.length} of {readyActions.length} safe fixes selected</strong>
+              <span>Nothing is selected automatically. Connection, airflow, and size steps never mix.</span>
             </div>
             <button disabled={!readyActions.length || stale} onClick={selectAllReadyActions}>
-              <ListChecks size={16} /> {allReadySelected ? "Clear selected fixes" : `Select all ${readyActions.length} eligible fixes`}
+              <ListChecks size={16} /> {allReadySelected ? "Clear selected fixes" : `Select safe fixes in this step (${readyActions.length})`}
             </button>
             <button disabled={!selectedActionIds.length} onClick={() => onSelectedActionIdsChange([])}>Clear</button>
           </section>
 
           <div className="repair-action-list">
-            {repairPlan.actions.map((action) => <article
+            {repairGroups.map((group) => <section className="repair-action-group" key={group.id}>
+              <header>
+                <div><small>FIX STEP</small><h3>{group.label}</h3></div>
+                <span>{group.actions.length} item{group.actions.length === 1 ? "" : "s"} · {group.detail}</span>
+              </header>
+              <div>
+              {group.actions.map((action) => <article
               key={action.id}
               id={action.id}
               className={`repair-action ${action.readiness} ${selected.has(action.id) ? "selected" : ""}`}
@@ -807,12 +873,12 @@ export default function MarkupAssistantStudio({
               <button
                 className="repair-action-select"
                 aria-pressed={selected.has(action.id)}
-                disabled={action.readiness !== "ready" || stale}
+                disabled={action.readiness !== "ready" || stale || !readyActions.some((row) => row.id === action.id)}
                 onClick={() => toggleAction(action)}
               >
                 <i>{action.readiness === "ready" && selected.has(action.id) ? <CheckCircle2 size={18} /> : actionIcon(action)}</i>
                 <span>
-                  <small>{readinessLabel(action)}</small>
+                  <small>{priorityLabel(action)} · {readinessLabel(action)}</small>
                   <strong>{action.title} · {action.location}</strong>
                   <em>{action.problem}</em>
                 </span>
@@ -833,6 +899,19 @@ export default function MarkupAssistantStudio({
                     : <p>No drawing object is linked. Use the decision record and source evidence.</p>}
                 </div>
               </div>
+              <div className="repair-action-preview" aria-label={`Before and after preview for ${action.title}`}>
+                <header>
+                  <small>REVIEWED FIELD CHANGES</small>
+                  <span>{action.geometryChanges ? "PLAN CONFIRMATION REQUIRED" : "NO ROUTE MOVEMENT"}</span>
+                </header>
+                {action.changes.length ? action.changes.map((change) => <div key={`${change.objectId}-${change.field}`}>
+                  <span><small>BEFORE</small><strong>{change.before}</strong></span>
+                  <ArrowRight size={17} />
+                  <span><small>AFTER</small><strong>{change.after}</strong></span>
+                </div>) : <p>{action.changeScope}</p>}
+                <footer><ShieldCheck size={14} /> {action.changeScope}</footer>
+              </div>
+              <p className="repair-priority-reason"><strong>{priorityLabel(action)}:</strong> {action.priorityReason}</p>
               <div className="repair-action-evidence">
                 {action.evidence.map((evidence) => <span key={evidence}><ShieldCheck size={13} /> {evidence}</span>)}
                 {action.blocker && <p><AlertTriangle size={14} /> {action.blocker}</p>}
@@ -840,6 +919,7 @@ export default function MarkupAssistantStudio({
               <div className="repair-action-actions">
                 {action.kind === "terminal-cfm" && action.readiness !== "ready" && <button onClick={onOpenSizingReview}><Gauge size={15} /> {action.nextStepLabel}</button>}
                 {action.kind === "run-size" && action.readiness !== "ready" && <button onClick={onOpenSizingReview}><Gauge size={15} /> {action.nextStepLabel}</button>}
+                {action.kind === "run-number" && action.readiness !== "ready" && <button onClick={() => onFocusDrawing(action.drawingId)}><Crosshair size={15} /> {action.nextStepLabel}</button>}
                 {action.kind === "branch-junction" && (() => {
                   const recommendation = recommendations.find((row) =>
                     row.preview?.kind === "branch-junction" &&
@@ -858,9 +938,11 @@ export default function MarkupAssistantStudio({
                 })()}
               </div>
             </article>)}
+              </div>
+            </section>)}
           </div>
 
-          <section className="takeoff-delta-panel">
+          {scaleVerified ? <section className="takeoff-delta-panel">
             <header>
               <div><small>MATERIAL IMPACT</small><h3>Before → after purchasing impact</h3></div>
               <span>{takeoffImpact.affectedFittings} fitting port{takeoffImpact.affectedFittings === 1 ? "" : "s"} to synchronize</span>
@@ -877,13 +959,19 @@ export default function MarkupAssistantStudio({
               </div>)}
               {!takeoffImpact.changedRows && <p>Selected actions do not change material quantities yet.</p>}
             </div>
-          </section>
+          </section> : <section className="takeoff-delta-panel scale-hold" role="alert">
+            <header>
+              <div><small>MATERIAL IMPACT ON HOLD</small><h3>Confirm the sheet scale before purchasing quantities</h3></div>
+              <AlertTriangle size={20} />
+            </header>
+            <p>Run labels and other metadata-only fixes remain available. Length, box counts, and size-apply purchasing impact stay hidden until the affected plan scale is confirmed.</p>
+          </section>}
 
           <section className="repair-plan-approval">
             <div>
               <small>ONE CONTROLLED TRANSACTION</small>
               <h3>Apply {readySelected.length} selected repair{readySelected.length === 1 ? "" : "s"} · one Undo</h3>
-              <p>Revalidation runs immediately before commit. A changed fingerprint applies zero actions.</p>
+              <p>The plan is checked again immediately before saving. If anything changed, nothing is applied.</p>
             </div>
             <div className="repair-plan-reviewer">
               <label>Reviewer / initials · required<input required value={reviewer} onChange={(event) => setReviewer(event.target.value)} placeholder="Who reviewed this batch?" /></label>
@@ -914,9 +1002,9 @@ export default function MarkupAssistantStudio({
             >
               <ShieldCheck size={18} />
               {autonomyMode !== "guided"
-                ? "Choose Guided apply to enable the batch"
+                ? "Choose Apply approved fixes to enable this button"
                 : applying
-                  ? "Revalidating and applying…"
+                  ? "Checking the plan and applying..."
                   : `Apply ${readySelected.length} selected repair${readySelected.length === 1 ? "" : "s"} · one Undo`}
             </button>
             <p className="repair-planning-notice">{repairPlan.planningNotice} Verify blower data, component losses, effective length, installed flex condition, and field airflow before release.</p>
@@ -925,7 +1013,7 @@ export default function MarkupAssistantStudio({
 
         {view === "history" && <main className="repair-history-workspace" role="tabpanel" id="assistant-panel-history" aria-labelledby="assistant-tab-history">
           <header>
-            <div><small>REPAIR HISTORY &amp; UNDO</small><h3>Repair checkpoints and apply receipts</h3><p>Every applied batch preserves the evidence fingerprint, object list, calculation version, and takeoff impact.</p></div>
+            <div><small>REPAIR HISTORY &amp; UNDO</small><h3>Repair checkpoints and apply receipts</h3><p>Every applied batch preserves its exact before-and-after fields, evidence set, object list, calculation version, and takeoff impact.</p></div>
             <button disabled={!canUndo} onClick={onUndoRepairBatch}><Undo2 size={16} /> Undo latest plan change</button>
           </header>
           <div className="repair-history-list">
@@ -993,7 +1081,7 @@ export default function MarkupAssistantStudio({
 
       <footer className="markup-assistant-footer">
         <ShieldCheck size={18} />
-        <span><strong>Planning mode.</strong> The assistant may resize eligible connected runs and synchronize fitting ports only after one final batch approval. It never invents CFM from diameter, moves walls or equipment, draws a new route, or connects zones; attached endpoints may align only when listed in the reviewed diff.</span>
+        <span><strong>Planning mode.</strong> The assistant may fill blank terminal-run labels, apply reviewed terminal airflow, and update reviewed sizes only after final approval. It never invents CFM, moves route points, draws a return or trunk, moves walls or equipment, or connects zones.</span>
         <button onClick={onClose}>Return to plan</button>
       </footer>
     </section>

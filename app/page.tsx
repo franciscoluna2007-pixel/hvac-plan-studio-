@@ -22,11 +22,23 @@ import { deriveDrawFirstWorkflow } from "./jobWorkflow";
 import {
   ASSISTANT_REPAIR_VERSION,
   buildRepairPlan,
+  validateRepairSelection,
   type RepairAutonomyMode,
   type RepairBatchRecord,
+  type RepairChange,
+  type RunNumberRepairAction,
   type RunSizeRepairAction,
   type TerminalCfmRepairAction,
 } from "./repairPlan";
+import {
+  applyRunNumberEdits,
+  buildRunNumberCandidates,
+} from "./assistantRunDetails";
+import {
+  describeRepairMutationChanges,
+  validateRepairMutationScope,
+  type RepairMutationAction,
+} from "./repairSafety";
 import { buildTakeoffImpact } from "./takeoffIntelligence";
 import {
   clampZoom,
@@ -822,6 +834,7 @@ type TerminalCfmProposal = {
   room: string;
   label: string;
   current: number;
+  currentSource: "planning-seed" | "manual" | "room-target" | "unset";
   proposed: number;
   target: number;
   terminalCount: number;
@@ -853,6 +866,12 @@ function isPrimaryAirflowEquipment(drawing?: Drawing) {
     drawing?.symbol?.kind === "equipment" &&
     primaryAirflowEquipmentVariants.has(drawing.symbol.variant || "")
   );
+}
+
+function terminalLinkedRunId(drawing: Drawing) {
+  return ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "")
+    ? drawing.symbol?.connectedRunId
+    : undefined;
 }
 
 function equipmentTypeName(variant = "") {
@@ -4526,6 +4545,7 @@ function HVACPlanStudioApp() {
           id: drawing.id,
           type: drawing.type,
           current: drawing.size,
+          currentSizeReviewed: drawing.sizeReviewed,
           recommended,
           cfm,
           currentVelocity: velocityFpm(drawing.size, cfm),
@@ -5153,11 +5173,15 @@ function HVACPlanStudioApp() {
           room: room.name,
           label: drawing.symbol?.label || (kind === "supply" ? "Supply diffuser" : "Return grille"),
           current: drawing.cfm || 0,
+          currentSource: (drawing.cfmSource || "unset") as TerminalCfmProposal["currentSource"],
           proposed: split.get(drawing.id) || 0,
           target: total,
           terminalCount: terminals.length,
           connected: network.rootedTerminalRun.has(drawing.id),
-        })).filter((proposal) => proposal.current !== proposal.proposed);
+        })).filter((proposal) =>
+          proposal.current !== proposal.proposed ||
+          proposal.currentSource !== "room-target"
+        );
       };
       return [
         ...build(supplyTerminals, "supply", target.supplyCfm),
@@ -5953,7 +5977,7 @@ function HVACPlanStudioApp() {
         elevation: drawing.elevation || "",
         labelOffset: drawing.labelOffset,
         runNumber: drawing.runNumber || "",
-        sizeReviewed: drawing.sizeReviewed !== false,
+        sizeReviewed: drawing.sizeReviewed ?? null,
         fitting: drawing.fitting,
         symbol: drawing.symbol,
       }));
@@ -8489,7 +8513,7 @@ function HVACPlanStudioApp() {
       const resized = drawings.map((drawing) => drawing.id === selectedId ? {
         ...drawing,
         size,
-        sizeReviewed: ["supply", "return"].includes(drawing.type) ? true : drawing.sizeReviewed,
+        sizeReviewed: ["supply", "return"].includes(drawing.type) ? false : drawing.sizeReviewed,
       } : drawing);
       setHistory(synchronizeFittingSizes(resized, drawings, { snapEndpoints: false }));
     }
@@ -8497,11 +8521,15 @@ function HVACPlanStudioApp() {
   }
 
   function orderedRunsForDetail(type?: "supply" | "return") {
+    const terminalRunIds = new Set(
+      drawings.map(terminalLinkedRunId).filter((id): id is string => Boolean(id))
+    );
     return drawings
       .filter((drawing) =>
         drawingSystem(drawing) === activeSystem &&
         !drawing.fitting &&
         !drawing.symbol &&
+        terminalRunIds.has(drawing.id) &&
         (type ? drawing.type === type : ["supply", "return"].includes(drawing.type))
       )
       .slice()
@@ -8563,7 +8591,7 @@ function HVACPlanStudioApp() {
 
   function focusNextRunDetail(type?: "supply" | "return") {
     const pending = orderedRunsForDetail(type).filter((drawing) =>
-      !drawing.runNumber?.trim() || drawing.sizeReviewed === false
+      !drawing.runNumber?.trim() || drawing.sizeReviewed !== true
     );
     if (!pending.length) {
       setBranchMessage(`${type === "return" ? "Return" : type === "supply" ? "Flex" : "Run"} details are complete`);
@@ -9963,17 +9991,25 @@ function HVACPlanStudioApp() {
   const activeReturnDevicesForWorkflow = drawings.filter((drawing) =>
     drawingSystem(drawing) === activeSystem && drawing.symbol?.kind === "returnGrille"
   );
+  const workflowTerminalRunIds = new Set([
+    ...activeSupplyDevicesForWorkflow.map(terminalLinkedRunId),
+    ...activeReturnDevicesForWorkflow.map(terminalLinkedRunId),
+  ].filter((id): id is string => Boolean(id)));
   const drawFirstWorkflow = deriveDrawFirstWorkflow({
     pdfLoaded: Boolean(pdf),
     hasPrimaryUnit: Boolean(activeAirflowSetup.primaryUnit),
     supplyRunCount: activeSupplyRunsForWorkflow.length,
     supplyDeviceCount: activeSupplyDevicesForWorkflow.length,
-    pendingSupplyNumbers: activeSupplyRunsForWorkflow.filter((drawing) => !drawing.runNumber?.trim()).length,
-    pendingSupplySizes: activeSupplyRunsForWorkflow.filter((drawing) => drawing.sizeReviewed === false).length,
+    pendingSupplyNumbers: activeSupplyRunsForWorkflow.filter((drawing) =>
+      workflowTerminalRunIds.has(drawing.id) && !drawing.runNumber?.trim()
+    ).length,
+    pendingSupplySizes: activeSupplyRunsForWorkflow.filter((drawing) => drawing.sizeReviewed !== true).length,
     returnRunCount: activeReturnRunsForWorkflow.length,
     returnDeviceCount: activeReturnDevicesForWorkflow.length,
-    pendingReturnNumbers: activeReturnRunsForWorkflow.filter((drawing) => !drawing.runNumber?.trim()).length,
-    pendingReturnSizes: activeReturnRunsForWorkflow.filter((drawing) => drawing.sizeReviewed === false).length,
+    pendingReturnNumbers: activeReturnRunsForWorkflow.filter((drawing) =>
+      workflowTerminalRunIds.has(drawing.id) && !drawing.runNumber?.trim()
+    ).length,
+    pendingReturnSizes: activeReturnRunsForWorkflow.filter((drawing) => drawing.sizeReviewed !== true).length,
     connectionProblems: activeBuilderSummary.unconnectedDevices + activeBuilderSummary.brokenPorts,
     connectionsComplete,
   });
@@ -10053,6 +10089,7 @@ function HVACPlanStudioApp() {
       },
     },
   ] as const;
+  const activeSmartPlanSetup = buildSmartPlanSetup(activePlanAnalysis);
   const planSetupStep = {
     id: "setup",
     label: "Plan Setup",
@@ -10085,11 +10122,37 @@ function HVACPlanStudioApp() {
     const run = drawings.find((drawing) => drawing.id === opportunity.mainRunId);
     return run && drawingSystem(run) === activeSystem;
   });
+  const assistantTerminalRunIds = new Set(drawings
+    .filter((drawing) =>
+      drawingSystem(drawing) === activeSystem &&
+      ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "")
+    )
+    .map(terminalLinkedRunId)
+    .filter((id): id is string => Boolean(id)));
+  const assistantRunNumberCandidates = buildRunNumberCandidates(drawings
+    .filter((drawing) =>
+      drawingSystem(drawing) === activeSystem &&
+      !drawing.fitting &&
+      !drawing.symbol &&
+      ["supply", "return"].includes(drawing.type)
+    )
+    .map((drawing) => ({
+      id: drawing.id,
+      type: drawing.type as "supply" | "return",
+      page: drawing.page,
+      size: drawing.size,
+      roomName: drawing.roomName,
+      runNumber: drawing.runNumber,
+      terminalLinked: assistantTerminalRunIds.has(drawing.id),
+      firstPoint: drawing.points[0],
+    })));
   const markupRecommendations = buildMarkupRecommendations({
     findings: activePlanIntelligenceFindings,
     branchOpportunities: assistantBranchOpportunities,
     sizingCandidateCount: activeBuilderSummary.sizing.length,
     sizingEvidenceFingerprint: stableTextHash(JSON.stringify(activeBuilderSummary.sizing)),
+    runNumberCandidateCount: assistantRunNumberCandidates.length,
+    runNumberEvidenceFingerprint: stableTextHash(JSON.stringify(assistantRunNumberCandidates)),
     scaleVerified: activeSystemScaleStatus.verified,
     designCfm: activeAirflowSetup.targetCfm,
   });
@@ -10108,6 +10171,7 @@ function HVACPlanStudioApp() {
         size: drawing.size,
         runNumber: drawing.runNumber,
         sizeReviewed: drawing.sizeReviewed,
+        terminalLinked: assistantTerminalRunIds.has(drawing.id),
         roomName: drawing.roomName,
         roomType: drawing.roomType,
       })),
@@ -10180,6 +10244,13 @@ function HVACPlanStudioApp() {
       branchRunId: opportunity.branchRunId,
       style: opportunity.style,
     })),
+    runNumbers: assistantRunNumberCandidates.map((candidate) => ({
+      drawingId: candidate.drawingId,
+      current: candidate.currentRunNumber,
+      proposed: candidate.proposedRunNumber,
+      duplicate: candidate.duplicateExistingNumber,
+      evidenceFingerprint: candidate.evidenceFingerprint,
+    })),
   }));
   const assistantRepairPlan = buildRepairPlan({
     systemId: activeSystem,
@@ -10187,14 +10258,49 @@ function HVACPlanStudioApp() {
     recommendations: markupRecommendations,
     cfmCandidates: assistantCfmCandidates,
     roomTargetsReviewed: roomAirflowTargetsAreReviewed(),
+    runNumberCandidates: assistantRunNumberCandidates,
     sizeCandidates: assistantSizingCandidates.map((candidate) => {
       const affectedFittings = drawings.filter((drawing) =>
         drawing.fitting?.connectedIds.includes(candidate.id) &&
         drawingSystem(drawing) === activeSystem
       );
+      const affectedFittingChanges: RepairChange[] = affectedFittings.flatMap((drawing) => {
+        const fitting = drawing.fitting!;
+        const port = fitting.connectedIds.indexOf(candidate.id);
+        if (port < 0) return [];
+        const currentPortSizes = [
+          fitting.upstreamSize,
+          fitting.downstreamSize,
+          fitting.branchSize,
+        ];
+        const proposedPortSizes = [...currentPortSizes];
+        proposedPortSizes[port] = candidate.recommended;
+        const proposedLabel = proposedPortSizes.join("×");
+        const portLabels = ["upstream", "downstream", "branch"];
+        const changes: RepairChange[] = [];
+        if (drawing.size !== proposedLabel) {
+          changes.push({
+            objectId: drawing.id,
+            field: "Fitting size label",
+            before: drawing.size,
+            after: proposedLabel,
+          });
+        }
+        if (currentPortSizes[port] !== candidate.recommended) {
+          changes.push({
+            objectId: drawing.id,
+            field: `Fitting ${portLabels[port]} size`,
+            before: `${currentPortSizes[port]}"`,
+            after: `${candidate.recommended}"`,
+          });
+        }
+        return changes;
+      });
       return {
         ...candidate,
+        type: candidate.type as "supply" | "return" | "fresh",
         affectedFittingIds: affectedFittings.map((drawing) => drawing.id),
+        affectedFittingChanges,
         affectedConnectedRunIds: affectedFittings.flatMap((drawing) =>
           drawing.fitting?.connectedIds.filter((id) => {
             const connected = drawings.find((candidateDrawing) => candidateDrawing.id === id);
@@ -10228,12 +10334,13 @@ function HVACPlanStudioApp() {
   );
   const assistantPreviewResizedDrawings = drawings.map((drawing) =>
     assistantPreviewSizeChanges.has(drawing.id)
-      ? { ...drawing, size: assistantPreviewSizeChanges.get(drawing.id)! }
+      ? { ...drawing, size: assistantPreviewSizeChanges.get(drawing.id)!, sizeReviewed: false }
       : drawing
   );
   const assistantPreviewDrawings = assistantSelectedSizeActions.length
     ? synchronizeFittingSizes(assistantPreviewResizedDrawings, drawings, {
       fittingIds: new Set(assistantSelectedSizeActions.flatMap((action) => action.affectedFittingIds)),
+      snapEndpoints: false,
     })
     : drawings;
   const assistantTakeoffRuns = (sourceDrawings: Drawing[]) => sourceDrawings.flatMap((drawing) => {
@@ -10261,7 +10368,6 @@ function HVACPlanStudioApp() {
       .map((action) => action.blocker || action.title),
   });
   const activeAdvancedPlanIntelligence = buildAdvancedPlanIntelligence(activePlanAnalysis);
-  const activeSmartPlanSetup = buildSmartPlanSetup(activePlanAnalysis);
 
   function prepareAssistantRepairPlan() {
     setAssistantPreparedEvidenceFingerprint(assistantRepairPlan.evidenceFingerprint);
@@ -10298,20 +10404,15 @@ function HVACPlanStudioApp() {
       return false;
     }
 
-    const requestedIds = new Set(input.actionIds);
-    const actions = assistantRepairPlan.actions.filter((action) =>
-      requestedIds.has(action.id) && action.readiness === "ready"
-    );
-    if (!actions.length || actions.length !== requestedIds.size) {
-      setBranchMessage("One or more selected actions are no longer eligible. Zero actions were applied.");
+    const selection = validateRepairSelection(assistantRepairPlan, input.actionIds);
+    const actions = selection.actions;
+    if (!selection.valid || !actions.length) {
+      setBranchMessage(`${selection.reason || "No safe fixes were selected."} Zero actions were applied.`);
       return false;
     }
     const cfmActions = actions.filter((action): action is TerminalCfmRepairAction => action.kind === "terminal-cfm");
     const sizeActions = actions.filter((action): action is RunSizeRepairAction => action.kind === "run-size");
-    if (cfmActions.length && sizeActions.length) {
-      setBranchMessage("Apply reviewed terminal CFM first, then rebuild the repair plan before resizing the network. Zero actions were applied.");
-      return false;
-    }
+    const runNumberActions = actions.filter((action): action is RunNumberRepairAction => action.kind === "run-number");
     if (sizeActions.some((action) => action.requiresPlanningOverride) && !input.planningOverrideAcknowledged) {
       setBranchMessage("The velocity-only planning override was not acknowledged. Zero size changes were applied.");
       return false;
@@ -10319,6 +10420,7 @@ function HVACPlanStudioApp() {
 
     const liveCfm = new Map(terminalCfmProposals().map((proposal) => [proposal.drawingId, proposal]));
     const liveSizing = new Map(sizingSuggestions().map((suggestion) => [suggestion.id, suggestion]));
+    const liveRunNumbers = new Map(assistantRunNumberCandidates.map((candidate) => [candidate.drawingId, candidate]));
     const allActionsStillMatch = actions.every((action) => {
       if (action.kind === "terminal-cfm") {
         const drawing = drawings.find((candidate) => candidate.id === action.drawingId);
@@ -10329,6 +10431,7 @@ function HVACPlanStudioApp() {
           roomAirflowTargetsAreReviewed() &&
           proposal.connected &&
           (drawing.cfm || 0) === action.currentCfm &&
+          (drawing.cfmSource || "unset") === action.currentCfmSource &&
           proposal.proposed === action.proposedCfm
         );
       }
@@ -10349,6 +10452,20 @@ function HVACPlanStudioApp() {
           !suggestion.overCapacity
         );
       }
+      if (action.kind === "run-number") {
+        const drawing = drawings.find((candidate) => candidate.id === action.drawingId);
+        const candidate = liveRunNumbers.get(action.drawingId);
+        return Boolean(
+          drawing &&
+          candidate &&
+          candidate.terminalLinked &&
+          !candidate.duplicateExistingNumber &&
+          !drawing.runNumber?.trim() &&
+          candidate.proposedRunNumber === action.proposedRunNumber &&
+          candidate.evidenceFingerprint &&
+          action.evidenceFingerprint.includes(candidate.evidenceFingerprint)
+        );
+      }
       return false;
     });
     if (!allActionsStillMatch) {
@@ -10359,18 +10476,36 @@ function HVACPlanStudioApp() {
     let next = drawings;
     if (cfmActions.length) {
       const changes = new Map(cfmActions.map((action) => [action.drawingId, action.proposedCfm]));
-      next = drawings.map((drawing) => changes.has(drawing.id)
+      next = next.map((drawing) => changes.has(drawing.id)
         ? { ...drawing, cfm: changes.get(drawing.id), cfmSource: "room-target" as const }
         : drawing);
-    } else if (sizeActions.length) {
+    }
+    if (sizeActions.length) {
       const changes = new Map(sizeActions.map((action) => [action.drawingId, action.proposedSize]));
-      const resized = drawings.map((drawing) => changes.has(drawing.id)
-        ? { ...drawing, size: changes.get(drawing.id)! }
+      const resized = next.map((drawing) => changes.has(drawing.id)
+        ? { ...drawing, size: changes.get(drawing.id)!, sizeReviewed: false }
         : drawing);
       const affectedFittingIds = new Set(sizeActions.flatMap((action) => action.affectedFittingIds));
       next = synchronizeFittingSizes(resized, drawings, {
         fittingIds: affectedFittingIds,
+        snapEndpoints: false,
       });
+    }
+    if (runNumberActions.length) {
+      try {
+        const activeSystemDrawings = next.filter((drawing) => drawingSystem(drawing) === activeSystem);
+        const numberedSystemDrawings = applyRunNumberEdits(activeSystemDrawings, runNumberActions.map((action) => ({
+          drawingId: action.drawingId,
+          currentRunNumber: action.currentRunNumber,
+          proposedRunNumber: action.proposedRunNumber,
+          evidenceFingerprint: action.evidenceFingerprint,
+        })));
+        const numberedById = new Map(numberedSystemDrawings.map((drawing) => [drawing.id, drawing]));
+        next = next.map((drawing) => numberedById.get(drawing.id) || drawing);
+      } catch {
+        setBranchMessage("A run label changed after review. Zero actions were applied - refresh the fix list.");
+        return false;
+      }
     }
     const beforeById = new Map(drawings.map((drawing) => [drawing.id, JSON.stringify(drawing)]));
     const allowedObjectIds = new Set(actions.flatMap((action) => action.objectIds));
@@ -10385,10 +10520,43 @@ function HVACPlanStudioApp() {
       setBranchMessage("A fitting synchronization would change an object outside the reviewed batch. Zero actions were applied.");
       return false;
     }
+    const mutationActions: RepairMutationAction[] = [];
+    actions.forEach((action) => {
+      if (action.kind === "terminal-cfm") {
+        mutationActions.push({ id: action.id, kind: "terminal-cfm", drawingId: action.drawingId });
+      } else if (action.kind === "run-size") {
+        mutationActions.push({
+          id: action.id,
+          kind: "run-size",
+          drawingId: action.drawingId,
+          affectedFittingIds: action.affectedFittingIds,
+        });
+      } else if (action.kind === "run-number") {
+        mutationActions.push({ id: action.id, kind: "run-number", drawingId: action.drawingId });
+      }
+    });
+    const mutationViolations = validateRepairMutationScope(drawings, next, mutationActions);
+    if (mutationViolations.length) {
+      setBranchMessage(`An unreviewed ${mutationViolations[0].field} change was detected. Zero actions were applied.`);
+      return false;
+    }
     if (next === drawings || JSON.stringify(next) === JSON.stringify(drawings)) {
       setBranchMessage("The selected repair plan does not change the current drawing. Zero actions were applied.");
       return false;
     }
+    const exactMutationChanges = describeRepairMutationChanges(drawings, next, mutationActions);
+    const exactChangesByAction = new Map<string, RepairChange[]>();
+    exactMutationChanges.forEach((change) => {
+      exactChangesByAction.set(change.actionId, [
+        ...(exactChangesByAction.get(change.actionId) || []),
+        {
+          objectId: change.objectId,
+          field: change.field,
+          before: change.before,
+          after: change.after,
+        },
+      ]);
+    });
 
     const beforeDrawingFingerprint = systemDrawingSignatureFor(drawings, activeSystem);
     const afterDrawingFingerprint = systemDrawingSignatureFor(next, activeSystem);
@@ -10434,6 +10602,11 @@ function HVACPlanStudioApp() {
         expectedResult: action.expectedResult,
         objectIds: action.objectIds,
         evidenceFingerprint: action.evidenceFingerprint,
+        priority: action.priority,
+        stage: action.stage,
+        changeScope: action.changeScope,
+        geometryChanges: action.geometryChanges,
+        changes: exactChangesByAction.get(action.id) || action.changes,
       })),
       takeoffImpact: appliedTakeoffImpact,
       reviewer: input.reviewer,
@@ -11282,13 +11455,13 @@ function HVACPlanStudioApp() {
                 <small>Supply and return only · every connected T/Y leg matches this weight automatically.</small>
               </label>}
               {selectedRun && <div className="engineering-properties">
-                {["supply", "return"].includes(selectedRun.type) && <div className={`run-detail-editor ${selectedRun.runNumber && selectedRun.sizeReviewed !== false ? "complete" : "attention"}`}>
+                {["supply", "return"].includes(selectedRun.type) && <div className={`run-detail-editor ${selectedRun.runNumber && selectedRun.sizeReviewed === true ? "complete" : "attention"}`}>
                   <div className="run-detail-heading">
                     <span>
                       <small>POST-DRAW DETAIL PASS</small>
                       <strong>{selectedRun.type === "supply" ? "Flex number & size" : "Return number & size"}</strong>
                     </span>
-                    <b>{selectedRun.runNumber && selectedRun.sizeReviewed !== false ? "READY" : "REVIEW"}</b>
+                    <b>{selectedRun.runNumber && selectedRun.sizeReviewed === true ? "READY" : "REVIEW"}</b>
                   </div>
                   <div className="run-detail-fields">
                     <label>Run number
@@ -11873,7 +12046,7 @@ function HVACPlanStudioApp() {
                         >
                           <title>Drag to reposition this run label</title>
                           {drawing.runNumber ? `${drawing.runNumber} · ` : ""}
-                          {drawing.sizeReviewed === false ? "SIZE LATER" : `${drawing.size}"`}
+                          {drawing.sizeReviewed !== true ? "SIZE LATER" : `${drawing.size}"`}
                           {showLengthLabels ? ` · ${drawingLengthFeet(drawing).toFixed(1)} LF` : ""}
                           {showCfmLabels ? ` · ${runAirflow(drawing)} CFM${airflowNetwork().calculated.get(drawing.id) ? " AUTO" : ""}` : ""}
                           {drawing.elevation ? ` · EL ${drawing.elevation}` : ""}
@@ -12248,7 +12421,7 @@ function HVACPlanStudioApp() {
                             aria-pressed={connectionCandidateChoices[item.id] === candidate.id}
                             onClick={() => chooseConnectionCandidate(item, candidate.id)}
                           >
-                            Use {candidate.runSize}&quot; run · {candidate.end} end · {connectionRepairDistanceValue(candidate.distance)}
+                            Use {candidate.runSize}&quot; run · {candidate.end} end · {connectionRepairDistanceValue(candidate.distance, item.page)}
                             <small>{candidate.signals.join(" · ")}</small>
                           </button>)}
                         </div>}
@@ -12673,7 +12846,7 @@ function HVACPlanStudioApp() {
                 <label className={activeFieldPackage.connectionProblems ? "hold" : "clear"}>{activeFieldPackage.connectionProblems ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}<span><b>Connections</b><small>{activeFieldPackage.connectionProblems ? `${activeFieldPackage.connectionProblems} open or detached connection${activeFieldPackage.connectionProblems === 1 ? "" : "s"}` : "Saved run and fitting connections are complete"}</small></span></label>
                 <label className={materialSummary().holds.length ? "hold" : "clear"}>{materialSummary().holds.length ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}<span><b>Fabrication coordination</b><small>{materialSummary().holds.length ? "Clear the highlighted plan issues before fabrication" : "No active coordination holds"}</small></span></label>
               </div>
-              <div className="production-guardrail"><ShieldAlert size={15} /><span><strong>Your drawing stays manual.</strong><small>v122 adds numbers and reviewed sizes after drawing without moving route geometry. Connection and repair changes still require approval.</small></span></div>
+              <div className="production-guardrail"><ShieldAlert size={15} /><span><strong>Your drawing stays manual.</strong><small>Add field numbers and confirm sizes after drawing. Connection, route, return, and repair decisions still require approval.</small></span></div>
             </>}
             {takeoffView === "materials" && <>
               <div className="material-controls production-controls">
@@ -13493,7 +13666,7 @@ function HVACPlanStudioApp() {
         sourceFileName={sourceFileName || `${fileName}.pdf`}
         projectName={fileName}
         currentScaleLabel={scaleLabel}
-        scaleVerified={scaleVerified}
+        scaleVerified={activeSystemScaleStatus.verified}
         onClose={() => setShowPlanIntelligence(false)}
         onShowPage={(page, region) => {
           setShowPlanIntelligence(false);

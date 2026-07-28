@@ -41,6 +41,7 @@ export type BuildDesignStandardInput = {
     size: string;
     runNumber?: string;
     sizeReviewed?: boolean;
+    terminalLinked?: boolean;
     roomName?: string;
     roomType?: "general" | "bedroom" | "bathroom" | "closet";
   }>;
@@ -81,7 +82,10 @@ export function buildDesignStandardProfile(input: BuildDesignStandardInput): Des
   const oversized = input.runs.filter((run) => asNumber(run.size) > 16);
   const unreviewedLabels = input.runs.filter((run) =>
     !run.size.trim() ||
-    (run.type !== "fresh" && (!run.runNumber?.trim() || run.sizeReviewed === false))
+    (run.type !== "fresh" && (
+      run.sizeReviewed !== true ||
+      (run.terminalLinked && !run.runNumber?.trim())
+    ))
   );
   const freshRuns = input.runs.filter((run) => run.type === "fresh");
   const supplyRuns = input.runs.filter((run) => run.type === "supply");
@@ -91,7 +95,11 @@ export function buildDesignStandardProfile(input: BuildDesignStandardInput): Des
     normalizeRoom(terminal.roomName)
   );
   const bedroomReturns = new Set(input.terminals
-    .filter((terminal) => terminal.kind === "returnGrille" && normalizeRoom(terminal.roomName))
+    .filter((terminal) =>
+      terminal.kind === "returnGrille" &&
+      terminal.connected &&
+      normalizeRoom(terminal.roomName)
+    )
     .map((terminal) => normalizeRoom(terminal.roomName)));
   const bedroomsWithoutReturn = bedroomSupplies.filter((terminal) =>
     !bedroomReturns.has(normalizeRoom(terminal.roomName))
@@ -178,9 +186,9 @@ export function buildDesignStandardProfile(input: BuildDesignStandardInput): Des
       standard: "Review closed-door bedrooms for a dedicated return, transfer path, or documented undercut strategy.",
       status: bedroomsWithoutReturn.length ? "review" : bedroomSupplies.length ? "clear" : "not-evaluated",
       finding: bedroomsWithoutReturn.length
-        ? `${bedroomsWithoutReturn.length} supplied bedroom${bedroomsWithoutReturn.length === 1 ? "" : "s"} have no same-room return symbol.`
+        ? `${bedroomsWithoutReturn.length} supplied bedroom${bedroomsWithoutReturn.length === 1 ? "" : "s"} have no connected same-room return path.`
         : bedroomSupplies.length
-          ? "Every supplied bedroom has a same-room return symbol."
+          ? "Every supplied bedroom has a connected same-room return path."
           : "No supplied bedrooms with room assignments are available to evaluate.",
       action: "Inspect the room boundary and document a dedicated or transfer return path; do not place one automatically.",
       evidence: [

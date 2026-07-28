@@ -21,7 +21,7 @@ async function loadConnectionRepairModule() {
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
 
-test("renders production v122 metadata without the development preview marker", async () => {
+test("renders production v123 metadata without the development preview marker", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -47,8 +47,8 @@ test("renders production v122 metadata without the development preview marker", 
     /^text\/html\b/i,
   );
   const html = await response.text();
-  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Draw-First Detail Workflow"\/>/i);
-  assert.match(html, /<meta property="og:description" content="Draw routes first\. Add numbers, reviewed sizes, returns, and connections in order\."\/>/i);
+  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Markup Assistant Fixes 2\.0"\/>/i);
+  assert.match(html, /<meta property="og:description" content="See what to fix first, preview the exact change, and approve safe HVAC plan repairs with one Undo\."\/>/i);
   assert.doesNotMatch(html, developmentPreviewMeta);
 });
 
@@ -147,8 +147,8 @@ test("leads solo HVAC operators through plan setup and four clear job steps", as
   assert.match(styles, /\.smart-plan-preflight/);
   assert.match(styles, /\.project-home-hero-visual,[\s\S]*display: none !important/);
   assert.match(styles, /\.left-panel-tabs/);
-  assert.match(layout, /\/og-v122\.png/);
-  assert.match(layout, /Draw-First Detail Workflow/);
+  assert.match(layout, /\/og-v123\.png/);
+  assert.match(layout, /Markup Assistant Fixes 2\.0/);
 });
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
@@ -509,11 +509,22 @@ test("builds a deterministic STEP 1 plan with type, sheet, system, and endpoint 
     { id: "valid", page: 1, systemId: "system-1", type: "supply", size: "8", points: [{ x: 20, y: 0 }, { x: 80, y: 0 }] },
   ];
   const before = JSON.stringify({ runs, target });
-  const plan = buildConnectionRepairPlan({ systemId: "system-1", runs, targets: [target] });
+  const scale = { verified: true, feetPerUnit: .1 };
+  const plan = buildConnectionRepairPlan({ systemId: "system-1", runs, targets: [target], scale });
 
-  assert.equal(plan.items[0].status, "ready");
-  assert.equal(plan.items[0].candidate.runId, "valid");
-  assert.equal(plan.items[0].candidate.end, "start");
+  assert.equal(plan.items[0].status, "choice");
+  assert.equal(plan.items[0].candidate, undefined);
+  assert.equal(plan.items[0].candidates[0].runId, "valid");
+  assert.equal(plan.items[0].candidates[0].end, "start");
+  const chosen = buildConnectionRepairPlan({
+    systemId: "system-1",
+    runs,
+    targets: [target],
+    choices: { [target.id]: "valid:start" },
+    scale,
+  });
+  assert.equal(chosen.items[0].status, "ready");
+  assert.equal(chosen.items[0].candidate.runId, "valid");
   assert.equal(JSON.stringify({ runs, target }), before, "planning must not mutate source geometry");
 });
 
@@ -535,8 +546,9 @@ test("requires a choice for ambiguous STEP 1 matches and stays stable when drawi
     { id: "run-b", page: 1, systemId: "system-1", type: "return", size: "12", points: [{ x: 6, y: 0 }, { x: 100, y: 0 }] },
     { id: "run-a", page: 1, systemId: "system-1", type: "return", size: "12", points: [{ x: 5, y: 0 }, { x: -100, y: 0 }] },
   ];
-  const first = buildConnectionRepairPlan({ systemId: "system-1", runs, targets: [target] });
-  const reversed = buildConnectionRepairPlan({ systemId: "system-1", runs: [...runs].reverse(), targets: [target] });
+  const scale = { verified: true, feetPerUnit: .1 };
+  const first = buildConnectionRepairPlan({ systemId: "system-1", runs, targets: [target], scale });
+  const reversed = buildConnectionRepairPlan({ systemId: "system-1", runs: [...runs].reverse(), targets: [target], scale });
 
   assert.equal(first.items[0].status, "choice");
   assert.deepEqual(
@@ -548,6 +560,7 @@ test("requires a choice for ambiguous STEP 1 matches and stays stable when drawi
     runs,
     targets: [target],
     choices: { [target.id]: "run-a:start" },
+    scale,
   });
   assert.equal(chosen.items[0].status, "ready");
   assert.equal(chosen.items[0].candidate.runId, "run-a");
@@ -572,7 +585,8 @@ test("repairs only the run already saved to a T/Y port and rejects stale or dist
     targetPoint: { x: 0, y: 0 },
     savedRunId: "saved-run",
   };
-  const plan = buildConnectionRepairPlan({ systemId: "system-1", runs, targets: [target] });
+  const scale = { verified: true, feetPerUnit: .1 };
+  const plan = buildConnectionRepairPlan({ systemId: "system-1", runs, targets: [target], scale });
   assert.equal(plan.items[0].status, "ready");
   assert.equal(plan.items[0].candidate.runId, "saved-run");
   const batch = prepareConnectionRepairBatch(plan, [target.id], plan.fingerprint);
@@ -585,6 +599,7 @@ test("repairs only the run already saved to a T/Y port and rejects stale or dist
     systemId: "system-1",
     runs: [{ ...runs[0], points: [{ x: 49, y: 0 }, { x: 100, y: 0 }] }],
     targets: [target],
+    scale,
   });
   assert.equal(distant.items[0].status, "blocked");
 });
@@ -1145,8 +1160,8 @@ test("v113 restores reviewed-airflow network sizing without diameter-derived CFM
   assert.match(repair, /Apply the reviewed terminal CFM first, then rebuild the repair plan so sizing uses the new network airflow/);
   assert.match(repair, /The governing airflow includes a planning seed or a room target whose review fingerprint is no longer current/);
   assert.match(repair, /Automatic network sizing requires an equipment-rooted connected path/);
-  assert.match(assistant, /The assistant may resize eligible connected runs and synchronize fitting ports only after one final batch approval/);
-  assert.match(assistant, /It never invents CFM from diameter/);
+  assert.match(assistant, /The assistant may fill blank terminal-run labels, apply reviewed terminal airflow, and update reviewed sizes only after final approval/);
+  assert.match(assistant, /It never invents CFM, moves route points, draws a return or trunk/);
   assert.match(studio, /No supported single flex run passes/);
   assert.match(styles, /v113–v115 — readable guided repair, durable review, and evidence coverage/);
   assert.match(styles, /--assistant-body: 15px/);
@@ -1172,8 +1187,8 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(page, /function prepareAssistantRepairPlan/);
   assert.match(page, /async function applyAssistantRepairPlan/);
   assert.match(page, /input\.evidenceFingerprint !== assistantRepairPlan\.evidenceFingerprint/);
-  assert.match(page, /actions\.length !== requestedIds\.size/);
-  assert.match(page, /Apply reviewed terminal CFM first, then rebuild the repair plan before resizing the network/);
+  assert.match(repairSource, /actions\.length !== selected\.size/);
+  assert.match(repairSource, /Apply the reviewed terminal CFM first, then rebuild the repair plan so sizing uses the new network airflow/);
   assert.match(page, /setHistory\(next\)/);
   assert.match(studio, /PLAN HELPER/);
   assert.match(studio, /Check the plan\. Review fixes\. Approve what changes\./);
@@ -1187,8 +1202,16 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(studio, /Before → after purchasing impact/);
   assert.match(studio, /ONE CONTROLLED TRANSACTION/);
   assert.match(studio, /I reviewed each selected problem, proposed fix, expected result, and affected plan object/);
-  assert.match(studio, /No fix is selected automatically/);
-  assert.match(studio, /Select all \$\{readyActions\.length\} eligible fixes/);
+  assert.match(studio, /Nothing is selected automatically\. Connection, airflow, and size steps never mix\./);
+  assert.match(studio, /Select safe fixes in this step \(\$\{readyActions\.length\}\)/);
+  assert.match(studio, /\["do-first", "Do first"/);
+  assert.match(studio, /\["can-fix", "Can fix"/);
+  assert.match(studio, /\["needs-answer", "Needs answer"/);
+  assert.match(studio, /label: "Ready now"/);
+  assert.match(studio, /label: "Needs information"/);
+  assert.match(studio, /label: "Fix on plan"/);
+  assert.match(studio, /REVIEWED FIELD CHANGES/);
+  assert.match(studio, /NO ROUTE MOVEMENT/);
   assert.match(studio, /PROBLEM/);
   assert.match(studio, /PROPOSED FIX/);
   assert.match(studio, /EXPECTED RESULT/);
@@ -1206,7 +1229,7 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(studio, /Review-only heuristic/);
   assert.match(studio, /not a probability, approval, or release gate/);
   assert.doesNotMatch(engineSource, /setHistory|setDrawings|dispatch/);
-  assert.match(repairSource, /guided-repair-v116\.1/);
+  assert.match(repairSource, /markup-fixes-v123\.0/);
   assert.match(page, /assistantPreparedRepairPlanId !== assistantRepairPlan\.id/);
   assert.match(page, /canUndo=\{Boolean\(undoableAssistantRepairRecord\(\)\)\}/);
   assert.match(page, /record\.reversedAt[\s\S]{0,400}reversedAt: undefined/);
@@ -1215,6 +1238,7 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(advancedSource, /advanced-plan-intelligence-v115\.0/);
   assert.match(styles, /v115 final readability guard: working evidence and warnings are never microcopy/);
   assert.match(styles, /\.markup-stale-warning,[\s\S]{0,500}font-size: 15px !important/);
+  assert.match(styles, /\.markup-assistant-studio \{[\s\S]{0,180}grid-template-rows: auto auto auto minmax\(0, 1fr\) auto;/);
   assert.match(roadmap, /\| v113 \| Guided Repair Plan and controlled network resizing \| Shipped \|/);
   assert.match(roadmap, /\| v114 \| Repair receipts and before\/after takeoff intelligence \| Shipped \|/);
   assert.match(roadmap, /\| v115 \| Advanced Plan Intelligence, source regions, and coverage \| Shipped \|/);
@@ -1266,7 +1290,7 @@ test("guided repair stages reviewed CFM before sizing and requires explicit fix 
   const staged = repair.buildRepairPlan(stagedInput);
 
   assert.equal(JSON.stringify(stagedInput), before);
-  assert.equal(staged.version, "guided-repair-v116.1");
+  assert.equal(staged.version, "markup-fixes-v123.0");
   assert.equal(staged.readyCount, 1);
   assert.equal(staged.needsInputCount, 1);
   const cfmAction = staged.actions.find((action) => action.kind === "terminal-cfm");
@@ -1320,6 +1344,7 @@ test("guided repair stages reviewed CFM before sizing and requires explicit fix 
       ...stagedInput.cfmCandidates[0],
       current: 640,
       proposed: 640,
+      currentSource: "room-target",
     }],
     sizeCandidates: [sizeCandidate],
   });
@@ -1327,6 +1352,23 @@ test("guided repair stages reviewed CFM before sizing and requires explicit fix 
   assert.equal(unchangedCfm.actions.find((action) => action.kind === "run-size").readiness, "ready");
   assert.equal(unchangedCfm.readyCount, 1);
   assert.deepEqual(unchangedCfm.selectedByDefault, []);
+
+  const sourceOnlyCfm = repair.buildRepairPlan({
+    ...stagedInput,
+    evidenceFingerprint: "evidence-source-only",
+    cfmCandidates: [{
+      ...stagedInput.cfmCandidates[0],
+      current: 640,
+      proposed: 640,
+      currentSource: "planning-seed",
+    }],
+    sizeCandidates: [sizeCandidate],
+  });
+  const sourceOnlyAction = sourceOnlyCfm.actions.find((action) => action.kind === "terminal-cfm");
+  assert.equal(sourceOnlyAction.readiness, "ready");
+  assert.deepEqual(sourceOnlyAction.changes.map((change) => change.field), ["CFM source"]);
+  assert.match(sourceOnlyAction.proposedFix, /change only its source/i);
+  assert.equal(sourceOnlyCfm.actions.find((action) => action.kind === "run-size").readiness, "needs-input");
 
   const unreviewed = repair.buildRepairPlan({
     ...stagedInput,
@@ -1925,9 +1967,11 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(page, /rememberActiveSheetScale\(page, \{/);
   assert.match(page, /scaleStateForPage\(drawing\.page\)\.feetPerUnit/);
   assert.match(page, /sizeReviewed: activeTool === "fresh" \? true : false/);
-  assert.match(page, /drawing\.sizeReviewed === false \? "SIZE LATER"/);
+  assert.match(page, /drawing\.sizeReviewed !== true \? "SIZE LATER"/);
   assert.match(page, /POST-DRAW DETAIL PASS/);
   assert.match(page, /function assignRunNumbers\(type: "supply" \| "return"\)/);
+  assert.match(page, /function terminalLinkedRunId\(drawing: Drawing\)/);
+  assert.match(page, /\["diffuser", "returnGrille"\]\.includes\(drawing\.symbol\?\.kind \|\| ""\)[\s\S]{0,100}drawing\.symbol\?\.connectedRunId/);
   assert.match(page, /function confirmSelectedRunSize\(\)/);
   assert.match(page, /function focusNextRunDetail\(type\?: "supply" \| "return"\)/);
   assert.match(page, /id: "draw",\s*label: "Draw & Detail"/);
@@ -2000,8 +2044,8 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(styles, /\.builder-current-step-summary/);
   assert.match(styles, /\.app-shell\.tablet-layout \.left-panel,[\s\S]*?padding-bottom: calc\(92px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(styles, /\.assistant-more-tools \{[\s\S]*?overflow-x: auto;/);
-  assert.match(layout, /HVAC Plan Studio · Draw-First Detail Workflow/);
-  assert.match(layout, /\/og-v122\.png/);
+  assert.match(layout, /HVAC Plan Studio · Markup Assistant Fixes 2\.0/);
+  assert.match(layout, /\/og-v123\.png/);
 
   assert.match(page, /function applyDetectedPlanScale\(candidate: PlanScaleCandidate, page: number\)/);
   assert.match(page, /if \(applyResolvedScale\(candidate, page\)\)/);
@@ -2014,7 +2058,7 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(drawingScale, /candidate\.ratio && candidate\.ratio > 0\s*\? candidate\.ratio\s*: scaleRatioFromLabel\(candidate\.label\)/);
   assert.match(drawingScale, /ratio \/ \(12 \* PDF_POINTS_PER_INCH \* viewportScale\)/);
 
-  assert.match(helper, /No fix is selected automatically/);
+  assert.match(helper, /Nothing is selected automatically/);
   assert.match(helper, /preparedRepairPlanId !== repairPlan\.id/);
   assert.match(helper, /autonomyMode !== "guided"/);
   assert.match(helper, /onUndoRepairBatch/);
