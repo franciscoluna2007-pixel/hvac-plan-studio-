@@ -58,6 +58,7 @@ type Props = {
   projectName: string;
   systemName: string;
   recommendations: MarkupRecommendation[];
+  focusedRecommendationId?: string;
   summary: MarkupAssistantSummary;
   repairPlan: RepairPlan;
   autonomyMode: RepairAutonomyMode;
@@ -160,6 +161,7 @@ export default function MarkupAssistantStudio({
   projectName,
   systemName,
   recommendations,
+  focusedRecommendationId,
   summary,
   repairPlan,
   autonomyMode,
@@ -416,6 +418,21 @@ export default function MarkupAssistantStudio({
   const hasSafeRepairAction = repairPlan.actions.some((action) =>
     action.readiness === "ready" && action.safeForBatch
   );
+  const focusedFixAction = focusedRecommendationId
+    ? combinedFixActions.find((action) =>
+      action.recommendationId === focusedRecommendationId
+    ) || (() => {
+      const recommendation = recommendations.find((row) =>
+        row.id === focusedRecommendationId
+      );
+      return recommendation?.drawingId
+        ? combinedFixActions.find((action) =>
+          action.drawingId === recommendation.drawingId ||
+          action.objectIds.includes(recommendation.drawingId!)
+        )
+        : undefined;
+    })()
+    : undefined;
 
   useEffect(() => {
     const opening = open && !wasOpenRef.current;
@@ -429,8 +446,17 @@ export default function MarkupAssistantStudio({
             ? "can-fix"
             : "all"
       );
+      setActiveId(focusedRecommendationId || "");
+      setActiveFixId(focusedFixAction?.id || "");
     }
-  }, [hasDoFirstRecommendation, hasSafeRepairAction, initialView, open]);
+  }, [
+    focusedFixAction?.id,
+    focusedRecommendationId,
+    hasDoFirstRecommendation,
+    hasSafeRepairAction,
+    initialView,
+    open,
+  ]);
 
   useEffect(() => {
     if (!open) return;
@@ -610,6 +636,7 @@ export default function MarkupAssistantStudio({
     <section
       ref={panelRef}
       className="markup-assistant-studio"
+      data-plan-occluder="plan-helper"
       role="dialog"
       aria-modal="false"
       aria-labelledby="markup-assistant-title"

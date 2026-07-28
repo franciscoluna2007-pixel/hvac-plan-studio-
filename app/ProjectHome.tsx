@@ -61,16 +61,16 @@ export default function ProjectHome({
   driveConfigured,
   busy,
   notice,
-  pdfStartMode,
   onClose,
   onOpenPdfDirect,
   onOpenPdfGuided,
   onOpenDrive,
   onDropPdf,
-  onPdfStartModeChange,
   onOpenProjectHub,
 }: Props) {
   const overlayRef = useRef<HTMLElement>(null);
+  const firstPlanSourceRef = useRef<HTMLButtonElement>(null);
+  const [showPlanSources, setShowPlanSources] = useState(false);
   const [cloud, setCloud] = useState<CloudHomeState>({
     status: "loading",
     projects: [],
@@ -133,12 +133,32 @@ export default function ProjectHome({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (open && showPlanSources) firstPlanSourceRef.current?.focus();
+  }, [open, showPlanSources]);
+
   if (!open) return null;
 
   const recentProjects = cloud.projects.slice(0, 3);
 
   function closeHome() {
+    setShowPlanSources(false);
     onClose();
+  }
+
+  function openPdfDirect() {
+    setShowPlanSources(false);
+    onOpenPdfDirect();
+  }
+
+  function openPdfGuided() {
+    setShowPlanSources(false);
+    onOpenPdfGuided();
+  }
+
+  function openDrive() {
+    setShowPlanSources(false);
+    onOpenDrive();
   }
 
   function handleDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
@@ -167,7 +187,10 @@ export default function ProjectHome({
     event.preventDefault();
     if (busy) return;
     const file = event.dataTransfer.files?.[0];
-    if (file) onDropPdf(file);
+    if (file) {
+      setShowPlanSources(false);
+      onDropPdf(file);
+    }
   }
 
   return (
@@ -217,12 +240,12 @@ export default function ProjectHome({
               <h1>{hasPlan ? "Ready to keep working?" : "Start with the plan."}</h1>
               <p>
                 {hasPlan
-                  ? "Resume the plan already open, open another PDF directly, or use setup when you want help."
-                  : "Open a PDF and draw right away, or choose guided setup for help with scale and job details."}
+                  ? "Continue the plan already open. Everything else stays close when you need it."
+                  : "Open a PDF and start drawing. Setup help is available, but it never gets in your way."}
               </p>
 
               <div className="project-home-primary-actions" aria-label="Job actions">
-                {hasPlan && (
+                {hasPlan ? (
                   <button
                     type="button"
                     data-home-primary
@@ -230,66 +253,104 @@ export default function ProjectHome({
                     onClick={closeHome}
                     disabled={busy}
                   >
-                    <ArrowRight size={17} /> Resume current job
+                    <ArrowRight size={17} /> Continue current job
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    data-home-primary
+                    className="home-primary"
+                    onClick={() => setShowPlanSources((visible) => !visible)}
+                    disabled={busy}
+                    aria-expanded={showPlanSources}
+                    aria-controls="project-home-plan-sources"
+                  >
+                    <FileText size={17} /> Open a plan
                   </button>
                 )}
-                <button
-                  type="button"
-                  data-home-primary={!hasPlan && pdfStartMode === "direct" ? true : undefined}
-                  className={!hasPlan && pdfStartMode === "direct" ? "home-primary" : undefined}
-                  onClick={onOpenPdfDirect}
-                  disabled={busy}
-                >
-                  {hasPlan ? <Plus size={17} /> : <FileText size={17} />} {hasPlan ? "Open another PDF" : "Open PDF and start drawing"}
-                </button>
-                <button
-                  type="button"
-                  data-home-primary={!hasPlan && pdfStartMode === "guided" ? true : undefined}
-                  className={!hasPlan && pdfStartMode === "guided" ? "home-primary" : undefined}
-                  onClick={onOpenPdfGuided}
-                  disabled={busy}
-                >
-                  <ScanSearch size={17} /> Use guided setup
-                </button>
-                <button type="button" onClick={() => onOpenProjectHub()} disabled={busy}>
-                  <FolderKanban size={17} /> Open saved jobs
-                </button>
-                <button
-                  type="button"
-                  onClick={onOpenDrive}
-                  disabled={busy || driveConfigured === false}
-                  title={driveConfigured === false ? "Google Drive is not available for this workspace" : undefined}
-                >
-                  <HardDrive size={17} /> {driveConfigured === false ? "Drive unavailable" : "Open from Drive directly"}
-                </button>
-              </div>
-
-              <div className="project-home-start-preference">
-                <span>Preferred start on this device</span>
-                <div role="group" aria-label="Preferred PDF opening method">
+                {hasPlan && (
                   <button
                     type="button"
-                    aria-pressed={pdfStartMode === "direct"}
-                    className={pdfStartMode === "direct" ? "active" : undefined}
-                    onClick={() => onPdfStartModeChange("direct")}
+                    onClick={() => setShowPlanSources((visible) => !visible)}
+                    disabled={busy}
+                    aria-expanded={showPlanSources}
+                    aria-controls="project-home-plan-sources"
                   >
-                    Open directly
+                    <Plus size={17} /> Open another plan
                   </button>
-                  <button
-                    type="button"
-                    aria-pressed={pdfStartMode === "guided"}
-                    className={pdfStartMode === "guided" ? "active" : undefined}
-                    onClick={() => onPdfStartModeChange("guided")}
-                  >
-                    Guided setup
-                  </button>
-                </div>
+                )}
               </div>
 
-              <div className="project-home-drop-zone">
-                <FileText size={15} />
-                <span>Drop a PDF here to open it directly</span>
-              </div>
+              {showPlanSources && (
+                <section
+                  id="project-home-plan-sources"
+                  className="project-home-plan-sources"
+                  aria-labelledby="project-home-plan-sources-title"
+                >
+                  <div className="project-home-plan-sources-heading">
+                    <div>
+                      <span>OPEN A PLAN</span>
+                      <h2 id="project-home-plan-sources-title">Where is the PDF?</h2>
+                    </div>
+                    <button
+                      type="button"
+                      className="project-home-plan-sources-close"
+                      onClick={() => setShowPlanSources(false)}
+                      aria-label="Close plan choices"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div className="project-home-plan-source-buttons">
+                    <button
+                      ref={firstPlanSourceRef}
+                      type="button"
+                      className="recommended"
+                      onClick={openPdfDirect}
+                      disabled={busy}
+                    >
+                      <FileText size={20} />
+                      <span>
+                        <strong>This device</strong>
+                        <small>Open PDF and start drawing</small>
+                      </span>
+                      <ArrowRight size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openDrive}
+                      disabled={busy || driveConfigured === false}
+                      title={driveConfigured === false ? "Google Drive is not available for this workspace" : undefined}
+                    >
+                      <HardDrive size={20} />
+                      <span>
+                        <strong>{driveConfigured === false ? "Drive unavailable" : "Google Drive"}</strong>
+                        <small>{driveConfigured === false ? "Not connected for this workspace" : "Choose a PDF from Drive"}</small>
+                      </span>
+                      <ArrowRight size={16} />
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="project-home-guided-choice"
+                    onClick={openPdfGuided}
+                    disabled={busy}
+                  >
+                    <ScanSearch size={17} />
+                    <span>
+                      <strong>Help me set up this plan</strong>
+                      <small>Optional help with scale and job details</small>
+                    </span>
+                  </button>
+
+                  <div className="project-home-drop-zone">
+                    <FileText size={15} />
+                    <span>Drop a PDF here to open it directly</span>
+                  </div>
+                </section>
+              )}
 
               {hasPlan && (
                 <div className="project-home-trust-row" aria-label="Current job">
@@ -315,7 +376,7 @@ export default function ProjectHome({
                   <h2>Open a saved job.</h2>
                 </div>
                 <button type="button" onClick={() => onOpenProjectHub()}>
-                  View all <ArrowRight size={15} />
+                  Open saved jobs <ArrowRight size={15} />
                 </button>
               </div>
 

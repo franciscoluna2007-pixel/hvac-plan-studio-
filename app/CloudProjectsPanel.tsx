@@ -816,7 +816,7 @@ export default function CloudProjectsPanel({
                 </div>
 
                 <div className="cloud-system-progress">
-                  <div><strong>Current job workflow</strong><span>Plan Setup → Mark &amp; Connect → Airflow &amp; Sizes → Fix Problems → Materials &amp; Print</span></div>
+                  <div><strong>Current job workflow</strong><span>Plan Setup → Draw &amp; Detail → Airflow &amp; Sizes → Fix Plan → Materials &amp; Print</span></div>
                   <article>
                     <b>{currentStepLabel}</b>
                     <span><i><em style={{ width: `${currentStepProgress}%` }} /></i><small>{currentStepDetail}</small></span>
