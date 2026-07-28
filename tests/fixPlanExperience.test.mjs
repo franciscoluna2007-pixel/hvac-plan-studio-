@@ -39,8 +39,8 @@ test("connection choices and endpoint repairs live inside the same Fix Plan", ()
 test("the assistant review layer is transient, page-scoped, pointer-inert, and omitted from print", () => {
   assert.match(page, /assistantSuggestionLayer\.status === "review"/);
   assert.match(page, /id="assistant-suggestion-layer"/);
-  assert.match(page, /suggestion\.point\.x \* renderSize\.width/);
-  assert.match(page, /suggestion\.point\.y \* renderSize\.height/);
+  assert.match(page, /candidate\.reviewPoint\.x \* renderSize\.width/);
+  assert.match(page, /candidate\.reviewPoint\.y \* renderSize\.height/);
   assert.match(styles, /\.assistant-suggestion-layer\s*\{\s*pointer-events: none;/);
   assert.match(styles, /@media print[\s\S]*?\.assistant-suggestion-layer,[\s\S]*?display: none !important;/);
 });

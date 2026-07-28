@@ -20,6 +20,23 @@ import { type FieldPackageSectionId } from "./fieldPackage";
 import type { PlanAnalysis, PlanEvidence } from "./planReader";
 import { buildAdvancedPlanIntelligence } from "./advancedPlanIntelligence";
 import { buildAssistantSuggestionLayer } from "./assistantSuggestionLayer";
+import {
+  ROOM_MARKUP_APPLICATION_VERSION,
+  roomMarkupCandidateReviewFingerprint,
+  roomMarkupEvidenceIsCurrent,
+  transitionRoomMarkupCandidate,
+  type RoomMarkupApplicationRecord,
+  type RoomMarkupCandidate,
+  type RoomMarkupReturnStrategy,
+  type RoomMarkupTransition,
+} from "./roomMarkupLifecycle";
+import {
+  buildRoomMarkupPlan,
+  DEFAULT_ROOM_MARKUP_TERMINALS,
+  roomMarkupCandidateCreatesTerminal,
+  type RoomMarkupRoomPlan,
+  type RoomMarkupTerminalOption,
+} from "./roomMarkupPlan";
 import { buildSmartPlanSetup, type PlanScaleCandidate } from "./planSetup";
 import { buildDesignStandardProfile } from "./designStandard";
 import { resolveDetectedDrawingScale, scaleRatioFromLabel } from "./drawingScale";
@@ -833,6 +850,14 @@ type SymbolMeta = {
   connectedEnd?: "start" | "end";
   returnRunId?: string;
   returnEnd?: "start" | "end";
+  roomMarkup?: {
+    version: "room-markup-application-v131.0";
+    candidateId: string;
+    sourceFingerprint: string;
+    evidenceFingerprint: string;
+    reviewer: string;
+    reviewedAt: string;
+  };
 };
 type MeasurementMeta = {
   feet: number;
@@ -1049,7 +1074,7 @@ type SheetScaleState = {
 };
 
 type SavedProject = {
-  version: 1 | 2 | 3 | 4 | 5 | 6;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   fileName: string;
   drawings: Drawing[];
   savedAt: string;
@@ -1085,6 +1110,8 @@ type SavedProject = {
   takeoffPackageRecords?: TakeoffPackageRecord[];
   assistantAutonomyMode?: RepairAutonomyMode;
   assistantRepairRecords?: RepairBatchRecord[];
+  roomMarkupCandidatesBySystem?: Record<string, RoomMarkupCandidate[]>;
+  roomMarkupApplicationRecords?: RoomMarkupApplicationRecord[];
   activePlanAnalysis?: PlanAnalysis | null;
   workflowSummary?: WorkflowSummary;
   cloudProjectId?: string;
@@ -1452,6 +1479,10 @@ function HVACPlanStudioApp() {
   const [assistantPreparedEvidenceFingerprint, setAssistantPreparedEvidenceFingerprint] = useState("");
   const [assistantPreparedRepairPlanId, setAssistantPreparedRepairPlanId] = useState("");
   const [assistantRepairRecords, setAssistantRepairRecords] = useState<RepairBatchRecord[]>([]);
+  const [roomMarkupCandidatesBySystem, setRoomMarkupCandidatesBySystem] = useState<Record<string, RoomMarkupCandidate[]>>({});
+  const [roomMarkupApplicationRecords, setRoomMarkupApplicationRecords] = useState<RoomMarkupApplicationRecord[]>([]);
+  const [activeRoomMarkupRoomId, setActiveRoomMarkupRoomId] = useState("");
+  const [pendingRoomMarkupCandidateId, setPendingRoomMarkupCandidateId] = useState<string | null>(null);
   const [activePlanAnalysis, setActivePlanAnalysis] = useState<PlanAnalysis | null>(null);
   const [planEvidenceRegion, setPlanEvidenceRegion] = useState<{
     page: number;
@@ -1488,6 +1519,8 @@ function HVACPlanStudioApp() {
   const [reviewDecisionNote, setReviewDecisionNote] = useState("");
   useEffect(() => {
     setShowAssistantSuggestionLayer(false);
+    setPendingRoomMarkupCandidateId(null);
+    setActiveRoomMarkupRoomId("");
   }, [pageNumber, pdfFingerprint]);
 
   useEffect(() => {
@@ -1637,7 +1670,8 @@ function HVACPlanStudioApp() {
     roomAirflowTargetReviewFingerprints,
     balanceReviewRecords,
     reviewDecisionsBySystem,
-  }), [balanceReviewRecords, drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, supplyVelocityLimit, systemNames]);
+    roomMarkupApplicationRecords,
+  }), [balanceReviewRecords, drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, roomMarkupApplicationRecords, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, supplyVelocityLimit, systemNames]);
 
   useEffect(() => {
     setSelectedCfmProposalIds([]);
@@ -2113,6 +2147,10 @@ function HVACPlanStudioApp() {
     setAssistantPreparedEvidenceFingerprint("");
     setAssistantPreparedRepairPlanId("");
     setAssistantRepairRecords([]);
+    setRoomMarkupCandidatesBySystem({});
+    setRoomMarkupApplicationRecords([]);
+    setActiveRoomMarkupRoomId("");
+    setPendingRoomMarkupCandidateId(null);
     setActivePlanAnalysis(null);
     setSelectedCfmProposalIds([]);
     setActiveReviewIssueId(null);
@@ -2189,6 +2227,14 @@ function HVACPlanStudioApp() {
     setAssistantPreparedEvidenceFingerprint("");
     setAssistantPreparedRepairPlanId("");
     setAssistantRepairRecords(Array.isArray(project.assistantRepairRecords) ? project.assistantRepairRecords : []);
+    setRoomMarkupCandidatesBySystem(project.roomMarkupCandidatesBySystem || {});
+    setRoomMarkupApplicationRecords(
+      Array.isArray(project.roomMarkupApplicationRecords)
+        ? project.roomMarkupApplicationRecords
+        : [],
+    );
+    setActiveRoomMarkupRoomId("");
+    setPendingRoomMarkupCandidateId(null);
     setActivePlanAnalysis(
       project.activePlanAnalysis &&
       (!sourceFingerprint || project.activePlanAnalysis.sourceFingerprint === sourceFingerprint)
@@ -3044,6 +3090,11 @@ function HVACPlanStudioApp() {
       && Boolean(event.target.closest("[data-plan-edit-control]"));
     if (event.pointerType === "touch") {
       if (!pdf) return;
+      if (pendingRoomMarkupCandidateId) {
+        event.preventDefault();
+        cancelTouchNavigation(event.currentTarget);
+        return;
+      }
       if (directTouchEdit) {
         event.preventDefault();
         if (
@@ -3261,7 +3312,7 @@ function HVACPlanStudioApp() {
       releaseStale: activeFieldPackage.stale,
     });
     return {
-      version: 6,
+      version: 7,
       fileName,
       drawings,
       savedAt: new Date().toISOString(),
@@ -3296,6 +3347,8 @@ function HVACPlanStudioApp() {
       takeoffPackageRecords,
       assistantAutonomyMode,
       assistantRepairRecords,
+      roomMarkupCandidatesBySystem,
+      roomMarkupApplicationRecords,
       activePlanAnalysis: boundedPlanAnalysisSnapshot(activePlanAnalysis),
       cloudProjectId: workingCloudProjectId || undefined,
       cloudRevisionId: workingCloudRevisionId || undefined,
@@ -3317,7 +3370,7 @@ function HVACPlanStudioApp() {
         })),
       },
     };
-  }, [activeBuilderSummary, activeFieldPackage, activePlanAnalysis, activeSystem, assistantAutonomyMode, assistantRepairRecords, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
+  }, [activeBuilderSummary, activeFieldPackage, activePlanAnalysis, activeSystem, assistantAutonomyMode, assistantRepairRecords, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, roomMarkupApplicationRecords, roomMarkupCandidatesBySystem, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
 
   const saveProject = useCallback(() => {
     if (!pdf) return;
@@ -5720,6 +5773,9 @@ function HVACPlanStudioApp() {
         ? { balanceReviewRecords: project.balanceReviewRecords }
         : {}),
       reviewDecisionsBySystem: project.reviewDecisionsBySystem || {},
+      ...(project.roomMarkupApplicationRecords?.length
+        ? { roomMarkupApplicationRecords: project.roomMarkupApplicationRecords }
+        : {}),
     };
     return stableTextHash(JSON.stringify(canonicalReleaseValue(releaseState)));
   }
@@ -8571,10 +8627,399 @@ function HVACPlanStudioApp() {
     };
   }
 
+  function saveRoomMarkupCandidate(candidate: RoomMarkupCandidate) {
+    setRoomMarkupCandidatesBySystem((current) => {
+      const rows = current[activeSystem] || [];
+      const exists = rows.some((row) => row.id === candidate.id);
+      return {
+        ...current,
+        [activeSystem]: exists
+          ? rows.map((row) => row.id === candidate.id ? candidate : row)
+          : [...rows, candidate],
+      };
+    });
+  }
+
+  function updateRoomMarkupCandidate(
+    candidateId: string,
+    transition: RoomMarkupTransition,
+  ) {
+    const candidate = roomMarkupPlan.rooms
+      .flatMap((room) => room.items)
+      .find((item) => item.candidate.id === candidateId)?.candidate;
+    const binding = roomMarkupPlan.currentBindings[candidateId];
+    if (!candidate || !binding) {
+      setBranchMessage("That room suggestion changed. Refresh Room Markup before reviewing it.");
+      return false;
+    }
+    const result = transitionRoomMarkupCandidate(candidate, transition, binding);
+    saveRoomMarkupCandidate(result.candidate);
+    if (result.applied && transition.type === "edit" && transition.roomName?.trim()) {
+      const room = roomMarkupPlan.rooms.find((row) =>
+        row.items.some((item) => item.candidate.id === candidateId)
+      );
+      room?.items
+        .filter((item) => item.candidate.id !== candidateId)
+        .forEach((item) => {
+          const peerBinding = roomMarkupPlan.currentBindings[item.candidate.id];
+          if (!peerBinding) return;
+          const peerResult = transitionRoomMarkupCandidate(item.candidate, {
+            type: "edit",
+            roomName: transition.roomName,
+          }, peerBinding);
+          if (peerResult.applied) saveRoomMarkupCandidate(peerResult.candidate);
+        });
+    }
+    setBranchMessage(result.reason);
+    return result.applied;
+  }
+
+  function setRoomMarkupReturnStrategy(
+    candidateId: string,
+    strategy: RoomMarkupReturnStrategy,
+  ) {
+    const candidate = roomMarkupPlan.rooms
+      .flatMap((room) => room.items)
+      .find((item) => item.candidate.id === candidateId)?.candidate;
+    const binding = roomMarkupPlan.currentBindings[candidateId];
+    if (!candidate || !binding || candidate.kind !== "return") {
+      setBranchMessage("That return-air question changed. Refresh Room Markup before answering it.");
+      return false;
+    }
+    const edited = transitionRoomMarkupCandidate(candidate, {
+      type: "edit",
+      answers: { "return-strategy": strategy },
+    }, binding);
+    if (!edited.applied) {
+      saveRoomMarkupCandidate(edited.candidate);
+      setBranchMessage(edited.reason);
+      return false;
+    }
+    if (strategy === "Needs field review") {
+      saveRoomMarkupCandidate(edited.candidate);
+      setBranchMessage("Room held for a return-air field decision · no plan geometry changed");
+      return true;
+    }
+    const confirmed = transitionRoomMarkupCandidate(
+      edited.candidate,
+      { type: "confirm" },
+      binding,
+    );
+    saveRoomMarkupCandidate(confirmed.candidate);
+    setBranchMessage(confirmed.applied
+      ? `${strategy} recorded for this room · still staged until final room approval`
+      : confirmed.reason);
+    return confirmed.applied;
+  }
+
+  function startRoomMarkupMove(candidateId: string) {
+    const room = roomMarkupPlan.rooms.find((row) =>
+      row.items.some((item) => item.candidate.id === candidateId)
+    );
+    if (!room) {
+      setBranchMessage("That room suggestion changed. Refresh Room Markup before moving it.");
+      return;
+    }
+    setActiveRoomMarkupRoomId(room.id);
+    setPendingRoomMarkupCandidateId(candidateId);
+    setShowAssistantSuggestionLayer(true);
+    setActiveTool("select");
+    setBranchMessage(`${room.roomName}: click the new ghost location on the plan · no drawing will change`);
+    if (window.matchMedia("(max-width: 720px)").matches) {
+      setShowMarkupAssistant(false);
+    }
+  }
+
+  function focusRoomMarkupCandidate(candidateId: string) {
+    const room = roomMarkupPlan.rooms.find((row) =>
+      row.items.some((item) => item.candidate.id === candidateId)
+    );
+    const candidate = room?.items.find((item) => item.candidate.id === candidateId)?.candidate;
+    if (!room || !candidate) {
+      setBranchMessage("That room suggestion changed. Refresh Room Markup before locating it.");
+      return;
+    }
+    setActiveRoomMarkupRoomId(room.id);
+    setShowAssistantSuggestionLayer(true);
+    requestAnimationFrame(() => focusPlanPoint({
+      x: candidate.reviewPoint.x * renderSize.width,
+      y: candidate.reviewPoint.y * renderSize.height,
+    }, { avoidAssistant: true }));
+  }
+
+  function cancelRoomMarkupMove() {
+    setPendingRoomMarkupCandidateId(null);
+    setBranchMessage("Ghost move cancelled · the plan stayed unchanged");
+  }
+
+  function resetRoomMarkupCandidate(candidateId: string) {
+    const candidate = roomMarkupPlan.rooms
+      .flatMap((room) => room.items)
+      .find((item) => item.candidate.id === candidateId)?.candidate;
+    const linkedDrawingExists = roomMarkupApplicationRecords.some((record) =>
+      record.candidateIds.includes(candidateId) &&
+      !record.reversedAt &&
+      Boolean(
+        record.createdDrawingIdsByCandidate?.[candidateId] &&
+        drawings.some((drawing) =>
+          drawing.id === record.createdDrawingIdsByCandidate[candidateId]
+        )
+      )
+    );
+    if (linkedDrawingExists) {
+      const binding = roomMarkupPlan.currentBindings[candidateId];
+      const currentScale = candidate ? scaleStateForPage(candidate.page) : undefined;
+      if (!binding?.evidenceFingerprint) {
+        setBranchMessage("The current PDF review no longer supports this room suggestion. Restore or confirm the room evidence before reviewing its existing icon.");
+        return false;
+      }
+      if (!candidate || candidate.status !== "stale" || !currentScale?.verified) {
+        setBranchMessage("This candidate already created a reviewed icon. Keep that icon or delete it before rebuilding the suggestion.");
+        return false;
+      }
+      saveRoomMarkupCandidate({
+        ...candidate,
+        binding,
+        scale: {
+          value: currentScale.label,
+          certainty: "confirmed",
+        },
+        scaleVerified: true,
+        status: "edited",
+      });
+      setPendingRoomMarkupCandidateId((current) => current === candidateId ? null : current);
+      setBranchMessage("Current PDF evidence loaded for this existing icon. Confirm it again before saving a new room receipt.");
+      return true;
+    }
+    setRoomMarkupCandidatesBySystem((current) => ({
+      ...current,
+      [activeSystem]: (current[activeSystem] || []).filter((candidate) =>
+        candidate.id !== candidateId
+      ),
+    }));
+    setPendingRoomMarkupCandidateId((current) => current === candidateId ? null : current);
+    setBranchMessage("Room suggestion refreshed from the current PDF evidence");
+    return true;
+  }
+
+  function applyRoomMarkup(
+    room: RoomMarkupRoomPlan,
+    input: { reviewer: string; note: string; confirmed: boolean },
+  ) {
+    const reviewer = input.reviewer.trim();
+    if (!reviewer || !input.confirmed) {
+      setBranchMessage("Enter reviewer initials and confirm the room before adding markup.");
+      return false;
+    }
+    const currentRoom = roomMarkupPlan.rooms.find((candidate) => candidate.id === room.id);
+    if (!currentRoom || currentRoom.status !== "ready-to-add") {
+      setBranchMessage("This room changed or still needs review. Refresh it before adding markup.");
+      return false;
+    }
+    if (
+      currentRoom.systemId !== activeSystem ||
+      currentRoom.page !== pageNumber ||
+      !scaleStateForPage(currentRoom.page).verified
+    ) {
+      setBranchMessage("Confirm this room's page, actual sheet scale, and HVAC system before adding markup.");
+      return false;
+    }
+    const sourceFingerprint = pdfFingerprint || activePlanAnalysis?.sourceFingerprint || "";
+    if (!sourceFingerprint || sourceFingerprint !== roomMarkupPlan.sourceFingerprint) {
+      setBranchMessage("The PDF changed. Refresh this room before adding markup.");
+      return false;
+    }
+    const candidates = currentRoom.items.map((item) => item.candidate);
+    const unresolved = currentRoom.items.some((item) =>
+      item.openQuestionCount > 0 ||
+      !["confirmed", "rejected"].includes(item.candidate.status)
+    );
+    if (unresolved) {
+      setBranchMessage("Review every supply and return question in this room before adding markup.");
+      return false;
+    }
+    const bindingChanged = candidates.some((candidate) => {
+      const binding = roomMarkupPlan.currentBindings[candidate.id];
+      return !binding || !roomMarkupEvidenceIsCurrent(candidate, binding);
+    });
+    if (bindingChanged) {
+      setBranchMessage("The room evidence changed. Refresh this room before adding markup.");
+      return false;
+    }
+    if (candidates.some((candidate) =>
+      candidate.status === "confirmed" && candidate.systemId !== activeSystem
+    )) {
+      setBranchMessage("Confirm the stable HVAC system for every item in this room.");
+      return false;
+    }
+    if (candidates.some((candidate) =>
+      !Number.isFinite(candidate.reviewPoint.x) ||
+      !Number.isFinite(candidate.reviewPoint.y) ||
+      candidate.reviewPoint.x < 0 ||
+      candidate.reviewPoint.x > 1 ||
+      candidate.reviewPoint.y < 0 ||
+      candidate.reviewPoint.y > 1
+    )) {
+      setBranchMessage("A ghost location is outside this PDF page. Refresh the room before adding markup.");
+      return false;
+    }
+    if (!renderSize.width || !renderSize.height) {
+      setBranchMessage("Wait for the PDF page to finish rendering, then add the reviewed room.");
+      return false;
+    }
+    const terminalCandidates = candidates.filter((candidate) =>
+      roomMarkupCandidateCreatesTerminal(candidate) &&
+      !currentRoom.appliedCandidateIds.includes(candidate.id)
+    );
+    const invalidTerminalSelection = terminalCandidates.some((candidate) => {
+      const selection = candidate.terminalSelection;
+      return !selection || !roomMarkupTerminalOptions.some((option) =>
+        option.kind === candidate.kind &&
+        option.optionId === selection.optionId &&
+        option.label === selection.label &&
+        option.size === selection.size &&
+        option.variant === selection.variant &&
+        option.elevation === selection.elevation
+      );
+    });
+    if (invalidTerminalSelection) {
+      setBranchMessage("A terminal choice is no longer supported. Refresh the room and choose it again.");
+      return false;
+    }
+    const duplicate = terminalCandidates.find((candidate) => {
+      const kind = candidate.kind === "supply" ? "diffuser" : "returnGrille";
+      const point = {
+        x: candidate.reviewPoint.x * renderSize.width,
+        y: candidate.reviewPoint.y * renderSize.height,
+      };
+      const roomKey = (candidate.room.value || "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+      return drawings.some((drawing) => {
+        if (
+          drawing.page !== candidate.page ||
+          drawingSystem(drawing) !== activeSystem ||
+          drawing.symbol?.kind !== kind
+        ) return false;
+        const drawingRoom = (drawing.roomName || "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+        return Boolean(roomKey && drawingRoom === roomKey) ||
+          Math.hypot(drawing.points[0].x - point.x, drawing.points[0].y - point.y) <=
+            Math.max(renderSize.width, renderSize.height) * .045;
+      });
+    });
+    if (duplicate) {
+      setBranchMessage(`${duplicate.room.value || "This room"} already has a nearby ${duplicate.kind} terminal. Nothing was added.`);
+      return false;
+    }
+
+    const reviewedAt = new Date().toISOString();
+    const createdDrawings: Drawing[] = terminalCandidates.map((candidate) => {
+      const selection = candidate.terminalSelection!;
+      const kind: SymbolKind = candidate.kind === "supply" ? "diffuser" : "returnGrille";
+      const size = selection.size;
+      return {
+        id: crypto.randomUUID(),
+        type: "symbol",
+        points: [{
+          x: candidate.reviewPoint.x * renderSize.width,
+          y: candidate.reviewPoint.y * renderSize.height,
+        }],
+        size,
+        page: candidate.page,
+        systemId: activeSystem,
+        roomName: candidate.room.value,
+        elevation: selection.elevation,
+        symbol: {
+          kind,
+          label: `${size} ${candidate.kind === "supply" ? "SUPPLY" : "RETURN"}`,
+          rotation: 0,
+          scaleX: defaultSymbolScale(kind),
+          scaleY: defaultSymbolScale(kind),
+          labelScale: defaultSymbolLabelScale(kind),
+          variant: selection.variant,
+          roomMarkup: {
+            version: ROOM_MARKUP_APPLICATION_VERSION,
+            candidateId: candidate.id,
+            sourceFingerprint,
+            evidenceFingerprint: candidate.binding.evidenceFingerprint,
+            reviewer,
+            reviewedAt,
+          },
+        },
+      };
+    });
+    const createdDrawingIdsByCandidate = {
+      ...currentRoom.createdDrawingIdsByCandidate,
+      ...Object.fromEntries(terminalCandidates.map((candidate, index) => [
+        candidate.id,
+        createdDrawings[index].id,
+      ])),
+    };
+    const next = createdDrawings.length ? [...drawings, ...createdDrawings] : drawings;
+    const beforeDrawingFingerprint = systemDrawingSignatureFor(drawings, activeSystem);
+    const afterDrawingFingerprint = systemDrawingSignatureFor(next, activeSystem);
+    const record: RoomMarkupApplicationRecord = {
+      version: ROOM_MARKUP_APPLICATION_VERSION,
+      id: `room-markup-${stableTextHash(`${sourceFingerprint}|${activeSystem}|${currentRoom.roomId}|${reviewedAt}`)}`,
+      roomId: currentRoom.roomId,
+      roomName: currentRoom.roomName,
+      page: currentRoom.page,
+      systemId: activeSystem,
+      candidateIds: candidates.map((candidate) => candidate.id),
+      candidateFingerprints: Object.fromEntries(candidates.map((candidate) => [
+        candidate.id,
+        roomMarkupCandidateReviewFingerprint(candidate),
+      ])),
+      createdDrawingIdsByCandidate,
+      createdDrawingIds: createdDrawings.map((drawing) => drawing.id),
+      sourceFingerprint,
+      evidenceFingerprints: candidates
+        .map((candidate) => candidate.binding.evidenceFingerprint)
+        .sort(),
+      beforeDrawingFingerprint,
+      afterDrawingFingerprint,
+      reviewer,
+      note: input.note.trim() || undefined,
+      createdAt: reviewedAt,
+    };
+    if (createdDrawings.length) {
+      setHistory(next);
+      selectOnly(createdDrawings.at(-1)?.id || null);
+    }
+    setRoomMarkupApplicationRecords((records) => [...records, record]);
+    setPendingRoomMarkupCandidateId(null);
+    setBranchMessage(createdDrawings.length
+      ? `${currentRoom.roomName}: ${createdDrawings.length} reviewed icon${createdDrawings.length === 1 ? "" : "s"} added · no duct, CFM, run size, run number, or connection changed`
+      : `${currentRoom.roomName}: room review saved · no plan geometry changed`);
+    return true;
+  }
+
+  function handleRoomMarkupPlacementCapture(
+    event: PointerEvent<SVGSVGElement>,
+  ) {
+    if (!pendingRoomMarkupCandidateId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    handleDrawingClick(event);
+  }
+
   function handleDrawingClick(event: PointerEvent<SVGSVGElement>) {
-    if (event.pointerType === "touch" || event.button !== 0 || panRef.current || touchGestureRef.current) return;
+    if ((event.pointerType === "touch" && !pendingRoomMarkupCandidateId) || event.button !== 0 || panRef.current || touchGestureRef.current) return;
     if (activeEditPointerIdRef.current !== null && activeEditPointerIdRef.current !== event.pointerId) return;
     const rawPoint = canvasPoint(event);
+    if (pendingRoomMarkupCandidateId) {
+      const normalizedPoint = {
+        x: Math.max(0, Math.min(1, rawPoint.x / Math.max(1, renderSize.width))),
+        y: Math.max(0, Math.min(1, rawPoint.y / Math.max(1, renderSize.height))),
+      };
+      const moved = updateRoomMarkupCandidate(pendingRoomMarkupCandidateId, {
+        type: "move",
+        reviewPoint: normalizedPoint,
+      });
+      setPendingRoomMarkupCandidateId(null);
+      setShowMarkupAssistant(true);
+      setAssistantInitialView("fix-plan");
+      if (moved) setBranchMessage("Ghost moved to the reviewed location · no drawing geometry changed");
+      return;
+    }
     if (calibrating) {
       const point = snapPoint(rawPoint);
       if (!measureDraft.length) {
@@ -8657,6 +9102,61 @@ function HVACPlanStudioApp() {
     );
   }
 
+  function undoableRoomMarkupRecord(
+    previous = undoStack.at(-1),
+    applicationId?: string,
+  ) {
+    if (!previous) return undefined;
+    return [...roomMarkupApplicationRecords].reverse().find((record) =>
+      (!applicationId || record.id === applicationId) &&
+      record.createdDrawingIds.length > 0 &&
+      !record.reversedAt &&
+      record.afterDrawingFingerprint === systemDrawingSignatureFor(drawings, record.systemId) &&
+      record.beforeDrawingFingerprint === systemDrawingSignatureFor(previous, record.systemId)
+    );
+  }
+
+  function undoableRoomMarkupReviewRecord(applicationId?: string) {
+    if (!applicationId) return undefined;
+    return [...roomMarkupApplicationRecords].reverse().find((record) =>
+      record.systemId === activeSystem &&
+      record.id === applicationId &&
+      record.createdDrawingIds.length === 0 &&
+      !record.reversedAt
+    );
+  }
+
+  function undoRoomMarkup() {
+    const applicationId = activeRoomMarkupRoom?.latestApplication?.id;
+    if (!applicationId) return;
+    const previous = undoStack.at(-1);
+    const drawingRecord = undoableRoomMarkupRecord(previous, applicationId);
+    if (drawingRecord && previous) {
+      setRoomMarkupApplicationRecords((records) => records.map((record) =>
+        record.id === drawingRecord.id
+          ? { ...record, reversedAt: new Date().toISOString() }
+          : record
+      ));
+      setRedoStack((redo) => [...redo, drawings]);
+      setDrawings(previous);
+      setUndoStack((stack) => stack.slice(0, -1));
+      setPendingBranchFittingId(null);
+      setBranchPreview(null);
+      setBranchPlacementResult(null);
+      setSelectedId(null);
+      setBranchMessage(`${drawingRecord.roomName}: reviewed room markup undone`);
+      return;
+    }
+    const reviewRecord = undoableRoomMarkupReviewRecord(applicationId);
+    if (!reviewRecord) return;
+    setRoomMarkupApplicationRecords((records) => records.map((record) =>
+      record.id === reviewRecord.id
+        ? { ...record, reversedAt: new Date().toISOString() }
+        : record
+    ));
+    setBranchMessage(`${reviewRecord.roomName}: room review reopened · the plan geometry stayed unchanged`);
+  }
+
   function undo() {
     if (draft.length) {
       setDraft((points) => points.slice(0, -1));
@@ -8665,9 +9165,17 @@ function HVACPlanStudioApp() {
     const previous = undoStack.at(-1);
     if (!previous) return;
     const reversibleRecord = undoableAssistantRepairRecord(previous);
+    const reversibleRoomMarkup = undoableRoomMarkupRecord(previous);
     if (reversibleRecord) {
       setAssistantRepairRecords((records) => records.map((record) =>
         record.id === reversibleRecord.id
+          ? { ...record, reversedAt: new Date().toISOString() }
+          : record
+      ));
+    }
+    if (reversibleRoomMarkup) {
+      setRoomMarkupApplicationRecords((records) => records.map((record) =>
+        record.id === reversibleRoomMarkup.id
           ? { ...record, reversedAt: new Date().toISOString() }
           : record
       ));
@@ -8692,9 +9200,22 @@ function HVACPlanStudioApp() {
       record.beforeDrawingFingerprint === currentFingerprint &&
       record.afterDrawingFingerprint === nextFingerprint
     );
+    const redoneRoomMarkup = [...roomMarkupApplicationRecords].reverse().find((record) =>
+      record.createdDrawingIds.length > 0 &&
+      Boolean(record.reversedAt) &&
+      record.beforeDrawingFingerprint === systemDrawingSignatureFor(drawings, record.systemId) &&
+      record.afterDrawingFingerprint === systemDrawingSignatureFor(next, record.systemId)
+    );
     if (redoneRecord) {
       setAssistantRepairRecords((records) => records.map((record) =>
         record.id === redoneRecord.id
+          ? { ...record, reversedAt: undefined }
+          : record
+      ));
+    }
+    if (redoneRoomMarkup) {
+      setRoomMarkupApplicationRecords((records) => records.map((record) =>
+        record.id === redoneRoomMarkup.id
           ? { ...record, reversedAt: undefined }
           : record
       ));
@@ -11003,6 +11524,8 @@ function HVACPlanStudioApp() {
   const assistantSuggestionLayer = buildAssistantSuggestionLayer({
     page: pageNumber,
     scaleVerified: scaleStateForPage(pageNumber).verified,
+    scaleLabel: scaleStateForPage(pageNumber).label,
+    scaleFeetPerUnit: scaleStateForPage(pageNumber).feetPerUnit,
     smartSetup: activeSmartPlanSetup,
     analysis: activePlanAnalysis,
     sourceFingerprint: pdfFingerprint || activePlanAnalysis?.sourceFingerprint || "",
@@ -11030,6 +11553,7 @@ function HVACPlanStudioApp() {
         drawing.page === pageNumber &&
         drawingSystem(drawing) === activeSystem &&
         ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") &&
+        !drawing.symbol?.roomMarkup &&
         drawing.points[0] &&
         renderSize.width > 0 &&
         renderSize.height > 0
@@ -11045,6 +11569,41 @@ function HVACPlanStudioApp() {
         },
       })),
   });
+  const roomMarkupTerminalOptions: RoomMarkupTerminalOption[] = DEFAULT_ROOM_MARKUP_TERMINALS;
+  const roomMarkupPlan = buildRoomMarkupPlan({
+    layer: assistantSuggestionLayer,
+    sourceFingerprint: pdfFingerprint || activePlanAnalysis?.sourceFingerprint || "",
+    systemId: activeSystem,
+    systemLabel: systemLabel(activeSystem),
+    scaleVerified: scaleStateForPage(pageNumber).verified,
+    scaleLabel: scaleStateForPage(pageNumber).label,
+    savedCandidates: roomMarkupCandidatesBySystem[activeSystem] || [],
+    applicationRecords: roomMarkupApplicationRecords,
+    existingTerminals: drawings
+      .filter((drawing) =>
+        ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") &&
+        Boolean(drawing.symbol?.roomMarkup)
+      )
+      .map((drawing) => ({
+        id: drawing.id,
+        page: drawing.page,
+        systemId: drawingSystem(drawing),
+        kind: drawing.symbol?.kind === "returnGrille" ? "return" as const : "supply" as const,
+        roomName: drawing.roomName,
+        candidateId: drawing.symbol?.roomMarkup?.candidateId,
+        sourceFingerprint: drawing.symbol?.roomMarkup?.sourceFingerprint,
+        evidenceFingerprint: drawing.symbol?.roomMarkup?.evidenceFingerprint,
+      })),
+    terminalOptions: roomMarkupTerminalOptions,
+  });
+  const activeRoomMarkupRoom = roomMarkupPlan.rooms.find((room) =>
+    room.id === activeRoomMarkupRoomId
+  ) || roomMarkupPlan.rooms.find((room) =>
+    ["needs-review", "on-hold", "stale", "ready-to-add"].includes(room.status)
+  ) || roomMarkupPlan.rooms[0];
+  const visibleRoomMarkupCandidates = roomMarkupPlan.overlayCandidates.filter((candidate) =>
+    !activeRoomMarkupRoom || candidate.roomId === activeRoomMarkupRoom.roomId
+  );
   const assistantBranchOpportunities = branchOpportunities().filter((opportunity) => {
     const run = drawings.find((drawing) => drawing.id === opportunity.mainRunId);
     return run && drawingSystem(run) === activeSystem;
@@ -12793,19 +13352,25 @@ function HVACPlanStudioApp() {
               onDelete={deleteSelected}
               onClose={() => selectOnly(null)}
             />}
-            {showAssistantSuggestionLayer && assistantSuggestionLayer.status === "review" && <div
-              className="assistant-suggestion-layer-hud"
+            {showAssistantSuggestionLayer && roomMarkupPlan.overlayCandidates.length > 0 && <div
+              className={`assistant-suggestion-layer-hud ${pendingRoomMarkupCandidateId ? "moving" : ""}`}
               role="status"
               aria-live="polite"
               data-canvas-ui
             >
               <span><Eye size={17} /></span>
               <div>
-                <strong>Assistant layer · page {pageNumber}</strong>
-                <small>{assistantSuggestionLayer.suggestions.length} transparent review zone{assistantSuggestionLayer.suggestions.length === 1 ? "" : "s"} · plan unchanged</small>
+                <strong>{pendingRoomMarkupCandidateId ? "Choose the new ghost location" : `Room Markup · page ${pageNumber}`}</strong>
+                <small>{pendingRoomMarkupCandidateId
+                  ? "Click once on the plan · no drawing changes"
+                  : `${visibleRoomMarkupCandidates.length} ghost location${visibleRoomMarkupCandidates.length === 1 ? "" : "s"} · plan unchanged`}</small>
               </div>
-              <button type="button" onClick={() => openMarkupAssistant("fix-plan")}>Review</button>
-              <button type="button" onClick={() => setShowAssistantSuggestionLayer(false)}>Hide</button>
+              {pendingRoomMarkupCandidateId
+                ? <button type="button" onClick={cancelRoomMarkupMove}>Cancel move</button>
+                : <>
+                  <button type="button" onClick={() => openMarkupAssistant("fix-plan")}>Review rooms</button>
+                  <button type="button" onClick={() => setShowAssistantSuggestionLayer(false)}>Hide</button>
+                </>}
             </div>}
             {draft.length > 0 && ["supply", "return", "fresh"].includes(activeTool) && <div className="live-draft-hud" data-canvas-ui>
               <span>LIVE RUN</span>
@@ -12955,6 +13520,7 @@ function HVACPlanStudioApp() {
                   <svg
                     className={`drawing-layer tool-${activeTool}`}
                     viewBox={`0 0 ${renderSize.width || 1} ${renderSize.height || 1}`}
+                    onPointerDownCapture={handleRoomMarkupPlacementCapture}
                     onPointerDown={handleDrawingClick}
                     onPointerMove={handlePointerMove}
                     onPointerUp={endDrag}
@@ -13120,30 +13686,33 @@ function HVACPlanStudioApp() {
                         </text>}
                       </g>;
                     })}
-                    {showAssistantSuggestionLayer && assistantSuggestionLayer.status === "review" && <g
+                    {showAssistantSuggestionLayer && roomMarkupPlan.overlayCandidates.length > 0 && <g
                       id="assistant-suggestion-layer"
                       className="assistant-suggestion-layer"
                       aria-hidden="true"
                     >
-                      {assistantSuggestionLayer.suggestions.map((suggestion) => {
-                        const x = suggestion.point.x * renderSize.width;
-                        const y = suggestion.point.y * renderSize.height;
+                      {visibleRoomMarkupCandidates.map((candidate) => {
+                        const suggestion = assistantSuggestionLayer.suggestions.find((row) => row.id === candidate.id);
+                        const x = candidate.reviewPoint.x * renderSize.width;
+                        const y = candidate.reviewPoint.y * renderSize.height;
                         return <g
-                          key={suggestion.id}
-                          className={`assistant-review-zone ${suggestion.kind}`}
+                          key={candidate.id}
+                          className={`assistant-review-zone ${candidate.kind} ${candidate.status} ${candidate.id === pendingRoomMarkupCandidateId ? "moving" : ""}`}
                           transform={`translate(${x} ${y}) scale(${1 / Math.max(.1, zoom)})`}
                         >
-                          <title>{suggestion.label}. {suggestion.explanation}</title>
+                          <title>{candidate.label}. {suggestion?.explanation || "Ghost review location. The plan is unchanged."}</title>
                           <circle className="assistant-review-zone-fill" cx="0" cy="0" r="34" />
                           <circle className="assistant-review-zone-ring" cx="0" cy="0" r="27" />
                           <path d="M -17 0 L -8 0 M 8 0 L 17 0 M 0 -17 L 0 -8 M 0 8 L 0 17" />
                           <text className="assistant-review-zone-letter" x="0" y="5" textAnchor="middle">
-                            {suggestion.kind === "supply" ? "S" : "R"}
+                            {candidate.kind === "supply" ? "S" : "R"}
                           </text>
                           <text className="assistant-review-zone-label" x="0" y="47" textAnchor="middle">
-                            {suggestion.kind === "supply" ? "SUPPLY REVIEW ZONE" : "RETURN-PATH REVIEW ZONE"}
+                            {candidate.id === pendingRoomMarkupCandidateId
+                              ? "CLICK NEW LOCATION"
+                              : candidate.kind === "supply" ? "SUPPLY GHOST" : "RETURN-AIR QUESTION"}
                           </text>
-                          <text className="assistant-review-zone-room" x="0" y="60" textAnchor="middle">{suggestion.roomName}</text>
+                          <text className="assistant-review-zone-room" x="0" y="60" textAnchor="middle">{candidate.room.value}</text>
                         </g>;
                       })}
                     </g>}
@@ -14849,6 +15418,10 @@ function HVACPlanStudioApp() {
         advancedIntelligence={activeAdvancedPlanIntelligence}
         smartSetup={activeSmartPlanSetup}
         suggestionLayer={assistantSuggestionLayer}
+        roomMarkupPlan={roomMarkupPlan}
+        roomMarkupTerminalOptions={roomMarkupTerminalOptions}
+        activeRoomMarkupRoomId={activeRoomMarkupRoom?.id || ""}
+        pendingRoomMarkupCandidateId={pendingRoomMarkupCandidateId}
         suggestionLayerVisible={showAssistantSuggestionLayer && assistantSuggestionLayer.status === "review"}
         connectionRepairItems={activeConnectionRepairIssues}
         connectionRepairFingerprint={activeConnectionRepairPlan.fingerprint}
@@ -14868,6 +15441,15 @@ function HVACPlanStudioApp() {
         onStartCalibration={startPlanScaleCalibration}
         designStandard={activeDesignStandard}
         canUndo={Boolean(undoableAssistantRepairRecord())}
+        canUndoRoomMarkup={Boolean(activeRoomMarkupRoom?.latestApplication && (
+          undoableRoomMarkupRecord(
+            undefined,
+            activeRoomMarkupRoom.latestApplication.id,
+          ) ||
+          undoableRoomMarkupReviewRecord(
+            activeRoomMarkupRoom.latestApplication.id,
+          )
+        ))}
         onClose={() => {
           setShowMarkupAssistant(false);
           setActiveMarkupRecommendation(undefined);
@@ -14920,6 +15502,18 @@ function HVACPlanStudioApp() {
         }}
         onShowIssueMarkersChange={setShowReviewMarkers}
         onSuggestionLayerVisibleChange={setShowAssistantSuggestionLayer}
+        onActiveRoomMarkupRoomChange={(roomId) => {
+          setActiveRoomMarkupRoomId(roomId);
+          setShowAssistantSuggestionLayer(true);
+        }}
+        onUpdateRoomMarkupCandidate={updateRoomMarkupCandidate}
+        onSetRoomMarkupReturnStrategy={setRoomMarkupReturnStrategy}
+        onMoveRoomMarkupCandidate={startRoomMarkupMove}
+        onCancelRoomMarkupMove={cancelRoomMarkupMove}
+        onResetRoomMarkupCandidate={resetRoomMarkupCandidate}
+        onFocusRoomMarkupCandidate={focusRoomMarkupCandidate}
+        onApplyRoomMarkup={applyRoomMarkup}
+        onUndoRoomMarkup={undoRoomMarkup}
         onChooseConnectionCandidate={(itemId, candidateId) => {
           const item = activeConnectionRepairPlan.items.find((candidate) => candidate.id === itemId);
           if (!item) return;

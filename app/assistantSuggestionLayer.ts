@@ -6,7 +6,7 @@ import type {
 } from "./planSetup";
 import type { PlanAnalysis, PlanEvidence } from "./planReader";
 
-export const ASSISTANT_SUGGESTION_LAYER_VERSION = "assistant-suggestion-layer-v128.0";
+export const ASSISTANT_SUGGESTION_LAYER_VERSION = "assistant-suggestion-layer-v131.0";
 
 export type AssistantSuggestionKind = "supply" | "return";
 
@@ -36,6 +36,10 @@ export type AssistantSuggestion = {
   page: number;
   roomId: string;
   roomName: string;
+  roomCeilingHeight: RoomFact["ceilingHeight"];
+  roomCeilingType: RoomFact["ceilingType"];
+  roomAssignmentConfirmed: boolean;
+  systemAssignmentConfirmed: boolean;
   point: NormalizedPoint;
   sourceRegion: PlanSetupRegion;
   confidence: number;
@@ -64,6 +68,8 @@ export type AssistantSuggestionLayer = {
 type BuildAssistantSuggestionLayerInput = {
   page: number;
   scaleVerified: boolean;
+  scaleLabel: string;
+  scaleFeetPerUnit: number;
   smartSetup: SmartPlanSetup | null;
   analysis: PlanAnalysis | null;
   sourceFingerprint: string;
@@ -240,7 +246,13 @@ export function buildAssistantSuggestionLayer(
     missingInformation.push("This page needs OCR or a visual review before the assistant can locate room evidence.");
   }
 
-  if (!input.scaleVerified) missingInformation.push("Confirm the scale for this page.");
+  const scaleIsUsable = Boolean(
+    input.scaleVerified &&
+    input.scaleLabel.trim() &&
+    Number.isFinite(input.scaleFeetPerUnit) &&
+    input.scaleFeetPerUnit > 0
+  );
+  if (!scaleIsUsable) missingInformation.push("Confirm the scale for this page.");
 
   const roomRows = setup.rooms
     .filter((room) => room.page === input.page)
@@ -267,12 +279,12 @@ export function buildAssistantSuggestionLayer(
     setup.systems.length ||
     (placedEquipment && input.activeSystemLabel.trim())
   );
-  if (
-    !systemIsKnown ||
-    (systemQuestion && setup.equipment.length > 1) ||
-    setup.systems.length > 1
-  ) {
+  const multipleSystems = setup.systems.length > 1 || setup.equipment.length > 1;
+  if (!systemIsKnown || !input.activeSystemLabel.trim()) {
     missingInformation.push("Confirm which rooms belong to this HVAC system.");
+  }
+  if (multipleSystems && !placedEquipment) {
+    missingInformation.push("Place or confirm the active HVAC unit before assigning rooms on a multi-system page.");
   }
 
   const requiredScaleQuestion = setup.reviewQuestions.find((question) =>
@@ -280,7 +292,7 @@ export function buildAssistantSuggestionLayer(
     question.category === "scale" &&
     question.page === input.page
   );
-  if (requiredScaleQuestion && !input.scaleVerified) {
+  if (requiredScaleQuestion && !scaleIsUsable) {
     missingInformation.push(requiredScaleQuestion.title);
   }
 
@@ -288,8 +300,18 @@ export function buildAssistantSuggestionLayer(
     return missingLayer(input, [...new Set(missingInformation)], basis);
   }
 
+  const systemAssignmentConfirmed = Boolean(
+    placedEquipment &&
+    !multipleSystems &&
+    !systemQuestion
+  );
+  const scaleFingerprint = [
+    input.scaleLabel.trim(),
+    input.scaleFeetPerUnit.toPrecision(12),
+  ].join("|");
+
   basis.push(
-    `Verified page scale`,
+    `Verified page scale ${input.scaleLabel.trim()}`,
     `${roomRows.length} room source location${roomRows.length === 1 ? "" : "s"}`,
     placedEquipment
       ? `${placedEquipment.label} placed on the plan`
@@ -311,6 +333,10 @@ export function buildAssistantSuggestionLayer(
         page: input.page,
         roomId: room.id,
         roomName: room.name,
+        roomCeilingHeight: room.ceilingHeight,
+        roomCeilingType: room.ceilingType,
+        roomAssignmentConfirmed: source.confidence >= 0.8,
+        systemAssignmentConfirmed,
         point: suggestedPoint(roomPoint, "supply", index),
         sourceRegion: source.region,
         confidence: Math.min(0.88, source.confidence, placedEquipment ? 0.88 : extractedEquipment!.source.confidence),
@@ -329,9 +355,12 @@ export function buildAssistantSuggestionLayer(
           setup.sourceFingerprint,
           input.page,
           input.activeSystemLabel,
+          scaleFingerprint,
+          placedEquipment?.id || "source-equipment-only",
           room.id,
           "supply",
           source.id,
+          source.confidence.toPrecision(4),
           source.region.x,
           source.region.y,
           source.region.width,
@@ -352,6 +381,10 @@ export function buildAssistantSuggestionLayer(
         page: input.page,
         roomId: room.id,
         roomName: room.name,
+        roomCeilingHeight: room.ceilingHeight,
+        roomCeilingType: room.ceilingType,
+        roomAssignmentConfirmed: source.confidence >= 0.8,
+        systemAssignmentConfirmed,
         point: suggestedPoint(roomPoint, "return", index),
         sourceRegion: source.region,
         confidence: Math.min(0.84, source.confidence, placedEquipment ? 0.86 : extractedEquipment!.source.confidence),
@@ -368,9 +401,12 @@ export function buildAssistantSuggestionLayer(
           setup.sourceFingerprint,
           input.page,
           input.activeSystemLabel,
+          scaleFingerprint,
+          placedEquipment?.id || "source-equipment-only",
           room.id,
           "return-path-review",
           source.id,
+          source.confidence.toPrecision(4),
           source.region.x,
           source.region.y,
           source.region.width,
@@ -387,6 +423,7 @@ export function buildAssistantSuggestionLayer(
     setup.sourceFingerprint,
     input.page,
     input.activeSystemLabel,
+    scaleFingerprint,
     ...basis,
     ...suggestions.map((suggestion) =>
       `${suggestion.id}:${suggestion.kind}:${suggestion.point.x.toFixed(5)}:${suggestion.point.y.toFixed(5)}`

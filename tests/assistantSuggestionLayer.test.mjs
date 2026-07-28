@@ -186,6 +186,8 @@ function input(overrides = {}) {
   return {
     page: 1,
     scaleVerified: true,
+    scaleLabel: '1/4" = 1\'-0"',
+    scaleFeetPerUnit: 1 / 48,
     smartSetup: setup(),
     analysis: analysis(),
     sourceFingerprint: "pdf-source-1",
@@ -242,8 +244,46 @@ test("creates evidence-linked supply and return review zones without changing ge
   assert.equal(result.status, "review");
   assert.deepEqual(result.suggestions.map((row) => row.kind).sort(), ["return", "supply"]);
   assert.ok(result.suggestions.every((row) => row.roomName === "Bedroom 2"));
+  assert.ok(result.suggestions.every((row) => row.roomAssignmentConfirmed === true));
+  assert.ok(result.suggestions.every((row) => row.systemAssignmentConfirmed === false));
   assert.ok(result.suggestions.every((row) => row.label.includes("review zone")));
   assert.ok(result.detail.includes("not exact engineered locations"));
+});
+
+test("keeps a low-confidence room label as an explicit room question", () => {
+  const nextAnalysis = analysis();
+  nextAnalysis.evidence = nextAnalysis.evidence.map((row) =>
+    row.id === "room-source" ? { ...row, confidence: 0.65 } : row
+  );
+  const result = buildAssistantSuggestionLayer(input({ analysis: nextAnalysis }));
+  assert.equal(result.status, "review");
+  assert.ok(result.suggestions.length > 0);
+  assert.ok(result.suggestions.every((row) => row.roomAssignmentConfirmed === false));
+});
+
+test("binds candidates to the exact verified sheet scale", () => {
+  const original = buildAssistantSuggestionLayer(input());
+  const changedScale = buildAssistantSuggestionLayer(input({
+    scaleFeetPerUnit: 1 / 52,
+  }));
+  assert.notEqual(original.evidenceFingerprint, changedScale.evidenceFingerprint);
+  assert.notEqual(
+    original.suggestions[0].evidenceFingerprint,
+    changedScale.suggestions[0].evidenceFingerprint,
+  );
+});
+
+test("a placed active-system unit establishes the single-system mapping", () => {
+  const result = buildAssistantSuggestionLayer(input({
+    equipmentAnchors: [{
+      id: "unit-system-1",
+      label: "System 1 heat pump",
+      page: 1,
+      point: { x: 0.2, y: 0.8 },
+    }],
+  }));
+  assert.equal(result.status, "review");
+  assert.ok(result.suggestions.every((row) => row.systemAssignmentConfirmed === true));
 });
 
 test("does not duplicate a terminal already assigned to the room", () => {
@@ -270,7 +310,30 @@ test("blocks ambiguous multi-system pages instead of assigning rooms by proximit
   });
   const result = buildAssistantSuggestionLayer(input({ smartSetup: next }));
   assert.equal(result.status, "blocked");
-  assert.ok(result.missingInformation.some((item) => /which rooms/i.test(item)));
+  assert.ok(result.missingInformation.some((item) => /active HVAC unit/i.test(item)));
+});
+
+test("shows multi-system room candidates after equipment is placed but keeps system assignment unconfirmed", () => {
+  const next = setup();
+  next.systems.push({
+    id: "system-2",
+    label: "System 2",
+    kind: "system",
+    status: "likely",
+    sources: [source("system-2-source", "SYSTEM 2", 680, 420)],
+  });
+  const result = buildAssistantSuggestionLayer(input({
+    smartSetup: next,
+    equipmentAnchors: [{
+      id: "unit-1",
+      label: "System 1 heat pump",
+      page: 1,
+      point: { x: 0.2, y: 0.8 },
+    }],
+  }));
+  assert.equal(result.status, "review");
+  assert.ok(result.suggestions.length > 0);
+  assert.ok(result.suggestions.every((item) => item.systemAssignmentConfirmed === false));
 });
 
 test("primary bathroom text never creates a return-grille recommendation", () => {
