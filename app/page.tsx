@@ -12,7 +12,10 @@ import ProjectHome from "./ProjectHome";
 import SymbolActionWheel from "./PlanSymbolActionWheel";
 import { trackProductEvent } from "./productAnalytics";
 import SystemBalanceStudio from "./SystemBalanceStudio";
-import MarkupAssistantStudio, { type PlanHelperPrimaryView } from "./MarkupAssistantStudio";
+import MarkupAssistantStudio, {
+  type FixPlanIssueAnswer,
+  type PlanHelperPrimaryView,
+} from "./MarkupAssistantStudio";
 import { type FieldPackageSectionId } from "./fieldPackage";
 import type { PlanAnalysis, PlanEvidence } from "./planReader";
 import { buildAdvancedPlanIntelligence } from "./advancedPlanIntelligence";
@@ -107,6 +110,13 @@ import {
   type ConnectionRepairTarget,
   type ConnectionRunSnapshot,
 } from "./connectionRepair";
+import {
+  FIX_PLAN_ANSWER_VERSION,
+  fixPlanAnswerCompletesReview,
+  isFixPlanAnswerStale,
+  type FixPlanAnswerStatus,
+  type FixPlanHandledReason,
+} from "./fixPlanAnswers";
 import {
   BALANCE_CALCULATION_VERSION,
   summarizeSystemBalance,
@@ -1039,7 +1049,7 @@ type SheetScaleState = {
 };
 
 type SavedProject = {
-  version: 1 | 2 | 3 | 4 | 5;
+  version: 1 | 2 | 3 | 4 | 5 | 6;
   fileName: string;
   drawings: Drawing[];
   savedAt: string;
@@ -1194,15 +1204,20 @@ type ValidationIssue = {
   detail: string;
   drawingId?: string;
 };
-type ReviewDecisionStatus = "accepted" | "rfi" | "punch";
+type ReviewDecisionStatus = FixPlanAnswerStatus;
 type ReviewDecision = {
   issueId: string;
   evidenceFingerprint?: string;
+  sourceFingerprint?: string;
+  answerVersion?: typeof FIX_PLAN_ANSWER_VERSION;
+  systemId?: string;
+  page?: number;
   status: ReviewDecisionStatus;
   reviewer: string;
   note: string;
   updatedAt: string;
   linkedRecordId?: string;
+  handledReason?: FixPlanHandledReason;
 };
 type SystemReleaseRecord = {
   id: string;
@@ -1786,7 +1801,7 @@ function HVACPlanStudioApp() {
   );
   const activeReviewedIssueRows = useMemo(
     () => reviewedIssueRows(activeValidationIssues),
-    [activeSystem, activeValidationIssues, punchItems, reviewDecisionsBySystem, rfiItems],
+    [activeSystem, activeValidationIssues, fileName, pdfFingerprint, punchItems, reviewDecisionsBySystem, rfiItems],
   );
   const activePlanIntelligenceFindings = useMemo<PlanIntelligenceFinding[]>(
     () => activeReviewedIssueRows.map((row) => ({
@@ -3246,7 +3261,7 @@ function HVACPlanStudioApp() {
       releaseStale: activeFieldPackage.stale,
     });
     return {
-      version: 5,
+      version: 6,
       fileName,
       drawings,
       savedAt: new Date().toISOString(),
@@ -5923,25 +5938,34 @@ function HVACPlanStudioApp() {
     return `${issue.severity === "critical" ? "C" : issue.severity === "warning" ? "W" : "I"}${issue.id.replace("review-", "").slice(-2).toUpperCase()}`;
   }
 
+  function fixPlanSourceFingerprint() {
+    return pdfFingerprint || stableTextHash(`${fileName}|local-plan-source`);
+  }
+
   function reviewedIssueRows(issues = validationIssues()) {
     const decisions = activeReviewDecisions();
     const severityOrder: Record<ValidationSeverity, number> = { critical: 0, warning: 1, info: 2 };
     return issues
       .map((issue) => {
         const decision = reviewDecisionForIssue(issue, decisions);
-        const decisionStale = Boolean(
-          decision &&
-          (decision.issueId !== issue.id ||
-            decision.evidenceFingerprint !== issue.evidenceFingerprint)
-        );
+        const decisionStale = Boolean(decision && isFixPlanAnswerStale({
+          issueId: decision.issueId,
+          evidenceFingerprint: decision.evidenceFingerprint || "",
+          sourceFingerprint: decision.sourceFingerprint || "",
+        }, {
+          issueId: issue.id,
+          evidenceFingerprint: issue.evidenceFingerprint,
+          sourceFingerprint: fixPlanSourceFingerprint(),
+        }));
         const linkedRfi = decision?.status === "rfi" ? rfiItems.find((item) => item.id === decision.linkedRecordId) : undefined;
         const linkedPunch = decision?.status === "punch" ? punchItems.find((item) => item.id === decision.linkedRecordId) : undefined;
-        const decisionComplete = !decisionStale && (
-          decision?.status === "accepted" ||
-          (decision?.status === "rfi" && Boolean(linkedRfi && ["approved", "closed"].includes(linkedRfi.status))) ||
-          (decision?.status === "punch" && linkedPunch?.status === "resolved")
-        );
-        const resolvedByDecision = issue.severity !== "critical" && Boolean(decisionComplete);
+        const resolvedByDecision = fixPlanAnswerCompletesReview({
+          severity: issue.severity,
+          status: decision?.status,
+          stale: decisionStale,
+          rfiStatus: linkedRfi?.status,
+          punchStatus: linkedPunch?.status,
+        });
         return { issue, decision, decisionStale, resolvedByDecision };
       })
       .sort((a, b) =>
@@ -6038,7 +6062,7 @@ function HVACPlanStudioApp() {
   }
 
   function reviewIssueMarkers(rows = reviewedIssueRows()) {
-    if (!showReviewMarkers || rightTab !== "checks") return [];
+    if (!showReviewMarkers || (rightTab !== "checks" && !showMarkupAssistant)) return [];
     const drawingOccurrences = new Map<string, number>();
     return rows.flatMap((row) => {
       if (!row.issue.drawingId) return [];
@@ -6059,10 +6083,24 @@ function HVACPlanStudioApp() {
     });
   }
 
-  function resolveReviewIssue(issue: ValidationIssue, status: ReviewDecisionStatus) {
-    if (!reviewerName.trim() || !reviewDecisionNote.trim()) {
+  function resolveReviewIssue(
+    issue: ValidationIssue,
+    status: ReviewDecisionStatus,
+    input?: {
+      reviewer: string;
+      note: string;
+      handledReason?: FixPlanHandledReason;
+    },
+  ) {
+    const decisionReviewer = input?.reviewer.trim() || reviewerName.trim();
+    const decisionNote = input?.note.trim() || reviewDecisionNote.trim();
+    if (!decisionReviewer || !decisionNote) {
       setBranchMessage("Add the reviewer name and a decision note before recording this review");
-      return;
+      return false;
+    }
+    if (status === "handled-elsewhere" && !input?.handledReason) {
+      setBranchMessage("Choose where this issue is being handled before saving the answer");
+      return false;
     }
     const now = new Date().toISOString();
     const existingDecision = reviewDecisionForIssue(issue);
@@ -6075,8 +6113,8 @@ function HVACPlanStudioApp() {
         linkedRecordId = existingRfi.id;
         setRfiItems((current) => current.map((item) => item.id === existingRfi.id ? {
           ...item,
-          proposedSolution: reviewDecisionNote.trim(),
-          assignedTo: reviewerName.trim(),
+          proposedSolution: decisionNote,
+          assignedTo: decisionReviewer,
           updatedAt: now,
         } : item));
       } else {
@@ -6091,8 +6129,8 @@ function HVACPlanStudioApp() {
           category: issueCategory(issue.title) === "Connections" ? "Coordination" : "Design",
           priority: issue.severity === "critical" ? "critical" : "normal",
           question: issue.detail,
-          proposedSolution: reviewDecisionNote.trim(),
-          assignedTo: reviewerName.trim(),
+          proposedSolution: decisionNote,
+          assignedTo: decisionReviewer,
           costImpact: "Not evaluated",
           scheduleImpact: "Not evaluated",
           response: "",
@@ -6110,8 +6148,8 @@ function HVACPlanStudioApp() {
         linkedRecordId = existingPunch.id;
         setPunchItems((current) => current.map((item) => item.id === existingPunch.id ? {
           ...item,
-          assignedTo: reviewerName.trim(),
-          note: reviewDecisionNote.trim(),
+          assignedTo: decisionReviewer,
+          note: decisionNote,
         } : item));
       } else {
         linkedRecordId = crypto.randomUUID();
@@ -6122,8 +6160,8 @@ function HVACPlanStudioApp() {
           title: issue.title,
           category: issueCategory(issue.title) === "Airflow" ? "Airflow" : "Coordination",
           priority: issue.severity === "critical" ? "critical" : "normal",
-          assignedTo: reviewerName.trim(),
-          note: reviewDecisionNote.trim(),
+          assignedTo: decisionReviewer,
+          note: decisionNote,
           status: "open",
           createdAt: now,
         }]);
@@ -6132,20 +6170,32 @@ function HVACPlanStudioApp() {
     const decision: ReviewDecision = {
       issueId: issue.id,
       evidenceFingerprint: issue.evidenceFingerprint,
+      sourceFingerprint: fixPlanSourceFingerprint(),
+      answerVersion: FIX_PLAN_ANSWER_VERSION,
+      systemId: activeSystem,
+      page: issue.drawingId
+        ? drawings.find((drawing) => drawing.id === issue.drawingId)?.page
+        : pageNumber,
       status,
-      reviewer: reviewerName.trim(),
-      note: reviewDecisionNote.trim(),
+      reviewer: decisionReviewer,
+      note: decisionNote,
       updatedAt: now,
       linkedRecordId,
+      handledReason: status === "handled-elsewhere" ? input?.handledReason : undefined,
     };
     setReviewDecisionsBySystem((current) => {
       const nextSystem = { ...(current[activeSystem] || {}), [issue.id]: decision };
       if (issue.legacyId && issue.legacyId !== issue.id) delete nextSystem[issue.legacyId];
       return { ...current, [activeSystem]: nextSystem };
     });
-    setBranchMessage(issue.severity === "critical"
-      ? `${issue.title} was documented, but remains a release blocker until the drawing condition is fixed`
-      : `${issue.title} review decision recorded`);
+    setBranchMessage(
+      issue.severity === "critical"
+        ? `${issue.title} was documented, but remains a release blocker until the drawing condition is fixed`
+        : status === "handled-elsewhere"
+          ? `${issue.title} was documented elsewhere and remains open in Fix Plan`
+          : `${issue.title} review decision recorded`,
+    );
+    return true;
   }
 
   function reopenReviewIssue(issueId: string) {
@@ -6525,9 +6575,72 @@ function HVACPlanStudioApp() {
     return candidate ? connectionRepairDistanceValue(candidate.distance, item.page) : "";
   }
 
+  function connectionRepairPreviewChanges(item: ConnectionRepairItem): RepairChange[] {
+    const candidate = item.candidate || item.candidates[0];
+    if (!candidate) return [];
+    const changes: RepairChange[] = [{
+      objectId: candidate.runId,
+      field: `${candidate.end} endpoint`,
+      before: `${candidate.point.x.toFixed(1)}, ${candidate.point.y.toFixed(1)}`,
+      after: `${item.targetPoint.x.toFixed(1)}, ${item.targetPoint.y.toFixed(1)}`,
+    }];
+    const target = drawings.find((drawing) => drawing.id === item.drawingId);
+    if (item.kind === "fitting" && target?.fitting && item.port != null) {
+      const currentRunId = target.fitting.connectedIds[item.port] || "";
+      if (currentRunId !== candidate.runId) {
+        changes.push({
+          objectId: target.id,
+          field: `T/Y port ${item.port + 1} run reference`,
+          before: currentRunId || "Not connected",
+          after: candidate.runId,
+        });
+      }
+      const sizeFields = ["upstreamSize", "downstreamSize", "branchSize"] as const;
+      const sizeField = sizeFields[item.port];
+      if (target.fitting[sizeField] !== candidate.runSize) {
+        changes.push({
+          objectId: target.id,
+          field: `T/Y port ${item.port + 1} size`,
+          before: `${target.fitting[sizeField]}"`,
+          after: `${candidate.runSize}"`,
+        });
+      }
+    }
+    if (item.kind === "device" && target?.symbol) {
+      const isReturn = item.slot === "equipment-return";
+      const currentRunId = isReturn
+        ? target.symbol.returnRunId
+        : target.symbol.connectedRunId;
+      const currentEnd = isReturn
+        ? target.symbol.returnEnd
+        : target.symbol.connectedEnd;
+      if (currentRunId !== candidate.runId) {
+        changes.push({
+          objectId: target.id,
+          field: `${item.slot || "terminal"} run reference`,
+          before: currentRunId || "Not connected",
+          after: candidate.runId,
+        });
+      }
+      if (currentEnd !== candidate.end) {
+        changes.push({
+          objectId: target.id,
+          field: `${item.slot || "terminal"} connected endpoint`,
+          before: currentEnd || "Not connected",
+          after: candidate.end,
+        });
+      }
+    }
+    return changes;
+  }
+
   function applyConnectionRepairSelection(
     repairIds: string[],
     expectedFingerprint: string,
+    review?: {
+      reviewer: string;
+      note: string;
+    },
   ) {
     const currentPlan = buildActiveConnectionRepairPlan(connectionCandidateChoices);
     const batch = prepareConnectionRepairBatch(
@@ -6593,7 +6706,94 @@ function HVACPlanStudioApp() {
         ? { ...device.symbol, returnRunId: run.id, returnEnd: operation.end }
         : { ...device.symbol, connectedRunId: run.id, connectedEnd: operation.end };
     }
+    const beforeDrawingFingerprint = systemDrawingSignatureFor(drawings, activeSystem);
+    const afterDrawingFingerprint = systemDrawingSignatureFor(next, activeSystem);
+    const connectionRecord = review ? (() => {
+      const repairRuns = (sourceDrawings: Drawing[]) => sourceDrawings.flatMap((drawing) => {
+        if (
+          drawingSystem(drawing) !== activeSystem ||
+          drawing.fitting ||
+          drawing.symbol ||
+          !["supply", "return", "fresh"].includes(drawing.type)
+        ) return [];
+        return [{
+          id: drawing.id,
+          type: drawing.type as "supply" | "return" | "fresh",
+          size: drawing.size,
+          measuredLengthFeet: drawingLengthFeet(drawing),
+        }];
+      });
+      const createdAt = new Date().toISOString();
+      const actionIds = batch.operations.map((operation) => `connection-fix-${operation.itemId}`);
+      return {
+        id: `repair-batch-${stableTextHash(`${expectedFingerprint}|${createdAt}|${actionIds.join("|")}`)}`,
+        repairPlanId: `connection-repair-${stableTextHash(expectedFingerprint)}`,
+        systemId: activeSystem,
+        repairVersion: ASSISTANT_REPAIR_VERSION,
+        evidenceFingerprint: expectedFingerprint,
+        beforeDrawingFingerprint,
+        afterDrawingFingerprint,
+        autonomyMode: "guided" as const,
+        actionIds,
+        actions: batch.operations.map((operation) => {
+          const item = currentPlan.items.find((candidate) => candidate.id === operation.itemId);
+          return {
+            id: `connection-fix-${operation.itemId}`,
+            kind: "manual-follow-up" as const,
+            title: item?.label || "Connect existing run endpoint",
+            detail: item?.detail || "Reviewed connection repair",
+            problem: item?.reason || "The saved connection and run endpoint do not agree.",
+            proposedFix: `Move only the reviewed ${operation.end} endpoint onto the saved connection.`,
+            expectedResult: "The saved connection and existing run endpoint agree without creating a route or branch stub.",
+            objectIds: [operation.drawingId, operation.runId],
+            evidenceFingerprint: `${expectedFingerprint}:${operation.itemId}:${operation.runId}:${operation.end}`,
+            priority: "do-first" as const,
+            stage: "connections" as const,
+            changeScope: "One existing run endpoint and its saved connection reference.",
+            geometryChanges: true,
+            changes: item ? connectionRepairPreviewChanges(item) : [{
+              objectId: operation.runId,
+              field: `${operation.end} endpoint`,
+              before: `${operation.from.x.toFixed(1)}, ${operation.from.y.toFixed(1)}`,
+              after: `${operation.to.x.toFixed(1)}, ${operation.to.y.toFixed(1)}`,
+            }],
+          };
+        }),
+        takeoffImpact: buildTakeoffImpact({
+          runs: repairRuns(drawings),
+          afterRuns: repairRuns(next),
+          sizeChanges: [],
+          wastePercent: materialWastePercent,
+          affectedFittingIds: batch.operations
+            .filter((operation) => operation.kind === "fitting")
+            .map((operation) => operation.drawingId),
+        }),
+        reviewer: review.reviewer,
+        note: review.note,
+        planningOverrideAcknowledged: false,
+        createdAt,
+        cloudSync: workingCloudProjectId ? "pending" as const : "local" as const,
+      } satisfies RepairBatchRecord;
+    })() : undefined;
     setHistory(next);
+    if (connectionRecord) {
+      setAssistantRepairRecords((current) => [...current, connectionRecord]);
+      if (workingCloudProjectId) {
+        void saveCloudRepairBatch({
+          projectId: workingCloudProjectId,
+          revisionId: workingCloudRevisionId,
+          record: connectionRecord,
+        }).then((cloudBatch) => {
+          setAssistantRepairRecords((current) => current.map((candidate) =>
+            candidate.id === connectionRecord.id
+              ? { ...candidate, cloudBatchId: cloudBatch.id, cloudSync: "synced" }
+              : candidate
+          ));
+        }).catch(() => {
+          setBranchMessage("The connection fix is saved locally with one Undo. Its cloud receipt is still pending.");
+        });
+      }
+    }
     setConnectionReviewOpen(false);
     setSelectedConnectionRepairIds([]);
     setConnectionCandidateChoices({});
@@ -6622,7 +6822,7 @@ function HVACPlanStudioApp() {
   function openSystemAuditWorkflow() {
     setValidationFilter("all");
     const nextIssue = activeReviewedIssueRows.find((row) =>
-      !row.resolvedByDecision && row.issue.drawingId
+      !row.resolvedByDecision
     )?.issue;
     if (nextIssue) {
       focusReviewIssue(nextIssue);
@@ -6638,7 +6838,7 @@ function HVACPlanStudioApp() {
   }
 
   function selectNextValidationIssue() {
-    const selectable = activeReviewedIssueRows.filter((row) => !row.resolvedByDecision && row.issue.drawingId).map((row) => row.issue);
+    const selectable = activeReviewedIssueRows.filter((row) => !row.resolvedByDecision).map((row) => row.issue);
     if (!selectable.length) return;
     const index = validationCursor % selectable.length;
     focusReviewIssue(selectable[index]);
@@ -10883,6 +11083,24 @@ function HVACPlanStudioApp() {
     scaleVerified: activeSystemScaleStatus.verified,
     designCfm: activeAirflowSetup.targetCfm,
   });
+  const activeFixPlanIssueAnswers: FixPlanIssueAnswer[] = activeReviewedIssueRows.flatMap((row) => {
+    const recommendation = markupRecommendations.find((candidate) =>
+      candidate.findingId === row.issue.id
+    );
+    if (!recommendation) return [];
+    return [{
+      recommendationId: recommendation.id,
+      issueId: row.issue.id,
+      severity: row.issue.severity,
+      status: row.decision?.status,
+      reviewer: row.decision?.reviewer,
+      note: row.decision?.note,
+      updatedAt: row.decision?.updatedAt,
+      handledReason: row.decision?.handledReason,
+      stale: row.decisionStale,
+      resolved: row.resolvedByDecision,
+    }];
+  });
   const activeDesignStandard = buildDesignStandardProfile({
     systemId: activeSystem,
     evidenceFingerprint: stableTextHash(`${systemDrawingSignature(activeSystem)}|design-standard-v116.0`),
@@ -13162,12 +13380,14 @@ function HVACPlanStudioApp() {
         </section>
 
         <aside id="workspace-inspector-panel" className="right-panel" aria-label="HVAC plan inspector">
-          <div className="right-tabs" role="tablist" aria-label="HVAC workspace panels">
-            <button role="tab" aria-selected={rightTab === "builder"} className={rightTab === "builder" ? "active" : ""} onClick={() => setRightTab("builder")}>Current step</button>
-            <button role="tab" aria-selected={rightTab === "layers"} className={rightTab === "layers" ? "active" : ""} onClick={() => setRightTab("layers")}>Layers</button>
-            <button role="tab" aria-selected={rightTab === "rooms"} className={rightTab === "rooms" ? "active" : ""} onClick={() => openSystemBalanceWorkspace("system")}>Airflow</button>
-            <button role="tab" aria-selected={rightTab === "takeoff"} className={rightTab === "takeoff" ? "active" : ""} onClick={() => setRightTab("takeoff")}>Materials</button>
-            <button role="tab" aria-selected={showMarkupAssistant} className={showMarkupAssistant ? "active" : ""} onClick={() => openMarkupAssistant("fix-plan")}>Fix Plan</button>
+          <div className="right-tabs">
+            <div className="right-tablist" role="tablist" aria-label="HVAC workspace panels">
+              <button role="tab" aria-selected={rightTab === "builder"} className={rightTab === "builder" ? "active" : ""} onClick={() => setRightTab("builder")}>Current step</button>
+              <button role="tab" aria-selected={rightTab === "layers"} className={rightTab === "layers" ? "active" : ""} onClick={() => setRightTab("layers")}>Layers</button>
+              <button role="tab" aria-selected={rightTab === "rooms"} className={rightTab === "rooms" ? "active" : ""} onClick={() => openSystemBalanceWorkspace("system")}>Airflow</button>
+              <button role="tab" aria-selected={rightTab === "takeoff"} className={rightTab === "takeoff" ? "active" : ""} onClick={() => setRightTab("takeoff")}>Materials</button>
+            </div>
+            <button type="button" aria-pressed={showMarkupAssistant} className={`right-fix-plan ${showMarkupAssistant ? "active" : ""}`} onClick={() => openMarkupAssistant("fix-plan")}>Fix Plan</button>
             <button className="right-collapse" aria-label="Collapse inspector" aria-controls="workspace-inspector-panel" aria-expanded={rightPanelOpen} onClick={() => setRightPanelOpen(false)}><PanelRightClose size={15} /></button>
           </div>
           {rightTab === "builder" ? <div className="system-builder-panel">
@@ -14051,7 +14271,7 @@ function HVACPlanStudioApp() {
               </div>
               <div className={`review-next-card ${activeReviewSummary.blockers ? "open" : "clear"}`}>
                 <div>{activeReviewSummary.blockers ? <AlertTriangle size={21} /> : <CheckCircle2 size={21} />}<span><strong>{activeReviewSummary.blockers ? "Next review action" : "Plan review is clear"}</strong><small>{activeReviewSummary.blockers ? "Work the queue in severity order. Critical conditions cannot be waived." : "No unresolved critical issues or warnings remain."}</small></span></div>
-                <button disabled={!activeReviewedIssueRows.some((row) => !row.resolvedByDecision && row.issue.drawingId)} onClick={selectNextValidationIssue}>Jump to next issue</button>
+                <button disabled={!activeReviewedIssueRows.some((row) => !row.resolvedByDecision)} onClick={selectNextValidationIssue}>Jump to next issue</button>
               </div>
               <div className="review-control-row">
                 <label><input type="checkbox" checked={showReviewMarkers} onChange={(event) => setShowReviewMarkers(event.target.checked)} /> Show plan issue markers</label>
@@ -14633,6 +14853,11 @@ function HVACPlanStudioApp() {
         connectionRepairItems={activeConnectionRepairIssues}
         connectionRepairFingerprint={activeConnectionRepairPlan.fingerprint}
         connectionCandidateChoices={connectionCandidateChoices}
+        connectionRepairChanges={Object.fromEntries(
+          activeConnectionRepairIssues.map((item) => [item.id, connectionRepairPreviewChanges(item)]),
+        )}
+        issueAnswers={activeFixPlanIssueAnswers}
+        showIssueMarkers={showReviewMarkers}
         scaleVerified={activeSystemScaleStatus.verified}
         confirmedScaleByPage={Object.fromEntries(
           Object.entries(sheetScales)
@@ -14681,6 +14906,19 @@ function HVACPlanStudioApp() {
         onPrepareRepairPlan={prepareAssistantRepairPlan}
         onApplyRepairPlan={applyAssistantRepairPlan}
         onUndoRepairBatch={undo}
+        onRecordIssueAnswer={(input) => {
+          const issue = activeValidationIssues.find((candidate) => candidate.id === input.issueId);
+          if (!issue) {
+            setBranchMessage("That issue changed with the plan. Refresh Fix Plan before recording an answer.");
+            return false;
+          }
+          return resolveReviewIssue(issue, input.status, {
+            reviewer: input.reviewer,
+            note: input.note,
+            handledReason: input.handledReason,
+          });
+        }}
+        onShowIssueMarkersChange={setShowReviewMarkers}
         onSuggestionLayerVisibleChange={setShowAssistantSuggestionLayer}
         onChooseConnectionCandidate={(itemId, candidateId) => {
           const item = activeConnectionRepairPlan.items.find((candidate) => candidate.id === itemId);
@@ -14689,8 +14927,11 @@ function HVACPlanStudioApp() {
           setConnectionReviewFingerprint(activeConnectionRepairPlan.fingerprint);
           chooseConnectionCandidate(item, candidateId);
         }}
-        onApplyConnectionRepair={(itemId, evidenceFingerprint) =>
-          applyConnectionRepairSelection([itemId], evidenceFingerprint)
+        onApplyConnectionRepair={(input) =>
+          applyConnectionRepairSelection([input.itemId], input.evidenceFingerprint, {
+            reviewer: input.reviewer,
+            note: input.note,
+          })
         }
         onFocusConnectionRepair={(itemId) => {
           const item = activeConnectionRepairPlan.items.find((candidate) => candidate.id === itemId);

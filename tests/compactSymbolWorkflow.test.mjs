@@ -59,16 +59,19 @@ test("v127 removes SIZE LATER and leaves unconfirmed supply and return runs unla
   assert.match(page, /\{runLabelText\}/);
 });
 
-test("v129 release metadata stays image-free and identifies the One Job Screen", () => {
-  assert.match(layout, /HVAC Plan Studio · One Job Screen/);
-  assert.match(layout, /Open one job, follow one current step/);
+test("v130 release metadata stays image-free and identifies Answer & Fix in Place", () => {
+  assert.match(layout, /HVAC Plan Studio · Answer & Fix in Place/);
+  assert.match(layout, /Answer one missing plan question, preview the exact change/);
   assert.doesNotMatch(layout, /\bimages\s*:/);
   assert.doesNotMatch(layout, /summary_large_image/);
-  assert.match(analytics, /app_version: "129"/);
-  assert.match(readme, /Current release\s+[—-]\s+v129/i);
+  assert.match(analytics, /app_version: "130"/);
+  assert.match(readme, /Current release\s+[—-]\s+v130/i);
+  assert.match(readme, /v130\s+[—-]\s+Answer & Fix in Place/i);
   assert.match(readme, /v129\s+[—-]\s+One Job Screen/i);
   assert.match(readme, /v128\s+[—-]\s+Fix Plan & Contextual Markup/i);
   assert.match(readme, /v127\s+[—-]\s+Compact Symbol Workflow/i);
+  assert.match(roadmap, /\| v130 \| Answer & Fix in Place \| Shipped \|/);
+  assert.match(roadmap, /\| v131 \| Room-by-Room Markup \| Next \|/);
   assert.match(roadmap, /\| v129 \| One Job Screen \| Shipped \|/);
   assert.match(roadmap, /\| v128 \| Fix Plan & Contextual Markup \| Shipped \|/);
   assert.match(roadmap, /\| v127 \| Compact Symbol Workflow \| Shipped \|/);

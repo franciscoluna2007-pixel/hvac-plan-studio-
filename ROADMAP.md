@@ -83,8 +83,8 @@ Advanced coordination remains available without crowding the first screen.
 | v127 | Compact Symbol Workflow | Shipped |
 | v128 | Fix Plan & Contextual Markup | Shipped |
 | v129 | One Job Screen | Shipped |
-| v130 | Answer & Fix in Place | Next |
-| v131 | Room-by-Room Markup | Planned |
+| v130 | Answer & Fix in Place | Shipped |
+| v131 | Room-by-Room Markup | Next |
 | v132 | Finish the Job | Planned |
 | v117 | Multi-company commercial operations | Planned for later |
 
@@ -108,11 +108,28 @@ A superintendent or one-person HVAC business can enter one current job, see one 
 
 v129 changes entry, navigation, focus, and visual hierarchy only. It does not treat navigation progress as engineering completion, waive missing equipment or return information, clear connection or sizing problems, alter source evidence, change geometry, or relax field-package and release gates.
 
+## v130 — Answer & Fix in Place
+
+### Outcome
+
+A superintendent or one-person HVAC contractor can handle the current supported review issue in one compact Fix Plan card through search, job-condition answer, exact preview, named approval, result, and Undo.
+
+### Shipped capabilities
+
+- Fix Plan searches only current evidence-backed actions and keeps the selected issue, exact change preview, approval, result, and Undo together.
+- Existing review issues can be answered as accepted with a note, an RFI, a punch item, or **Handled elsewhere** from the same card.
+- Ready connection repairs require a named reviewer and explicit final confirmation before the reviewed endpoint can move.
+- Scale, room, airflow, and sizing conditions still use their dedicated source-linked tools when structured evidence is required.
+- The exact before-and-after change remains visible before approval instead of being hidden inside evidence details.
+- Category-limited **Handled elsewhere** records capture the reviewer, reason, note or reference, plan page or system, time, and the current source and evidence fingerprints.
+- A changed source or evidence fingerprint makes the related answer or condition record stale and requires review again.
+- An applied fix reports its result in the same card and retains one Undo.
+
+### Safety boundary
+
+Answers are project- and source-bound, not company rules. A detected value still needs confirmation, and a user-entered value stays labeled as such. **Handled elsewhere** records document workflow context only: they do not resolve engineering findings, satisfy airflow or pressure requirements, change geometry, or clear purchasing, field-package, or release gates. Any source or evidence fingerprint change makes the record stale.
+
 ## Next solo-operator releases
-
-### v130 — Answer & Fix in Place
-
-Keep every answer, exact change preview, approval, apply result, and Undo inside the current Fix Plan card. Add fingerprint-bound “handled elsewhere” records for valid workflow conditions without ever treating those records as engineering completion or clearing release gates.
 
 ### v131 — Room-by-Room Markup
 

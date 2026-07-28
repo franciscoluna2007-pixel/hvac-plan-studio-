@@ -21,7 +21,7 @@ async function loadConnectionRepairModule() {
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
 
-test("renders production v129 text metadata without generated image metadata or the development preview marker", async () => {
+test("renders production v130 text metadata without generated image metadata or the development preview marker", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -47,8 +47,8 @@ test("renders production v129 text metadata without generated image metadata or 
     /^text\/html\b/i,
   );
   const html = await response.text();
-  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · One Job Screen"\/>/i);
-  assert.match(html, /<meta property="og:description" content="Open one job, follow one current step, and review plan fixes in one clear workspace\."\/>/i);
+  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Answer &amp; Fix in Place"\/>/i);
+  assert.match(html, /<meta property="og:description" content="Answer one missing plan question, preview the exact change, approve it, and undo it without leaving Fix Plan\."\/>/i);
   assert.doesNotMatch(html, /(?:property|name)="(?:og:image|twitter:image)"/i);
   assert.doesNotMatch(html, /summary_large_image|og-v\d+\.png/i);
   assert.doesNotMatch(html, developmentPreviewMeta);
@@ -193,7 +193,7 @@ test("leads solo HVAC operators through plan setup and four clear job steps", as
   assert.match(styles, /\.project-home-hero-visual,[\s\S]*display: none !important/);
   assert.match(styles, /\.left-panel-tabs/);
   assert.doesNotMatch(layout, /\/og-v\d+\.png|summary_large_image|images\s*:/);
-  assert.match(layout, /One Job Screen/);
+  assert.match(layout, /Answer & Fix in Place/);
 });
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
@@ -834,9 +834,9 @@ test("builds a prioritized plan review queue with hard critical blockers", async
 
   assert.match(source, /SMART PLAN REVIEW/);
   assert.match(source, /function reviewedIssueRows\(issues = validationIssues\(\)\)/);
-  assert.match(source, /linkedRfi && \["approved", "closed"\]\.includes\(linkedRfi\.status\)/);
-  assert.match(source, /linkedPunch\?\.status === "resolved"/);
-  assert.match(source, /const resolvedByDecision = issue\.severity !== "critical" && Boolean\(decisionComplete\)/);
+  assert.match(source, /fixPlanAnswerCompletesReview\(\{/);
+  assert.match(source, /rfiStatus: linkedRfi\?\.status/);
+  assert.match(source, /punchStatus: linkedPunch\?\.status/);
   assert.match(source, /Critical issues stay open until the drawing condition is fixed/);
   assert.match(source, /Accept with note/);
   assert.match(source, /Create RFI/);
@@ -940,7 +940,7 @@ test("keeps the reader foundation and adds v120 smart plan setup without removin
   assert.match(page, /openAIPlanReader/);
   assert.match(page, /saveCloudPlanAnalysis/);
   assert.match(page, /updateCloudPlanFindingDecision/);
-  assert.match(page, /decision\.evidenceFingerprint !== issue\.evidenceFingerprint/);
+  assert.match(page, /isFixPlanAnswerStale\(\{/);
   assert.match(page, /EVIDENCE CHANGED · REVIEW AGAIN/);
   assert.match(page, /const plenums = equipmentPlenumPorts\(symbol\)/);
   assert.match(page, /runTouchesPoint\(symbol\.symbol\?\.connectedRunId, "supply", plenums\.supply, symbol\.symbol\?\.connectedEnd\)/);
@@ -1227,7 +1227,7 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   const roadmap = await readFile(new URL("../ROADMAP.md", import.meta.url), "utf8");
 
-  assert.match(page, /import MarkupAssistantStudio, \{ type PlanHelperPrimaryView \} from "\.\/MarkupAssistantStudio"/);
+  assert.match(page, /import MarkupAssistantStudio, \{[\s\S]{0,100}type PlanHelperPrimaryView,[\s\S]{0,40}\} from "\.\/MarkupAssistantStudio"/);
   assert.match(page, /buildRepairPlan/);
   assert.match(page, /buildTakeoffImpact/);
   assert.match(page, /buildAdvancedPlanIntelligence/);
@@ -1240,7 +1240,7 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(repairSource, /Apply the reviewed terminal CFM first, then rebuild the repair plan so sizing uses the new network airflow/);
   assert.match(page, /setHistory\(next\)/);
   assert.match(studio, /PLAN HELPER/);
-  assert.match(studio, /One place to find a problem and approve its fix\./);
+  assert.match(studio, /One place to answer a question and approve the fix\./);
   assert.match(studio, /aria-modal="false"/);
   assert.match(studio, /Check only/);
   assert.match(studio, /Prepare fixes/);
@@ -1904,7 +1904,7 @@ test("ships v108 tablet gestures, stylus protection, responsive drawers, and bou
   assert.match(styles, /min-width: 44px; min-height: 44px/);
   assert.match(styles, /@media \(min-width: 2560px\)/);
   assert.match(styles, /height: 100dvh/);
-  assert.match(analytics, /app_version: "129"/);
+  assert.match(analytics, /app_version: "130"/);
 
   const pinch = pinchCamera({
     anchorPlan: { x: 100, y: 200 },
@@ -2007,9 +2007,9 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(page, /runNumber\?: string/);
   assert.match(page, /sizeReviewed\?: boolean/);
   assert.match(page, /type SheetScaleState = \{/);
-  assert.match(page, /version: 1 \| 2 \| 3 \| 4 \| 5/);
+  assert.match(page, /version: 1 \| 2 \| 3 \| 4 \| 5 \| 6/);
   assert.match(page, /sheetScales\?: Record<string, SheetScaleState>/);
-  assert.match(page, /version: 5/);
+  assert.match(page, /version: 6/);
   assert.match(page, /restoredSheetScales\["1"\] = legacyScale/);
   assert.doesNotMatch(page, /legacyPages/);
   assert.match(page, /activateSheetScale\(nextPage\)/);
@@ -2095,7 +2095,7 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(styles, /\.builder-current-step-summary/);
   assert.match(styles, /\.app-shell\.tablet-layout \.left-panel,[\s\S]*?padding-bottom: calc\(92px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(styles, /\.assistant-more-tools \{[\s\S]*?overflow-x: auto;/);
-  assert.match(layout, /HVAC Plan Studio · One Job Screen/);
+  assert.match(layout, /HVAC Plan Studio · Answer & Fix in Place/);
   assert.doesNotMatch(layout, /\/og-v\d+\.png|summary_large_image|images\s*:/);
 
   assert.match(page, /function applyDetectedPlanScale\(candidate: PlanScaleCandidate, page: number\)/);

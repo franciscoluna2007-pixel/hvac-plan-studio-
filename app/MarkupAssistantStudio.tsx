@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Route,
   ScanSearch,
+  Search,
   ShieldCheck,
   Sparkles,
   Undo2,
@@ -31,17 +32,37 @@ import type { MarkupAssistantSummary, MarkupRecommendation } from "./markupAssis
 import type {
   RepairAutonomyMode,
   RepairBatchRecord,
+  RepairChange,
   RepairPlan,
   RepairPlanAction,
 } from "./repairPlan";
 import { safeStepActions, validateRepairSelection } from "./repairPlan";
 import type { PlanFactStatus, PlanScaleCandidate, SmartPlanSetup } from "./planSetup";
 import type { TakeoffImpact } from "./takeoffIntelligence";
+import {
+  FIX_PLAN_HANDLED_REASON_OPTIONS,
+  type FixPlanAnswerStatus,
+  type FixPlanHandledReason,
+} from "./fixPlanAnswers";
+import { rankFixPlanActions } from "./fixPlanQuery";
 
 type RecommendationFilter = "do-first" | "can-fix" | "needs-answer" | "all";
 type AssistantView = "setup" | "recommendations" | "standards" | "repair-plan" | "history" | "evidence";
 
 export type PlanHelperPrimaryView = "setup" | "fix-plan" | "problems" | "fixes";
+
+export type FixPlanIssueAnswer = {
+  recommendationId: string;
+  issueId: string;
+  severity: "critical" | "warning" | "info";
+  status?: FixPlanAnswerStatus;
+  reviewer?: string;
+  note?: string;
+  updatedAt?: string;
+  handledReason?: FixPlanHandledReason;
+  stale: boolean;
+  resolved: boolean;
+};
 
 const PRIMARY_VIEW_ORDER: AssistantView[] = ["setup", "repair-plan"];
 const PRIMARY_VIEW_GRID_STYLE = { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" };
@@ -74,6 +95,9 @@ type Props = {
   connectionRepairItems: ConnectionRepairItem[];
   connectionRepairFingerprint: string;
   connectionCandidateChoices: Record<string, string>;
+  connectionRepairChanges: Record<string, RepairChange[]>;
+  issueAnswers: FixPlanIssueAnswer[];
+  showIssueMarkers: boolean;
   scaleVerified: boolean;
   confirmedScaleByPage: Record<string, string>;
   onUseDetectedScale: (candidate: PlanScaleCandidate, page: number) => void;
@@ -97,9 +121,22 @@ type Props = {
     planningOverrideAcknowledged: boolean;
   }) => boolean | Promise<boolean>;
   onUndoRepairBatch: () => void;
+  onRecordIssueAnswer: (input: {
+    issueId: string;
+    status: FixPlanAnswerStatus;
+    reviewer: string;
+    note: string;
+    handledReason?: FixPlanHandledReason;
+  }) => boolean;
+  onShowIssueMarkersChange: (visible: boolean) => void;
   onSuggestionLayerVisibleChange: (visible: boolean) => void;
   onChooseConnectionCandidate: (itemId: string, candidateId: string) => void;
-  onApplyConnectionRepair: (itemId: string, evidenceFingerprint: string) => boolean;
+  onApplyConnectionRepair: (input: {
+    itemId: string;
+    evidenceFingerprint: string;
+    reviewer: string;
+    note: string;
+  }) => boolean | Promise<boolean>;
   onFocusConnectionRepair: (itemId: string) => void;
   onShowPlanSetupSource: (page: number, region?: {
     x: number;
@@ -177,6 +214,9 @@ export default function MarkupAssistantStudio({
   connectionRepairItems,
   connectionRepairFingerprint,
   connectionCandidateChoices,
+  connectionRepairChanges,
+  issueAnswers,
+  showIssueMarkers,
   scaleVerified,
   confirmedScaleByPage,
   onUseDetectedScale,
@@ -194,6 +234,8 @@ export default function MarkupAssistantStudio({
   onPrepareRepairPlan,
   onApplyRepairPlan,
   onUndoRepairBatch,
+  onRecordIssueAnswer,
+  onShowIssueMarkersChange,
   onSuggestionLayerVisibleChange,
   onChooseConnectionCandidate,
   onApplyConnectionRepair,
@@ -213,6 +255,18 @@ export default function MarkupAssistantStudio({
   const [planningOverrideKey, setPlanningOverrideKey] = useState("");
   const [applying, setApplying] = useState(false);
   const [activeFixId, setActiveFixId] = useState("");
+  const [fixQuery, setFixQuery] = useState("");
+  const [selectedConnectionActionId, setSelectedConnectionActionId] = useState("");
+  const [answerOpen, setAnswerOpen] = useState(false);
+  const [answerStatus, setAnswerStatus] = useState<FixPlanAnswerStatus>("accepted");
+  const [answerReviewer, setAnswerReviewer] = useState("");
+  const [answerNote, setAnswerNote] = useState("");
+  const [handledReason, setHandledReason] = useState<FixPlanHandledReason>("field-verification");
+  const [applyResult, setApplyResult] = useState<{
+    title: string;
+    expectedResult: string;
+    kind: "repair" | "connection";
+  } | null>(null);
   const fixPlanFingerprint = `${repairPlan.id}:${connectionRepairFingerprint}`;
   const [skippedFixState, setSkippedFixState] = useState<{
     fingerprint: string;
@@ -353,7 +407,7 @@ export default function MarkupAssistantStudio({
         safeForBatch: item.status === "ready",
         changeScope: "Moves one existing run endpoint to the reviewed saved connection and updates that connection reference only.",
         geometryChanges: true,
-        changes: candidate ? [{
+        changes: candidate ? connectionRepairChanges[item.id] || [{
           objectId: candidate.runId,
           field: `${candidate.end} endpoint`,
           before: `${candidate.point.x.toFixed(1)}, ${candidate.point.y.toFixed(1)}`,
@@ -361,7 +415,7 @@ export default function MarkupAssistantStudio({
         }] : [],
       };
     }),
-  [connectionRepairFingerprint, connectionRepairItems]);
+  [connectionRepairChanges, connectionRepairFingerprint, connectionRepairItems]);
   const combinedFixActions = useMemo(() => [
     ...connectionDisplayActions,
     ...repairPlan.actions.filter((action) => {
@@ -412,6 +466,29 @@ export default function MarkupAssistantStudio({
   const activeConnectionItem = activeFixAction
     ? connectionActionById.get(activeFixAction.id)
     : undefined;
+  const activeIssueAnswer = activeFixRecommendation
+    ? issueAnswers.find((answer) => answer.recommendationId === activeFixRecommendation.id)
+    : undefined;
+  const rankedFixActions = fixQuery.trim()
+    ? rankFixPlanActions(visibleFixActions, fixQuery).slice(0, 3)
+    : [];
+  const connectionConfirmationKey = activeFixAction && activeConnectionItem
+    ? [
+      "connection",
+      connectionRepairFingerprint,
+      activeFixAction.id,
+      activeFixAction.evidenceFingerprint,
+      JSON.stringify(activeFixAction.changes),
+    ].join(":")
+    : "";
+  const connectionSelected = Boolean(
+    activeFixAction &&
+    activeConnectionItem &&
+    selectedConnectionActionId === activeFixAction.id,
+  );
+  const activeApprovalConfirmed = connectionSelected
+    ? confirmedKey === connectionConfirmationKey
+    : confirmed;
   const hasDoFirstRecommendation = recommendations.some((recommendation) =>
     !recommendation.resolved && recommendation.priorityTier === "do-first"
   );
@@ -427,7 +504,7 @@ export default function MarkupAssistantStudio({
       );
       return recommendation?.drawingId
         ? combinedFixActions.find((action) =>
-          action.drawingId === recommendation.drawingId ||
+          ("drawingId" in action && action.drawingId === recommendation.drawingId) ||
           action.objectIds.includes(recommendation.drawingId!)
         )
         : undefined;
@@ -560,11 +637,14 @@ export default function MarkupAssistantStudio({
     if (action.readiness !== "ready" || !action.safeForBatch || stale) return;
     const connectionItem = connectionActionById.get(action.id);
     if (connectionItem) {
-      const applied = onApplyConnectionRepair(connectionItem.id, connectionRepairFingerprint);
-      if (applied) {
-        const next = visibleFixActions[activeFixIndex + 1] || visibleFixActions[activeFixIndex - 1];
-        setActiveFixId(next?.id || "");
-      }
+      onSelectedActionIdsChange([]);
+      setSelectedConnectionActionId(action.id);
+      setConfirmedKey("");
+      setPlanningOverrideKey("");
+      setActiveFixId(action.id);
+      requestAnimationFrame(() =>
+        panelRef.current?.querySelector<HTMLElement>(".fix-plan-inline-approval input")?.focus()
+      );
       return;
     }
     const validation = validateRepairSelection(repairPlan, [action.id]);
@@ -572,6 +652,7 @@ export default function MarkupAssistantStudio({
     onAutonomyModeChange("guided");
     if (!preparedEvidenceFingerprint || stale) onPrepareRepairPlan();
     onSelectedActionIdsChange([action.id]);
+    setSelectedConnectionActionId("");
     setConfirmedKey("");
     setPlanningOverrideKey("");
     setActiveFixId(action.id);
@@ -585,6 +666,8 @@ export default function MarkupAssistantStudio({
     const next = visibleFixActions[activeFixIndex + 1] || visibleFixActions[activeFixIndex - 1];
     setSkippedActionIds((current) => [...new Set([...current, action.id])]);
     setActiveFixId(next?.id || "");
+    setSelectedConnectionActionId("");
+    setAnswerOpen(false);
   }
 
   function moveToFix(offset: -1 | 1) {
@@ -592,8 +675,10 @@ export default function MarkupAssistantStudio({
     const nextIndex = (Math.max(0, activeFixIndex) + offset + visibleFixActions.length) % visibleFixActions.length;
     setActiveFixId(visibleFixActions[nextIndex].id);
     onSelectedActionIdsChange([]);
+    setSelectedConnectionActionId("");
     setConfirmedKey("");
     setPlanningOverrideKey("");
+    setAnswerOpen(false);
   }
 
   function showFixOnPlan(action: RepairPlanAction) {
@@ -610,9 +695,30 @@ export default function MarkupAssistantStudio({
   }
 
   async function applySelected() {
-    if (!readySelected.length || !reviewer.trim() || stale || !confirmed || !planningOverrideConfirmed || applying) return;
+    if (!reviewer.trim() || stale || !activeApprovalConfirmed || !planningOverrideConfirmed || applying) return;
+    if (!connectionSelected && !readySelected.length) return;
     setApplying(true);
     try {
+      if (connectionSelected && activeConnectionItem && activeFixAction) {
+        const applied = await onApplyConnectionRepair({
+          itemId: activeConnectionItem.id,
+          evidenceFingerprint: connectionRepairFingerprint,
+          reviewer: reviewer.trim(),
+          note: note.trim(),
+        });
+        if (!applied) return;
+        setApplyResult({
+          title: activeFixAction.title,
+          expectedResult: activeFixAction.expectedResult,
+          kind: "connection",
+        });
+        const next = visibleFixActions[activeFixIndex + 1] || visibleFixActions[activeFixIndex - 1];
+        setActiveFixId(next?.id || "");
+        setSelectedConnectionActionId("");
+        setConfirmedKey("");
+        setNote("");
+        return;
+      }
       const applied = await onApplyRepairPlan({
         actionIds: readySelected.map((action) => action.id),
         evidenceFingerprint: repairPlan.evidenceFingerprint,
@@ -621,6 +727,12 @@ export default function MarkupAssistantStudio({
         planningOverrideAcknowledged: requiresPlanningOverride && planningOverrideConfirmed,
       });
       if (!applied) return;
+      const appliedAction = readySelected[0];
+      setApplyResult({
+        title: appliedAction?.title || "Approved plan fix",
+        expectedResult: appliedAction?.expectedResult || "The approved change is now on the plan.",
+        kind: "repair",
+      });
       setConfirmedKey("");
       setPlanningOverrideKey("");
       setNote("");
@@ -630,9 +742,48 @@ export default function MarkupAssistantStudio({
     }
   }
 
+  function chooseFixAction(action: RepairPlanAction) {
+    setActiveFixId(action.id);
+    setFixQuery("");
+    onSelectedActionIdsChange([]);
+    setSelectedConnectionActionId("");
+    setConfirmedKey("");
+    setPlanningOverrideKey("");
+    setAnswerOpen(false);
+  }
+
+  function openIssueAnswer() {
+    if (!activeIssueAnswer) {
+      openRepairAction(activeFixAction!, activeFixRecommendation);
+      return;
+    }
+    setAnswerReviewer(activeIssueAnswer.reviewer || reviewer);
+    setAnswerNote(activeIssueAnswer.note || "");
+    setAnswerStatus(activeIssueAnswer.status || (
+      activeIssueAnswer.severity === "critical" ? "rfi" : "accepted"
+    ));
+    setHandledReason(activeIssueAnswer.handledReason || "field-verification");
+    setAnswerOpen(true);
+    requestAnimationFrame(() =>
+      panelRef.current?.querySelector<HTMLElement>(".fix-plan-answer input")?.focus()
+    );
+  }
+
+  function saveIssueAnswer() {
+    if (!activeIssueAnswer || !answerReviewer.trim() || !answerNote.trim()) return;
+    const recorded = onRecordIssueAnswer({
+      issueId: activeIssueAnswer.issueId,
+      status: answerStatus,
+      reviewer: answerReviewer.trim(),
+      note: answerNote.trim(),
+      handledReason: answerStatus === "handled-elsewhere" ? handledReason : undefined,
+    });
+    if (recorded) setAnswerOpen(false);
+  }
+
   if (!open) return null;
 
-  return <div className="markup-assistant-overlay" role="presentation">
+  return <div className={`markup-assistant-overlay ${view === "repair-plan" ? "fix-plan-sidecar" : ""}`} role="presentation">
     <section
       ref={panelRef}
       className="markup-assistant-studio"
@@ -647,7 +798,7 @@ export default function MarkupAssistantStudio({
           <span><Sparkles size={22} /></span>
           <div>
             <small>PLAN HELPER</small>
-            <h2 id="markup-assistant-title">One place to find a problem and approve its fix.</h2>
+            <h2 id="markup-assistant-title">One place to answer a question and approve the fix.</h2>
             <p>{projectName} · {systemName}</p>
           </div>
         </div>
@@ -977,8 +1128,8 @@ export default function MarkupAssistantStudio({
             <header className="fix-plan-heading">
               <div>
                 <small>FIX PLAN</small>
-                <h3>One issue. One proposed fix. You decide.</h3>
-                <p>Each issue shows where it is, what is wrong, and exactly what the assistant would change. Nothing is fixed, skipped, or placed without your choice.</p>
+                <h3>One issue. One answer. One approved fix.</h3>
+                <p>Find the problem, answer missing job information, preview the exact change, and approve it without leaving this card.</p>
               </div>
               <div className="fix-plan-counts" aria-label="Fix Plan status">
                 <span><b>{combinedFixActions.length}</b> open</span>
@@ -986,6 +1137,48 @@ export default function MarkupAssistantStudio({
                 <span><b>{combinedFixActions.filter((action) => action.readiness !== "ready").length}</b> need you</span>
               </div>
             </header>
+
+            <form
+              className="fix-plan-search"
+              role="search"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (rankedFixActions[0]) chooseFixAction(rankedFixActions[0].action);
+              }}
+            >
+              <label htmlFor="fix-plan-query"><Search size={17} /> Ask Fix Plan</label>
+              <div>
+                <input
+                  id="fix-plan-query"
+                  value={fixQuery}
+                  onChange={(event) => setFixQuery(event.target.value)}
+                  placeholder="Try “return problem in Bedroom 2”"
+                  autoComplete="off"
+                />
+                <button type="submit" disabled={!rankedFixActions.length}>Find issue</button>
+              </div>
+              {fixQuery.trim() && <div className="fix-plan-search-results" aria-live="polite">
+                {rankedFixActions.length
+                  ? rankedFixActions.map(({ action, matchedFields }) => <button
+                    key={action.id}
+                    type="button"
+                    onClick={() => chooseFixAction(action)}
+                  >
+                    <strong>{action.title}</strong>
+                    <span>{action.location}</span>
+                    <small>Matched {matchedFields.join(", ")}</small>
+                  </button>)
+                  : <p>No supported issue matches that search. Fix Plan only searches current plan evidence.</p>}
+              </div>}
+              <label className="fix-plan-marker-toggle">
+                <input
+                  type="checkbox"
+                  checked={showIssueMarkers}
+                  onChange={(event) => onShowIssueMarkersChange(event.target.checked)}
+                />
+                <span>Show issue markers on the plan</span>
+              </label>
+            </form>
 
             <section className={`assistant-suggestion-layer-control ${suggestionLayer.status}`} aria-live="polite">
               <div className="assistant-suggestion-layer-icon">
@@ -1025,6 +1218,26 @@ export default function MarkupAssistantStudio({
               <span><strong>The plan changed.</strong> Refresh this issue before approving it. An outdated suggestion cannot change the drawing.</span>
               <button onClick={onPrepareRepairPlan}><RefreshCw size={16} /> Refresh</button>
             </div>}
+
+            {applyResult && <section className="fix-plan-result" aria-live="polite">
+              <CheckCircle2 size={24} />
+              <div>
+                <small>FIX APPLIED</small>
+                <h3>Fixed. The plan and evidence were checked again before saving.</h3>
+                <p><strong>{applyResult.title}:</strong> {applyResult.expectedResult}</p>
+              </div>
+              <div>
+                <button
+                  type="button"
+                  disabled={!canUndo}
+                  onClick={() => {
+                    onUndoRepairBatch();
+                    setApplyResult(null);
+                  }}
+                ><Undo2 size={16} /> Undo this fix</button>
+                <button type="button" onClick={() => setApplyResult(null)}>Continue</button>
+              </div>
+            </section>}
 
             {activeFixAction ? <>
               <nav className="fix-plan-progress" aria-label="Open issue navigation">
@@ -1083,6 +1296,23 @@ export default function MarkupAssistantStudio({
                   </section>
                 </div>
 
+                <section className="fix-plan-exact-preview" aria-label="Exact change preview">
+                  <header>
+                    <small>EXACT CHANGE PREVIEW</small>
+                    <strong>{activeFixAction.changes.length
+                      ? `${activeFixAction.changes.length} reviewed change${activeFixAction.changes.length === 1 ? "" : "s"}`
+                      : "No automatic geometry change"}</strong>
+                  </header>
+                  {activeFixAction.changes.length
+                    ? <div>{activeFixAction.changes.map((change) => <p key={`${change.objectId}-${change.field}`}>
+                      <span><small>BEFORE</small>{change.before}</span>
+                      <ArrowRight size={15} />
+                      <span><small>AFTER</small>{change.after}</span>
+                      <em>{change.field}</em>
+                    </p>)}</div>
+                    : <p>{activeFixAction.changeScope}</p>}
+                </section>
+
                 {activeConnectionItem && activeConnectionItem.candidates.length > 1 && <section className="fix-plan-connection-choices">
                   <div>
                     <small>CHOOSE THE EXISTING RUN YOU RECOGNIZE</small>
@@ -1128,13 +1358,56 @@ export default function MarkupAssistantStudio({
                       : <button
                         type="button"
                         className="needs-answer"
-                        onClick={() => openRepairAction(activeFixAction, activeFixRecommendation)}
-                      ><ArrowRight size={17} /> {activeFixAction.nextStepLabel}</button>}
+                        onClick={() => activeIssueAnswer
+                          ? openIssueAnswer()
+                          : openRepairAction(activeFixAction, activeFixRecommendation)}
+                      ><ArrowRight size={17} /> {activeIssueAnswer ? "Answer here" : activeFixAction.nextStepLabel}</button>}
                     <button type="button" className="skip" onClick={() => skipAction(activeFixAction)}>No · leave for later</button>
                   </div>
                 </section>
 
-                {selected.has(activeFixAction.id) && activeFixAction.readiness === "ready" && <section className="fix-plan-inline-approval" aria-live="polite">
+                {activeIssueAnswer && (answerOpen || activeIssueAnswer.status) && <section className="fix-plan-answer" aria-live="polite">
+                  <div className="fix-plan-answer-heading">
+                    <div>
+                      <small>{activeIssueAnswer.stale ? "ANSWER CHANGED" : activeIssueAnswer.resolved ? "ANSWER COMPLETE" : "ONE ANSWER NEEDED"}</small>
+                      <h3>{activeIssueAnswer.status && !answerOpen ? "Your job condition is recorded" : "Answer this issue here"}</h3>
+                    </div>
+                    {activeIssueAnswer.status && !answerOpen && <button type="button" onClick={openIssueAnswer}>Edit answer</button>}
+                  </div>
+                  {activeIssueAnswer.status && !answerOpen
+                    ? <dl>
+                      <div><dt>Status</dt><dd>{activeIssueAnswer.status.replaceAll("-", " ")}</dd></div>
+                      <div><dt>Reviewer</dt><dd>{activeIssueAnswer.reviewer}</dd></div>
+                      <div><dt>Note</dt><dd>{activeIssueAnswer.note}</dd></div>
+                      {activeIssueAnswer.handledReason && <div><dt>Handled in</dt><dd>{FIX_PLAN_HANDLED_REASON_OPTIONS.find((option) => option.value === activeIssueAnswer.handledReason)?.label}</dd></div>}
+                    </dl>
+                    : <>
+                      <div className="fix-plan-answer-options" role="group" aria-label="Answer type">
+                        {activeIssueAnswer.severity !== "critical" && <button type="button" className={answerStatus === "accepted" ? "selected" : ""} aria-pressed={answerStatus === "accepted"} onClick={() => setAnswerStatus("accepted")}>Accept with note</button>}
+                        <button type="button" className={answerStatus === "rfi" ? "selected" : ""} aria-pressed={answerStatus === "rfi"} onClick={() => setAnswerStatus("rfi")}>Create RFI</button>
+                        <button type="button" className={answerStatus === "punch" ? "selected" : ""} aria-pressed={answerStatus === "punch"} onClick={() => setAnswerStatus("punch")}>Add punch item</button>
+                        <button type="button" className={answerStatus === "handled-elsewhere" ? "selected" : ""} aria-pressed={answerStatus === "handled-elsewhere"} onClick={() => setAnswerStatus("handled-elsewhere")}>Handled elsewhere</button>
+                      </div>
+                      {answerStatus === "handled-elsewhere" && <label>Where is it handled?
+                        <select value={handledReason} onChange={(event) => setHandledReason(event.target.value as FixPlanHandledReason)}>
+                          {FIX_PLAN_HANDLED_REASON_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                      </label>}
+                      <label>Reviewer / initials
+                        <input value={answerReviewer} onChange={(event) => setAnswerReviewer(event.target.value)} placeholder="Your initials" />
+                      </label>
+                      <label>What is true on this job?
+                        <textarea value={answerNote} onChange={(event) => setAnswerNote(event.target.value)} placeholder="Answer the missing plan question or record where it is being handled." />
+                      </label>
+                      <div className="fix-plan-answer-actions">
+                        <button type="button" onClick={() => setAnswerOpen(false)}>Cancel</button>
+                        <button type="button" className="save" disabled={!answerReviewer.trim() || !answerNote.trim()} onClick={saveIssueAnswer}>Save answer</button>
+                      </div>
+                    </>}
+                  <p className="fix-plan-answer-boundary"><ShieldCheck size={15} /> This records a job condition; it does not change the drawing. Handled-elsewhere and critical answers remain open release holds.</p>
+                </section>}
+
+                {(selected.has(activeFixAction.id) || connectionSelected) && activeFixAction.readiness === "ready" && <section className="fix-plan-inline-approval" aria-live="polite">
                   <div>
                     <small>FINAL CHECK · ONE UNDO</small>
                     <h3>Approve only this fix</h3>
@@ -1146,8 +1419,10 @@ export default function MarkupAssistantStudio({
                   <label className="fix-plan-confirm">
                     <input
                       type="checkbox"
-                      checked={confirmed}
-                      onChange={(event) => setConfirmedKey(event.target.checked ? confirmationKey : "")}
+                      checked={activeApprovalConfirmed}
+                      onChange={(event) => setConfirmedKey(event.target.checked
+                        ? connectionSelected ? connectionConfirmationKey : confirmationKey
+                        : "")}
                     />
                     <span>I reviewed the problem, proposed fix, result, and affected object.</span>
                   </label>
@@ -1165,7 +1440,7 @@ export default function MarkupAssistantStudio({
                   <button
                     type="button"
                     className="fix-plan-apply"
-                    disabled={!reviewer.trim() || !confirmed || !planningOverrideConfirmed || stale || applying}
+                    disabled={!reviewer.trim() || !activeApprovalConfirmed || !planningOverrideConfirmed || stale || applying}
                     onClick={() => void applySelected()}
                   >
                     <ShieldCheck size={18} />
@@ -1174,14 +1449,9 @@ export default function MarkupAssistantStudio({
                 </section>}
 
                 <details className="fix-plan-evidence">
-                  <summary>Why this was recommended and exact changes</summary>
+                  <summary>Why this was recommended</summary>
                   <p><strong>{priorityLabel(activeFixAction)}:</strong> {activeFixAction.priorityReason}</p>
                   <ul>{activeFixAction.evidence.map((evidence) => <li key={evidence}><ShieldCheck size={14} /> {evidence}</li>)}</ul>
-                  {activeFixAction.changes.length
-                    ? <div>{activeFixAction.changes.map((change) => <p key={`${change.objectId}-${change.field}`}>
-                      <strong>{change.field}:</strong> {change.before} <ArrowRight size={13} /> {change.after}
-                    </p>)}</div>
-                    : <p>{activeFixAction.changeScope}</p>}
                 </details>
               </article>
             </> : <div className="fix-plan-clear">
