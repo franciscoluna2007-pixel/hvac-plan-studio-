@@ -17,7 +17,7 @@ Every primary workspace now uses the same five plain-language job steps:
 1. **Plan Setup** — read the PDF and review only missing or conflicting plan information.
 2. **Draw & Detail** — draw supply routes first, number and confirm flex runs, add returns, then connect and repair.
 3. **Airflow & Sizes** — review room airflow, connected paths, and duct sizes.
-4. **Fix Problems** — use Plan Helper to inspect problems and approve selected fixes.
+4. **Fix Problems** — use one Fix Plan queue to see the issue, its location and evidence, the proposed change, and approve or skip one fix at a time.
 5. **Materials & Print** — review materials, blockers, and the field package.
 
 Plan setup reads the PDF in the background for drawing scales, rooms, ceiling heights, equipment, systems, zones, and missing information. It does not block basic drawing; only work that depends on an unconfirmed fact pauses.
@@ -34,8 +34,8 @@ Advanced coordination remains available without crowding the first screen.
 4. Number the flex runs, confirm their sizes, add return runs and grilles, then connect and repair loose endpoints.
 5. Assign reviewed room or terminal airflow.
 6. Trace airflow through physically connected equipment-rooted networks.
-7. Inspect findings and build an evidence-bound repair plan.
-8. Apply only the selected eligible planning changes in one Undo.
+7. Review one current issue in Fix Plan, including its evidence, affected objects, proposed change, and expected result.
+8. Approve or skip the current eligible action; each approved repair remains fingerprint-bound and undoable.
 9. Review the actual takeoff delta and durable repair receipt.
 10. Resolve RFIs, punch items, connections, approvals, and field checks.
 11. Save a named cloud revision and issue the field package.
@@ -52,6 +52,11 @@ Advanced coordination remains available without crowding the first screen.
 - A prepared batch is bound to the exact repair-plan ID as well as its evidence fingerprint.
 - No safe fix is selected automatically; the user chooses each fix or explicitly selects the compatible fixes in the current step.
 - A guided batch changes only the reviewed object set and creates one Undo entry.
+- A transparent assistant layer shows review zones only; it does not claim exact engineered device placement and never creates plan objects.
+- Overlay review zones require the current source fingerprint, readable exact room regions, verified scale, and sufficiently certain equipment/system context. Multiple unresolved systems or unreadable source areas block the layer.
+- Connection repair may move only an approved existing run endpoint to its reviewed target. It creates no route, branch stub, fitting, terminal, or other drawing object.
+- Contextual icon, run, and fitting wheels expose only actions appropriate to the selected object.
+- Duct-label presentation changes never change duct size, geometry, CFM, connectivity, or system assignment.
 - Planning calculations never become a Manual J, S, D, or T result by changing a label.
 - Warning, evidence, and consequence text is workstation-readable: 15 px working copy, 13 px metadata, 12 px labels, 44 px controls.
 - Generated mock product imagery is not used. Social preview images must be an approved capture of the real built or production interface; otherwise image metadata stays absent.
@@ -76,7 +81,42 @@ Advanced coordination remains available without crowding the first screen.
 | v125 | Setup When You Need It | Shipped |
 | v126 | Direct Symbol Editing | Shipped |
 | v127 | Compact Symbol Workflow | Shipped |
+| v128 | Fix Plan & Contextual Markup | Shipped |
 | v117 | Multi-company commercial operations | Planned for later |
+
+## v128 — Fix Plan & Contextual Markup
+
+### Outcome
+
+A superintendent can open one Plan Helper section, understand one current issue, see the proposed repair and its evidence, and answer Yes or No without deciding which of several overlapping problem, repair, and connection tools to use. When the loaded PDF contains enough verified information, the same workspace can display a transparent, toggleable layer of supply and return review zones on the selected sheet.
+
+### Shipped capabilities
+
+- One **Fix Plan** queue combines problem review, prepared repairs, and connection repair.
+- Each current action explains what is wrong, where it is, how the assistant proposes to fix it, the expected result, its evidence, the affected objects, and the exact change boundary.
+- **Yes** approves only the current eligible action; **No** skips it during the current review and advances to the next issue.
+- Connection fixes appear before airflow and sizing work that depends on a complete network.
+- Ready connection repairs move only the reviewed existing run endpoint. Ambiguous matches require the user to choose the correct existing run, and blocked cases remain manual.
+- A **Transparent Plan Layer** toggle shows supply and return review zones directly over the current PDF sheet.
+- Review zones use exact current-page room evidence, remain linked to their source evidence and fingerprint, and disappear when the source becomes stale or insufficient.
+- Plan Setup stays alongside Fix Plan, while History & Undo, My HVAC Rules, and source details move into a quieter More section.
+- Object-specific nearby wheels provide icon actions, run actions, and fitting actions without mixing unsafe or irrelevant controls.
+- The run wheel can reduce, enlarge, or reset the duct-size label presentation and can expose the existing route extend, split, delete, and close actions.
+- The fitting wheel exposes connection inspection, property editing, delete, and close; the icon wheel preserves rotate, mirror, compact, duplicate, delete, and close.
+
+### Evidence and placement boundary
+
+The transparent layer is a review aid, not an automatic HVAC layout. It may show **Supply review zone** or **Return review zone** around a readable room label when the PDF has a matching source fingerprint, an exact room-name region on the current sheet, a verified scale, and sufficiently certain equipment/system context. Unreadable or truncated analysis, missing room regions, unverified scale, uncertain equipment, or unresolved multiple systems blocks the layer rather than guessing.
+
+A review zone is intentionally not an exact diffuser, grille, boot, or duct location. The user must still confirm walls, windows and glass exposure, ceiling layout and height, throw, load, diffuser type, return-air strategy, closed-door behavior, transfer path, grille size, noise, available pressure, code requirements, and field conditions. Toggling the layer does not place, move, resize, connect, or delete anything.
+
+### Mutation safety
+
+- Overlay suggestions never mutate the drawing and are not printed as approved field markup.
+- A connection action is fingerprint-bound to its reviewed candidate and may change only the allowed existing endpoint.
+- No connection approval creates a new run, route, branch stub, fitting, terminal, or device.
+- Duct-label resizing changes presentation only; it does not change the confirmed size value or any engineering property.
+- Every physical repair retains current-value checks, exact object scope, reviewer approval, and one Undo.
 
 ## v127 — Compact Symbol Workflow
 

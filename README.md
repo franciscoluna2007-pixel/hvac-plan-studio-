@@ -4,9 +4,23 @@ HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review,
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v127
+## Current release — v128
 
-v127 makes plan markup compact enough for real drawing work. Supply and return icons can shrink well below the previous limit, their labels have a much smaller readable range, and unconfirmed runs no longer print a provisional size placeholder across the plan.
+v128 gives the superintendent one place to understand and fix plan issues. Fix Plan presents one current issue, its location and evidence, the proposed change, and a clear Yes or No decision. An optional transparent plan layer can show evidence-linked supply and return review zones on the current PDF sheet when the source contains enough verified information.
+
+### v128 — Fix Plan & Contextual Markup
+
+- Consolidates problem review, proposed repairs, and connection repair into one **Fix Plan** queue instead of sending the user through separate Problems and Fixes areas.
+- Presents one issue at a time with what is wrong, where it is, the proposed fix, the expected result, source evidence, affected objects, and the exact approval boundary.
+- Uses **Yes** to approve only the current eligible action and **No** to skip it during the current review.
+- Prioritizes connection fixes before dependent airflow and sizing work. A ready connection repair can move only the reviewed existing run endpoint; it creates no route, branch stub, fitting, terminal, or other drawing object.
+- Keeps ambiguous connection matches in the same queue but requires the user to choose the correct existing run. Blocked conditions remain manual.
+- Adds a toggleable **Transparent Plan Layer** for the selected PDF sheet. It shows source-linked supply and return **review zones** only when the current source fingerprint, exact room location, scale, and equipment/system context are sufficiently verified.
+- Treats every overlay suggestion as **Confirm location**, not exact engineered placement. The user still reviews walls, glass, ceiling pattern, throw, load, diffuser type, return strategy, door condition, transfer path, grille size, noise, pressure, and field conditions.
+- Adds nearby object-specific action wheels. Icons receive presentation actions, runs receive duct-label and route actions, and fittings receive connection/property actions without exposing unrelated controls.
+- Lets the run wheel make a duct-size label smaller or larger, or restore its default presentation. Label resizing does not change duct size, route geometry, CFM, connection, or system assignment.
+- Keeps source details, My HVAC Rules, and History & Undo available under a quieter **More** section.
+- Preserves evidence-fingerprint revalidation, exact object scope, one-Undo repair batches, and the rule that an assistant preview or overlay never silently changes the plan.
 
 ### v127 — Compact Symbol Workflow
 
@@ -160,7 +174,7 @@ Project numbers and internal release labels are not used as the user-facing rule
 1. **Plan Setup** — open a local or Google Drive PDF, read its source information, and confirm the drawing scale.
 2. **Draw & Detail** — draw supply routes first, number the flex runs and confirm their sizes, add returns, then connect and repair loose endpoints.
 3. **Airflow & Sizes** — save reviewed room or terminal airflow and inspect connected-network size candidates.
-4. **Fix Problems** — use Plan Helper to inspect findings, review affected objects and evidence, and apply only selected eligible fixes in one Undo.
+4. **Fix Problems** — use one Fix Plan queue to see what is wrong, where it is, and what will change; approve or skip one evidence-bound fix at a time and toggle review zones when the source is sufficient.
 5. **Materials & Print** — review the takeoff, remaining release blockers, named revision, and field package.
 
 ## Core capabilities
@@ -188,6 +202,8 @@ Project numbers and internal release labels are not used as the user-facing rule
 - Searchable-PDF sheet classification and source-linked HVAC evidence.
 - Exact text-region highlighting.
 - Evidence-bound findings, decisions, RFIs, and punch items.
+- One-place Fix Plan decisions with connection repair integrated ahead of dependent airflow and sizing work.
+- Current-sheet transparent supply and return review zones linked to exact source regions and hidden whenever required evidence is incomplete.
 - Stale-decision detection after source, geometry, airflow, or rule changes.
 - Repair plans grouped into eligible planning changes, missing inputs, plan confirmations, and manual follow-up.
 
@@ -260,7 +276,10 @@ HVAC Plan Studio is not:
 ## Repository map
 
 - `app/page.tsx` — workspace orchestration, geometry, airflow, repair apply, takeoff, and release integration
-- `app/MarkupAssistantStudio.tsx` — v113–v115 repair-plan, receipt, and evidence workspace
+- `app/MarkupAssistantStudio.tsx` — Plan Setup, one-place Fix Plan, repair approval, receipt, and evidence workspace
+- `app/assistantSuggestionLayer.ts` — evidence-gated current-sheet supply and return review-zone planner
+- `app/contextActionWheel.ts` — object-specific icon, run, and fitting wheel contracts and keyboard navigation
+- `app/ductLabelEditing.ts` — bounded duct-label presentation sizing
 - `app/repairPlan.ts` — deterministic evidence-bound repair planner
 - `app/connectionRepair.ts` — deterministic preview-first endpoint and saved T/Y connection planner
 - `app/ductSizing.ts` — versioned sizing and pressure-screening calculations

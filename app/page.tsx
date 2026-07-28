@@ -16,6 +16,7 @@ import MarkupAssistantStudio, { type PlanHelperPrimaryView } from "./MarkupAssis
 import { type FieldPackageSectionId } from "./fieldPackage";
 import type { PlanAnalysis, PlanEvidence } from "./planReader";
 import { buildAdvancedPlanIntelligence } from "./advancedPlanIntelligence";
+import { buildAssistantSuggestionLayer } from "./assistantSuggestionLayer";
 import { buildSmartPlanSetup, type PlanScaleCandidate } from "./planSetup";
 import { buildDesignStandardProfile } from "./designStandard";
 import { resolveDetectedDrawingScale, scaleRatioFromLabel } from "./drawingScale";
@@ -84,6 +85,11 @@ import {
   stepSymbolScale,
 } from "./symbolEditing";
 import {
+  normalizedDuctLabelScale,
+  resetDuctLabelScale,
+  stepDuctLabelScale,
+} from "./ductLabelEditing";
+import {
   buildFindingIdentity,
   type PlanFindingCategory,
   type PlanIntelligenceFinding,
@@ -137,6 +143,7 @@ import {
   CloudUpload,
   Copy,
   DraftingCompass,
+  Eye,
   Fan,
   FileText,
   FolderOpen,
@@ -209,6 +216,7 @@ const layers = [
 type LayerId = typeof layers[number]["id"];
 const defaultVisibleLayers: Record<LayerId, boolean> = { supply: true, branch: true, return: true, fresh: true, notes: true };
 const defaultLockedLayers: Record<LayerId, boolean> = { supply: false, branch: false, return: false, fresh: false, notes: false };
+const showLegacyConnectionRepairPanel = false;
 
 type Point = { x: number; y: number };
 type SnapKind = "endpoint" | "fitting port" | "equipment port" | "intersection" | "midpoint" | "nearest" | "grid";
@@ -846,6 +854,7 @@ type Drawing = {
   roomType?: "general" | "bedroom" | "bathroom" | "closet";
   elevation?: string;
   labelOffset?: Point;
+  labelScale?: number;
   runNumber?: string;
   sizeReviewed?: boolean;
 };
@@ -1420,6 +1429,7 @@ function HVACPlanStudioApp() {
   const [showMarkupAssistant, setShowMarkupAssistant] = useState(false);
   const [assistantInitialView, setAssistantInitialView] = useState<PlanHelperPrimaryView>("setup");
   const [activeMarkupRecommendation, setActiveMarkupRecommendation] = useState<MarkupRecommendation | undefined>();
+  const [showAssistantSuggestionLayer, setShowAssistantSuggestionLayer] = useState(false);
   const [assistantAutonomyMode, setAssistantAutonomyMode] = useState<RepairAutonomyMode>("prepare");
   const [assistantSelectedActionIds, setAssistantSelectedActionIds] = useState<string[]>([]);
   const [assistantPreparedEvidenceFingerprint, setAssistantPreparedEvidenceFingerprint] = useState("");
@@ -1459,6 +1469,10 @@ function HVACPlanStudioApp() {
   const [activeReviewIssueId, setActiveReviewIssueId] = useState<string | null>(null);
   const [reviewerName, setReviewerName] = useState("");
   const [reviewDecisionNote, setReviewDecisionNote] = useState("");
+  useEffect(() => {
+    setShowAssistantSuggestionLayer(false);
+  }, [pageNumber, pdfFingerprint]);
+
   useEffect(() => {
     const input = inputRef.current;
     if (!input) return;
@@ -6158,6 +6172,7 @@ function HVACPlanStudioApp() {
         roomType: drawing.roomType || "",
         elevation: drawing.elevation || "",
         labelOffset: drawing.labelOffset,
+        labelScale: normalizedDuctLabelScale(drawing.labelScale),
         runNumber: drawing.runNumber || "",
         sizeReviewed: drawing.sizeReviewed ?? null,
         fitting: drawing.fitting,
@@ -6476,16 +6491,19 @@ function HVACPlanStudioApp() {
     return candidate ? connectionRepairDistanceValue(candidate.distance, item.page) : "";
   }
 
-  function applySelectedConnectionRepairs() {
+  function applyConnectionRepairSelection(
+    repairIds: string[],
+    expectedFingerprint: string,
+  ) {
     const currentPlan = buildActiveConnectionRepairPlan(connectionCandidateChoices);
     const batch = prepareConnectionRepairBatch(
       currentPlan,
-      selectedConnectionRepairIds,
-      connectionReviewFingerprint,
+      repairIds,
+      expectedFingerprint,
     );
     if (!batch.ok) {
       setBranchMessage(batch.reason);
-      return;
+      return false;
     }
     const next = drawings.map((drawing) => ({
       ...drawing,
@@ -6505,13 +6523,13 @@ function HVACPlanStudioApp() {
       );
       if (!run) {
         setBranchMessage("A reviewed run changed. Refresh Step 1 before applying.");
-        return;
+        return false;
       }
       const endpointIndex = operation.end === "start" ? 0 : run.points.length - 1;
       const endpoint = run.points[endpointIndex];
       if (Math.hypot(endpoint.x - operation.from.x, endpoint.y - operation.from.y) > .01) {
         setBranchMessage("A reviewed endpoint moved. Refresh Step 1 before applying.");
-        return;
+        return false;
       }
       run.points[endpointIndex] = { ...operation.to };
       if (operation.kind === "fitting") {
@@ -6523,7 +6541,7 @@ function HVACPlanStudioApp() {
         );
         if (!fitting?.fitting || operation.port == null) {
           setBranchMessage("A reviewed T/Y fitting changed. Refresh Step 1 before applying.");
-          return;
+          return false;
         }
         fitting.fitting.connectedIds[operation.port] = run.id;
         if (operation.port === 0) fitting.fitting.upstreamSize = run.size;
@@ -6535,7 +6553,7 @@ function HVACPlanStudioApp() {
       const device = next.find((drawing) => drawing.id === operation.drawingId && drawing.symbol);
       if (!device?.symbol) {
         setBranchMessage("A reviewed device changed. Refresh Step 1 before applying.");
-        return;
+        return false;
       }
       device.symbol = operation.slot === "equipment-return"
         ? { ...device.symbol, returnRunId: run.id, returnEnd: operation.end }
@@ -6553,6 +6571,14 @@ function HVACPlanStudioApp() {
       system_id: activeSystem,
       repair_count: batch.operations.length,
     });
+    return true;
+  }
+
+  function applySelectedConnectionRepairs() {
+    return applyConnectionRepairSelection(
+      selectedConnectionRepairIds,
+      connectionReviewFingerprint,
+    );
   }
 
   function openSystemSizingWorkflow() {
@@ -8206,6 +8232,10 @@ function HVACPlanStudioApp() {
       setBranchMessage("Select exactly 2 duct runs to join");
       return;
     }
+    if (runs.some(drawingLocked)) {
+      setBranchMessage("Unlock both duct layers before joining these runs");
+      return;
+    }
     const [firstRun, secondRun] = runs;
     if (firstRun.type !== secondRun.type || drawingSystem(firstRun) !== drawingSystem(secondRun)) {
       setBranchMessage("Runs must be the same duct type and HVAC system");
@@ -8581,12 +8611,29 @@ function HVACPlanStudioApp() {
 
   function copySelected() {
     const selected = drawings.find((drawing) => drawing.id === selectedId);
-    if (selected) clipboardRef.current = structuredClone(selected);
+    if (!selected) return;
+    if (drawingLocked(selected)) {
+      setBranchMessage("Unlock this HVAC layer before copying the object");
+      return;
+    }
+    if (!selected.symbol && !selected.measurement) {
+      setBranchMessage("Copy is limited to icons and measurements so duct connections cannot be duplicated accidentally");
+      return;
+    }
+    clipboardRef.current = structuredClone(selected);
   }
 
   function pasteDrawing() {
     const copied = clipboardRef.current;
     if (!copied) return;
+    if (drawingLocked(copied)) {
+      setBranchMessage("Unlock the destination HVAC layer before pasting the object");
+      return;
+    }
+    if (!copied.symbol && !copied.measurement) {
+      setBranchMessage("Paste is limited to icons and measurements so duct connections stay intact");
+      return;
+    }
     const pasted: Drawing = {
       ...structuredClone(copied),
       id: crypto.randomUUID(),
@@ -8601,35 +8648,19 @@ function HVACPlanStudioApp() {
 
   function duplicateSelected() {
     if (selectedIds.length > 1) {
-      const ids = connectedSelection(selectedIds);
-      const originals = drawings.filter((drawing) => ids.includes(drawing.id));
-      const idMap = new Map(originals.map((drawing) => [drawing.id, crypto.randomUUID()]));
-      const duplicates = originals.map((drawing) => ({
-        ...structuredClone(drawing),
-        id: idMap.get(drawing.id)!,
-        page: pageNumber,
-        points: drawing.points.map((point) => ({ x: point.x + 18, y: point.y + 18 })),
-        fitting: drawing.fitting ? {
-          ...structuredClone(drawing.fitting),
-          connectedIds: drawing.fitting.connectedIds.map((id) => idMap.get(id) || id),
-        } : undefined,
-        symbol: drawing.symbol ? {
-          ...structuredClone(drawing.symbol),
-          connectedRunId: drawing.symbol.connectedRunId ? idMap.get(drawing.symbol.connectedRunId) : undefined,
-          connectedEnd: drawing.symbol.connectedRunId && idMap.get(drawing.symbol.connectedRunId) ? drawing.symbol.connectedEnd : undefined,
-          returnRunId: drawing.symbol.returnRunId ? idMap.get(drawing.symbol.returnRunId) : undefined,
-          returnEnd: drawing.symbol.returnRunId && idMap.get(drawing.symbol.returnRunId) ? drawing.symbol.returnEnd : undefined,
-        } : undefined,
-      }));
-      setHistory([...drawings, ...duplicates]);
-      const nextIds = duplicates.map((drawing) => drawing.id);
-      setSelectedIds(nextIds);
-      setSelectedId(nextIds.at(-1) || null);
-      setBranchMessage(`${duplicates.length} connected objects duplicated · T/Y ports preserved`);
+      setBranchMessage("Duplicate one icon or measurement at a time; connected duct networks are protected");
       return;
     }
     const selected = drawings.find((drawing) => drawing.id === selectedId);
     if (!selected) return;
+    if (drawingLocked(selected)) {
+      setBranchMessage("Unlock this HVAC layer before duplicating the object");
+      return;
+    }
+    if (!selected.symbol && !selected.measurement) {
+      setBranchMessage("Duplicate is limited to icons and measurements so duct connections stay intact");
+      return;
+    }
     const duplicate: Drawing = {
       ...structuredClone(selected),
       id: crypto.randomUUID(),
@@ -8644,6 +8675,14 @@ function HVACPlanStudioApp() {
 
   function mirrorSelectedHorizontal() {
     if (!selectedIds.length) return;
+    const directlySelected = drawings.filter((drawing) => selectedIds.includes(drawing.id));
+    if (
+      directlySelected.length !== selectedIds.length ||
+      directlySelected.some((drawing) => !drawing.symbol && !drawing.measurement)
+    ) {
+      setBranchMessage("Mirror is limited to icons and measurements so duct routing stays intact");
+      return;
+    }
     const ids = connectedSelection(selectedIds);
     const affected = drawings.filter((drawing) => ids.includes(drawing.id));
     if (!affected.length || affected.some(drawingLocked)) return;
@@ -8675,6 +8714,10 @@ function HVACPlanStudioApp() {
       return;
     }
     const selected = drawings.find((drawing) => drawing.id === selectedId);
+    if (drawingLocked(selected)) {
+      setBranchMessage("Unlock this HVAC layer before changing its size");
+      return;
+    }
     if (selected?.fitting) {
       const downstreamSize = steppedSize(size, 1);
       const branchSize = steppedSize(size, 2);
@@ -8832,7 +8875,7 @@ function HVACPlanStudioApp() {
 
   function startConnectionRepairPass() {
     if (activeConnectionRepairIssues.length) {
-      openConnectionRepairReview();
+      openMarkupAssistant("fix-plan");
       return;
     }
     setActiveTool("select");
@@ -8858,6 +8901,55 @@ function HVACPlanStudioApp() {
       drawing.id === selected.id ? { ...drawing, lineWeight } : drawing
     ));
     setBranchMessage(`${selected.type === "return" ? "Return" : "Supply"} run line weight set to ${lineWeight.toFixed(2)} mm · connected T/Y leg matched automatically`);
+  }
+
+  function adjustSelectedRunLabelScale(direction: -1 | 1) {
+    const selected = drawings.find((drawing) =>
+      drawing.id === selectedId &&
+      !drawing.fitting &&
+      !drawing.symbol &&
+      ["supply", "return", "fresh"].includes(drawing.type)
+    );
+    if (!selected) return;
+    if (drawingLocked(selected)) {
+      setBranchMessage("Unlock this duct layer before changing its label");
+      return;
+    }
+    const labelScale = stepDuctLabelScale(selected.labelScale, direction);
+    if (labelScale === normalizedDuctLabelScale(selected.labelScale)) {
+      setBranchMessage(direction < 0
+        ? "This duct label is already at its smallest readable size"
+        : "This duct label is already at its largest size");
+      return;
+    }
+    setHistory(drawings.map((drawing) =>
+      drawing.id === selected.id ? { ...drawing, labelScale } : drawing
+    ));
+    setBranchMessage(`Duct label ${Math.round(labelScale * 100)}% · route, size, airflow, and connections unchanged`);
+  }
+
+  function resetSelectedRunLabel() {
+    const selected = drawings.find((drawing) =>
+      drawing.id === selectedId &&
+      !drawing.fitting &&
+      !drawing.symbol &&
+      ["supply", "return", "fresh"].includes(drawing.type)
+    );
+    if (!selected) return;
+    if (drawingLocked(selected)) {
+      setBranchMessage("Unlock this duct layer before resetting its label");
+      return;
+    }
+    if (!selected.labelOffset && normalizedDuctLabelScale(selected.labelScale) === resetDuctLabelScale()) {
+      setBranchMessage("This duct label already uses its default position and size");
+      return;
+    }
+    setHistory(drawings.map((drawing) =>
+      drawing.id === selected.id
+        ? { ...drawing, labelOffset: undefined, labelScale: resetDuctLabelScale() }
+        : drawing
+    ));
+    setBranchMessage("Duct label position and size reset · route geometry unchanged");
   }
 
   function updateSelectedCfm(cfm: number) {
@@ -8934,6 +9026,11 @@ function HVACPlanStudioApp() {
 
   function updateSelectedSymbol(changes: Partial<SymbolMeta>) {
     if (!selectedId) return;
+    const selected = drawings.find((drawing) => drawing.id === selectedId);
+    if (drawingLocked(selected)) {
+      setBranchMessage("Unlock this HVAC layer before changing the icon");
+      return;
+    }
     const next = drawings.map((drawing) =>
       drawing.id === selectedId && drawing.symbol
         ? { ...drawing, symbol: { ...drawing.symbol, ...changes } }
@@ -10356,9 +10453,45 @@ function HVACPlanStudioApp() {
   });
 
   const selectedDrawing = drawings.find((drawing) => drawing.id === selectedId);
+  const selectedDrawingLocked = Boolean(selectedDrawing && drawingLocked(selectedDrawing));
+  const selectedSelectionHasEditable = selectedIds.some((id) => {
+    const drawing = drawings.find((item) => item.id === id);
+    return Boolean(drawing && !drawingLocked(drawing));
+  });
+  const selectedSelectionAllEditable = selectedIds.length > 0 && selectedIds.every((id) => {
+    const drawing = drawings.find((item) => item.id === id);
+    return Boolean(drawing && !drawingLocked(drawing));
+  });
   const selectedFitting = selectedDrawing?.fitting ? selectedDrawing : undefined;
   const selectedRun = selectedDrawing && !selectedDrawing.fitting && ["supply", "return", "fresh"].includes(selectedDrawing.type) ? selectedDrawing : undefined;
+  const selectedRunHasLabel = Boolean(
+    selectedRun &&
+    (
+      selectedRun.runNumber?.trim() ||
+      selectedRun.sizeReviewed === true ||
+      showLengthLabels ||
+      showCfmLabels ||
+      selectedRun.elevation
+    )
+  );
+  const selectedRunWheelAnchor = selectedRun
+    ? [
+      ...selectedRun.points,
+      ...selectedRun.points.slice(0, -1).map((point, index) => ({
+        x: (point.x + selectedRun.points[index + 1].x) / 2,
+        y: (point.y + selectedRun.points[index + 1].y) / 2,
+      })),
+    ].sort((left, right) => {
+      const viewportCenter = {
+        x: (canvasViewportSize.width / 2 - camera.x) / Math.max(.1, zoom),
+        y: (canvasViewportSize.height / 2 - camera.y) / Math.max(.1, zoom),
+      };
+      return Math.hypot(left.x - viewportCenter.x, left.y - viewportCenter.y) -
+        Math.hypot(right.x - viewportCenter.x, right.y - viewportCenter.y);
+    })[0]
+    : undefined;
   const selectedSymbolWheel = selectedDrawing?.symbol
+    && !selectedDrawingLocked
     && selectedDrawing.page === pageNumber
     && selectedIds.length <= 1
     && pdf
@@ -10381,6 +10514,45 @@ function HVACPlanStudioApp() {
   const selectedSymbolWheelVisible = Boolean(
     selectedDrawing?.symbol && selectedSymbolWheel && !selectedSymbolWheel.hidden
   );
+  const selectedRunWheel = selectedRun &&
+    !selectedDrawingLocked &&
+    selectedRun.page === pageNumber &&
+    selectedIds.length <= 1 &&
+    pdf &&
+    selectedRunWheelAnchor
+    ? positionSymbolActionWheel({
+      anchor: {
+        x: camera.x + selectedRunWheelAnchor.x * zoom,
+        y: camera.y + selectedRunWheelAnchor.y * zoom,
+      },
+      viewport: canvasViewportSize,
+      objectRadius: 18,
+      zoom,
+      maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
+    })
+    : null;
+  const selectedFittingWheel = selectedFitting &&
+    !selectedDrawingLocked &&
+    selectedFitting.page === pageNumber &&
+    selectedIds.length <= 1 &&
+    pdf
+    ? positionSymbolActionWheel({
+      anchor: {
+        x: camera.x + selectedFitting.points[0].x * zoom,
+        y: camera.y + selectedFitting.points[0].y * zoom,
+      },
+      viewport: canvasViewportSize,
+      objectRadius: 24,
+      zoom,
+      maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
+    })
+    : null;
+  const selectedRunWheelVisible = Boolean(selectedRunWheel && !selectedRunWheel.hidden);
+  const selectedFittingWheelVisible = Boolean(selectedFittingWheel && !selectedFittingWheel.hidden);
+  const selectedContextWheelVisible =
+    selectedSymbolWheelVisible ||
+    selectedRunWheelVisible ||
+    selectedFittingWheelVisible;
   const branchTrace = branchNetworkTrace(selectedFitting);
   const branchHealth = branchNetworkConnectionHealth(selectedFitting);
   const branchRepairPreview = branchNetworkRepairPreview(selectedFitting);
@@ -10533,7 +10705,7 @@ function HVACPlanStudioApp() {
         !activeBuilderSummary.audit.counts.critical &&
         !activeBuilderSummary.audit.counts.warning
       ),
-      run: () => openMarkupAssistant("problems"),
+      run: () => openMarkupAssistant("fix-plan"),
     },
     {
       id: "finish",
@@ -10585,6 +10757,51 @@ function HVACPlanStudioApp() {
     [planSetupComplete, ...fieldFirstSteps.map((step) => step.complete)]
       .filter(Boolean).length / 5 * 100
   );
+  const assistantSuggestionLayer = buildAssistantSuggestionLayer({
+    page: pageNumber,
+    scaleVerified: scaleStateForPage(pageNumber).verified,
+    smartSetup: activeSmartPlanSetup,
+    analysis: activePlanAnalysis,
+    sourceFingerprint: pdfFingerprint || activePlanAnalysis?.sourceFingerprint || "",
+    activeSystemLabel: systemLabel(activeSystem),
+    equipmentAnchors: drawings
+      .filter((drawing) =>
+        drawing.page === pageNumber &&
+        drawingSystem(drawing) === activeSystem &&
+        isPrimaryAirflowEquipment(drawing) &&
+        drawing.points[0] &&
+        renderSize.width > 0 &&
+        renderSize.height > 0
+      )
+      .map((drawing) => ({
+        id: drawing.id,
+        page: drawing.page,
+        label: drawing.symbol?.label || equipmentTypeName(drawing.symbol?.variant),
+        point: {
+          x: drawing.points[0].x / renderSize.width,
+          y: drawing.points[0].y / renderSize.height,
+        },
+      })),
+    existingTerminals: drawings
+      .filter((drawing) =>
+        drawing.page === pageNumber &&
+        drawingSystem(drawing) === activeSystem &&
+        ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") &&
+        drawing.points[0] &&
+        renderSize.width > 0 &&
+        renderSize.height > 0
+      )
+      .map((drawing) => ({
+        id: drawing.id,
+        kind: drawing.symbol?.kind === "returnGrille" ? "return" as const : "supply" as const,
+        page: drawing.page,
+        roomName: drawing.roomName,
+        point: {
+          x: drawing.points[0].x / renderSize.width,
+          y: drawing.points[0].y / renderSize.height,
+        },
+      })),
+  });
   const assistantBranchOpportunities = branchOpportunities().filter((opportunity) => {
     const run = drawings.find((drawing) => drawing.id === opportunity.mainRunId);
     return run && drawingSystem(run) === activeSystem;
@@ -11124,7 +11341,7 @@ function HVACPlanStudioApp() {
   function openAIPlanReader(view: "setup" | "reader" | "findings" = "setup") {
     setPlanWorkspaceInitialView(view);
     setShowPlanIntelligence(false);
-    openMarkupAssistant(view === "setup" ? "setup" : "problems");
+    openMarkupAssistant(view === "setup" ? "setup" : "fix-plan");
   }
 
   function applyDetectedPlanScale(candidate: PlanScaleCandidate, page: number) {
@@ -11181,7 +11398,7 @@ function HVACPlanStudioApp() {
     setShowSystemBalanceStudio(true);
   }
 
-  function openMarkupAssistant(initialView: PlanHelperPrimaryView = "problems") {
+  function openMarkupAssistant(initialView: PlanHelperPrimaryView = "fix-plan") {
     setShowCommandPalette(false);
     setShowCloudProjects(false);
     setShowPlanIntelligence(false);
@@ -11274,7 +11491,7 @@ function HVACPlanStudioApp() {
       group: "Systems",
       recommended: true,
       keywords: "plan helper setup problems fixes routing return branch ty recommendations approval",
-      run: () => openMarkupAssistant("problems"),
+      run: () => openMarkupAssistant("fix-plan"),
     },
     {
       id: "airflow",
@@ -12018,11 +12235,20 @@ function HVACPlanStudioApp() {
                   <small>Reconnects existing or empty ports only · no branch stubs</small>
                 </div>
                 <div className="run-label-control">
-                  <div><span>DUCT-SIZE LABEL</span><strong>Drag the number directly on the plan</strong></div>
-                  <button
-                    disabled={!selectedRun.labelOffset}
-                    onClick={() => setHistory(drawings.map((drawing) => drawing.id === selectedRun.id ? { ...drawing, labelOffset: undefined } : drawing))}
-                  >Reset position</button>
+                  <div>
+                    <span>DUCT LABEL POSITION &amp; SIZE</span>
+                    <strong>{selectedRunHasLabel
+                      ? `${Math.round(normalizedDuctLabelScale(selectedRun.labelScale) * 100)}% · drag the label directly on the plan`
+                      : "Add a run number or confirm the duct size before resizing its label"}</strong>
+                  </div>
+                  <div className="run-label-size-actions" role="group" aria-label="Resize the selected duct label">
+                    <button disabled={!selectedRunHasLabel} onClick={() => adjustSelectedRunLabelScale(-1)}>− Smaller</button>
+                    <button disabled={!selectedRunHasLabel} onClick={() => adjustSelectedRunLabelScale(1)}>Larger +</button>
+                    <button
+                      disabled={!selectedRunHasLabel || (!selectedRun.labelOffset && normalizedDuctLabelScale(selectedRun.labelScale) === resetDuctLabelScale())}
+                      onClick={resetSelectedRunLabel}
+                    >Reset</button>
+                  </div>
                 </div>
                 <label>Manual airflow override (CFM)
                   <input
@@ -12230,25 +12456,36 @@ function HVACPlanStudioApp() {
               if (draft.length) finishDrawing();
             }}
           >
-            {selectedId && !selectedSymbolWheelVisible && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
-              <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T/Y FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : "DUCT RUN"}</strong>
-              {!selectedDrawing?.symbol && !selectedDrawing?.measurement && <select
+            {selectedId && !selectedContextWheelVisible && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
+              <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T/Y FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : "DUCT RUN"}{selectedDrawingLocked ? " · LAYER LOCKED" : ""}</strong>
+              {!selectedDrawingLocked && selectedIds.length === 1 && !selectedDrawing?.symbol && !selectedDrawing?.measurement && <select
                 aria-label="Quick duct size"
                 value={selectedDrawing?.fitting?.upstreamSize || selectedDrawing?.size || ductSize}
                 onChange={(event) => updateSelectedSize(event.target.value)}
               >
                 {[...runSizeOptions].reverse().map((size) => <option key={size} value={size}>{size}&quot;</option>)}
               </select>}
-              {selectedDrawing?.symbol && <button onClick={() => rotateSelectedSymbol(-15)}>−15°</button>}
-              {selectedDrawing?.symbol && <button onClick={() => rotateSelectedSymbol(15)}>+15°</button>}
-              {selectedDrawing?.symbol && <button title="Use compact icon and label sizes" onClick={compactSelectedSymbol}><Minimize2 size={15} /> Compact</button>}
-              {selectedRun && selectedIds.length === 1 && <button title="Continue drawing from the first endpoint" onClick={() => extendSelectedRun(true)}><Route size={15} /> Extend A</button>}
-              {selectedRun && selectedIds.length === 1 && <button title="Continue drawing from the last endpoint" onClick={() => extendSelectedRun(false)}><Route size={15} /> Extend B</button>}
-              {selectedRun && selectedIds.length === 1 && <button className={splitMode ? "active" : ""} title="Click the selected run where it should split" onClick={() => { setActiveTool("select"); setSplitMode((enabled) => !enabled); }}><Scissors size={15} /> Split</button>}
-              {selectedIds.length === 2 && <button title="Join the two nearest compatible run endpoints" onClick={joinSelectedRuns}><Route size={15} /> Join runs</button>}
-              <button title="Mirror selection" onClick={mirrorSelectedHorizontal}><FlipHorizontal2 size={15} /> Mirror</button>
-              <button title="Duplicate selection" onClick={duplicateSelected}><Copy size={15} /> Duplicate</button>
-              <button className="danger" title="Delete selection" onClick={deleteSelected}><Trash2 size={15} /></button>
+              {!selectedDrawingLocked && selectedDrawing?.symbol && <button onClick={() => rotateSelectedSymbol(-15)}>−15°</button>}
+              {!selectedDrawingLocked && selectedDrawing?.symbol && <button onClick={() => rotateSelectedSymbol(15)}>+15°</button>}
+              {!selectedDrawingLocked && selectedDrawing?.symbol && <button title="Use compact icon and label sizes" onClick={compactSelectedSymbol}><Minimize2 size={15} /> Compact</button>}
+              {!selectedDrawingLocked && selectedRun && selectedIds.length === 1 && <button title="Continue drawing from the first endpoint" onClick={() => extendSelectedRun(true)}><Route size={15} /> Extend A</button>}
+              {!selectedDrawingLocked && selectedRun && selectedIds.length === 1 && <button title="Continue drawing from the last endpoint" onClick={() => extendSelectedRun(false)}><Route size={15} /> Extend B</button>}
+              {!selectedDrawingLocked && selectedRun && selectedIds.length === 1 && <button className={splitMode ? "active" : ""} title="Click the selected run where it should split" onClick={() => { setActiveTool("select"); setSplitMode((enabled) => !enabled); }}><Scissors size={15} /> Split</button>}
+              {!selectedDrawingLocked && selectedRun && selectedRunHasLabel && selectedIds.length === 1 && <button title="Make the duct label smaller" onClick={() => adjustSelectedRunLabelScale(-1)}>Label −</button>}
+              {!selectedDrawingLocked && selectedRun && selectedRunHasLabel && selectedIds.length === 1 && <button title="Make the duct label larger" onClick={() => adjustSelectedRunLabelScale(1)}>Label +</button>}
+              {!selectedDrawingLocked && selectedRun && selectedRunHasLabel && selectedIds.length === 1 && <button title="Reset the duct label position and size" onClick={resetSelectedRunLabel}>Reset label</button>}
+              {!selectedDrawingLocked && selectedFitting && selectedIds.length === 1 && <button title="Inspect the fitting ports and connected runs" onClick={() => {
+                setRightTab("network");
+                openInspectorPanel();
+              }}>Connections</button>}
+              {!selectedDrawingLocked && selectedFitting && selectedIds.length === 1 && <button title="Edit the fitting properties" onClick={() => {
+                setLeftPanelView("properties");
+                openToolsPanel();
+              }}>Properties</button>}
+              {selectedIds.length === 2 && selectedSelectionAllEditable && <button title="Join the two nearest compatible run endpoints" onClick={joinSelectedRuns}><Route size={15} /> Join runs</button>}
+              {!selectedDrawingLocked && selectedIds.length === 1 && (selectedDrawing?.symbol || selectedDrawing?.measurement) && <button title="Mirror selection" onClick={mirrorSelectedHorizontal}><FlipHorizontal2 size={15} /> Mirror</button>}
+              {!selectedDrawingLocked && selectedIds.length === 1 && (selectedDrawing?.symbol || selectedDrawing?.measurement) && <button title="Duplicate selection" onClick={duplicateSelected}><Copy size={15} /> Duplicate</button>}
+              {selectedSelectionHasEditable && <button className="danger" title="Delete selection" onClick={deleteSelected}><Trash2 size={15} /></button>}
               <button title="Clear selection" onClick={() => selectOnly(null)}><X size={15} /></button>
             </div>}
             {selectedDrawing?.symbol && selectedSymbolWheelVisible && selectedSymbolWheel && <SymbolActionWheel
@@ -12263,6 +12500,55 @@ function HVACPlanStudioApp() {
               onDelete={deleteSelected}
               onClose={() => selectOnly(null)}
             />}
+            {selectedRun && selectedRunWheelVisible && selectedRunWheel && <SymbolActionWheel
+              variant="run"
+              x={selectedRunWheel.center.x}
+              y={selectedRunWheel.center.y}
+              label={`${selectedRun.size}" ${selectedRun.type} duct`}
+              labelAvailable={selectedRunHasLabel}
+              splitActive={splitMode}
+              onLabelSmaller={() => adjustSelectedRunLabelScale(-1)}
+              onLabelLarger={() => adjustSelectedRunLabelScale(1)}
+              onResetLabel={resetSelectedRunLabel}
+              onExtendA={() => extendSelectedRun(true)}
+              onExtendB={() => extendSelectedRun(false)}
+              onSplit={() => {
+                setActiveTool("select");
+                setSplitMode((enabled) => !enabled);
+              }}
+              onDelete={deleteSelected}
+              onClose={() => selectOnly(null)}
+            />}
+            {selectedFitting && selectedFittingWheelVisible && selectedFittingWheel && <SymbolActionWheel
+              variant="fitting"
+              x={selectedFittingWheel.center.x}
+              y={selectedFittingWheel.center.y}
+              label={`${selectedFitting.fitting?.style === "tee90" ? "Tee" : "Wye"} fitting`}
+              onInspectConnections={() => {
+                setRightTab("network");
+                openInspectorPanel();
+              }}
+              onEditProperties={() => {
+                setLeftPanelView("properties");
+                openToolsPanel();
+              }}
+              onDelete={deleteSelected}
+              onClose={() => selectOnly(null)}
+            />}
+            {showAssistantSuggestionLayer && assistantSuggestionLayer.status === "review" && <div
+              className="assistant-suggestion-layer-hud"
+              role="status"
+              aria-live="polite"
+              data-canvas-ui
+            >
+              <span><Eye size={17} /></span>
+              <div>
+                <strong>Assistant layer · page {pageNumber}</strong>
+                <small>{assistantSuggestionLayer.suggestions.length} transparent review zone{assistantSuggestionLayer.suggestions.length === 1 ? "" : "s"} · plan unchanged</small>
+              </div>
+              <button type="button" onClick={() => openMarkupAssistant("fix-plan")}>Review</button>
+              <button type="button" onClick={() => setShowAssistantSuggestionLayer(false)}>Hide</button>
+            </div>}
             {draft.length > 0 && ["supply", "return", "fresh"].includes(activeTool) && <div className="live-draft-hud" data-canvas-ui>
               <span>LIVE RUN</span>
               <strong>{ductSize}&quot; · {liveDraftFeet.toFixed(1)} LF</strong>
@@ -12532,6 +12818,7 @@ function HVACPlanStudioApp() {
                         showCfmLabels ? `${runAirflow(drawing)} CFM${airflowNetwork().calculated.get(drawing.id) ? " AUTO" : ""}` : "",
                         drawing.elevation ? `EL ${drawing.elevation}` : "",
                       ].filter(Boolean).join(" · ");
+                      const runLabelScale = normalizedDuctLabelScale(drawing.labelScale);
                       return <g key={drawing.id} className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${runSelected ? "selected-drawing" : ""} ${branchCandidateClass} ${assistantPreviewClass}`.trim()} onPointerDown={(event) => {
                         if (event.button !== 0 || panRef.current || activeTool !== "select" || drawingLocked(drawing)) return;
                         event.stopPropagation();
@@ -12564,6 +12851,10 @@ function HVACPlanStudioApp() {
                           className={`run-label ${drawing.labelOffset ? "custom-position" : ""}`}
                           x={runLabelPoint.x}
                           y={runLabelPoint.y}
+                          style={{
+                            fontSize: `${13 * runLabelScale}px`,
+                            strokeWidth: Math.max(2, 4 * runLabelScale),
+                          }}
                           onPointerDown={(event) => startRunLabelDrag(event, drawing)}
                         >
                           <title>Drag to reposition this run label</title>
@@ -12571,6 +12862,33 @@ function HVACPlanStudioApp() {
                         </text>}
                       </g>;
                     })}
+                    {showAssistantSuggestionLayer && assistantSuggestionLayer.status === "review" && <g
+                      id="assistant-suggestion-layer"
+                      className="assistant-suggestion-layer"
+                      aria-hidden="true"
+                    >
+                      {assistantSuggestionLayer.suggestions.map((suggestion) => {
+                        const x = suggestion.point.x * renderSize.width;
+                        const y = suggestion.point.y * renderSize.height;
+                        return <g
+                          key={suggestion.id}
+                          className={`assistant-review-zone ${suggestion.kind}`}
+                          transform={`translate(${x} ${y}) scale(${1 / Math.max(.1, zoom)})`}
+                        >
+                          <title>{suggestion.label}. {suggestion.explanation}</title>
+                          <circle className="assistant-review-zone-fill" cx="0" cy="0" r="34" />
+                          <circle className="assistant-review-zone-ring" cx="0" cy="0" r="27" />
+                          <path d="M -17 0 L -8 0 M 8 0 L 17 0 M 0 -17 L 0 -8 M 0 8 L 0 17" />
+                          <text className="assistant-review-zone-letter" x="0" y="5" textAnchor="middle">
+                            {suggestion.kind === "supply" ? "S" : "R"}
+                          </text>
+                          <text className="assistant-review-zone-label" x="0" y="47" textAnchor="middle">
+                            {suggestion.kind === "supply" ? "SUPPLY REVIEW ZONE" : "RETURN-PATH REVIEW ZONE"}
+                          </text>
+                          <text className="assistant-review-zone-room" x="0" y="60" textAnchor="middle">{suggestion.roomName}</text>
+                        </g>;
+                      })}
+                    </g>}
                     {showMarkupAssistant && activeMarkupRecommendation?.preview && (() => {
                       const preview = activeMarkupRecommendation.preview;
                       if (preview.kind === "branch-junction") {
@@ -12864,7 +13182,7 @@ function HVACPlanStudioApp() {
                 <p>{markupAssistantSummary.headline}. Review plan information, see problems on the drawing, and approve eligible fixes.</p>
               </div>
               <b>{markupAssistantSummary.open}</b>
-              <button onClick={() => openMarkupAssistant("problems")}>Open Plan Helper <ArrowRight size={14} /></button>
+              <button onClick={() => openMarkupAssistant("fix-plan")}>Open Fix Plan <ArrowRight size={14} /></button>
             </div>
 
             <div className="builder-workflow">
@@ -12903,15 +13221,15 @@ function HVACPlanStudioApp() {
                   <b className="blocked">{activeConnectionRepairPlan.counts.blocked} need a manual check</b>
                   <b className="healthy">{activeConnectionRepairPlan.counts.healthy} already connected</b>
                 </div>
-                {!connectionReviewOpen ? <button
+                {!showLegacyConnectionRepairPanel ? <button
                   className="builder-primary-action connection-review-launch"
-                  disabled={drawStepComplete}
+                  disabled={!activeConnectionRepairIssues.length}
                   onClick={() => {
                     startConnectionRepairPass();
                   }}
                 >
                   {activeConnectionRepairIssues.length
-                    ? `Review ${activeConnectionRepairIssues.length} connection fix${activeConnectionRepairIssues.length === 1 ? "" : "es"}`
+                    ? `Open ${activeConnectionRepairIssues.length} connection fix${activeConnectionRepairIssues.length === 1 ? "" : "es"} in Fix Plan`
                     : "All saved connections are aligned"}
                 </button> : <div className="connection-repair-review">
                   <div className="connection-review-heading">
@@ -14285,7 +14603,12 @@ function HVACPlanStudioApp() {
         takeoffImpact={assistantTakeoffImpact}
         advancedIntelligence={activeAdvancedPlanIntelligence}
         smartSetup={activeSmartPlanSetup}
-        scaleVerified={scaleVerified}
+        suggestionLayer={assistantSuggestionLayer}
+        suggestionLayerVisible={showAssistantSuggestionLayer && assistantSuggestionLayer.status === "review"}
+        connectionRepairItems={activeConnectionRepairIssues}
+        connectionRepairFingerprint={activeConnectionRepairPlan.fingerprint}
+        connectionCandidateChoices={connectionCandidateChoices}
+        scaleVerified={activeSystemScaleStatus.verified}
         confirmedScaleByPage={Object.fromEntries(
           Object.entries(sheetScales)
             .filter(([, scale]) => scale.verified)
@@ -14332,6 +14655,24 @@ function HVACPlanStudioApp() {
         onPrepareRepairPlan={prepareAssistantRepairPlan}
         onApplyRepairPlan={applyAssistantRepairPlan}
         onUndoRepairBatch={undo}
+        onSuggestionLayerVisibleChange={setShowAssistantSuggestionLayer}
+        onChooseConnectionCandidate={(itemId, candidateId) => {
+          const item = activeConnectionRepairPlan.items.find((candidate) => candidate.id === itemId);
+          if (!item) return;
+          setConnectionReviewOpen(true);
+          setConnectionReviewFingerprint(activeConnectionRepairPlan.fingerprint);
+          chooseConnectionCandidate(item, candidateId);
+        }}
+        onApplyConnectionRepair={(itemId, evidenceFingerprint) =>
+          applyConnectionRepairSelection([itemId], evidenceFingerprint)
+        }
+        onFocusConnectionRepair={(itemId) => {
+          const item = activeConnectionRepairPlan.items.find((candidate) => candidate.id === itemId);
+          if (!item) return;
+          setConnectionReviewOpen(true);
+          setConnectionReviewFingerprint(activeConnectionRepairPlan.fingerprint);
+          focusConnectionRepair(item);
+        }}
         onShowPlanSetupSource={(page, region) => {
           goToPage(page);
           setPlanEvidenceRegion(region ? { page, region } : null);

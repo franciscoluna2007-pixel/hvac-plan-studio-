@@ -126,7 +126,7 @@ export async function trackProductEvent(
       session_id: browserId(SESSION_KEY, sessionStorage),
       event_name: eventName,
       page_path: window.location.pathname,
-      app_version: "127",
+      app_version: "128",
       properties: safeProperties(properties),
     });
     if (error) throw error;
