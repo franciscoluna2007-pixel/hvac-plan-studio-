@@ -21,7 +21,7 @@ async function loadConnectionRepairModule() {
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
 
-test("renders production v125 metadata without the development preview marker", async () => {
+test("renders production v126 text metadata without generated image metadata or the development preview marker", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -47,8 +47,10 @@ test("renders production v125 metadata without the development preview marker", 
     /^text\/html\b/i,
   );
   const html = await response.text();
-  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Open PDF &amp; Draw"\/>/i);
-  assert.match(html, /<meta property="og:description" content="Open a PDF and start drawing immediately, or use guided setup when you want help with plan details\."\/>/i);
+  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Direct Symbol Editing"\/>/i);
+  assert.match(html, /<meta property="og:description" content="Move and resize HVAC labels and icons directly on the plan, with nearby actions that stay out of the way\."\/>/i);
+  assert.doesNotMatch(html, /(?:property|name)="(?:og:image|twitter:image)"/i);
+  assert.doesNotMatch(html, /summary_large_image|og-v\d+\.png/i);
   assert.doesNotMatch(html, developmentPreviewMeta);
 });
 
@@ -189,8 +191,8 @@ test("leads solo HVAC operators through plan setup and four clear job steps", as
   assert.match(styles, /\.smart-plan-preflight/);
   assert.match(styles, /\.project-home-hero-visual,[\s\S]*display: none !important/);
   assert.match(styles, /\.left-panel-tabs/);
-  assert.match(layout, /\/og-v125\.png/);
-  assert.match(layout, /Open PDF & Draw/);
+  assert.doesNotMatch(layout, /\/og-v\d+\.png|summary_large_image|images\s*:/);
+  assert.match(layout, /Direct Symbol Editing/);
 });
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
@@ -272,8 +274,8 @@ test("makes run size primary, supports one-inch size choices, and directly resiz
   assert.match(source, /scaleY\?: number/);
   assert.match(source, /kind: "symbol-resize"/);
   assert.match(source, /function startSymbolResize/);
-  assert.match(source, /className="symbol-resize-handle"/);
-  assert.match(source, /hold Shift to keep its proportions/);
+  assert.match(source, /className=\{`symbol-resize-handle \$\{cursorClass\}`\}/);
+  assert.match(source, /Hold Shift to keep the original proportions/);
   assert.match(source, /Reset size/);
   assert.doesNotMatch(source, /className="fitting-core"/);
   assert.match(styles, /\.run-size-default/);
@@ -737,7 +739,8 @@ test("keeps the workspace recoverable and matches T/Y legs to run line weights",
   assert.match(source, /setUndoStack\(\(stack\) => \[\.\.\.stack, drawings\]\)/);
   assert.doesNotMatch(source, /setDrawings\(\(current\) => \{\s*setUndoStack/);
   assert.match(source, /lineWeight\?: number/);
-  assert.match(source, /const \[runLineWeight, setRunLineWeight\] = useState\(0\.2\)/);
+  assert.match(source, /const \[runLineWeights, setRunLineWeights\] = useState\(\{ supply: 0\.1, return: 0\.1 \}\)/);
+  assert.match(source, /function normalizedRunLineWeight\(value\?: number\) \{\s*return \[0\.1, 0\.2, 0\.3\]\.includes\(Number\(value\)\) \? Number\(value\) : 0\.2;/);
   assert.match(source, /0\.10 mm · Fine/);
   assert.match(source, /0\.20 mm · Standard/);
   assert.match(source, /function fittingPortVisual\(fitting: Drawing, port: 0 \| 1 \| 2\)/);
@@ -2086,8 +2089,8 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(styles, /\.builder-current-step-summary/);
   assert.match(styles, /\.app-shell\.tablet-layout \.left-panel,[\s\S]*?padding-bottom: calc\(92px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(styles, /\.assistant-more-tools \{[\s\S]*?overflow-x: auto;/);
-  assert.match(layout, /HVAC Plan Studio · Open PDF & Draw/);
-  assert.match(layout, /\/og-v125\.png/);
+  assert.match(layout, /HVAC Plan Studio · Direct Symbol Editing/);
+  assert.doesNotMatch(layout, /\/og-v\d+\.png|summary_large_image|images\s*:/);
 
   assert.match(page, /function applyDetectedPlanScale\(candidate: PlanScaleCandidate, page: number\)/);
   assert.match(page, /if \(applyResolvedScale\(candidate, page\)\)/);

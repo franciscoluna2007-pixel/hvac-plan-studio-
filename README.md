@@ -4,9 +4,19 @@ HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review,
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v125
+## Current release — v126
 
-v124 and v125 let a user open a PDF and start drawing immediately while keeping guided setup available when it is useful. The preferred start is remembered on the current device, and direct entry does not weaken scale, repair, approval, or source-identity protections.
+v126 makes placed HVAC symbols editable where the work is happening: directly on the plan. Labels stay upright, move independently, and resize from their own handle; icons resize from visible corner controls; and a nearby action wheel replaces the distant symbol toolbar.
+
+### v126 — Direct Symbol Editing
+
+- Moves a selected icon's label independently without moving the icon or plan geometry.
+- Resizes the label from its round on-plan handle and keeps it visually associated with the icon.
+- Resizes icons from larger, zoom-aware corner targets that also work with touch and pen.
+- Uses smaller explicit defaults for newly placed supply, return, equipment, and control symbols while preserving legacy saved-symbol scale.
+- Replaces the selected-symbol top bar with a nearby wheel for rotate, mirror, duplicate, delete, and close actions.
+- Defaults new supply and return runs to the 0.10 mm Fine line setting; older saved runs keep their existing appearance.
+- Removes generated promotional mockups and image metadata. Future social previews must use an approved real product capture or remain image-free.
 
 ### v125 — Setup When You Need It
 
