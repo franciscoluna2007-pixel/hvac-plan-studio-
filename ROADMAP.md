@@ -17,7 +17,7 @@ Every primary workspace now uses the same five plain-language job steps:
 1. **Plan Setup** — read the PDF and review only missing or conflicting plan information.
 2. **Draw & Detail** — draw supply routes first, number and confirm flex runs, add returns, then connect and repair.
 3. **Airflow & Sizes** — review room airflow, connected paths, and duct sizes.
-4. **Fix Problems** — use one Fix Plan queue to see the issue, its location and evidence, the proposed change, and approve or skip one fix at a time.
+4. **Fix Plan** — see the issue, its location and evidence, the proposed change, and approve or skip one fix at a time.
 5. **Materials & Print** — review materials, blockers, and the field package.
 
 Plan setup reads the PDF in the background for drawing scales, rooms, ceiling heights, equipment, systems, zones, and missing information. It does not block basic drawing; only work that depends on an unconfirmed fact pauses.
@@ -82,7 +82,45 @@ Advanced coordination remains available without crowding the first screen.
 | v126 | Direct Symbol Editing | Shipped |
 | v127 | Compact Symbol Workflow | Shipped |
 | v128 | Fix Plan & Contextual Markup | Shipped |
+| v129 | One Job Screen | Shipped |
+| v130 | Answer & Fix in Place | Next |
+| v131 | Room-by-Room Markup | Planned |
+| v132 | Finish the Job | Planned |
 | v117 | Multi-company commercial operations | Planned for later |
+
+## v129 — One Job Screen
+
+### Outcome
+
+A superintendent or one-person HVAC business can enter one current job, see one recommended next action, and use one Fix Plan for every plan problem without learning which overlapping panel owns the work.
+
+### Shipped capabilities
+
+- Jobs Home presents one primary job action and keeps device PDF, Google Drive, optional guided setup, drag-and-drop, saved jobs, and recent jobs in a compact supporting layer.
+- The old Preferred start control is removed from the visible home screen.
+- Recent Jobs sits directly below the start area instead of below competing setup choices.
+- Plan checks, audit findings, prepared repairs, and connection-review links converge on the same Fix Plan route and naming.
+- The working panel shows only the current workflow card; duplicate current-step summaries, future cards, and duplicate Plan Helper launches remain hidden.
+- Show where uses the actual Plan Helper rectangle to place the selected object in the largest uncovered canvas region.
+- Same-sheet and cross-sheet focusing share the same viewport-safe behavior. On a small screen where Plan Helper covers the drawing, the helper closes and leaves the exact issue selected.
+
+### Safety boundary
+
+v129 changes entry, navigation, focus, and visual hierarchy only. It does not treat navigation progress as engineering completion, waive missing equipment or return information, clear connection or sizing problems, alter source evidence, change geometry, or relax field-package and release gates.
+
+## Next solo-operator releases
+
+### v130 — Answer & Fix in Place
+
+Keep every answer, exact change preview, approval, apply result, and Undo inside the current Fix Plan card. Add fingerprint-bound “handled elsewhere” records for valid workflow conditions without ever treating those records as engineering completion or clearing release gates.
+
+### v131 — Room-by-Room Markup
+
+Turn sufficient PDF evidence into a room checklist and toggleable ghost supply/return candidates. The user confirms, moves, edits, or rejects each candidate; uncertain rooms, systems, scale, and return strategy remain explicit questions rather than automatic placement.
+
+### v132 — Finish the Job
+
+Guide materials review, unresolved holds, field checklist, revision naming, print, and share as one closeout path for a superintendent or one-person business. Multi-company administration remains postponed until this solo workflow is proven.
 
 ## v128 — Fix Plan & Contextual Markup
 

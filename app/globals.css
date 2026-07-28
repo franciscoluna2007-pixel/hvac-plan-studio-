@@ -12422,53 +12422,152 @@ textarea:focus-visible,
   }
 }
 
-/* v124-v125: direct PDF entry with setup available on demand. */
-.project-home-start-preference {
-  margin-top: 16px;
+/* v129: one obvious job entry, with the other plan sources available on demand. */
+.project-home-hero {
+  min-height: 0;
+  align-items: start;
+}
+
+.project-home-primary-actions {
+  margin-top: 24px;
+}
+
+.project-home-primary-actions .home-primary {
+  min-width: min(100%, 210px);
+  justify-content: center;
+}
+
+.project-home-plan-sources {
+  width: min(100%, 760px);
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #2d5068;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #0d2233, #091927);
+  box-shadow: 0 18px 46px #020a1166, inset 0 1px #ffffff0a;
+}
+
+.project-home-plan-sources-heading {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  color: #8fa6b9;
-  font-size: 13px;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.project-home-start-preference > span {
-  font-weight: 650;
-}
-
-.project-home-start-preference > div {
-  display: inline-flex;
-  padding: 3px;
-  gap: 3px;
-  border: 1px solid #29475f;
-  border-radius: 10px;
-  background: #091725;
-}
-
-.project-home-start-preference button {
-  min-height: 44px;
-  padding: 0 12px;
-  color: #91a8bb;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
+.project-home-plan-sources-heading span {
+  color: #62dceb;
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 800;
+  letter-spacing: 1.1px;
 }
 
-.project-home-start-preference button.active {
-  color: #e9fbff;
-  border-color: #32748c;
-  background: #113247;
+.project-home-plan-sources-heading h2 {
+  margin: 4px 0 0;
+  color: #edf8ff;
+  font-size: 18px;
+}
+
+.project-home-plan-sources-close {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #93aabe;
+  border: 1px solid #2a485f;
+  border-radius: 9px;
+  background: #0a1926;
+}
+
+.project-home-plan-source-buttons {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.project-home-plan-source-buttons > button,
+.project-home-guided-choice {
+  min-width: 0;
+  min-height: 64px;
+  padding: 11px 13px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  color: #c8d9e6;
+  text-align: left;
+  border: 1px solid #2b4a61;
+  border-radius: 11px;
+  background: #0b1c2b;
+}
+
+.project-home-plan-source-buttons > button.recommended {
+  color: #eafbff;
+  border-color: #3e8496;
+  background: #0e2a3b;
+}
+
+.project-home-plan-source-buttons > button > svg:first-child,
+.project-home-guided-choice > svg {
+  color: #54d9ec;
+}
+
+.project-home-plan-source-buttons span,
+.project-home-guided-choice span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.project-home-plan-source-buttons strong,
+.project-home-guided-choice strong {
+  font-size: 14px;
+}
+
+.project-home-plan-source-buttons small,
+.project-home-guided-choice small {
+  color: #849caf;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.project-home-plan-source-buttons > button:hover:not(:disabled),
+.project-home-guided-choice:hover:not(:disabled),
+.project-home-plan-sources-close:hover:not(:disabled) {
+  color: #f3fbff;
+  border-color: #4c7a96;
+  background: #123049;
+}
+
+.project-home-plan-source-buttons > button:focus-visible,
+.project-home-guided-choice:focus-visible,
+.project-home-plan-sources-close:focus-visible {
+  outline: 2px solid #69e2ef;
+  outline-offset: 2px;
+}
+
+.project-home-plan-source-buttons > button:disabled {
+  opacity: .48;
+}
+
+.project-home-guided-choice {
+  width: 100%;
+  min-height: 52px;
+  margin-top: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  color: #a9bdcc;
+  background: transparent;
 }
 
 .project-home-drop-zone {
   min-height: 44px;
-  margin-top: 14px;
+  width: 100%;
+  margin-top: 10px;
   padding: 0 14px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   color: #8299ad;
   border: 1px dashed #31536d;
@@ -12481,6 +12580,18 @@ textarea:focus-visible,
   color: #56d9ec;
 }
 
+.project-home-grid {
+  margin-top: 26px;
+}
+
+.project-home-projects {
+  margin-top: 0;
+}
+
+.project-home-notice {
+  margin-top: 18px;
+}
+
 .upload-actions {
   flex-wrap: wrap;
 }
@@ -12490,22 +12601,15 @@ textarea:focus-visible,
 }
 
 @media (max-width: 760px) {
-  .project-home-start-preference {
-    align-items: stretch;
-    flex-direction: column;
+  .project-home-plan-sources {
+    padding: 14px;
   }
 
-  .project-home-start-preference > div {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+  .project-home-plan-source-buttons {
+    grid-template-columns: 1fr;
   }
 
-  .project-home-start-preference button {
-    min-height: 44px;
-  }
-
-  .project-home-drop-zone {
-    width: 100%;
-    justify-content: center;
+  .project-home-plan-source-buttons > button {
+    min-height: 60px;
   }
 }

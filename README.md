@@ -4,9 +4,21 @@ HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review,
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v128
+## Current release — v129
 
-v128 gives the superintendent one place to understand and fix plan issues. Fix Plan presents one current issue, its location and evidence, the proposed change, and a clear Yes or No decision. An optional transparent plan layer can show evidence-linked supply and return review zones on the current PDF sheet when the source contains enough verified information.
+v129 makes the product feel like one job instead of a collection of separate tools. A superintendent sees one obvious way into the current plan, one current workflow action, and one Fix Plan destination for every issue-review entrance. “Show where” keeps the selected item visible beside Plan Helper instead of centering it underneath the panel.
+
+### v129 — One Job Screen
+
+- Rebuilds Jobs Home around one primary action: continue the current job or open a plan.
+- Keeps local PDF, Google Drive, optional setup help, drag-and-drop, and saved jobs close by without presenting them as competing first steps.
+- Removes the visible device-wide Preferred start control; direct PDF opening remains the recommended path and setup remains available when requested.
+- Brings Recent Jobs directly below the compact start area.
+- Uses one **Fix Plan** name and route for plan issues, audit findings, repair actions, and connection-review handoffs.
+- Keeps one current job step prominent and hides duplicate future-step and helper launch cards from the working panel.
+- Centers **Show where** targets in the largest visible part of the drawing beside Plan Helper, including cross-sheet targets.
+- Closes Plan Helper only when it covers nearly the entire drawing, while retaining the selected issue for the next review.
+- Changes navigation and presentation only. It does not change CFM, duct sizes, route geometry, repair eligibility, engineering checks, or field-release gates.
 
 ### v128 — Fix Plan & Contextual Markup
 
@@ -174,7 +186,7 @@ Project numbers and internal release labels are not used as the user-facing rule
 1. **Plan Setup** — open a local or Google Drive PDF, read its source information, and confirm the drawing scale.
 2. **Draw & Detail** — draw supply routes first, number the flex runs and confirm their sizes, add returns, then connect and repair loose endpoints.
 3. **Airflow & Sizes** — save reviewed room or terminal airflow and inspect connected-network size candidates.
-4. **Fix Problems** — use one Fix Plan queue to see what is wrong, where it is, and what will change; approve or skip one evidence-bound fix at a time and toggle review zones when the source is sufficient.
+4. **Fix Plan** — see what is wrong, where it is, and what will change; approve or skip one evidence-bound fix at a time and toggle review zones when the source is sufficient.
 5. **Materials & Print** — review the takeoff, remaining release blockers, named revision, and field package.
 
 ## Core capabilities

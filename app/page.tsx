@@ -54,6 +54,7 @@ import {
   type WorkspaceDensity,
   type WorkspaceLayoutMode,
 } from "./workspaceDisplay";
+import { planFocusTarget } from "./planFocus";
 import {
   loadCloudWorkspacePreferences,
   loadLocalWorkspacePreferences,
@@ -1429,6 +1430,7 @@ function HVACPlanStudioApp() {
   const [showMarkupAssistant, setShowMarkupAssistant] = useState(false);
   const [assistantInitialView, setAssistantInitialView] = useState<PlanHelperPrimaryView>("setup");
   const [activeMarkupRecommendation, setActiveMarkupRecommendation] = useState<MarkupRecommendation | undefined>();
+  const [assistantFocusedRecommendationId, setAssistantFocusedRecommendationId] = useState("");
   const [showAssistantSuggestionLayer, setShowAssistantSuggestionLayer] = useState(false);
   const [assistantAutonomyMode, setAssistantAutonomyMode] = useState<RepairAutonomyMode>("prepare");
   const [assistantSelectedActionIds, setAssistantSelectedActionIds] = useState<string[]>([]);
@@ -1651,7 +1653,11 @@ function HVACPlanStudioApp() {
   const viewportSizeRef = useRef({ width: 0, height: 0 });
   const preferencesHydratedRef = useRef(false);
   const initialResponsiveLayoutRef = useRef(false);
-  const pendingFocusRef = useRef<{ page: number; point: Point } | null>(null);
+  const pendingFocusRef = useRef<{
+    page: number;
+    point: Point;
+    avoidAssistant?: boolean;
+  } | null>(null);
   const zoomRef = useRef(zoom);
 
   useLayoutEffect(() => {
@@ -2654,15 +2660,13 @@ function HVACPlanStudioApp() {
     const pending = pendingFocusRef.current;
     if (!pending || pending.page !== pageNumber || renderedPageNumber !== pageNumber) return;
     const frame = requestAnimationFrame(() => {
-      const viewport = canvasViewportRef.current;
-      if (!viewport) return;
-      updateCamera({
-        x: viewport.clientWidth / 2 - pending.point.x * zoomRef.current,
-        y: viewport.clientHeight / 2 - pending.point.y * zoomRef.current,
-      });
+      focusPlanPoint(pending.point, { avoidAssistant: pending.avoidAssistant });
       pendingFocusRef.current = null;
     });
     return () => cancelAnimationFrame(frame);
+    // The focus routine reads the latest canvas, panel, and zoom through refs.
+    // Re-run only when the requested sheet has finished rendering.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageNumber, renderedPageNumber, renderSize.width, renderSize.height]);
 
   function updateCamera(next: { x: number; y: number }) {
@@ -5969,7 +5973,33 @@ function HVACPlanStudioApp() {
     };
   }
 
-  function focusDrawingOnPlan(drawingId: string) {
+  function focusPlanPoint(
+    point: Point,
+    options: { avoidAssistant?: boolean } = {},
+  ) {
+    const viewport = canvasViewportRef.current;
+    if (!viewport) return;
+    const assistant = options.avoidAssistant
+      ? document.querySelector<HTMLElement>('[data-plan-occluder="plan-helper"]')
+      : null;
+    const target = planFocusTarget(
+      viewport.getBoundingClientRect(),
+      assistant?.getBoundingClientRect(),
+    );
+    if (assistant && target.mode === "close-occluder") {
+      setShowMarkupAssistant(false);
+      setBranchMessage("Fix Plan closed so the selected location can use the full drawing area");
+    }
+    updateCamera({
+      x: target.x - point.x * zoomRef.current,
+      y: target.y - point.y * zoomRef.current,
+    });
+  }
+
+  function focusDrawingOnPlan(
+    drawingId: string,
+    options: { avoidAssistant?: boolean } = {},
+  ) {
     const drawing = drawings.find((candidate) => candidate.id === drawingId);
     if (!drawing) return;
     const point = drawing.points[Math.floor(drawing.points.length / 2)] || drawing.points[0];
@@ -5979,28 +6009,32 @@ function HVACPlanStudioApp() {
     setSelectedIds([drawing.id]);
     setActiveTool("select");
     if (drawing.page !== pageNumber || renderedPageNumber !== drawing.page) {
-      pendingFocusRef.current = { page: drawing.page, point };
+      pendingFocusRef.current = {
+        page: drawing.page,
+        point,
+        avoidAssistant: options.avoidAssistant,
+      };
       setPageNumber(drawing.page);
       return;
     }
-    requestAnimationFrame(() => {
-      const viewport = canvasViewportRef.current;
-      if (!viewport) return;
-      updateCamera({
-        x: viewport.clientWidth / 2 - point.x * zoomRef.current,
-        y: viewport.clientHeight / 2 - point.y * zoomRef.current,
-      });
-    });
+    requestAnimationFrame(() => focusPlanPoint(point, options));
   }
 
   function focusReviewIssue(issue: ValidationIssue) {
     const decision = reviewDecisionForIssue(issue);
-    setRightTab("checks");
     setReviewView("issues");
     setActiveReviewIssueId(issue.id);
     setReviewerName(decision?.reviewer || "");
     setReviewDecisionNote(decision?.note || "");
-    if (issue.drawingId) focusDrawingOnPlan(issue.drawingId);
+    const recommendation = markupRecommendations.find((candidate) =>
+      candidate.findingId === issue.id
+    );
+    openMarkupAssistant("fix-plan", recommendation);
+    if (issue.drawingId) {
+      window.requestAnimationFrame(() =>
+        focusDrawingOnPlan(issue.drawingId!, { avoidAssistant: true })
+      );
+    }
   }
 
   function reviewIssueMarkers(rows = reviewedIssueRows()) {
@@ -6451,14 +6485,14 @@ function HVACPlanStudioApp() {
 
   function focusConnectionRepair(item: ConnectionRepairItem) {
     setFocusedConnectionRepairId(item.id);
-    focusDrawingOnPlan(item.drawingId);
+    focusDrawingOnPlan(item.drawingId, { avoidAssistant: true });
   }
 
   function chooseConnectionCandidate(item: ConnectionRepairItem, candidateId: string) {
     setConnectionCandidateChoices((current) => ({ ...current, [item.id]: candidateId }));
     setSelectedConnectionRepairIds((current) => current.filter((id) => id !== item.id));
     setFocusedConnectionRepairId(item.id);
-    focusDrawingOnPlan(item.drawingId);
+    focusDrawingOnPlan(item.drawingId, { avoidAssistant: true });
   }
 
   function toggleConnectionRepair(item: ConnectionRepairItem) {
@@ -6582,16 +6616,19 @@ function HVACPlanStudioApp() {
   }
 
   function openSystemSizingWorkflow() {
-    openSizingReview();
-    setRightTab("checks");
-    setValidationFilter("all");
+    openSystemBalanceStudio();
   }
 
   function openSystemAuditWorkflow() {
-    setRightTab("checks");
-    setReviewView("overview");
     setValidationFilter("all");
-    selectNextValidationIssue();
+    const nextIssue = activeReviewedIssueRows.find((row) =>
+      !row.resolvedByDecision && row.issue.drawingId
+    )?.issue;
+    if (nextIssue) {
+      focusReviewIssue(nextIssue);
+      return;
+    }
+    openMarkupAssistant("fix-plan");
   }
 
   function filteredValidationIssues() {
@@ -7392,9 +7429,15 @@ function HVACPlanStudioApp() {
       return;
     }
     if (["critical", "warning", "connections", "rooms"].includes(gateId)) {
-      setReviewQueueFilter("open");
-      setReviewView("issues");
-      setRightTab("checks");
+      const matchingIssue = activeReviewedIssueRows.find((row) => {
+        if (row.resolvedByDecision) return false;
+        if (gateId === "critical") return row.issue.severity === "critical";
+        if (gateId === "warning") return row.issue.severity === "warning";
+        if (gateId === "connections") return issueCategory(row.issue.title) === "Connections";
+        return /bedroom|room|return path/i.test(row.issue.title);
+      })?.issue;
+      if (matchingIssue) focusReviewIssue(matchingIssue);
+      else openMarkupAssistant("fix-plan");
       return;
     }
     if (gateId === "runs" || gateId === "elevations") {
@@ -10694,7 +10737,7 @@ function HVACPlanStudioApp() {
     },
     {
       id: "check",
-      label: "Fix Problems",
+      label: "Fix Plan",
       detail: !pdf
         ? "Available after the plan is opened"
         : activeBuilderSummary.audit.counts.critical || activeBuilderSummary.audit.counts.warning
@@ -11398,7 +11441,10 @@ function HVACPlanStudioApp() {
     setShowSystemBalanceStudio(true);
   }
 
-  function openMarkupAssistant(initialView: PlanHelperPrimaryView = "fix-plan") {
+  function openMarkupAssistant(
+    initialView: PlanHelperPrimaryView = "fix-plan",
+    focusedRecommendation?: MarkupRecommendation,
+  ) {
     setShowCommandPalette(false);
     setShowCloudProjects(false);
     setShowPlanIntelligence(false);
@@ -11407,7 +11453,8 @@ function HVACPlanStudioApp() {
     setShowProjectHome(false);
     setShowProjectSetup(false);
     setAssistantInitialView(initialView);
-    setActiveMarkupRecommendation(undefined);
+    setAssistantFocusedRecommendationId(focusedRecommendation?.id || "");
+    setActiveMarkupRecommendation(focusedRecommendation);
     if (!assistantPreparedEvidenceFingerprint && assistantAutonomyMode !== "inspect") {
       setAssistantPreparedEvidenceFingerprint(assistantRepairPlan.evidenceFingerprint);
       setAssistantPreparedRepairPlanId(assistantRepairPlan.id);
@@ -11486,11 +11533,11 @@ function HVACPlanStudioApp() {
     },
     {
       id: "markup-assistant",
-      label: "Check the plan with Plan Helper",
-      detail: `${markupAssistantSummary.open} suggestion${markupAssistantSummary.open === 1 ? "" : "s"} to review · nothing changes until approval`,
+      label: "Open Fix Plan",
+      detail: `${markupAssistantSummary.open} item${markupAssistantSummary.open === 1 ? "" : "s"} to review · nothing changes until approval`,
       group: "Systems",
       recommended: true,
-      keywords: "plan helper setup problems fixes routing return branch ty recommendations approval",
+      keywords: "fix plan plan helper issue repair routing return branch ty recommendation approval",
       run: () => openMarkupAssistant("fix-plan"),
     },
     {
@@ -11510,13 +11557,6 @@ function HVACPlanStudioApp() {
       disabled: !pdf,
       keywords: "ai plan reader sheets evidence schedules takeoff v105",
       run: () => openAIPlanReader("setup"),
-    },
-    {
-      id: "plan-review",
-      label: "Run the HVAC plan review",
-      detail: "Prioritized, explainable plan findings with human approval",
-      group: "Review",
-      run: openSystemAuditWorkflow,
     },
     {
       id: "sheets",
@@ -12323,7 +12363,7 @@ function HVACPlanStudioApp() {
             {workspaceLayout !== "desktop" && <>
               <button className="tablet-quick-action" onClick={() => void openFromDrive()}><HardDrive size={15} /> Drive</button>
               <button className="tablet-quick-action" disabled={!pdf} onClick={() => openAIPlanReader("setup")}><ScanSearch size={15} /> Plan setup</button>
-              <button className="tablet-quick-action" disabled={!pdf} onClick={() => openAIPlanReader("findings")}><Sparkles size={15} /> Problems</button>
+              <button className="tablet-quick-action" disabled={!pdf} onClick={() => openMarkupAssistant("fix-plan")}><Sparkles size={15} /> Fix Plan</button>
             </>}
             <div className="canvas-edit-actions" role="group" aria-label="Edit history">
               <button aria-label="Undo" onClick={undo} disabled={!undoStack.length}><Undo2 size={16} /></button>
@@ -13127,7 +13167,7 @@ function HVACPlanStudioApp() {
             <button role="tab" aria-selected={rightTab === "layers"} className={rightTab === "layers" ? "active" : ""} onClick={() => setRightTab("layers")}>Layers</button>
             <button role="tab" aria-selected={rightTab === "rooms"} className={rightTab === "rooms" ? "active" : ""} onClick={() => openSystemBalanceWorkspace("system")}>Airflow</button>
             <button role="tab" aria-selected={rightTab === "takeoff"} className={rightTab === "takeoff" ? "active" : ""} onClick={() => setRightTab("takeoff")}>Materials</button>
-            <button role="tab" aria-selected={rightTab === "checks"} className={rightTab === "checks" ? "active" : ""} onClick={() => setRightTab("checks")}>Problems</button>
+            <button role="tab" aria-selected={showMarkupAssistant} className={showMarkupAssistant ? "active" : ""} onClick={() => openMarkupAssistant("fix-plan")}>Fix Plan</button>
             <button className="right-collapse" aria-label="Collapse inspector" aria-controls="workspace-inspector-panel" aria-expanded={rightPanelOpen} onClick={() => setRightPanelOpen(false)}><PanelRightClose size={15} /></button>
           </div>
           {rightTab === "builder" ? <div className="system-builder-panel">
@@ -13138,11 +13178,6 @@ function HVACPlanStudioApp() {
                 <b>{fieldFirstProgress}%</b>
               </div>
               <div className="builder-progress"><i style={{ width: `${fieldFirstProgress}%` }} /></div>
-              <div className="builder-current-step-summary">
-                <span>{fieldFirstActiveStep.label}</span>
-                <strong>{fieldFirstActiveStep.detail}</strong>
-                <button onClick={fieldFirstActiveStep.run}>Continue <ArrowRight size={14} /></button>
-              </div>
             </div>
 
             {!planSetupComplete && <div className="smart-plan-preflight">
@@ -13173,17 +13208,6 @@ function HVACPlanStudioApp() {
                 </button>
               </div>
             </div>}
-
-            <div className="markup-assistant-launch">
-              <span><Sparkles size={19} /></span>
-              <div>
-                <small>ONE PLAN HELPER · NOTHING CHANGES WITHOUT APPROVAL</small>
-                <strong>Setup, problems, and fixes in one place</strong>
-                <p>{markupAssistantSummary.headline}. Review plan information, see problems on the drawing, and approve eligible fixes.</p>
-              </div>
-              <b>{markupAssistantSummary.open}</b>
-              <button onClick={() => openMarkupAssistant("fix-plan")}>Open Fix Plan <ArrowRight size={14} /></button>
-            </div>
 
             <div className="builder-workflow">
               <div className={`builder-action-card connection-repair-card draw-first-card ${planSetupComplete && fieldFirstStep === "draw" ? "current" : "other-step"} ${drawStepComplete ? "complete" : "attention"}`}>
@@ -13369,21 +13393,20 @@ function HVACPlanStudioApp() {
 
               <div className={`builder-action-card ${planSetupComplete && fieldFirstStep === "check" ? "current" : "other-step"} ${activeBuilderSummary.audit.counts.critical ? "critical" : activeBuilderSummary.audit.counts.warning ? "attention" : "complete"}`}>
                 <div className="builder-action-icon"><ShieldAlert size={17} /></div>
-                <span><i>STEP 3</i><strong>Run the HVAC plan audit</strong><small>Checks disconnected cans, airflow balance, velocity, size progression, return paths, elevations, fresh air, controls, and accidental zone connections.</small></span>
+                <span><i>STEP 3</i><strong>Fix Plan</strong><small>Review disconnected cans, airflow balance, velocity, size progression, return paths, elevations, fresh air, controls, and accidental zone connections one item at a time.</small></span>
                 <div className="builder-audit-strip">
                   <b>{activeBuilderSummary.audit.score} score</b>
                   <span>{activeBuilderSummary.audit.counts.critical} critical</span>
                   <span>{activeBuilderSummary.audit.counts.warning} warnings</span>
                 </div>
-                <button className="builder-primary-action" onClick={openSystemAuditWorkflow}>Open audit &amp; select first issue</button>
+                <button className="builder-primary-action" onClick={openSystemAuditWorkflow}>Open Fix Plan</button>
               </div>
 
               <div className={`builder-action-card ${planSetupComplete && fieldFirstStep === "finish" ? "current" : "other-step"} ${activeBuilderSummary.packageSummary.ready ? "complete" : "attention"}`}>
                 <div className="builder-action-icon"><FileText size={17} /></div>
-                <span><i>STEP 4</i><strong>Review plan problems &amp; takeoff</strong><small>Inspect plan sources, open problems, run quantities, air devices, fitting counts, and material allowances before exporting.</small></span>
+                <span><i>STEP 4</i><strong>Materials &amp; Print</strong><small>Review run quantities, air devices, fitting counts, material allowances, and printing blockers before exporting.</small></span>
                 <div className="builder-action-buttons">
                   <button onClick={() => setRightTab("takeoff")}>Open takeoff</button>
-                  <button disabled={!pdf} onClick={() => openAIPlanReader("findings")}>Plan problems</button>
                 </div>
               </div>
             </div>
@@ -13709,7 +13732,7 @@ function HVACPlanStudioApp() {
               </div>
               {materialSummary().holds.length > 0 && <div className="fabrication-holds">
                 <div><ShieldAlert size={15} /><span><strong>DO NOT FABRICATE YET</strong><small>Resolve these coordination items first</small></span></div>
-                {materialSummary().holds.slice(0, 5).map((issue, index) => <button key={`${issue.title}-hold-${index}`} onClick={() => issue.drawingId && focusDrawingOnPlan(issue.drawingId)}>
+                {materialSummary().holds.slice(0, 5).map((issue, index) => <button key={`${issue.title}-hold-${index}`} onClick={() => focusReviewIssue(issue)}>
                   <AlertTriangle size={11} /><span><strong>{issue.title}</strong><small>{issue.detail}</small></span>
                 </button>)}
               </div>}
@@ -14588,11 +14611,13 @@ function HVACPlanStudioApp() {
         }}
       />
       <MarkupAssistantStudio
+        key={`plan-helper:${assistantFocusedRecommendationId || "general"}`}
         open={showMarkupAssistant}
         initialView={assistantInitialView}
         projectName={fileName}
         systemName={systemLabel(activeSystem)}
         recommendations={markupRecommendations}
+        focusedRecommendationId={assistantFocusedRecommendationId}
         summary={markupAssistantSummary}
         repairPlan={assistantRepairPlan}
         autonomyMode={assistantAutonomyMode}
@@ -14621,10 +14646,11 @@ function HVACPlanStudioApp() {
         onClose={() => {
           setShowMarkupAssistant(false);
           setActiveMarkupRecommendation(undefined);
+          setAssistantFocusedRecommendationId("");
         }}
         onActiveRecommendationChange={setActiveMarkupRecommendation}
         onFocusDrawing={(drawingId) => {
-          focusDrawingOnPlan(drawingId);
+          focusDrawingOnPlan(drawingId, { avoidAssistant: true });
         }}
         onOpenManualReview={(recommendation) => {
           const issue = recommendation.findingId
