@@ -201,6 +201,9 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .symbol-resize-control strong { margin-top: 3px; color: #d8f5fc; font-size: 9px; }
 .symbol-resize-control button { padding: 6px 8px; color: #a9eaff; border: 1px solid #357996; border-radius: 5px; background: #123348; font-size: 7px; font-weight: 800; }
 .symbol-resize-control small { grid-column: 1 / -1; color: #6b8da0; font-size: 6.5px; line-height: 1.4; }
+.symbol-size-step-actions { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.symbol-size-step-actions button { min-height: 34px; font-size: 9px; }
+.symbol-resize-control .symbol-sheet-compact { grid-column: 1 / -1; min-height: 36px; font-size: 8.5px; }
 .smart-can-editor { margin: 10px 0 4px; padding: 10px; border: 1px solid #23506a; border-radius: 7px; background: linear-gradient(145deg, #0e2636, #0a1926); }
 .smart-can-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
 .smart-can-heading span { color: #91dff3; font-size: 8px; font-weight: 900; letter-spacing: .9px; }
@@ -332,11 +335,12 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
   outline-offset: 2px;
   background: #61dff5;
 }
-.symbol-wheel-action.action-rotate-left { left: 50%; top: 14%; }
-.symbol-wheel-action.action-rotate-right { left: 84%; top: 37%; }
-.symbol-wheel-action.action-mirror { left: 72%; top: 80%; }
-.symbol-wheel-action.action-duplicate { left: 28%; top: 80%; }
-.symbol-wheel-action.action-delete { left: 16%; top: 37%; }
+.symbol-wheel-action.action-rotate-left { left: 30%; top: 14%; }
+.symbol-wheel-action.action-rotate-right { left: 70%; top: 14%; }
+.symbol-wheel-action.action-mirror { left: 86%; top: 50%; }
+.symbol-wheel-action.action-compact { left: 70%; top: 86%; }
+.symbol-wheel-action.action-duplicate { left: 30%; top: 86%; }
+.symbol-wheel-action.action-delete { left: 14%; top: 50%; }
 .symbol-wheel-action.action-close { left: 50%; top: 50%; width: 46px; min-width: 46px; height: 46px; min-height: 46px; }
 .symbol-wheel-action.danger { color: #ffb6b4; border-color: #8a4549; background: #39191ef2; }
 .symbol-wheel-action.danger:hover,
@@ -722,7 +726,7 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .symbol-library-preview.preview-equipment { border-color: #31526c; }
 .symbol-library-preview.preview-fan { border-color: #465363; }
 
-.hvac-symbol .symbol-label { fill: #080b0f; stroke: white; stroke-width: 3.5px; font-size: 10px; font-weight: 800; letter-spacing: .15px; }
+.hvac-symbol .symbol-label { fill: #080b0f; stroke: white; stroke-width: 2.6px; stroke-linejoin: round; paint-order: stroke fill; font-size: 10px; font-weight: 800; letter-spacing: .15px; }
 .hvac-symbol .symbol-label-leader { fill: none; stroke: #1689ad; stroke-width: 1.2; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; pointer-events: none; }
 .hvac-symbol .symbol-label-editor { pointer-events: all; cursor: grab; }
 .hvac-symbol .symbol-label-editor:active { cursor: grabbing; }
@@ -741,6 +745,7 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .hvac-symbol .equipment-plenum-port.return-port { stroke: #c82532 !important; }
 .hvac-symbol .symbol-resize-handle { fill: #f7fdff !important; stroke: #079bc4 !important; stroke-width: 1.8 !important; vector-effect: non-scaling-stroke; cursor: nwse-resize; }
 .hvac-symbol .symbol-resize-handle:hover { fill: #27c2ea !important; stroke: white !important; }
+.hvac-symbol .symbol-direct-hit { fill: transparent !important; stroke: transparent !important; pointer-events: all; }
 .hvac-symbol .symbol-resize-hit { fill: transparent !important; stroke: transparent !important; pointer-events: all; }
 .hvac-symbol .symbol-resize-corner-nwse { cursor: nwse-resize; }
 .hvac-symbol .symbol-resize-corner-nesw { cursor: nesw-resize; }

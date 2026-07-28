@@ -97,7 +97,6 @@ test("v126 metadata and documentation prohibit generated promotional mock imager
     );
   }
 
-  assert.match(readme, /Current release\s+[—-]\s+v126/i);
   assert.match(readme, /v126\s+[—-]\s+Direct Symbol Editing/i);
   assert.match(readme, /Removes generated promotional mockups/i);
   assert.match(readme, /approved real product capture or remain image-free/i);

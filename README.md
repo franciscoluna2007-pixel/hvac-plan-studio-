@@ -4,9 +4,20 @@ HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review,
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v126
+## Current release — v127
 
-v126 makes placed HVAC symbols editable where the work is happening: directly on the plan. Labels stay upright, move independently, and resize from their own handle; icons resize from visible corner controls; and a nearby action wheel replaces the distant symbol toolbar.
+v127 makes plan markup compact enough for real drawing work. Supply and return icons can shrink well below the previous limit, their labels have a much smaller readable range, and unconfirmed runs no longer print a provisional size placeholder across the plan.
+
+### v127 — Compact Symbol Workflow
+
+- Reduces the minimum icon scale from 40 percent to 20 percent and the minimum label scale from 65 percent to 30 percent.
+- Gives newly placed supply and return terminals a genuinely compact icon and label default.
+- Adds **Compact** to the selected-symbol wheel without removing rotate, mirror, duplicate, delete, or close; the wheel stays nearby at maximum zoom.
+- Adds Smaller and Larger controls for both icon and label sizing while preserving direct corner and round-handle editing.
+- Adds one undoable **Compact all supply & return symbols on this sheet** action for existing work.
+- Keeps small symbols selectable with fixed screen-space hit targets at every supported zoom.
+- Removes the provisional size placeholder from the canvas. An unconfirmed supply or return run stays unlabeled until its size is deliberately confirmed.
+- Preserves legacy saved scale values until the user resizes or explicitly compacts those symbols, and Compact never enlarges an icon or label that is already smaller.
 
 ### v126 — Direct Symbol Editing
 
@@ -64,7 +75,7 @@ v126 makes placed HVAC symbols editable where the work is happening: directly on
 - Shows each detected choice when a sheet contains conflicting scales; not-to-scale or missing numeric evidence still requires calibration.
 - Returns to Plan Helper after a manual two-point calibration so setup continues where the user left off.
 - Guides the drafting order used in the field: draw supply routes first, then number the flex runs and confirm their sizes, add return runs and grilles, and finally connect and repair loose endpoints.
-- Keeps provisional sizes visibly provisional until the post-draw detail pass is confirmed.
+- Keeps unconfirmed supply and return runs unlabeled until the post-draw detail pass confirms their size.
 - Adds post-draw run numbers and reviewed sizes without snapping or moving the routes already drawn.
 - Preserves manual geometry, approval, evidence-fingerprint, repair-scope, and one-Undo protections.
 

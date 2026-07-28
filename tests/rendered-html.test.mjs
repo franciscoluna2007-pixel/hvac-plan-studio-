@@ -21,7 +21,7 @@ async function loadConnectionRepairModule() {
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
 
-test("renders production v126 text metadata without generated image metadata or the development preview marker", async () => {
+test("renders production v127 text metadata without generated image metadata or the development preview marker", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -47,8 +47,8 @@ test("renders production v126 text metadata without generated image metadata or 
     /^text\/html\b/i,
   );
   const html = await response.text();
-  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Direct Symbol Editing"\/>/i);
-  assert.match(html, /<meta property="og:description" content="Move and resize HVAC labels and icons directly on the plan, with nearby actions that stay out of the way\."\/>/i);
+  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Compact Plan Markup"\/>/i);
+  assert.match(html, /<meta property="og:description" content="Use compact HVAC icons and labels, with clean unlabeled supply and return routing until sizes are confirmed\."\/>/i);
   assert.doesNotMatch(html, /(?:property|name)="(?:og:image|twitter:image)"/i);
   assert.doesNotMatch(html, /summary_large_image|og-v\d+\.png/i);
   assert.doesNotMatch(html, developmentPreviewMeta);
@@ -192,7 +192,7 @@ test("leads solo HVAC operators through plan setup and four clear job steps", as
   assert.match(styles, /\.project-home-hero-visual,[\s\S]*display: none !important/);
   assert.match(styles, /\.left-panel-tabs/);
   assert.doesNotMatch(layout, /\/og-v\d+\.png|summary_large_image|images\s*:/);
-  assert.match(layout, /Direct Symbol Editing/);
+  assert.match(layout, /Compact Plan Markup/);
 });
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
@@ -269,14 +269,16 @@ test("makes run size primary, supports one-inch size choices, and directly resiz
 
   assert.match(source, /const runSizeOptions = \["4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"\]/);
   assert.match(source, /className={`run-size-default \$\{selectedRun \? "editing" : ""\}`}/);
-  assert.match(source, /PROVISIONAL · CONFIRM AFTER DRAWING/);
+  assert.match(source, /ADD DURING DETAIL PASS/);
+  assert.match(source, /New supply and return runs stay unlabeled until you confirm a size/);
   assert.match(source, /scaleX\?: number/);
   assert.match(source, /scaleY\?: number/);
   assert.match(source, /kind: "symbol-resize"/);
   assert.match(source, /function startSymbolResize/);
   assert.match(source, /className=\{`symbol-resize-handle \$\{cursorClass\}`\}/);
   assert.match(source, /Hold Shift to keep the original proportions/);
-  assert.match(source, /Reset size/);
+  assert.match(source, />Compact<\/button>/);
+  assert.match(source, /− Smaller/);
   assert.doesNotMatch(source, /className="fitting-core"/);
   assert.match(styles, /\.run-size-default/);
   assert.match(styles, /\.hvac-symbol \.symbol-resize-handle/);
@@ -1900,7 +1902,7 @@ test("ships v108 tablet gestures, stylus protection, responsive drawers, and bou
   assert.match(styles, /min-width: 44px; min-height: 44px/);
   assert.match(styles, /@media \(min-width: 2560px\)/);
   assert.match(styles, /height: 100dvh/);
-  assert.match(analytics, /app_version: "122"/);
+  assert.match(analytics, /app_version: "127"/);
 
   const pinch = pinchCamera({
     anchorPlan: { x: 100, y: 200 },
@@ -2012,7 +2014,9 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(page, /rememberActiveSheetScale\(page, \{/);
   assert.match(page, /scaleStateForPage\(drawing\.page\)\.feetPerUnit/);
   assert.match(page, /sizeReviewed: activeTool === "fresh" \? true : false/);
-  assert.match(page, /drawing\.sizeReviewed !== true \? "SIZE LATER"/);
+  assert.doesNotMatch(page, /SIZE LATER/);
+  assert.match(page, /drawing\.sizeReviewed === true \? `\$\{drawing\.size\}"/);
+  assert.match(page, /\.filter\(Boolean\)\.join\(" · "\)/);
   assert.match(page, /POST-DRAW DETAIL PASS/);
   assert.match(page, /function assignRunNumbers\(type: "supply" \| "return"\)/);
   assert.match(page, /function terminalLinkedRunId\(drawing: Drawing\)/);
@@ -2089,7 +2093,7 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(styles, /\.builder-current-step-summary/);
   assert.match(styles, /\.app-shell\.tablet-layout \.left-panel,[\s\S]*?padding-bottom: calc\(92px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(styles, /\.assistant-more-tools \{[\s\S]*?overflow-x: auto;/);
-  assert.match(layout, /HVAC Plan Studio · Direct Symbol Editing/);
+  assert.match(layout, /HVAC Plan Studio · Compact Plan Markup/);
   assert.doesNotMatch(layout, /\/og-v\d+\.png|summary_large_image|images\s*:/);
 
   assert.match(page, /function applyDetectedPlanScale\(candidate: PlanScaleCandidate, page: number\)/);

@@ -10,14 +10,22 @@ const {
   DEFAULT_OTHER_SYMBOL_SCALE,
   DEFAULT_TERMINAL_LABEL_SCALE,
   DEFAULT_TERMINAL_SYMBOL_SCALE,
+  MIN_SYMBOL_LABEL_SCALE,
+  MIN_SYMBOL_SCALE,
   MAX_SYMBOL_LABEL_OFFSET,
+  SYMBOL_LABEL_SCALE_STEP,
+  SYMBOL_SCALE_STEP,
   clampSymbolLabelOffset,
+  compactSymbolLabelScale,
+  compactSymbolScale,
   defaultSymbolLabelScale,
   defaultSymbolScale,
   estimateSymbolLabelBox,
   normalizedSymbolLabelScale,
   normalizedSymbolScale,
   signedCornerScale,
+  stepSymbolLabelScale,
+  stepSymbolScale,
 } = await loadTypescriptModule(
   new URL("../app/symbolEditing.ts", import.meta.url),
 );
@@ -32,15 +40,26 @@ test("keeps missing legacy icon and label scales at 100 percent", () => {
 });
 
 test("clamps persisted icon and label scales to safe visual ranges", () => {
-  assert.equal(normalizedSymbolScale(0.1), 0.4);
+  assert.equal(MIN_SYMBOL_SCALE, 0.2);
+  assert.equal(MIN_SYMBOL_LABEL_SCALE, 0.3);
+  assert.equal(normalizedSymbolScale(0.1), 0.2);
+  assert.equal(normalizedSymbolScale(0.25), 0.25);
   assert.equal(normalizedSymbolScale(9), 3);
   assert.equal(normalizedSymbolScale(1.35), 1.35);
-  assert.equal(normalizedSymbolLabelScale(0.1), 0.65);
+  assert.equal(normalizedSymbolLabelScale(0.1), 0.3);
+  assert.equal(normalizedSymbolLabelScale(0.45), 0.45);
   assert.equal(normalizedSymbolLabelScale(9), 1.75);
   assert.equal(normalizedSymbolLabelScale(1.2), 1.2);
 });
 
 test("provides smaller explicit defaults without changing legacy normalization", () => {
+  assert.equal(DEFAULT_TERMINAL_SYMBOL_SCALE, 0.35);
+  assert.equal(DEFAULT_EQUIPMENT_SYMBOL_SCALE, 0.82);
+  assert.equal(DEFAULT_OTHER_SYMBOL_SCALE, 0.45);
+  assert.equal(DEFAULT_TERMINAL_LABEL_SCALE, 0.4);
+  assert.equal(DEFAULT_EQUIPMENT_LABEL_SCALE, 0.52);
+  assert.equal(DEFAULT_OTHER_LABEL_SCALE, 0.46);
+
   assert.equal(defaultSymbolScale("diffuser"), DEFAULT_TERMINAL_SYMBOL_SCALE);
   assert.equal(defaultSymbolScale("returnGrille"), DEFAULT_TERMINAL_SYMBOL_SCALE);
   assert.equal(defaultSymbolScale("equipment"), DEFAULT_EQUIPMENT_SYMBOL_SCALE);
@@ -53,6 +72,29 @@ test("provides smaller explicit defaults without changing legacy normalization",
   assert.ok(defaultSymbolScale("diffuser") < normalizedSymbolScale());
   assert.ok(defaultSymbolScale("equipment") < normalizedSymbolScale());
   assert.ok(defaultSymbolLabelScale("note") < normalizedSymbolLabelScale());
+  assert.ok(defaultSymbolScale("equipment") > defaultSymbolScale("diffuser"));
+});
+
+test("steps icons and labels through the expanded compact range", () => {
+  assert.equal(SYMBOL_SCALE_STEP, 0.05);
+  assert.equal(SYMBOL_LABEL_SCALE_STEP, 0.05);
+  assert.equal(stepSymbolScale(0.4, -1), 0.35);
+  assert.equal(stepSymbolScale(0.2, -1), 0.2);
+  assert.equal(stepSymbolScale(2.98, 1), 3);
+  assert.equal(stepSymbolLabelScale(0.65, -1), 0.6);
+  assert.equal(stepSymbolLabelScale(0.3, -1), 0.3);
+  assert.equal(stepSymbolLabelScale(1.74, 1), 1.75);
+});
+
+test("compact sizing never enlarges a smaller saved icon or label", () => {
+  assert.equal(compactSymbolScale(undefined, "diffuser"), 0.35);
+  assert.equal(compactSymbolScale(0.6, "diffuser"), 0.35);
+  assert.equal(compactSymbolScale(0.2, "diffuser"), 0.2);
+  assert.equal(compactSymbolScale(0.3, "equipment"), 0.3);
+  assert.equal(compactSymbolLabelScale(undefined, "diffuser"), 0.4);
+  assert.equal(compactSymbolLabelScale(0.7, "diffuser"), 0.4);
+  assert.equal(compactSymbolLabelScale(0.3, "diffuser"), 0.3);
+  assert.equal(compactSymbolLabelScale(0.4, "equipment"), 0.4);
 });
 
 test("estimates deterministic padded label boxes and applies label scale", () => {
@@ -67,6 +109,10 @@ test("estimates deterministic padded label boxes and applies label scale", () =>
   assert.equal(scaled.height, 12);
   assert.equal(long.halfWidth, long.width / 2);
   assert.equal(long.halfHeight, long.height / 2);
+
+  const minimum = estimateSymbolLabelBox("12×12 SUPPLY", MIN_SYMBOL_LABEL_SCALE);
+  assert.ok(minimum.width > 0);
+  assert.equal(minimum.height, 4.8);
 });
 
 test("bounds symbol label offsets radially and repairs malformed values", () => {
@@ -84,13 +130,15 @@ test("uses the active corner sign and clamps after crossing the center", () => {
   assert.equal(signedCornerScale(-30, -1, 20), 1.5);
 
   // Crossing the center stays at the minimum instead of rebounding to 1.5.
-  assert.equal(signedCornerScale(-30, 1, 20), 0.4);
-  assert.equal(signedCornerScale(30, -1, 20), 0.4);
+  assert.equal(signedCornerScale(-30, 1, 20), 0.2);
+  assert.equal(signedCornerScale(30, -1, 20), 0.2);
+  assert.equal(signedCornerScale(-60, 1, 20), 0.2);
+  assert.equal(signedCornerScale(60, -1, 20), 0.2);
   assert.equal(signedCornerScale(200, 1, 20), 3);
 });
 
 test("falls back to the current scale for invalid resize geometry", () => {
   assert.equal(signedCornerScale(Number.NaN, 1, 20, 1.4), 1.4);
-  assert.equal(signedCornerScale(20, 1, 0, 0.2), 0.4);
+  assert.equal(signedCornerScale(20, 1, 0, 0.1), 0.2);
   assert.equal(signedCornerScale(20, 0, 20, 1.25), 1.25);
 });

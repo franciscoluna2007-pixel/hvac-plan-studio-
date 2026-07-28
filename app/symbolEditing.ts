@@ -10,19 +10,21 @@ export type SymbolLabelBox = {
   halfHeight: number;
 };
 
-export const MIN_SYMBOL_SCALE = 0.4;
+export const MIN_SYMBOL_SCALE = 0.2;
 export const MAX_SYMBOL_SCALE = 3;
-export const MIN_SYMBOL_LABEL_SCALE = 0.65;
+export const MIN_SYMBOL_LABEL_SCALE = 0.3;
 export const MAX_SYMBOL_LABEL_SCALE = 1.75;
 export const MAX_SYMBOL_LABEL_OFFSET = 180;
+export const SYMBOL_SCALE_STEP = 0.05;
+export const SYMBOL_LABEL_SCALE_STEP = 0.05;
 
-export const DEFAULT_TERMINAL_SYMBOL_SCALE = 0.82;
-export const DEFAULT_EQUIPMENT_SYMBOL_SCALE = 0.9;
-export const DEFAULT_OTHER_SYMBOL_SCALE = 0.85;
+export const DEFAULT_TERMINAL_SYMBOL_SCALE = 0.35;
+export const DEFAULT_EQUIPMENT_SYMBOL_SCALE = 0.82;
+export const DEFAULT_OTHER_SYMBOL_SCALE = 0.45;
 
-export const DEFAULT_TERMINAL_LABEL_SCALE = 0.88;
-export const DEFAULT_EQUIPMENT_LABEL_SCALE = 0.92;
-export const DEFAULT_OTHER_LABEL_SCALE = 0.9;
+export const DEFAULT_TERMINAL_LABEL_SCALE = 0.4;
+export const DEFAULT_EQUIPMENT_LABEL_SCALE = 0.52;
+export const DEFAULT_OTHER_LABEL_SCALE = 0.46;
 
 const TERMINAL_KINDS = new Set(["diffuser", "returnGrille"]);
 
@@ -74,6 +76,48 @@ export function defaultSymbolLabelScale(kind: string) {
   if (kind === "equipment") return DEFAULT_EQUIPMENT_LABEL_SCALE;
   if (TERMINAL_KINDS.has(kind)) return DEFAULT_TERMINAL_LABEL_SCALE;
   return DEFAULT_OTHER_LABEL_SCALE;
+}
+
+export function compactSymbolScale(
+  value: number | null | undefined,
+  kind: string,
+) {
+  return Math.min(
+    normalizedSymbolScale(value),
+    defaultSymbolScale(kind),
+  );
+}
+
+export function compactSymbolLabelScale(
+  value: number | null | undefined,
+  kind: string,
+) {
+  return Math.min(
+    normalizedSymbolLabelScale(value),
+    defaultSymbolLabelScale(kind),
+  );
+}
+
+export function stepSymbolScale(
+  value: number | null | undefined,
+  direction: -1 | 1,
+) {
+  return normalizedSymbolScale(
+    Number((
+      normalizedSymbolScale(value) + direction * SYMBOL_SCALE_STEP
+    ).toFixed(2)),
+  );
+}
+
+export function stepSymbolLabelScale(
+  value: number | null | undefined,
+  direction: -1 | 1,
+) {
+  return normalizedSymbolLabelScale(
+    Number((
+      normalizedSymbolLabelScale(value) + direction * SYMBOL_LABEL_SCALE_STEP
+    ).toFixed(2)),
+  );
 }
 
 function estimatedCharacterWidth(character: string) {

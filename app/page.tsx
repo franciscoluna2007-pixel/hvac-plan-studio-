@@ -66,15 +66,22 @@ import {
   type PdfStartMode,
 } from "./pdfStartPreference";
 import { projectStorageKey, resolveProjectRestore } from "./projectStorage";
-import { positionSymbolActionWheel } from "./symbolActionWheel";
+import {
+  DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
+  positionSymbolActionWheel,
+} from "./symbolActionWheel";
 import {
   clampSymbolLabelOffset,
+  compactSymbolLabelScale,
+  compactSymbolScale,
   defaultSymbolLabelScale,
   defaultSymbolScale,
   estimateSymbolLabelBox,
   normalizedSymbolLabelScale,
   normalizedSymbolScale,
   signedCornerScale,
+  stepSymbolLabelScale,
+  stepSymbolScale,
 } from "./symbolEditing";
 import {
   buildFindingIdentity,
@@ -138,6 +145,7 @@ import {
   Grid3X3,
   Gauge,
   Lock,
+  Minimize2,
   MousePointer2,
   PanelTop,
   PanelLeftClose,
@@ -8939,6 +8947,88 @@ function HVACPlanStudioApp() {
     );
   }
 
+  function compactSelectedSymbol() {
+    const selected = drawings.find((drawing) => drawing.id === selectedId && drawing.symbol);
+    if (!selected?.symbol) return;
+    const changes = {
+      scaleX: compactSymbolScale(selected.symbol.scaleX, selected.symbol.kind),
+      scaleY: compactSymbolScale(selected.symbol.scaleY, selected.symbol.kind),
+      labelScale: compactSymbolLabelScale(selected.symbol.labelScale, selected.symbol.kind),
+    };
+    if (
+      selected.symbol.scaleX === changes.scaleX &&
+      selected.symbol.scaleY === changes.scaleY &&
+      selected.symbol.labelScale === changes.labelScale
+    ) {
+      setBranchMessage("This icon and label are already at or below the compact sizes");
+      return;
+    }
+    updateSelectedSymbol(changes);
+    setBranchMessage("Compact icon and label sizes applied · drag either handle for fine adjustment");
+  }
+
+  function adjustSelectedSymbolSize(direction: -1 | 1) {
+    const selected = drawings.find((drawing) => drawing.id === selectedId && drawing.symbol);
+    if (!selected?.symbol) return;
+    updateSelectedSymbol({
+      scaleX: stepSymbolScale(selected.symbol.scaleX, direction),
+      scaleY: stepSymbolScale(selected.symbol.scaleY, direction),
+    });
+  }
+
+  function adjustSelectedSymbolLabelSize(direction: -1 | 1) {
+    const selected = drawings.find((drawing) => drawing.id === selectedId && drawing.symbol);
+    if (!selected?.symbol) return;
+    updateSelectedSymbol({
+      labelScale: stepSymbolLabelScale(selected.symbol.labelScale, direction),
+    });
+  }
+
+  function compactPageTerminalSymbols() {
+    const terminalKinds = new Set(["diffuser", "returnGrille"]);
+    const targets = drawings.filter((drawing) =>
+      drawing.page === pageNumber &&
+      drawing.symbol &&
+      terminalKinds.has(drawing.symbol.kind)
+    );
+    if (!targets.length) {
+      setBranchMessage("No supply or return symbols are on this sheet");
+      return;
+    }
+    let changedCount = 0;
+    const next = drawings.map((drawing) => {
+      if (
+        drawing.page !== pageNumber ||
+        !drawing.symbol ||
+        !terminalKinds.has(drawing.symbol.kind)
+      ) return drawing;
+      const scaleX = compactSymbolScale(drawing.symbol.scaleX, drawing.symbol.kind);
+      const scaleY = compactSymbolScale(drawing.symbol.scaleY, drawing.symbol.kind);
+      const labelScale = compactSymbolLabelScale(drawing.symbol.labelScale, drawing.symbol.kind);
+      if (
+        drawing.symbol.scaleX === scaleX &&
+        drawing.symbol.scaleY === scaleY &&
+        drawing.symbol.labelScale === labelScale
+      ) return drawing;
+      changedCount += 1;
+      return {
+        ...drawing,
+        symbol: {
+          ...drawing.symbol,
+          scaleX,
+          scaleY,
+          labelScale,
+        },
+      };
+    });
+    if (!changedCount) {
+      setBranchMessage("Every supply and return symbol on this sheet is already compact");
+      return;
+    }
+    setHistory(next);
+    setBranchMessage(`${changedCount} supply and return symbol${changedCount === 1 ? "" : "s"} compacted on this sheet · one Undo restores them`);
+  }
+
   function updateSelectedCanDimension(axis: 0 | 1, value: string) {
     const selected = drawings.find((drawing) => drawing.id === selectedId && ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || ""));
     if (!selected) return;
@@ -9850,16 +9940,22 @@ function HVACPlanStudioApp() {
     const labelBaselineY = labelPositionY + labelOffset.y;
     const labelCenterY = labelBaselineY - labelBox.height / 2 + 3;
     const labelMoved = Math.hypot(labelOffset.x, labelOffset.y) > 12;
-    const visibleHandleSize = Math.max(3, Math.min(10, 7 / Math.max(.25, zoom)));
-    const resizeHitRadius = Math.max(5, Math.min(22, 13 / Math.max(.25, zoom)));
-    const labelHandleRadius = Math.max(2, Math.min(8, 4 / Math.max(.25, zoom)));
-    const labelHitRadius = Math.max(5, Math.min(22, 12 / Math.max(.25, zoom)));
+    const visibleHandleSize = 9 / Math.max(.25, zoom);
+    const resizeHitRadius = 22 / Math.max(.25, zoom);
+    const labelHandleRadius = 6 / Math.max(.25, zoom);
+    const labelHitRadius = 22 / Math.max(.25, zoom);
+    const directHitRadius = Math.max(
+      interactionRadius * Math.max(scaleX, scaleY),
+      22 / Math.max(.25, zoom),
+    );
+    const labelStrokeWidth = Math.max(1.1, 2.6 * labelScale);
     if (variant !== "__legacy") return <g
       className={artworkClass}
       transform={`translate(${center.x} ${center.y})`}
       onPointerDown={preview ? undefined : (event) => startSymbolDrag(event, drawing)}
     >
       <g transform={`rotate(${rotation})`}>
+        {!preview && <circle className="symbol-direct-hit" cx="0" cy="0" r={directHitRadius} />}
         <g className="symbol-visual" transform={`scale(${scaleX} ${scaleY})`}>
           <circle className="symbol-hit" cx="0" cy="0" r={interactionRadius} />
           <SymbolArtwork kind={kind} variant={variant} width={symbolWidth} height={symbolHeight} />
@@ -9946,7 +10042,10 @@ function HVACPlanStudioApp() {
           x="0"
           y="0"
           textAnchor="middle"
-          style={{ fontSize: `${10 * labelScale}px` }}
+          style={{
+            fontSize: `${10 * labelScale}px`,
+            strokeWidth: `${labelStrokeWidth}px`,
+          }}
         >
           {displayLabel}
         </text>
@@ -10276,6 +10375,7 @@ function HVACPlanStudioApp() {
         return Math.hypot(width, height) / 2;
       })(),
       zoom,
+      maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
     })
     : null;
   const selectedSymbolWheelVisible = Boolean(
@@ -11360,7 +11460,7 @@ function HVACPlanStudioApp() {
             <div className={`run-size-default ${selectedRun ? "editing" : ""}`}>
               <div>
                 <span>RUN SIZE</span>
-                <b>{selectedRun ? `SELECTED ${selectedRun.type.toUpperCase()}` : "PROVISIONAL · CONFIRM AFTER DRAWING"}</b>
+                <b>{selectedRun ? `SELECTED ${selectedRun.type.toUpperCase()}` : "ADD DURING DETAIL PASS"}</b>
               </div>
               <select
                 aria-label={selectedRun ? "Selected run size" : "Default new run size"}
@@ -11369,7 +11469,7 @@ function HVACPlanStudioApp() {
               >
                 {[...runSizeOptions].reverse().map((size) => <option key={size} value={size}>{size}&quot;</option>)}
               </select>
-              <small>{selectedRun ? "Selected runs update immediately." : "Draw first. New supply and return labels stay SIZE LATER until the detail pass confirms them."}</small>
+              <small>{selectedRun ? "Selected runs update immediately." : "Draw first. New supply and return runs stay unlabeled until you confirm a size."}</small>
             </div>
             <div className={`branch-designer ${activeTool === "branch" ? "active" : ""}`}>
               <div className="library-title"><DraftingCompass size={14} /><span>RUN-FIRST BRANCH PASS</span><b>DRAW RUNS · THEN SPLIT</b></div>
@@ -11648,11 +11748,16 @@ function HVACPlanStudioApp() {
                   <span>PLAN ICON SIZE</span>
                   <strong>{Math.round(normalizedSymbolScale(selectedDrawing.symbol.scaleX) * 100)}% × {Math.round(normalizedSymbolScale(selectedDrawing.symbol.scaleY) * 100)}%</strong>
                 </div>
-                <button onClick={() => {
-                  const scale = defaultSymbolScale(selectedDrawing.symbol!.kind);
-                  updateSelectedSymbol({ scaleX: scale, scaleY: scale });
-                }}>Reset size</button>
-                <small>Drag a blue corner directly on the icon. Hold Shift to keep the original proportions.</small>
+                <button onClick={compactSelectedSymbol}>Compact</button>
+                <div className="symbol-size-step-actions" role="group" aria-label="Adjust selected icon size">
+                  <button onClick={() => adjustSelectedSymbolSize(-1)}>− Smaller</button>
+                  <button onClick={() => adjustSelectedSymbolSize(1)}>Larger +</button>
+                </div>
+                {["diffuser", "returnGrille"].includes(selectedDrawing.symbol.kind) && <button
+                  className="symbol-sheet-compact"
+                  onClick={compactPageTerminalSymbols}
+                >Compact all supply &amp; return symbols on this sheet</button>}
+                <small>Drag a blue corner directly on the icon, or use Smaller for precise steps. Hold Shift to keep the original proportions.</small>
               </div>
               <div className="symbol-resize-control symbol-label-control">
                 <div>
@@ -11666,7 +11771,11 @@ function HVACPlanStudioApp() {
                   labelOffset: { x: 0, y: 0 },
                   labelScale: defaultSymbolLabelScale(selectedDrawing.symbol!.kind),
                 })}>Reset label</button>
-                <small>Drag the label beside the icon. Drag its round handle to resize it without moving the icon.</small>
+                <div className="symbol-size-step-actions" role="group" aria-label="Adjust selected label size">
+                  <button onClick={() => adjustSelectedSymbolLabelSize(-1)}>− Smaller</button>
+                  <button onClick={() => adjustSelectedSymbolLabelSize(1)}>Larger +</button>
+                </div>
+                <small>Drag the label beside the icon. Drag its round handle or use Smaller to resize it without moving the icon.</small>
               </div>
               {isPrimaryAirflowEquipment(selectedDrawing) && <label>Primary equipment size
                 <select
@@ -12132,6 +12241,7 @@ function HVACPlanStudioApp() {
               </select>}
               {selectedDrawing?.symbol && <button onClick={() => rotateSelectedSymbol(-15)}>−15°</button>}
               {selectedDrawing?.symbol && <button onClick={() => rotateSelectedSymbol(15)}>+15°</button>}
+              {selectedDrawing?.symbol && <button title="Use compact icon and label sizes" onClick={compactSelectedSymbol}><Minimize2 size={15} /> Compact</button>}
               {selectedRun && selectedIds.length === 1 && <button title="Continue drawing from the first endpoint" onClick={() => extendSelectedRun(true)}><Route size={15} /> Extend A</button>}
               {selectedRun && selectedIds.length === 1 && <button title="Continue drawing from the last endpoint" onClick={() => extendSelectedRun(false)}><Route size={15} /> Extend B</button>}
               {selectedRun && selectedIds.length === 1 && <button className={splitMode ? "active" : ""} title="Click the selected run where it should split" onClick={() => { setActiveTool("select"); setSplitMode((enabled) => !enabled); }}><Scissors size={15} /> Split</button>}
@@ -12148,6 +12258,7 @@ function HVACPlanStudioApp() {
               onRotateLeft={() => rotateSelectedSymbol(-15)}
               onRotateRight={() => rotateSelectedSymbol(15)}
               onMirror={mirrorSelectedHorizontal}
+              onCompact={compactSelectedSymbol}
               onDuplicate={duplicateSelected}
               onDelete={deleteSelected}
               onClose={() => selectOnly(null)}
@@ -12414,6 +12525,13 @@ function HVACPlanStudioApp() {
                             : "";
                       const runSelected = isSelected(drawing.id);
                       const showRunNodeHandles = runSelected || Boolean(branchCandidateClass);
+                      const runLabelText = [
+                        drawing.runNumber?.trim(),
+                        drawing.sizeReviewed === true ? `${drawing.size}"` : "",
+                        showLengthLabels ? `${drawingLengthFeet(drawing).toFixed(1)} LF` : "",
+                        showCfmLabels ? `${runAirflow(drawing)} CFM${airflowNetwork().calculated.get(drawing.id) ? " AUTO" : ""}` : "",
+                        drawing.elevation ? `EL ${drawing.elevation}` : "",
+                      ].filter(Boolean).join(" · ");
                       return <g key={drawing.id} className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${runSelected ? "selected-drawing" : ""} ${branchCandidateClass} ${assistantPreviewClass}`.trim()} onPointerDown={(event) => {
                         if (event.button !== 0 || panRef.current || activeTool !== "select" || drawingLocked(drawing)) return;
                         event.stopPropagation();
@@ -12442,19 +12560,15 @@ function HVACPlanStudioApp() {
                           />;
                         })}
                         {queuedBranchRunId === drawing.id && <text className="branch-run-armed-label" x={middle.x + 8} y={middle.y - 24}>PORT 3 RUN ARMED</text>}
-                        <text
+                        {runLabelText && <text
                           className={`run-label ${drawing.labelOffset ? "custom-position" : ""}`}
                           x={runLabelPoint.x}
                           y={runLabelPoint.y}
                           onPointerDown={(event) => startRunLabelDrag(event, drawing)}
                         >
                           <title>Drag to reposition this run label</title>
-                          {drawing.runNumber ? `${drawing.runNumber} · ` : ""}
-                          {drawing.sizeReviewed !== true ? "SIZE LATER" : `${drawing.size}"`}
-                          {showLengthLabels ? ` · ${drawingLengthFeet(drawing).toFixed(1)} LF` : ""}
-                          {showCfmLabels ? ` · ${runAirflow(drawing)} CFM${airflowNetwork().calculated.get(drawing.id) ? " AUTO" : ""}` : ""}
-                          {drawing.elevation ? ` · EL ${drawing.elevation}` : ""}
-                        </text>
+                          {runLabelText}
+                        </text>}
                       </g>;
                     })}
                     {showMarkupAssistant && activeMarkupRecommendation?.preview && (() => {

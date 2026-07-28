@@ -4,6 +4,7 @@ import { useRef, type CSSProperties, type KeyboardEvent } from "react";
 import {
   Copy,
   FlipHorizontal2,
+  Minimize2,
   RotateCcw,
   RotateCw,
   Trash2,
@@ -17,6 +18,7 @@ type SymbolActionWheelProps = {
   onRotateLeft: () => void;
   onRotateRight: () => void;
   onMirror: () => void;
+  onCompact: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -29,6 +31,7 @@ export default function SymbolActionWheel({
   onRotateLeft,
   onRotateRight,
   onMirror,
+  onCompact,
   onDuplicate,
   onDelete,
   onClose,
@@ -62,6 +65,13 @@ export default function SymbolActionWheel({
       shortLabel: "Copy",
       icon: Copy,
       run: onDuplicate,
+    },
+    {
+      id: "compact",
+      label: "Use compact icon and label sizes",
+      shortLabel: "Compact",
+      icon: Minimize2,
+      run: onCompact,
     },
     {
       id: "delete",
