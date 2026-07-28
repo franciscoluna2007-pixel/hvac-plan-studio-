@@ -6,6 +6,7 @@ import { currentCloudUser, getCloudClient } from "./cloudProjects";
 export type ProductEventName =
   | "workspace_opened"
   | "pdf_opened"
+  | "pdf_start_preference_changed"
   | "ai_analysis_started"
   | "ai_analysis_completed"
   | "ai_analysis_failed"

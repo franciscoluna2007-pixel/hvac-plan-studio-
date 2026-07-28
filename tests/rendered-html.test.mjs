@@ -21,7 +21,7 @@ async function loadConnectionRepairModule() {
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
 
-test("renders production v123 metadata without the development preview marker", async () => {
+test("renders production v125 metadata without the development preview marker", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -47,9 +47,51 @@ test("renders production v123 metadata without the development preview marker", 
     /^text\/html\b/i,
   );
   const html = await response.text();
-  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Markup Assistant Fixes 2\.0"\/>/i);
-  assert.match(html, /<meta property="og:description" content="See what to fix first, preview the exact change, and approve safe HVAC plan repairs with one Undo\."\/>/i);
+  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Open PDF &amp; Draw"\/>/i);
+  assert.match(html, /<meta property="og:description" content="Open a PDF and start drawing immediately, or use guided setup when you want help with plan details\."\/>/i);
   assert.doesNotMatch(html, developmentPreviewMeta);
+});
+
+test("v124-v125 keep direct PDF opening and guided setup as safe parallel paths", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const home = await readFile(new URL("../app/ProjectHome.tsx", import.meta.url), "utf8");
+  const setup = await readFile(new URL("../app/GuidedProjectSetup.tsx", import.meta.url), "utf8");
+  const preference = await readFile(new URL("../app/pdfStartPreference.ts", import.meta.url), "utf8");
+  const storage = await readFile(new URL("../app/projectStorage.ts", import.meta.url), "utf8");
+  const roadmap = await readFile(new URL("../ROADMAP.md", import.meta.url), "utf8");
+
+  assert.match(home, /Open PDF and start drawing/);
+  assert.match(home, /Use guided setup/);
+  assert.match(home, /Drop a PDF here to open it directly/);
+  assert.match(home, /aria-pressed=\{pdfStartMode === "direct"\}/);
+  assert.match(home, /aria-pressed=\{pdfStartMode === "guided"\}/);
+
+  assert.match(page, /type PdfOpenContext = \{/);
+  assert.match(page, /requestId: \+\+pdfOpenRequestRef\.current/);
+  assert.match(page, /context\.requestId !== pdfOpenRequestRef\.current/);
+  assert.match(page, /context\.mode === "direct"/);
+  assert.match(page, /entry_mode: context\.mode/);
+  assert.match(page, /file\.type !== "application\/pdf" && !pdfByName/);
+  assert.match(page, /applyProjectSetup\(context\.setup\)/);
+  assert.match(page, /createPdfOpenContext\("local", "direct", "drop"\)/);
+
+  const fileInputIndex = page.indexOf('aria-label="Choose a PDF construction plan"');
+  const inertWorkspaceIndex = page.indexOf('<section className="workspace" inert=');
+  assert.ok(fileInputIndex > 0 && fileInputIndex < inertWorkspaceIndex, "PDF input should remain outside the inert workspace");
+
+  assert.match(preference, /pdf-start-preference:v1/);
+  assert.match(preference, /mode: "direct"/);
+  assert.match(preference, /catch \{\s*return DEFAULT_PDF_START_PREFERENCE/);
+  assert.match(storage, /sourceFingerprint \? `\$\{baseKey\}:\$\{sourceFingerprint\}` : baseKey/);
+  assert.match(storage, /project\.pdfFingerprint !== sourceFingerprint/);
+  assert.match(page, /older markups were kept separately/);
+
+  assert.match(setup, /tabIndex=\{-1\}/);
+  assert.match(setup, /aria-hidden="true"/);
+  assert.match(setup, /aria-pressed=\{effectiveSource === "local"\}/);
+
+  assert.match(roadmap, /\| v124 \| Open PDF & Draw \| Shipped \|/);
+  assert.match(roadmap, /\| v125 \| Setup When You Need It \| Shipped \|/);
 });
 
 test("adds secure cloud projects, revisions, collaborators, and Drive packages", async () => {
@@ -88,13 +130,13 @@ test("builds v106 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.match(page, /<ProjectHome/);
   assert.match(page, /<GuidedProjectSetup/);
   assert.match(page, /Nothing changes without your approval/);
-  assert.match(page, /applyPendingProjectSetup/);
+  assert.match(page, /applyProjectSetup/);
   assert.match(page, /sourceFileName/);
-  assert.match(page, /pendingProjectSetupRef\.current = null/);
+  assert.match(page, /pendingPdfOpenRef\.current = null/);
   assert.match(page, /addEventListener\("cancel", handleFilePickerCancel\)/);
   assert.match(page, /const modalWorkspaceActive = showProjectHome \|\| showProjectSetup \|\| showPlanIntelligence \|\| showFieldPackageComposer \|\| showSystemBalanceStudio/);
   assert.match(page, /inert=\{modalWorkspaceActive \? true : undefined\}/);
-  assert.match(home, /Open a PDF and HVAC Plan Studio will help you set up, mark, check, and finish the job/);
+  assert.match(home, /Open a PDF and draw right away, or choose guided setup for help with scale and job details/);
   assert.match(home, /Jobs · plans · materials/);
   assert.doesNotMatch(home, /FIELD PRODUCTION|Field-first workflow|Installer-ready/);
   assert.match(home, /Resume current job/);
@@ -139,7 +181,7 @@ test("leads solo HVAC operators through plan setup and four clear job steps", as
   assert.match(page, /left-panel-tabs/);
   assert.match(home, /YOUR JOBS/);
   assert.match(home, /Resume current job/);
-  assert.match(home, /Start job from PDF/);
+  assert.match(home, /Open PDF and start drawing/);
   assert.match(home, /Open saved jobs/);
   assert.match(palette, /command\.recommended/);
   assert.match(palette, /Find a tool/);
@@ -147,8 +189,8 @@ test("leads solo HVAC operators through plan setup and four clear job steps", as
   assert.match(styles, /\.smart-plan-preflight/);
   assert.match(styles, /\.project-home-hero-visual,[\s\S]*display: none !important/);
   assert.match(styles, /\.left-panel-tabs/);
-  assert.match(layout, /\/og-v123\.png/);
-  assert.match(layout, /Markup Assistant Fixes 2\.0/);
+  assert.match(layout, /\/og-v125\.png/);
+  assert.match(layout, /Open PDF & Draw/);
 });
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
@@ -360,7 +402,7 @@ test("ships v107 public guest access, subscription readiness, and protected owne
   const entitlements = await readFile(new URL("../app/entitlements.ts", import.meta.url), "utf8");
   const migration = await readFile(new URL("../supabase/migrations/20260725163857_owner_analytics_and_subscription_readiness.sql", import.meta.url), "utf8");
 
-  assert.match(home, /Start job from PDF/);
+  assert.match(home, /Open PDF and start drawing/);
   assert.match(home, /Open saved jobs/);
   assert.match(home, /Your PDF work can stay on this device/);
   assert.doesNotMatch(home, /PROFESSIONAL · COMING SOON|Make every new plan revision faster to review/);
@@ -2004,7 +2046,7 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(jobWorkflow, /if \(!input\.connectionsComplete \|\| input\.connectionProblems\)/);
 
   assert.match(home, /Resume current job/);
-  assert.match(home, /Start job from PDF/);
+  assert.match(home, /Open PDF and start drawing/);
   assert.match(home, /Open saved jobs/);
   assert.match(home, /Drive unavailable/);
   assert.match(home, /disabled=\{!hasPlan\}/);
@@ -2044,8 +2086,8 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(styles, /\.builder-current-step-summary/);
   assert.match(styles, /\.app-shell\.tablet-layout \.left-panel,[\s\S]*?padding-bottom: calc\(92px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(styles, /\.assistant-more-tools \{[\s\S]*?overflow-x: auto;/);
-  assert.match(layout, /HVAC Plan Studio · Markup Assistant Fixes 2\.0/);
-  assert.match(layout, /\/og-v123\.png/);
+  assert.match(layout, /HVAC Plan Studio · Open PDF & Draw/);
+  assert.match(layout, /\/og-v125\.png/);
 
   assert.match(page, /function applyDetectedPlanScale\(candidate: PlanScaleCandidate, page: number\)/);
   assert.match(page, /if \(applyResolvedScale\(candidate, page\)\)/);

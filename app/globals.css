@@ -11568,3 +11568,91 @@ textarea:focus-visible,
     justify-self: center;
   }
 }
+
+/* v124-v125: direct PDF entry with setup available on demand. */
+.project-home-start-preference {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: #8fa6b9;
+  font-size: 13px;
+}
+
+.project-home-start-preference > span {
+  font-weight: 650;
+}
+
+.project-home-start-preference > div {
+  display: inline-flex;
+  padding: 3px;
+  gap: 3px;
+  border: 1px solid #29475f;
+  border-radius: 10px;
+  background: #091725;
+}
+
+.project-home-start-preference button {
+  min-height: 44px;
+  padding: 0 12px;
+  color: #91a8bb;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.project-home-start-preference button.active {
+  color: #e9fbff;
+  border-color: #32748c;
+  background: #113247;
+}
+
+.project-home-drop-zone {
+  min-height: 44px;
+  margin-top: 14px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #8299ad;
+  border: 1px dashed #31536d;
+  border-radius: 10px;
+  background: #0a192777;
+  font-size: 13px;
+}
+
+.project-home-drop-zone svg {
+  color: #56d9ec;
+}
+
+.upload-actions {
+  flex-wrap: wrap;
+}
+
+.upload-card .upload-actions button {
+  min-height: 44px;
+}
+
+@media (max-width: 760px) {
+  .project-home-start-preference {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .project-home-start-preference > div {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .project-home-start-preference button {
+    min-height: 44px;
+  }
+
+  .project-home-drop-zone {
+    width: 100%;
+    justify-content: center;
+  }
+}

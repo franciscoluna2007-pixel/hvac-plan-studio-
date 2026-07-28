@@ -4,9 +4,31 @@ HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review,
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v123
+## Current release — v125
 
-v123 turns Plan Helper into Markup Assistant Fixes 2.0: it identifies what must be handled first, maps each problem to the right fix, previews exact before-and-after values, and applies only compatible approved changes.
+v124 and v125 let a user open a PDF and start drawing immediately while keeping guided setup available when it is useful. The preferred start is remembered on the current device, and direct entry does not weaken scale, repair, approval, or source-identity protections.
+
+### v125 — Setup When You Need It
+
+- Keeps direct and guided entry visible together instead of forcing one workflow.
+- Remembers whether this device prefers direct opening or guided setup.
+- Defaults safely to direct opening when the preference is missing, malformed, or unavailable.
+- Captures each opening request as an explicit direct or guided transaction so a canceled wizard cannot leak settings into the next PDF.
+- Prevents an older, slower PDF request from replacing a newer selection.
+- Keeps Plan Setup and Plan Helper available after direct entry while plan reading continues in the background.
+- Moves the file input outside inactive modal content and gives it an accessible name.
+- Improves guided-setup keyboard and selected-choice semantics.
+
+### v124 — Open PDF & Draw
+
+- Adds a first-screen **Open PDF and start drawing** action for local plans.
+- Keeps **Use guided setup** as a clear optional action.
+- Supports direct Google Drive opening and direct drag-and-drop from Jobs Home.
+- Accepts PDF files whose browser omits the MIME type when the filename ends in `.pdf`.
+- Opens the canvas immediately and reports that scale, rooms, ceiling heights, and equipment are being checked in the background.
+- Stores local work by PDF fingerprint as well as job name.
+- Opens a same-named but different PDF as a new job instead of silently placing old markups over new source content.
+- Keeps matching saved markups recoverable and separated from different plan contents.
 
 ### v123 — Markup Assistant Fixes 2.0
 
