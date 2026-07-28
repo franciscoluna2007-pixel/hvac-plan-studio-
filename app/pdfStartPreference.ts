@@ -16,6 +16,15 @@ export const DEFAULT_PDF_START_PREFERENCE: PdfStartPreference = {
 type ReadableStorage = Pick<Storage, "getItem">;
 type WritableStorage = Pick<Storage, "setItem">;
 
+function browserLocalStorage() {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 export function normalizePdfStartPreference(value: unknown): PdfStartPreference {
   if (!value || typeof value !== "object") return DEFAULT_PDF_START_PREFERENCE;
   const candidate = value as { version?: unknown; mode?: unknown };
@@ -32,12 +41,13 @@ export function normalizePdfStartPreference(value: unknown): PdfStartPreference 
 }
 
 export function loadPdfStartPreference(
-  storage: ReadableStorage | null = typeof window === "undefined" ? null : window.localStorage,
+  storage?: ReadableStorage | null,
 ): PdfStartPreference {
-  if (!storage) return DEFAULT_PDF_START_PREFERENCE;
+  const target = storage === undefined ? browserLocalStorage() : storage;
+  if (!target) return DEFAULT_PDF_START_PREFERENCE;
   try {
     return normalizePdfStartPreference(
-      JSON.parse(storage.getItem(PDF_START_PREFERENCE_STORAGE_KEY) || "null"),
+      JSON.parse(target.getItem(PDF_START_PREFERENCE_STORAGE_KEY) || "null"),
     );
   } catch {
     return DEFAULT_PDF_START_PREFERENCE;
@@ -46,11 +56,12 @@ export function loadPdfStartPreference(
 
 export function savePdfStartPreference(
   preference: PdfStartPreference,
-  storage: WritableStorage | null = typeof window === "undefined" ? null : window.localStorage,
+  storage?: WritableStorage | null,
 ) {
-  if (!storage) return;
+  const target = storage === undefined ? browserLocalStorage() : storage;
+  if (!target) return;
   try {
-    storage.setItem(
+    target.setItem(
       PDF_START_PREFERENCE_STORAGE_KEY,
       JSON.stringify(normalizePdfStartPreference(preference)),
     );
