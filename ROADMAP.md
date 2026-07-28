@@ -22,6 +22,8 @@ Every primary workspace now uses the same five plain-language job steps:
 
 Plan setup reads the PDF in the background for drawing scales, rooms, ceiling heights, equipment, systems, zones, and missing information. It does not block basic drawing; only work that depends on an unconfirmed fact pauses.
 
+Users may open a PDF directly and begin drawing, or choose guided setup first. Both paths use the same source validation and background plan reading, and setup remains available later.
+
 Advanced coordination remains available without crowding the first screen.
 
 ## Detailed product workflow
@@ -69,7 +71,48 @@ Advanced coordination remains available without crowding the first screen.
 | v121 | Simple Job Workflow | Shipped |
 | v122 | Smart Scale & Draw-First Workflow | Shipped |
 | v123 | Markup Assistant Fixes 2.0 | Shipped |
+| v124 | Open PDF & Draw | Shipped |
+| v125 | Setup When You Need It | Shipped |
 | v117 | Multi-company commercial operations | Planned for later |
+
+## v125 — Setup When You Need It
+
+### Outcome
+
+A superintendent or one-person HVAC business can choose direct or guided entry without losing either path. The preferred start is remembered on the current device, while Plan Setup remains available after the PDF opens.
+
+### Shipped capabilities
+
+- Direct and guided PDF actions remain visible together on Jobs Home.
+- A versioned local preference remembers the preferred opening method and safely defaults to direct.
+- Each local or Drive selection captures its own entry mode, source, setup values, origin, and request ID.
+- Canceled guided setup cannot leak scale, duct-size, project-name, or collaboration values into a later direct open.
+- An older PDF decode cannot replace a newer selection.
+- File-picker cancellation returns to Jobs Home or the existing workspace based on where it started.
+- Direct entry keeps background plan reading nonblocking and leaves Plan Setup available from the normal job workflow.
+- The hidden PDF input remains operable while Jobs Home is active and has an accessible name.
+- Guided source, tonnage, and collaboration choices expose their selected state to assistive technology.
+
+## v124 — Open PDF & Draw
+
+### Outcome
+
+A user can open a local or Google Drive PDF, or drop one on Jobs Home, and go straight to the drawing canvas without completing the guided setup.
+
+### Shipped capabilities
+
+- First-screen **Open PDF and start drawing** action.
+- Clear optional **Use guided setup** action.
+- Direct local, Google Drive, and drag-and-drop entry.
+- Empty browser MIME types are accepted when the filename is a PDF; size and PDF.js validation still apply.
+- Direct-open status explains that scale, rooms, ceiling heights, and equipment are being checked in the background.
+- Matching saved work restores only when the stored and opened PDF fingerprints agree.
+- Local save keys include the PDF fingerprint, so same-named source files keep separate work.
+- A same-named but changed PDF opens as a new job by default instead of silently receiving old geometry.
+
+### Safety boundary
+
+Direct opening changes only how the source plan enters the workspace. Scale remains unverified until confirmed, source-dependent calculations stay gated, and assistant changes still require current evidence, exact reviewed scope, approval, and one Undo.
 
 ## v123 — Markup Assistant Fixes 2.0
 

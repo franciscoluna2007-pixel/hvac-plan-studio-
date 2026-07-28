@@ -59,6 +59,13 @@ import {
   saveLocalWorkspacePreferences,
 } from "./workspacePreferences";
 import {
+  PDF_START_PREFERENCE_VERSION,
+  loadPdfStartPreference,
+  savePdfStartPreference,
+  type PdfStartMode,
+} from "./pdfStartPreference";
+import { projectStorageKey, resolveProjectRestore } from "./projectStorage";
+import {
   buildFindingIdentity,
   type PlanFindingCategory,
   type PlanIntelligenceFinding,
@@ -1217,7 +1224,15 @@ type TakeoffPackageRecord = {
   driveUrl?: string;
 };
 
-const STORAGE_PREFIX = "hvac-plan-studio:";
+type PdfOpenContext = {
+  requestId: number;
+  mode: PdfStartMode;
+  source: "local" | "drive";
+  origin: "home" | "workspace" | "drop" | "guided";
+  setup: ProjectSetupValues | null;
+};
+
+type ProjectRestoreResult = "new" | "restored" | "source-mismatch";
 const systems = Array.from({ length: 16 }, (_, index) => ({ id: `system-${index + 1}`, label: `System ${index + 1}` }));
 const defaultSystemNames = Object.fromEntries(systems.map((system) => [system.id, system.label]));
 const fieldChecklistItems = [
@@ -1296,6 +1311,8 @@ class WorkspaceErrorBoundary extends Component<{ children: ReactNode }, Workspac
 
 function HVACPlanStudioApp() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const pendingPdfOpenRef = useRef<PdfOpenContext | null>(null);
+  const pdfOpenRequestRef = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasViewportRef = useRef<HTMLDivElement>(null);
   const pdfStageRef = useRef<HTMLDivElement>(null);
@@ -1400,6 +1417,7 @@ function HVACPlanStudioApp() {
   ]);
   const [showProjectHome, setShowProjectHome] = useState(true);
   const [showProjectSetup, setShowProjectSetup] = useState(false);
+  const [pdfStartMode, setPdfStartMode] = useState<PdfStartMode>("direct");
   const [driveConfigured, setDriveConfigured] = useState<boolean | null>(null);
   const [showSizingReview, setShowSizingReview] = useState(false);
   const [selectedSizingIds, setSelectedSizingIds] = useState<string[]>([]);
@@ -1417,17 +1435,20 @@ function HVACPlanStudioApp() {
   const [activeReviewIssueId, setActiveReviewIssueId] = useState<string | null>(null);
   const [reviewerName, setReviewerName] = useState("");
   const [reviewDecisionNote, setReviewDecisionNote] = useState("");
-  const pendingProjectSetupRef = useRef<ProjectSetupValues | null>(null);
-
   useEffect(() => {
     const input = inputRef.current;
     if (!input) return;
     const handleFilePickerCancel = () => {
-      pendingProjectSetupRef.current = null;
-      setShowProjectHome(true);
+      const pendingOpen = pendingPdfOpenRef.current;
+      pendingPdfOpenRef.current = null;
+      if (pendingOpen?.origin !== "workspace") setShowProjectHome(true);
     };
     input.addEventListener("cancel", handleFilePickerCancel);
     return () => input.removeEventListener("cancel", handleFilePickerCancel);
+  }, []);
+
+  useEffect(() => {
+    setPdfStartMode(loadPdfStartPreference().mode);
   }, []);
 
   useEffect(() => {
@@ -2124,33 +2145,38 @@ function HVACPlanStudioApp() {
     setRedoStack([]);
   }
 
-  function restoreProject(name: string, sourceFingerprint: string) {
+  function resetForNewSource() {
+    setDrawings([]);
+    setWorkingCloudProjectId(null);
+    setWorkingCloudRevisionId(null);
+    setWorkingCloudRevisionFingerprint(null);
+    resetProjectWorkflowState();
+    setUndoStack([]);
+    setRedoStack([]);
+  }
+
+  function restoreProject(name: string, sourceFingerprint: string): ProjectRestoreResult {
     try {
-      const stored = localStorage.getItem(`${STORAGE_PREFIX}${name.toLowerCase()}`);
-      if (!stored) {
-        setDrawings([]);
-        setWorkingCloudProjectId(null);
-        setWorkingCloudRevisionId(null);
-        setWorkingCloudRevisionFingerprint(null);
-        resetProjectWorkflowState();
-        setUndoStack([]);
-        setRedoStack([]);
-        return;
+      const exactStored = localStorage.getItem(projectStorageKey(name, sourceFingerprint));
+      const legacyStored = localStorage.getItem(projectStorageKey(name));
+      const decision = resolveProjectRestore<SavedProject>(
+        exactStored,
+        legacyStored,
+        sourceFingerprint,
+      );
+      if (decision.status !== "restored") {
+        resetForNewSource();
+        return decision.status;
       }
-      applyProjectSnapshot(JSON.parse(stored) as SavedProject, sourceFingerprint);
+      applyProjectSnapshot(decision.project, sourceFingerprint);
+      return "restored";
     } catch {
-      setDrawings([]);
-      setWorkingCloudProjectId(null);
-      setWorkingCloudRevisionId(null);
-      setWorkingCloudRevisionFingerprint(null);
-      resetProjectWorkflowState();
-      setUndoStack([]);
-      setRedoStack([]);
+      resetForNewSource();
+      return "new";
     }
   }
 
-  function applyPendingProjectSetup() {
-    const setup = pendingProjectSetupRef.current;
+  function applyProjectSetup(setup: ProjectSetupValues | null) {
     if (!setup) return;
     const unitsPerFoot: Record<ProjectSetupValues["scale"], number> = {
       '1/8" = 1\'-0"': 12.15,
@@ -2177,20 +2203,57 @@ function HVACPlanStudioApp() {
     );
     setShowProjectHome(false);
     if (setup.collaboration === "cloud") setShowCloudProjects(true);
-    pendingProjectSetupRef.current = null;
+  }
+
+  function createPdfOpenContext(
+    source: PdfOpenContext["source"],
+    mode: PdfOpenContext["mode"],
+    origin: PdfOpenContext["origin"],
+    setup: ProjectSetupValues | null = null,
+  ): PdfOpenContext {
+    return {
+      requestId: ++pdfOpenRequestRef.current,
+      source,
+      mode,
+      origin,
+      setup,
+    };
+  }
+
+  function updatePdfStartMode(mode: PdfStartMode) {
+    setPdfStartMode(mode);
+    savePdfStartPreference({
+      version: PDF_START_PREFERENCE_VERSION,
+      mode,
+    });
+    void trackProductEvent("pdf_start_preference_changed", { mode });
+  }
+
+  function startDirectLocalPdf(origin: "home" | "workspace" = "workspace") {
+    if (loading) return;
+    pendingPdfOpenRef.current = createPdfOpenContext("local", "direct", origin);
+    inputRef.current?.click();
   }
 
   function startGuidedProject(setup: ProjectSetupValues) {
-    pendingProjectSetupRef.current = setup;
     setShowProjectSetup(false);
+    const context = createPdfOpenContext(setup.source, "guided", "guided", setup);
     if (setup.source === "drive") {
-      void openFromDrive();
+      void openFromDrive(context);
     } else {
+      pendingPdfOpenRef.current = context;
       inputRef.current?.click();
     }
   }
 
-  async function replacePdfDocument(document: pdfjsLib.PDFDocumentProxy) {
+  async function replacePdfDocument(
+    document: pdfjsLib.PDFDocumentProxy,
+    requestId?: number,
+  ) {
+    if (requestId && requestId !== pdfOpenRequestRef.current) {
+      await document.destroy();
+      return false;
+    }
     pdfRenderGenerationRef.current += 1;
     pdfRenderTaskRef.current?.cancel();
     pdfRenderTaskRef.current = null;
@@ -2204,32 +2267,49 @@ function HVACPlanStudioApp() {
         // A replaced worker may already be shutting down. The new plan can still open safely.
       }
     }
+    if (requestId && requestId !== pdfOpenRequestRef.current) {
+      await document.destroy();
+      return false;
+    }
     setPdf(document);
+    return true;
   }
 
-  async function openPdf(file?: File) {
-    if (!file) {
-      pendingProjectSetupRef.current = null;
-      return;
+  function directOpenStatus(result: ProjectRestoreResult) {
+    if (result === "source-mismatch") {
+      return "PDF opened as a new job because its contents differ from the saved plan with this name. The older markups were kept separately.";
     }
-    if (file.type !== "application/pdf") {
+    if (result === "restored") {
+      return "PDF open. Your matching saved markups were restored, and plan information is being checked in the background.";
+    }
+    return "PDF open. Start drawing now; scale, rooms, heights, and equipment are being checked in the background.";
+  }
+
+  async function openPdf(file?: File, openContext?: PdfOpenContext) {
+    if (!file) return;
+    const context = openContext || createPdfOpenContext("local", "direct", "workspace");
+    const pdfByName = /\.pdf$/i.test(file.name);
+    if (file.type !== "application/pdf" && !pdfByName) {
       setError("Please choose a PDF construction plan.");
-      pendingProjectSetupRef.current = null;
       return;
     }
     if (file.size > 100 * 1024 * 1024) {
       setError("This PDF is larger than 100 MB. Optimize or split the plan set, then try again.");
-      pendingProjectSetupRef.current = null;
       return;
     }
     setLoading(true);
     setError("");
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
+      if (context.requestId !== pdfOpenRequestRef.current) return;
       const sourceFingerprint = stableByteHash(bytes);
       const document = await pdfjsLib.getDocument({ data: bytes }).promise;
-      const projectName = pendingProjectSetupRef.current?.projectName.trim() || file.name.replace(/\.pdf$/i, "");
-      await replacePdfDocument(document);
+      if (context.requestId !== pdfOpenRequestRef.current) {
+        await document.destroy();
+        return;
+      }
+      const projectName = context.setup?.projectName.trim() || file.name.replace(/\.pdf$/i, "");
+      if (!await replacePdfDocument(document, context.requestId)) return;
       setPdfFingerprint(sourceFingerprint);
       setSourceDriveFileId(null);
       setSourceFileName(file.name);
@@ -2239,31 +2319,52 @@ function HVACPlanStudioApp() {
       setFileName(projectName);
       setPageNumber(1);
       setZoom(1);
-      restoreProject(projectName, sourceFingerprint);
-      applyPendingProjectSetup();
+      const restoreResult = restoreProject(projectName, sourceFingerprint);
+      applyProjectSetup(context.setup);
+      if (context.mode === "direct") setBranchMessage(directOpenStatus(restoreResult));
       setShowProjectHome(false);
-      void trackProductEvent("pdf_opened", { origin: "local", page_count: document.numPages });
+      setShowProjectSetup(false);
+      void trackProductEvent("pdf_opened", {
+        origin: context.origin === "drop" ? "drop" : "local",
+        entry_mode: context.mode,
+        page_count: document.numPages,
+      });
     } catch {
-      setError("This PDF could not be opened. Try another file.");
-      pendingProjectSetupRef.current = null;
+      if (context.requestId === pdfOpenRequestRef.current) {
+        setError("This PDF could not be opened. Try another file.");
+      }
     } finally {
-      setLoading(false);
+      if (context.requestId === pdfOpenRequestRef.current) setLoading(false);
     }
   }
 
-  async function openPdfBytes(name: string, bytes: Uint8Array, driveFileId?: string | null) {
+  async function openPdfBytes(
+    name: string,
+    bytes: Uint8Array,
+    driveFileId?: string | null,
+    openContext?: PdfOpenContext,
+  ) {
+    const context = openContext || createPdfOpenContext(
+      driveFileId ? "drive" : "local",
+      "direct",
+      "workspace",
+    );
     if (bytes.byteLength > 100 * 1024 * 1024) {
       setError("This Drive PDF is larger than 100 MB. Optimize or split the plan set, then try again.");
-      pendingProjectSetupRef.current = null;
       return;
     }
     setLoading(true);
     setError("");
     try {
+      if (context.requestId !== pdfOpenRequestRef.current) return;
       const sourceFingerprint = stableByteHash(bytes);
       const document = await pdfjsLib.getDocument({ data: bytes }).promise;
-      const projectName = pendingProjectSetupRef.current?.projectName.trim() || name.replace(/\.pdf$/i, "");
-      await replacePdfDocument(document);
+      if (context.requestId !== pdfOpenRequestRef.current) {
+        await document.destroy();
+        return;
+      }
+      const projectName = context.setup?.projectName.trim() || name.replace(/\.pdf$/i, "");
+      if (!await replacePdfDocument(document, context.requestId)) return;
       setPdfFingerprint(sourceFingerprint);
       setSourceDriveFileId(driveFileId || null);
       setSourceFileName(name);
@@ -2273,26 +2374,41 @@ function HVACPlanStudioApp() {
       setFileName(projectName);
       setPageNumber(1);
       setZoom(1);
-      restoreProject(projectName, sourceFingerprint);
-      applyPendingProjectSetup();
+      const restoreResult = restoreProject(projectName, sourceFingerprint);
+      applyProjectSetup(context.setup);
+      if (context.mode === "direct") setBranchMessage(directOpenStatus(restoreResult));
       setShowProjectHome(false);
-      void trackProductEvent("pdf_opened", { origin: driveFileId ? "drive" : "local", page_count: document.numPages });
+      setShowProjectSetup(false);
+      void trackProductEvent("pdf_opened", {
+        origin: driveFileId ? "drive" : "local",
+        entry_mode: context.mode,
+        page_count: document.numPages,
+      });
       if (driveFileId) void trackProductEvent("drive_imported", { page_count: document.numPages });
     } catch {
-      setError("This Drive PDF could not be opened.");
-      pendingProjectSetupRef.current = null;
+      if (context.requestId === pdfOpenRequestRef.current) {
+        setError("This Drive PDF could not be opened.");
+      }
     } finally {
-      setLoading(false);
+      if (context.requestId === pdfOpenRequestRef.current) setLoading(false);
     }
   }
 
-  async function openFromDrive() {
+  async function openFromDrive(openContext?: PdfOpenContext) {
+    if (loading) return;
+    const context = openContext || createPdfOpenContext("drive", "direct", "workspace");
     try {
       const selected = await pickPdfFromDrive();
-      await openPdfBytes(selected.name, selected.bytes, selected.id);
+      if (context.requestId !== pdfOpenRequestRef.current) return;
+      await openPdfBytes(selected.name, selected.bytes, selected.id, context);
     } catch (driveError) {
-      setError(driveError instanceof Error ? driveError.message : "Google Drive could not be opened.");
-      pendingProjectSetupRef.current = null;
+      const message = driveError instanceof Error ? driveError.message : "Google Drive could not be opened.";
+      if (
+        context.requestId === pdfOpenRequestRef.current
+        && !/picker closed without selecting/i.test(message)
+      ) {
+        setError(message);
+      }
     }
   }
 
@@ -2364,17 +2480,22 @@ function HVACPlanStudioApp() {
 
   function onFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
+    const context = pendingPdfOpenRef.current
+      || createPdfOpenContext("local", "direct", "workspace");
+    pendingPdfOpenRef.current = null;
     if (!file) {
-      pendingProjectSetupRef.current = null;
       return;
     }
-    void openPdf(file);
+    void openPdf(file, context);
     event.target.value = "";
   }
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
-    void openPdf(event.dataTransfer.files?.[0]);
+    if (loading) return;
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    void openPdf(file, createPdfOpenContext("local", "direct", "drop"));
   }
 
   useEffect(() => {
@@ -3111,13 +3232,14 @@ function HVACPlanStudioApp() {
   const saveProject = useCallback(() => {
     if (!pdf) return;
     const project = buildProjectSnapshot();
+    const storageKey = projectStorageKey(fileName, pdfFingerprint);
     try {
-      localStorage.setItem(`${STORAGE_PREFIX}${fileName.toLowerCase()}`, JSON.stringify(project));
+      localStorage.setItem(storageKey, JSON.stringify(project));
       setSaveState("saved");
     } catch {
       try {
         localStorage.setItem(
-          `${STORAGE_PREFIX}${fileName.toLowerCase()}`,
+          storageKey,
           JSON.stringify({ ...project, activePlanAnalysis: null }),
         );
         setSaveState("saved");
@@ -3127,7 +3249,7 @@ function HVACPlanStudioApp() {
         setBranchMessage("Browser storage is full. Export or save a cloud revision before closing this plan.");
       }
     }
-  }, [buildProjectSnapshot, fileName, pdf]);
+  }, [buildProjectSnapshot, fileName, pdf, pdfFingerprint]);
 
   useEffect(() => {
     if (!pdf) return;
@@ -10861,6 +10983,14 @@ function HVACPlanStudioApp() {
 
   return (
     <main className={`app-shell field-first-workspace layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${activeFieldPackage.released && !activeFieldPackage.stale ? "package-print-released" : "package-print-draft"}`}>
+      <input
+        ref={inputRef}
+        className="file-input"
+        type="file"
+        accept="application/pdf,.pdf"
+        aria-label="Choose a PDF construction plan"
+        onChange={onFileChange}
+      />
       <header className="topbar" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
         <button className="brand" onClick={() => setShowProjectHome(true)} aria-label="Open Project Home">
           <div className="brand-mark"><Wind size={23} strokeWidth={2.4} /></div>
@@ -11727,7 +11857,6 @@ function HVACPlanStudioApp() {
               if (draft.length) finishDrawing();
             }}
           >
-            <input ref={inputRef} className="file-input" type="file" accept="application/pdf,.pdf" onChange={onFileChange} />
             {selectedId && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
               <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T/Y FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : "DUCT RUN"}</strong>
               {!selectedDrawing?.symbol && !selectedDrawing?.measurement && <select
@@ -12260,8 +12389,9 @@ function HVACPlanStudioApp() {
               <h1>{loading ? "Opening your plan…" : "Start your HVAC plan"}</h1>
               <p>{error || "Upload a construction PDF to begin HVAC plan reading, markup, and takeoff."}</p>
               <div className="upload-actions">
-                <button className="primary-button" disabled={loading} onClick={() => inputRef.current?.click()}><FolderOpen size={17} /> Choose PDF plan</button>
-                <button className="drive-upload-button" disabled={loading} onClick={() => void openFromDrive()}><HardDrive size={17} /> Open from Drive</button>
+                <button className="primary-button" disabled={loading} onClick={() => startDirectLocalPdf("workspace")}><FolderOpen size={17} /> Open PDF and start drawing</button>
+                <button className="drive-upload-button" disabled={loading} onClick={() => void openFromDrive()}><HardDrive size={17} /> Open from Drive directly</button>
+                <button className="drive-upload-button" disabled={loading} onClick={() => setShowProjectSetup(true)}><ScanSearch size={17} /> Guided setup</button>
               </div>
               <span>or drag and drop a file here</span>
               {driveConfigured === null && <div className="drive-setup-note">Checking Google Drive connection…</div>}
@@ -13636,15 +13766,26 @@ function HVACPlanStudioApp() {
         driveConfigured={driveConfigured}
         busy={loading}
         notice={error}
+        pdfStartMode={pdfStartMode}
         onClose={() => setShowProjectHome(false)}
-        onNewProject={() => {
+        onOpenPdfDirect={() => {
           setError("");
+          startDirectLocalPdf("home");
+        }}
+        onOpenPdfGuided={() => {
+          setError("");
+          pendingPdfOpenRef.current = null;
           setShowProjectSetup(true);
         }}
         onOpenDrive={() => {
           setError("");
-          void openFromDrive();
+          void openFromDrive(createPdfOpenContext("drive", "direct", "home"));
         }}
+        onDropPdf={(file) => {
+          setError("");
+          void openPdf(file, createPdfOpenContext("local", "direct", "drop"));
+        }}
+        onPdfStartModeChange={updatePdfStartMode}
         onOpenProjectHub={(projectId) => {
           setCloudInitialProjectId(projectId || null);
           setShowProjectHome(false);

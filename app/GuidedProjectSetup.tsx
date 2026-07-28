@@ -104,7 +104,13 @@ export default function GuidedProjectSetup({
 
   return (
     <section ref={overlayRef} className="project-setup-overlay" role="dialog" aria-modal="true" aria-labelledby="project-setup-title" onKeyDown={handleDialogKeyDown}>
-      <button className="project-setup-dismiss" onClick={onCancel} aria-label="Cancel project setup" />
+      <button
+        type="button"
+        className="project-setup-dismiss"
+        onClick={onCancel}
+        tabIndex={-1}
+        aria-hidden="true"
+      />
       <div className="project-setup-dialog">
         <aside className="project-setup-rail">
           <div className="setup-brand">
@@ -143,6 +149,7 @@ export default function GuidedProjectSetup({
                   className={effectiveSource === "drive" ? "selected" : ""}
                   disabled={driveConfigured === false}
                   onClick={() => update("source", "drive")}
+                  aria-pressed={effectiveSource === "drive"}
                 >
                   <span><HardDrive size={23} /></span>
                   <strong>Google Drive</strong>
@@ -150,7 +157,7 @@ export default function GuidedProjectSetup({
                   <em>{driveConfigured === null ? "Checking configuration" : driveConfigured ? "Recommended · ready" : "Setup required"}</em>
                   <i>{effectiveSource === "drive" && <Check size={15} />}</i>
                 </button>
-                <button className={effectiveSource === "local" ? "selected" : ""} onClick={() => update("source", "local")}>
+                <button className={effectiveSource === "local" ? "selected" : ""} onClick={() => update("source", "local")} aria-pressed={effectiveSource === "local"}>
                   <span><FileText size={23} /></span>
                   <strong>Local PDF</strong>
                   <p>Open a plan from this device and work entirely local-first.</p>
@@ -201,9 +208,10 @@ export default function GuidedProjectSetup({
               </div>
               <div className="setup-tonnage-grid">
                 {["1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5"].map((tons) => <button
-                  key={tons}
-                  className={values.tonnage === tons ? "selected" : ""}
-                  onClick={() => update("tonnage", tons)}
+                    key={tons}
+                    className={values.tonnage === tons ? "selected" : ""}
+                    onClick={() => update("tonnage", tons)}
+                    aria-pressed={values.tonnage === tons}
                 >
                   <span>{tons}</span>
                   <strong>TON</strong>
@@ -223,14 +231,14 @@ export default function GuidedProjectSetup({
                 <p>Cloud collaboration is optional. You can start locally and create a controlled cloud project at any time.</p>
               </div>
               <div className="setup-choice-grid collaboration">
-                <button className={values.collaboration === "local" ? "selected" : ""} onClick={() => update("collaboration", "local")}>
+                <button className={values.collaboration === "local" ? "selected" : ""} onClick={() => update("collaboration", "local")} aria-pressed={values.collaboration === "local"}>
                   <span><FileText size={23} /></span>
                   <strong>Start local-first</strong>
                   <p>Open the plan immediately with device autosave and no sign-in requirement.</p>
                   <em>Fastest start</em>
                   <i>{values.collaboration === "local" && <Check size={15} />}</i>
                 </button>
-                <button className={values.collaboration === "cloud" ? "selected" : ""} onClick={() => update("collaboration", "cloud")}>
+                <button className={values.collaboration === "cloud" ? "selected" : ""} onClick={() => update("collaboration", "cloud")} aria-pressed={values.collaboration === "cloud"}>
                   <span><Users size={23} /></span>
                   <strong>Prepare collaboration</strong>
                   <p>Open Project Hub after the source plan loads to name a revision and invite the team.</p>

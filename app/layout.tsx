@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://hvac-plan-studio.franciscoluna2007.chatgpt.site"),
   title: {
-    default: "HVAC Plan Studio · Markup Assistant Fixes 2.0",
+    default: "HVAC Plan Studio · Open PDF & Draw",
     template: "%s · HVAC Plan Studio",
   },
-  description: "See what to fix first, preview the exact change, and approve safe HVAC plan repairs with one Undo.",
+  description: "Open a PDF and start drawing immediately, or use guided setup when you want help with plan details.",
   applicationName: "HVAC Plan Studio",
   keywords: ["HVAC plan setup", "HVAC plan reader", "duct plan", "HVAC takeoff", "plan markup"],
   icons: {
@@ -26,21 +26,21 @@ export const metadata: Metadata = {
     shortcut: "/favicon.svg",
   },
   openGraph: {
-    title: "HVAC Plan Studio · Markup Assistant Fixes 2.0",
-    description: "See what to fix first, preview the exact change, and approve safe HVAC plan repairs with one Undo.",
+    title: "HVAC Plan Studio · Open PDF & Draw",
+    description: "Open a PDF and start drawing immediately, or use guided setup when you want help with plan details.",
     type: "website",
     images: [{
-      url: "/og-v123.png",
+      url: "/og-v125.png",
       width: 1536,
       height: 1024,
-      alt: "HVAC Plan Studio showing prioritized plan problems and an exact before-and-after repair preview.",
+      alt: "HVAC Plan Studio showing direct PDF opening and optional guided setup over an HVAC floor plan.",
     }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "HVAC Plan Studio · Markup Assistant Fixes 2.0",
-    description: "See what to fix first, preview the exact change, and approve safe HVAC plan repairs with one Undo.",
-    images: ["/og-v123.png"],
+    title: "HVAC Plan Studio · Open PDF & Draw",
+    description: "Open a PDF and start drawing immediately, or use guided setup when you want help with plan details.",
+    images: ["/og-v125.png"],
   },
 };
 

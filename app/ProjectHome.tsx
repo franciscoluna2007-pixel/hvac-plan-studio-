@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from "react";
+import { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -10,6 +10,7 @@ import {
   HardDrive,
   LoaderCircle,
   Plus,
+  ScanSearch,
   Wind,
   X,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import {
   type ProjectHomeCard,
 } from "./cloudProjects";
 import { trackProductEvent } from "./productAnalytics";
+import type { PdfStartMode } from "./pdfStartPreference";
 
 type Props = {
   open: boolean;
@@ -28,9 +30,13 @@ type Props = {
   driveConfigured: boolean | null;
   busy: boolean;
   notice: string;
+  pdfStartMode: PdfStartMode;
   onClose: () => void;
-  onNewProject: () => void;
+  onOpenPdfDirect: () => void;
+  onOpenPdfGuided: () => void;
   onOpenDrive: () => void;
+  onDropPdf: (file: File) => void;
+  onPdfStartModeChange: (mode: PdfStartMode) => void;
   onOpenProjectHub: (projectId?: string) => void;
 };
 
@@ -55,9 +61,13 @@ export default function ProjectHome({
   driveConfigured,
   busy,
   notice,
+  pdfStartMode,
   onClose,
-  onNewProject,
+  onOpenPdfDirect,
+  onOpenPdfGuided,
   onOpenDrive,
+  onDropPdf,
+  onPdfStartModeChange,
   onOpenProjectHub,
 }: Props) {
   const overlayRef = useRef<HTMLElement>(null);
@@ -153,6 +163,13 @@ export default function ProjectHome({
     }
   }
 
+  function handlePdfDrop(event: ReactDragEvent<HTMLElement>) {
+    event.preventDefault();
+    if (busy) return;
+    const file = event.dataTransfer.files?.[0];
+    if (file) onDropPdf(file);
+  }
+
   return (
     <section
       ref={overlayRef}
@@ -161,6 +178,8 @@ export default function ProjectHome({
       aria-modal="true"
       aria-label="HVAC Plan Studio jobs"
       onKeyDown={handleDialogKeyDown}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={handlePdfDrop}
     >
       <header className="project-home-header">
         <button
@@ -198,8 +217,8 @@ export default function ProjectHome({
               <h1>{hasPlan ? "Ready to keep working?" : "Start with the plan."}</h1>
               <p>
                 {hasPlan
-                  ? "Resume the plan already open, start another job from a PDF, or open a saved job."
-                  : "Open a PDF and HVAC Plan Studio will help you set up, mark, check, and finish the job."}
+                  ? "Resume the plan already open, open another PDF directly, or use setup when you want help."
+                  : "Open a PDF and draw right away, or choose guided setup for help with scale and job details."}
               </p>
 
               <div className="project-home-primary-actions" aria-label="Job actions">
@@ -209,29 +228,67 @@ export default function ProjectHome({
                     data-home-primary
                     className="home-primary"
                     onClick={closeHome}
+                    disabled={busy}
                   >
                     <ArrowRight size={17} /> Resume current job
                   </button>
                 )}
                 <button
                   type="button"
-                  data-home-primary={!hasPlan || undefined}
-                  className={hasPlan ? undefined : "home-primary"}
-                  onClick={onNewProject}
+                  data-home-primary={!hasPlan && pdfStartMode === "direct" ? true : undefined}
+                  className={!hasPlan && pdfStartMode === "direct" ? "home-primary" : undefined}
+                  onClick={onOpenPdfDirect}
+                  disabled={busy}
                 >
-                  {hasPlan ? <Plus size={17} /> : <FileText size={17} />} Start job from PDF
+                  {hasPlan ? <Plus size={17} /> : <FileText size={17} />} {hasPlan ? "Open another PDF" : "Open PDF and start drawing"}
                 </button>
-                <button type="button" onClick={() => onOpenProjectHub()}>
+                <button
+                  type="button"
+                  data-home-primary={!hasPlan && pdfStartMode === "guided" ? true : undefined}
+                  className={!hasPlan && pdfStartMode === "guided" ? "home-primary" : undefined}
+                  onClick={onOpenPdfGuided}
+                  disabled={busy}
+                >
+                  <ScanSearch size={17} /> Use guided setup
+                </button>
+                <button type="button" onClick={() => onOpenProjectHub()} disabled={busy}>
                   <FolderKanban size={17} /> Open saved jobs
                 </button>
                 <button
                   type="button"
                   onClick={onOpenDrive}
-                  disabled={driveConfigured === false}
+                  disabled={busy || driveConfigured === false}
                   title={driveConfigured === false ? "Google Drive is not available for this workspace" : undefined}
                 >
-                  <HardDrive size={17} /> {driveConfigured === false ? "Drive unavailable" : "Open from Drive"}
+                  <HardDrive size={17} /> {driveConfigured === false ? "Drive unavailable" : "Open from Drive directly"}
                 </button>
+              </div>
+
+              <div className="project-home-start-preference">
+                <span>Preferred start on this device</span>
+                <div role="group" aria-label="Preferred PDF opening method">
+                  <button
+                    type="button"
+                    aria-pressed={pdfStartMode === "direct"}
+                    className={pdfStartMode === "direct" ? "active" : undefined}
+                    onClick={() => onPdfStartModeChange("direct")}
+                  >
+                    Open directly
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={pdfStartMode === "guided"}
+                    className={pdfStartMode === "guided" ? "active" : undefined}
+                    onClick={() => onPdfStartModeChange("guided")}
+                  >
+                    Guided setup
+                  </button>
+                </div>
+              </div>
+
+              <div className="project-home-drop-zone">
+                <FileText size={15} />
+                <span>Drop a PDF here to open it directly</span>
               </div>
 
               {hasPlan && (
