@@ -59,13 +59,15 @@ test("v127 removes SIZE LATER and leaves unconfirmed supply and return runs unla
   assert.match(page, /\{runLabelText\}/);
 });
 
-test("v127 release metadata stays image-free and identifies compact markup", () => {
-  assert.match(layout, /HVAC Plan Studio · Compact Plan Markup/);
-  assert.match(layout, /clean unlabeled supply and return routing/);
+test("v128 release metadata stays image-free and identifies the unified Fix Plan", () => {
+  assert.match(layout, /HVAC Plan Studio · Fix Plan & Contextual Markup/);
+  assert.match(layout, /Review one plan issue at a time/);
   assert.doesNotMatch(layout, /\bimages\s*:/);
   assert.doesNotMatch(layout, /summary_large_image/);
-  assert.match(analytics, /app_version: "127"/);
-  assert.match(readme, /Current release\s+[—-]\s+v127/i);
+  assert.match(analytics, /app_version: "128"/);
+  assert.match(readme, /Current release\s+[—-]\s+v128/i);
+  assert.match(readme, /v128\s+[—-]\s+Fix Plan & Contextual Markup/i);
   assert.match(readme, /v127\s+[—-]\s+Compact Symbol Workflow/i);
+  assert.match(roadmap, /\| v128 \| Fix Plan & Contextual Markup \| Shipped \|/);
   assert.match(roadmap, /\| v127 \| Compact Symbol Workflow \| Shipped \|/);
 });

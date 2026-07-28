@@ -21,7 +21,7 @@ async function loadConnectionRepairModule() {
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
 
-test("renders production v127 text metadata without generated image metadata or the development preview marker", async () => {
+test("renders production v128 text metadata without generated image metadata or the development preview marker", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -47,8 +47,8 @@ test("renders production v127 text metadata without generated image metadata or 
     /^text\/html\b/i,
   );
   const html = await response.text();
-  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Compact Plan Markup"\/>/i);
-  assert.match(html, /<meta property="og:description" content="Use compact HVAC icons and labels, with clean unlabeled supply and return routing until sizes are confirmed\."\/>/i);
+  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Fix Plan &amp; Contextual Markup"\/>/i);
+  assert.match(html, /<meta property="og:description" content="Review one plan issue at a time, approve controlled fixes, and toggle evidence-linked supply and return review zones\."\/>/i);
   assert.doesNotMatch(html, /(?:property|name)="(?:og:image|twitter:image)"/i);
   assert.doesNotMatch(html, /summary_large_image|og-v\d+\.png/i);
   assert.doesNotMatch(html, developmentPreviewMeta);
@@ -192,7 +192,7 @@ test("leads solo HVAC operators through plan setup and four clear job steps", as
   assert.match(styles, /\.project-home-hero-visual,[\s\S]*display: none !important/);
   assert.match(styles, /\.left-panel-tabs/);
   assert.doesNotMatch(layout, /\/og-v\d+\.png|summary_large_image|images\s*:/);
-  assert.match(layout, /Compact Plan Markup/);
+  assert.match(layout, /Fix Plan & Contextual Markup/);
 });
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
@@ -303,7 +303,7 @@ test("controls fitting text, connects equipment at plenums, and repositions plan
   assert.match(source, /function startRunLabelDrag/);
   assert.match(source, /labelOffset\?: Point/);
   assert.match(source, /className={`run-label \$\{drawing\.labelOffset \? "custom-position" : ""\}`}/);
-  assert.match(source, /Reset position/);
+  assert.match(source, /Reset label/);
   assert.match(source, /usesCatalogLabel/);
   assert.match(source, /Rename any placed symbol—including linear supplies and returns/);
   assert.doesNotMatch(source, /className="symbol-elevation"/);
@@ -690,7 +690,7 @@ test("makes STEP 1 preview-first and preserves placed objects and saved T/Y topo
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
   assert.match(page, /Equipment, cans, and T\/Y ports/);
-  assert.match(page, /Review \$\{activeConnectionRepairIssues\.length\} connection fix/);
+  assert.match(page, /Open \$\{activeConnectionRepairIssues\.length\} connection fix/);
   assert.match(page, /Add this fix/);
   assert.match(page, /Apply \{selectedReadyConnectionRepairIds\.length\} selected · one Undo/);
   assert.match(page, /0<\/strong> placed objects move/);
@@ -1238,7 +1238,7 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(repairSource, /Apply the reviewed terminal CFM first, then rebuild the repair plan so sizing uses the new network airflow/);
   assert.match(page, /setHistory\(next\)/);
   assert.match(studio, /PLAN HELPER/);
-  assert.match(studio, /Check the plan\. Review fixes\. Approve what changes\./);
+  assert.match(studio, /One place to find a problem and approve its fix\./);
   assert.match(studio, /aria-modal="false"/);
   assert.match(studio, /Check only/);
   assert.match(studio, /Prepare fixes/);
@@ -1254,9 +1254,9 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(studio, /\["do-first", "Do first"/);
   assert.match(studio, /\["can-fix", "Can fix"/);
   assert.match(studio, /\["needs-answer", "Needs answer"/);
-  assert.match(studio, /label: "Ready now"/);
-  assert.match(studio, /label: "Needs information"/);
-  assert.match(studio, /label: "Fix on plan"/);
+  assert.match(studio, /return "READY TO APPLY"/);
+  assert.match(studio, /return "NEEDS ONE ANSWER"/);
+  assert.match(studio, /return "CONFIRM ON PLAN"/);
   assert.match(studio, /REVIEWED FIELD CHANGES/);
   assert.match(studio, /NO ROUTE MOVEMENT/);
   assert.match(studio, /PROBLEM/);
@@ -1902,7 +1902,7 @@ test("ships v108 tablet gestures, stylus protection, responsive drawers, and bou
   assert.match(styles, /min-width: 44px; min-height: 44px/);
   assert.match(styles, /@media \(min-width: 2560px\)/);
   assert.match(styles, /height: 100dvh/);
-  assert.match(analytics, /app_version: "127"/);
+  assert.match(analytics, /app_version: "128"/);
 
   const pinch = pinchCamera({
     anchorPlan: { x: 100, y: 200 },
@@ -1990,7 +1990,7 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(page, /label: "Materials & Print"/);
   assert.match(page, /const fieldFirstProgress = Math\.round\(/);
   assert.match(page, /const airflowStepComplete = Boolean\(/);
-  assert.match(page, /openMarkupAssistant\("problems"\)/);
+  assert.match(page, /openMarkupAssistant\("fix-plan"\)/);
   assert.match(page, /onUseDetectedScale=\{applyDetectedPlanScale\}/);
   assert.match(page, /onStartCalibration=\{startPlanScaleCalibration\}/);
   assert.match(page, /const planSetupComplete = Boolean\(\s*activePlanAnalysis &&\s*scaleVerified\s*\)/);
@@ -2065,10 +2065,10 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(cloud, /currentStepProgress/);
   assert.doesNotMatch(cloud, /NEXT SAFE ACTION/);
 
-  assert.match(helper, /export type PlanHelperPrimaryView = "setup" \| "problems" \| "fixes"/);
+  assert.match(helper, /export type PlanHelperPrimaryView = "setup" \| "fix-plan" \| "problems" \| "fixes"/);
+  assert.match(helper, /const PRIMARY_VIEW_ORDER: AssistantView\[\] = \["setup", "repair-plan"\]/);
   assert.match(helper, /\["setup", "Plan setup"/);
-  assert.match(helper, /\["recommendations", "Problems"/);
-  assert.match(helper, /\["repair-plan", "Fixes"/);
+  assert.match(helper, /\["repair-plan", "Fix Plan"/);
   assert.match(helper, /\["history", "History & Undo"/);
   assert.match(helper, /\["standards", "My HVAC Rules"/);
   assert.match(helper, /\["evidence", "Source details"/);
@@ -2093,7 +2093,7 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(styles, /\.builder-current-step-summary/);
   assert.match(styles, /\.app-shell\.tablet-layout \.left-panel,[\s\S]*?padding-bottom: calc\(92px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(styles, /\.assistant-more-tools \{[\s\S]*?overflow-x: auto;/);
-  assert.match(layout, /HVAC Plan Studio · Compact Plan Markup/);
+  assert.match(layout, /HVAC Plan Studio · Fix Plan & Contextual Markup/);
   assert.doesNotMatch(layout, /\/og-v\d+\.png|summary_large_image|images\s*:/);
 
   assert.match(page, /function applyDetectedPlanScale\(candidate: PlanScaleCandidate, page: number\)/);

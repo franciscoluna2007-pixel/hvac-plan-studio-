@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://hvac-plan-studio.franciscoluna2007.chatgpt.site"),
   title: {
-    default: "HVAC Plan Studio · Compact Plan Markup",
+    default: "HVAC Plan Studio · Fix Plan & Contextual Markup",
     template: "%s · HVAC Plan Studio",
   },
-  description: "Use compact HVAC icons and labels, with clean unlabeled supply and return routing until sizes are confirmed.",
+  description: "Review one plan issue at a time, approve controlled fixes, and toggle evidence-linked supply and return review zones.",
   applicationName: "HVAC Plan Studio",
   keywords: ["HVAC plan setup", "HVAC plan reader", "duct plan", "HVAC takeoff", "plan markup"],
   icons: {
@@ -26,14 +26,14 @@ export const metadata: Metadata = {
     shortcut: "/favicon.svg",
   },
   openGraph: {
-    title: "HVAC Plan Studio · Compact Plan Markup",
-    description: "Use compact HVAC icons and labels, with clean unlabeled supply and return routing until sizes are confirmed.",
+    title: "HVAC Plan Studio · Fix Plan & Contextual Markup",
+    description: "Review one plan issue at a time, approve controlled fixes, and toggle evidence-linked supply and return review zones.",
     type: "website",
   },
   twitter: {
     card: "summary",
-    title: "HVAC Plan Studio · Compact Plan Markup",
-    description: "Use compact HVAC icons and labels, with clean unlabeled supply and return routing until sizes are confirmed.",
+    title: "HVAC Plan Studio · Fix Plan & Contextual Markup",
+    description: "Review one plan issue at a time, approve controlled fixes, and toggle evidence-linked supply and return review zones.",
   },
 };
 
