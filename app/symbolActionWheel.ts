@@ -19,6 +19,8 @@ export type SymbolActionWheelInput = {
   objectRadius: number;
   /** Current plan zoom. */
   zoom: number;
+  /** Optional screen-space cap that keeps the wheel nearby at extreme zoom. */
+  maxObjectRadiusPx?: number;
   /** Fixed wheel footprint radius in CSS pixels. */
   wheelRadius?: number;
   /** Clear space between the symbol and wheel footprints in CSS pixels. */
@@ -42,6 +44,7 @@ export type SymbolActionWheelPosition = {
 export const DEFAULT_SYMBOL_ACTION_WHEEL_RADIUS = 96;
 export const DEFAULT_SYMBOL_ACTION_WHEEL_GAP = 12;
 export const DEFAULT_SYMBOL_ACTION_WHEEL_INSET = 12;
+export const DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX = 80;
 
 const MIN_ZOOM = 0.01;
 const MAX_ZOOM = 64;
@@ -116,7 +119,15 @@ export function positionSymbolActionWheel(
   };
   const zoom = finiteZoom(input.zoom);
   const objectRadius = finiteNonNegative(input.objectRadius, 0);
-  const objectRadiusPx = Math.min(objectRadius * zoom, MAX_GEOMETRY_VALUE);
+  const maxObjectRadiusPx = finitePositive(
+    input.maxObjectRadiusPx ?? MAX_GEOMETRY_VALUE,
+    MAX_GEOMETRY_VALUE,
+  );
+  const objectRadiusPx = Math.min(
+    objectRadius * zoom,
+    maxObjectRadiusPx,
+    MAX_GEOMETRY_VALUE,
+  );
   const wheelRadius = finitePositive(
     input.wheelRadius ?? DEFAULT_SYMBOL_ACTION_WHEEL_RADIUS,
     DEFAULT_SYMBOL_ACTION_WHEEL_RADIUS,

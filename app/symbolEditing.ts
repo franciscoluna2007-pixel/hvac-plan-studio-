@@ -78,6 +78,26 @@ export function defaultSymbolLabelScale(kind: string) {
   return DEFAULT_OTHER_LABEL_SCALE;
 }
 
+export function compactSymbolScale(
+  value: number | null | undefined,
+  kind: string,
+) {
+  return Math.min(
+    normalizedSymbolScale(value),
+    defaultSymbolScale(kind),
+  );
+}
+
+export function compactSymbolLabelScale(
+  value: number | null | undefined,
+  kind: string,
+) {
+  return Math.min(
+    normalizedSymbolLabelScale(value),
+    defaultSymbolLabelScale(kind),
+  );
+}
+
 export function stepSymbolScale(
   value: number | null | undefined,
   direction: -1 | 1,

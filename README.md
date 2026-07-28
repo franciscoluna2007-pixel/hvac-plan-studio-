@@ -12,12 +12,12 @@ v127 makes plan markup compact enough for real drawing work. Supply and return i
 
 - Reduces the minimum icon scale from 40 percent to 20 percent and the minimum label scale from 65 percent to 30 percent.
 - Gives newly placed supply and return terminals a genuinely compact icon and label default.
-- Adds **Compact** to the selected-symbol wheel without removing rotate, mirror, duplicate, delete, or close.
+- Adds **Compact** to the selected-symbol wheel without removing rotate, mirror, duplicate, delete, or close; the wheel stays nearby at maximum zoom.
 - Adds Smaller and Larger controls for both icon and label sizing while preserving direct corner and round-handle editing.
 - Adds one undoable **Compact all supply & return symbols on this sheet** action for existing work.
 - Keeps small symbols selectable with fixed screen-space hit targets at every supported zoom.
 - Removes the provisional size placeholder from the canvas. An unconfirmed supply or return run stays unlabeled until its size is deliberately confirmed.
-- Preserves legacy saved scale values until the user resizes or explicitly compacts those symbols.
+- Preserves legacy saved scale values until the user resizes or explicitly compacts those symbols, and Compact never enlarges an icon or label that is already smaller.
 
 ### v126 — Direct Symbol Editing
 

@@ -16,6 +16,8 @@ const {
   SYMBOL_LABEL_SCALE_STEP,
   SYMBOL_SCALE_STEP,
   clampSymbolLabelOffset,
+  compactSymbolLabelScale,
+  compactSymbolScale,
   defaultSymbolLabelScale,
   defaultSymbolScale,
   estimateSymbolLabelBox,
@@ -82,6 +84,17 @@ test("steps icons and labels through the expanded compact range", () => {
   assert.equal(stepSymbolLabelScale(0.65, -1), 0.6);
   assert.equal(stepSymbolLabelScale(0.3, -1), 0.3);
   assert.equal(stepSymbolLabelScale(1.74, 1), 1.75);
+});
+
+test("compact sizing never enlarges a smaller saved icon or label", () => {
+  assert.equal(compactSymbolScale(undefined, "diffuser"), 0.35);
+  assert.equal(compactSymbolScale(0.6, "diffuser"), 0.35);
+  assert.equal(compactSymbolScale(0.2, "diffuser"), 0.2);
+  assert.equal(compactSymbolScale(0.3, "equipment"), 0.3);
+  assert.equal(compactSymbolLabelScale(undefined, "diffuser"), 0.4);
+  assert.equal(compactSymbolLabelScale(0.7, "diffuser"), 0.4);
+  assert.equal(compactSymbolLabelScale(0.3, "diffuser"), 0.3);
+  assert.equal(compactSymbolLabelScale(0.4, "equipment"), 0.4);
 });
 
 test("estimates deterministic padded label boxes and applies label scale", () => {

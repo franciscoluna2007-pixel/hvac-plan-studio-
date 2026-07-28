@@ -66,9 +66,14 @@ import {
   type PdfStartMode,
 } from "./pdfStartPreference";
 import { projectStorageKey, resolveProjectRestore } from "./projectStorage";
-import { positionSymbolActionWheel } from "./symbolActionWheel";
+import {
+  DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
+  positionSymbolActionWheel,
+} from "./symbolActionWheel";
 import {
   clampSymbolLabelOffset,
+  compactSymbolLabelScale,
+  compactSymbolScale,
   defaultSymbolLabelScale,
   defaultSymbolScale,
   estimateSymbolLabelBox,
@@ -140,6 +145,7 @@ import {
   Grid3X3,
   Gauge,
   Lock,
+  Minimize2,
   MousePointer2,
   PanelTop,
   PanelLeftClose,
@@ -8944,12 +8950,20 @@ function HVACPlanStudioApp() {
   function compactSelectedSymbol() {
     const selected = drawings.find((drawing) => drawing.id === selectedId && drawing.symbol);
     if (!selected?.symbol) return;
-    const scale = defaultSymbolScale(selected.symbol.kind);
-    updateSelectedSymbol({
-      scaleX: scale,
-      scaleY: scale,
-      labelScale: defaultSymbolLabelScale(selected.symbol.kind),
-    });
+    const changes = {
+      scaleX: compactSymbolScale(selected.symbol.scaleX, selected.symbol.kind),
+      scaleY: compactSymbolScale(selected.symbol.scaleY, selected.symbol.kind),
+      labelScale: compactSymbolLabelScale(selected.symbol.labelScale, selected.symbol.kind),
+    };
+    if (
+      selected.symbol.scaleX === changes.scaleX &&
+      selected.symbol.scaleY === changes.scaleY &&
+      selected.symbol.labelScale === changes.labelScale
+    ) {
+      setBranchMessage("This icon and label are already at or below the compact sizes");
+      return;
+    }
+    updateSelectedSymbol(changes);
     setBranchMessage("Compact icon and label sizes applied · drag either handle for fine adjustment");
   }
 
@@ -8981,24 +8995,38 @@ function HVACPlanStudioApp() {
       setBranchMessage("No supply or return symbols are on this sheet");
       return;
     }
-    setHistory(drawings.map((drawing) => {
+    let changedCount = 0;
+    const next = drawings.map((drawing) => {
       if (
         drawing.page !== pageNumber ||
         !drawing.symbol ||
         !terminalKinds.has(drawing.symbol.kind)
       ) return drawing;
-      const scale = defaultSymbolScale(drawing.symbol.kind);
+      const scaleX = compactSymbolScale(drawing.symbol.scaleX, drawing.symbol.kind);
+      const scaleY = compactSymbolScale(drawing.symbol.scaleY, drawing.symbol.kind);
+      const labelScale = compactSymbolLabelScale(drawing.symbol.labelScale, drawing.symbol.kind);
+      if (
+        drawing.symbol.scaleX === scaleX &&
+        drawing.symbol.scaleY === scaleY &&
+        drawing.symbol.labelScale === labelScale
+      ) return drawing;
+      changedCount += 1;
       return {
         ...drawing,
         symbol: {
           ...drawing.symbol,
-          scaleX: scale,
-          scaleY: scale,
-          labelScale: defaultSymbolLabelScale(drawing.symbol.kind),
+          scaleX,
+          scaleY,
+          labelScale,
         },
       };
-    }));
-    setBranchMessage(`${targets.length} supply and return symbol${targets.length === 1 ? "" : "s"} compacted on this sheet · one Undo restores them`);
+    });
+    if (!changedCount) {
+      setBranchMessage("Every supply and return symbol on this sheet is already compact");
+      return;
+    }
+    setHistory(next);
+    setBranchMessage(`${changedCount} supply and return symbol${changedCount === 1 ? "" : "s"} compacted on this sheet · one Undo restores them`);
   }
 
   function updateSelectedCanDimension(axis: 0 | 1, value: string) {
@@ -10347,6 +10375,7 @@ function HVACPlanStudioApp() {
         return Math.hypot(width, height) / 2;
       })(),
       zoom,
+      maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
     })
     : null;
   const selectedSymbolWheelVisible = Boolean(
@@ -11719,10 +11748,7 @@ function HVACPlanStudioApp() {
                   <span>PLAN ICON SIZE</span>
                   <strong>{Math.round(normalizedSymbolScale(selectedDrawing.symbol.scaleX) * 100)}% × {Math.round(normalizedSymbolScale(selectedDrawing.symbol.scaleY) * 100)}%</strong>
                 </div>
-                <button onClick={() => {
-                  const scale = defaultSymbolScale(selectedDrawing.symbol!.kind);
-                  updateSelectedSymbol({ scaleX: scale, scaleY: scale });
-                }}>Compact</button>
+                <button onClick={compactSelectedSymbol}>Compact</button>
                 <div className="symbol-size-step-actions" role="group" aria-label="Adjust selected icon size">
                   <button onClick={() => adjustSelectedSymbolSize(-1)}>− Smaller</button>
                   <button onClick={() => adjustSelectedSymbolSize(1)}>Larger +</button>
@@ -12215,6 +12241,7 @@ function HVACPlanStudioApp() {
               </select>}
               {selectedDrawing?.symbol && <button onClick={() => rotateSelectedSymbol(-15)}>−15°</button>}
               {selectedDrawing?.symbol && <button onClick={() => rotateSelectedSymbol(15)}>+15°</button>}
+              {selectedDrawing?.symbol && <button title="Use compact icon and label sizes" onClick={compactSelectedSymbol}><Minimize2 size={15} /> Compact</button>}
               {selectedRun && selectedIds.length === 1 && <button title="Continue drawing from the first endpoint" onClick={() => extendSelectedRun(true)}><Route size={15} /> Extend A</button>}
               {selectedRun && selectedIds.length === 1 && <button title="Continue drawing from the last endpoint" onClick={() => extendSelectedRun(false)}><Route size={15} /> Extend B</button>}
               {selectedRun && selectedIds.length === 1 && <button className={splitMode ? "active" : ""} title="Click the selected run where it should split" onClick={() => { setActiveTool("select"); setSplitMode((enabled) => !enabled); }}><Scissors size={15} /> Split</button>}

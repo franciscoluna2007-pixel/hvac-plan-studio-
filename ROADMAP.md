@@ -88,7 +88,7 @@ A superintendent can keep supply, return, and equipment markup proportional to t
 
 - Icon resizing extends to 20 percent and label resizing extends to 30 percent.
 - Compact defaults for newly placed terminals, controls, and their labels.
-- The nearby symbol wheel adds a Compact action while retaining all v126 actions.
+- The nearby symbol wheel adds a Compact action while retaining all v126 actions and staying available at maximum zoom.
 - Separate Smaller and Larger controls for icons and labels.
 - One undoable action compacts every supply and return terminal on the active sheet.
 - Zoom-independent selection and resize targets keep compact symbols usable with mouse, touch, and pen.
@@ -97,7 +97,7 @@ A superintendent can keep supply, return, and equipment markup proportional to t
 
 ### Safety boundary
 
-Compacting changes only icon and label presentation. It does not alter scheduled face dimensions, CFM, duct geometry, run connections, system assignment, or source-plan content. Legacy sizes remain unchanged until a user resizes or explicitly compacts them.
+Compacting changes only icon and label presentation. It does not alter scheduled face dimensions, CFM, duct geometry, run connections, system assignment, or source-plan content. Legacy sizes remain unchanged until a user resizes or explicitly compacts them, and Compact never enlarges a smaller saved value.
 
 ## v126 — Direct Symbol Editing
 

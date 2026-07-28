@@ -5,6 +5,7 @@ import { loadTypescriptModule } from "./load-typescript-module.mjs";
 
 const {
   DEFAULT_SYMBOL_ACTION_WHEEL_INSET,
+  DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
   DEFAULT_SYMBOL_ACTION_WHEEL_RADIUS,
   positionSymbolActionWheel,
 } = await loadTypescriptModule(
@@ -109,6 +110,21 @@ test("uses zoomed object radius to keep a large selected symbol clear", () => {
 
   assert.equal(position.hidden, false);
   assert.equal(position.objectRadiusPx, 120);
+  assertInside(position, { width: 1000, height: 700 });
+  assertDoesNotOverlap(position, anchor);
+});
+
+test("keeps the wheel nearby and visible for a symbol at maximum workspace zoom", () => {
+  const anchor = { x: 500, y: 350 };
+  const position = positionSymbolActionWheel(input({
+    anchor,
+    objectRadius: 100,
+    zoom: 8,
+    maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
+  }));
+
+  assert.equal(position.hidden, false);
+  assert.equal(position.objectRadiusPx, DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX);
   assertInside(position, { width: 1000, height: 700 });
   assertDoesNotOverlap(position, anchor);
 });

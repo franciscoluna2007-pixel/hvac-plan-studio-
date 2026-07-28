@@ -33,7 +33,11 @@ test("v127 keeps wheel editing and adds one-tap compact sizing", () => {
   assert.match(wheel, /label: "Use compact icon and label sizes"/);
   assert.match(wheel, /shortLabel: "Compact"/);
   assert.match(page, /onCompact=\{compactSelectedSymbol\}/);
+  assert.match(page, /maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX/);
+  assert.match(page, /Use compact icon and label sizes/);
   assert.match(styles, /\.symbol-wheel-action\.action-compact/);
+  assert.match(editing, /Math\.min\(\s*normalizedSymbolScale\(value\),\s*defaultSymbolScale\(kind\)/);
+  assert.match(editing, /Math\.min\(\s*normalizedSymbolLabelScale\(value\),\s*defaultSymbolLabelScale\(kind\)/);
 
   assert.match(page, /function adjustSelectedSymbolSize\(direction: -1 \| 1\)/);
   assert.match(page, /function adjustSelectedSymbolLabelSize\(direction: -1 \| 1\)/);
