@@ -118,6 +118,10 @@ export type ConnectionRepairBatch =
 export type ConnectionRepairScale = {
   verified: boolean;
   feetPerUnit: number;
+  byPage?: Record<string, {
+    verified: boolean;
+    feetPerUnit: number;
+  }>;
 };
 
 export const CONNECTION_ALIGNMENT_TOLERANCE = 2;
@@ -168,6 +172,14 @@ function repairFingerprint(
       ? {
           verified: scale.verified,
           feetPerUnit: Number.isFinite(scale.feetPerUnit) ? scale.feetPerUnit : null,
+          byPage: Object.fromEntries(
+            Object.entries(scale.byPage || {})
+              .sort(([left], [right]) => Number(left) - Number(right))
+              .map(([page, pageScale]) => [page, {
+                verified: pageScale.verified,
+                feetPerUnit: Number.isFinite(pageScale.feetPerUnit) ? pageScale.feetPerUnit : null,
+              }])
+          ),
         }
       : null,
     runs: runs
@@ -214,11 +226,12 @@ function normalizedSize(value?: string) {
   return value?.trim().toLowerCase().replace(/\s+/g, "").replace(/["\u2033]/g, "") || "";
 }
 
-function verifiedFeetPerUnit(scale?: ConnectionRepairScale) {
-  if (!scale?.verified || !Number.isFinite(scale.feetPerUnit) || scale.feetPerUnit <= 0) {
+function verifiedFeetPerUnit(scale?: ConnectionRepairScale, page?: number) {
+  const activeScale = page == null ? scale : scale?.byPage?.[String(page)] || scale;
+  if (!activeScale?.verified || !Number.isFinite(activeScale.feetPerUnit) || activeScale.feetPerUnit <= 0) {
     return null;
   }
-  return scale.feetPerUnit;
+  return activeScale.feetPerUnit;
 }
 
 function targetLimitKind(target: ConnectionRepairTarget) {
@@ -228,15 +241,15 @@ function targetLimitKind(target: ConnectionRepairTarget) {
 
 function repairLimit(target: ConnectionRepairTarget, scale?: ConnectionRepairScale) {
   const kind = targetLimitKind(target);
-  const feetPerUnit = verifiedFeetPerUnit(scale);
+  const feetPerUnit = verifiedFeetPerUnit(scale, target.page);
   if (feetPerUnit != null) {
     return CONNECTION_REPAIR_PHYSICAL_LIMITS_FEET[kind] / feetPerUnit;
   }
   return CONNECTION_REPAIR_LIMITS[kind];
 }
 
-function humanDistance(planUnits: number, scale?: ConnectionRepairScale) {
-  const feetPerUnit = verifiedFeetPerUnit(scale);
+function humanDistance(planUnits: number, scale?: ConnectionRepairScale, page?: number) {
+  const feetPerUnit = verifiedFeetPerUnit(scale, page);
   if (feetPerUnit == null) {
     const rounded = Math.round(planUnits * 10) / 10;
     return `${rounded} plan ${rounded === 1 ? "unit" : "units"} away`;
@@ -277,7 +290,7 @@ function candidateFor(
     `${target.ductType} run`,
   ];
   if (endpointUnused) signals.push("endpoint unused");
-  signals.push(humanDistance(candidateDistance, scale));
+  signals.push(humanDistance(candidateDistance, scale, target.page));
 
   if (sizeMatch === true) {
     signals.push(`${run.size} size matches the port`);

@@ -4,9 +4,20 @@ HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review,
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v121
+## Current release — v122
 
-v121 turns the accumulated plan tools into one simpler solo-operator workflow: Plan Setup → Mark & Connect → Airflow & Sizes → Fix Problems → Materials & Print.
+v122 makes plan setup and drawing feel like one guided field workflow: Plan Setup → Draw & Detail → Airflow & Sizes → Fix Problems → Materials & Print.
+
+### v122 — Smart Scale & Draw-First Workflow
+
+- Applies any valid numeric scale found on the plan directly, including metric and uncommon architectural scales, instead of sending a recognized scale through manual calibration.
+- Stores scale confirmation per PDF sheet, so mixed-scale plan sets keep the right measurements and an unverified sheet cannot borrow another sheet's scale.
+- Shows each detected choice when a sheet contains conflicting scales; not-to-scale or missing numeric evidence still requires calibration.
+- Returns to Plan Helper after a manual two-point calibration so setup continues where the user left off.
+- Guides the drafting order used in the field: draw supply routes first, then number the flex runs and confirm their sizes, add return runs and grilles, and finally connect and repair loose endpoints.
+- Keeps provisional sizes visibly provisional until the post-draw detail pass is confirmed.
+- Adds post-draw run numbers and reviewed sizes without snapping or moving the routes already drawn.
+- Preserves manual geometry, approval, evidence-fingerprint, repair-scope, and one-Undo protections.
 
 ### v121 — Simple Job Workflow
 
@@ -87,7 +98,7 @@ Project numbers and internal release labels are not used as the user-facing rule
 ## Product workflow
 
 1. **Plan Setup** — open a local or Google Drive PDF, read its source information, and confirm the drawing scale.
-2. **Mark & Connect** — place or edit equipment, runs, fittings, devices, rooms, and notes, then review loose endpoints.
+2. **Draw & Detail** — draw supply routes first, number the flex runs and confirm their sizes, add returns, then connect and repair loose endpoints.
 3. **Airflow & Sizes** — save reviewed room or terminal airflow and inspect connected-network size candidates.
 4. **Fix Problems** — use Plan Helper to inspect findings, review affected objects and evidence, and apply only selected eligible fixes in one Undo.
 5. **Materials & Print** — review the takeoff, remaining release blockers, named revision, and field package.

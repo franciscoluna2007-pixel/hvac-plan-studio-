@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://hvac-plan-studio.franciscoluna2007.chatgpt.site"),
   title: {
-    default: "HVAC Plan Studio",
+    default: "HVAC Plan Studio · Draw-First Detail Workflow",
     template: "%s · HVAC Plan Studio",
   },
-  description: "Read an HVAC plan, confirm scale and room information, find problems, and approve safe markup repairs.",
+  description: "Draw routes first. Add numbers, reviewed sizes, returns, and connections in order.",
   applicationName: "HVAC Plan Studio",
   keywords: ["HVAC plan setup", "HVAC plan reader", "duct plan", "HVAC takeoff", "plan markup"],
   icons: {
@@ -26,21 +26,21 @@ export const metadata: Metadata = {
     shortcut: "/favicon.svg",
   },
   openGraph: {
-    title: "HVAC Plan Studio · Simple Job Workflow",
-    description: "One job. One clear next step.",
+    title: "HVAC Plan Studio · Draw-First Detail Workflow",
+    description: "Draw routes first. Add numbers, reviewed sizes, returns, and connections in order.",
     type: "website",
     images: [{
-      url: "/og-v121.png",
+      url: "/og-v122.png",
       width: 1717,
       height: 916,
-      alt: "HVAC Plan Studio showing one five-step job workflow over a connected HVAC plan.",
+      alt: "HVAC Plan Studio showing the Smart Scale and Draw-First workflow over an HVAC plan.",
     }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "HVAC Plan Studio · Simple Job Workflow",
-    description: "One job. One clear next step.",
-    images: ["/og-v121.png"],
+    title: "HVAC Plan Studio · Draw-First Detail Workflow",
+    description: "Draw routes first. Add numbers, reviewed sizes, returns, and connections in order.",
+    images: ["/og-v122.png"],
   },
 };
 

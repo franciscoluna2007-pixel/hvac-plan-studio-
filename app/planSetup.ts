@@ -1047,9 +1047,9 @@ function buildSoloOperatorSummary(counts: PlanSetupCounts): SoloOperatorPlanSumm
     headline: "Plan scan complete",
     detail: counts.reviewItems
       ? `${plural(counts.reviewItems, "item")} need${counts.reviewItems === 1 ? "s" : ""} your review before the Plan Helper relies on every detected fact.`
-      : "The plan facts are ready for a preview-first connection repair.",
+      : "The plan facts are ready for the draw-first workflow.",
     primaryActionLabel: readyForConnectionRepair
-      ? "Connect & repair the system"
+      ? "Draw the supply routes first"
       : `Review ${plural(counts.reviewItems, "item")}`,
     primaryAction,
     readyForConnectionRepair,

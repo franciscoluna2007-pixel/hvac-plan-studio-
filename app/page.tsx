@@ -15,8 +15,10 @@ import MarkupAssistantStudio, { type PlanHelperPrimaryView } from "./MarkupAssis
 import { type FieldPackageSectionId } from "./fieldPackage";
 import type { PlanAnalysis, PlanEvidence } from "./planReader";
 import { buildAdvancedPlanIntelligence } from "./advancedPlanIntelligence";
-import { buildSmartPlanSetup } from "./planSetup";
+import { buildSmartPlanSetup, type PlanScaleCandidate } from "./planSetup";
 import { buildDesignStandardProfile } from "./designStandard";
+import { resolveDetectedDrawingScale, scaleRatioFromLabel } from "./drawingScale";
+import { deriveDrawFirstWorkflow } from "./jobWorkflow";
 import {
   ASSISTANT_REPAIR_VERSION,
   buildRepairPlan,
@@ -804,6 +806,8 @@ type Drawing = {
   roomType?: "general" | "bedroom" | "bathroom" | "closet";
   elevation?: string;
   labelOffset?: Point;
+  runNumber?: string;
+  sizeReviewed?: boolean;
 };
 type RoomAirflowPriority = "standard" | "high" | "low";
 type RoomAirflowTarget = {
@@ -834,6 +838,14 @@ const primaryAirflowEquipmentVariants = new Set([
   "rtu",
 ]);
 const runSizeOptions = ["4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"];
+const drawingScalePresets = [
+  '1/8" = 1\'-0"',
+  '3/16" = 1\'-0"',
+  '1/4" = 1\'-0"',
+  '1/2" = 1\'-0"',
+] as const;
+const defaultScaleFeetPerUnit = 1 / 24.3;
+const defaultScaleLabel = '1/4" = 1\'-0"';
 const allowedResidentialFlexSizes = ["4", "6", "7", "8", "10", "12", "14", "16"];
 
 function isPrimaryAirflowEquipment(drawing?: Drawing) {
@@ -961,8 +973,14 @@ type BranchOpportunity = {
   score: number;
 };
 
+type SheetScaleState = {
+  feetPerUnit: number;
+  label: string;
+  verified: boolean;
+};
+
 type SavedProject = {
-  version: 1 | 2 | 3 | 4;
+  version: 1 | 2 | 3 | 4 | 5;
   fileName: string;
   drawings: Drawing[];
   savedAt: string;
@@ -970,6 +988,7 @@ type SavedProject = {
   scaleFeetPerUnit?: number;
   scaleLabel?: string;
   scaleVerified?: boolean;
+  sheetScales?: Record<string, SheetScaleState>;
   systemNames?: Record<string, string>;
   showCfmLabels?: boolean;
   showLengthLabels?: boolean;
@@ -1146,6 +1165,7 @@ type SystemReleaseRecord = {
   rulesSnapshot?: {
     scaleLabel: string;
     scaleFeetPerUnit: number;
+    sheetScales?: Record<string, SheetScaleState>;
     supplyVelocityLimit: number;
     returnVelocityLimit: number;
     freshVelocityLimit: number;
@@ -1317,11 +1337,13 @@ function HVACPlanStudioApp() {
   const [selectedConnectionRepairIds, setSelectedConnectionRepairIds] = useState<string[]>([]);
   const [focusedConnectionRepairId, setFocusedConnectionRepairId] = useState<string | null>(null);
   const [connectionCandidateChoices, setConnectionCandidateChoices] = useState<Record<string, string>>({});
-  const [scaleFeetPerUnit, setScaleFeetPerUnit] = useState(1 / 24.3);
-  const [scaleLabel, setScaleLabel] = useState('1/4" = 1\'-0"');
+  const [scaleFeetPerUnit, setScaleFeetPerUnit] = useState(defaultScaleFeetPerUnit);
+  const [scaleLabel, setScaleLabel] = useState(defaultScaleLabel);
   const [scaleLocked, setScaleLocked] = useState(true);
   const [scaleVerified, setScaleVerified] = useState(false);
+  const [sheetScales, setSheetScales] = useState<Record<string, SheetScaleState>>({});
   const [calibrating, setCalibrating] = useState(false);
+  const [scaleHelperReturnPending, setScaleHelperReturnPending] = useState(false);
   const [referenceFeet, setReferenceFeet] = useState("10");
   const [measureDraft, setMeasureDraft] = useState<Point[]>([]);
   const [rightTab, setRightTab] = useState<"builder" | "layers" | "rooms" | "network" | "takeoff" | "field" | "checks">("builder");
@@ -1507,6 +1529,7 @@ function HVACPlanStudioApp() {
     scaleFeetPerUnit,
     scaleLabel,
     scaleVerified,
+    sheetScales,
     systemNames,
     supplyVelocityLimit,
     returnVelocityLimit,
@@ -1519,7 +1542,7 @@ function HVACPlanStudioApp() {
     roomAirflowTargetReviewFingerprints,
     balanceReviewRecords,
     reviewDecisionsBySystem,
-  }), [balanceReviewRecords, drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, supplyVelocityLimit, systemNames]);
+  }), [balanceReviewRecords, drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, supplyVelocityLimit, systemNames]);
 
   useEffect(() => {
     setSelectedCfmProposalIds([]);
@@ -1672,7 +1695,7 @@ function HVACPlanStudioApp() {
   const airflowNetworkModel = useMemo(() => calculateAirflowNetwork(), [drawings]);
   const activeValidationIssues = useMemo(
     () => validationIssues(),
-    [activeSystem, drawings, freshVelocityLimit, residentialFlexMax, returnVelocityLimit, scaleFeetPerUnit, supplyVelocityLimit, systemNames],
+    [activeSystem, drawings, freshVelocityLimit, residentialFlexMax, returnVelocityLimit, scaleFeetPerUnit, sheetScales, supplyVelocityLimit, systemNames],
   );
   const activeReviewedIssueRows = useMemo(
     () => reviewedIssueRows(activeValidationIssues),
@@ -1703,13 +1726,13 @@ function HVACPlanStudioApp() {
   );
   const activeFieldPackage = useMemo(
     () => fieldPackageSummary(activeReviewSummary, activeFieldConnections),
-    [activeFieldConnections, activeReviewSummary, activeSystem, cloudProjectRisk, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, supplyVelocityLimit, workingCloudProjectId, workingCloudRevisionFingerprint, workingCloudRevisionId],
+    [activeFieldConnections, activeReviewSummary, activeSystem, cloudProjectRisk, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, supplyVelocityLimit, workingCloudProjectId, workingCloudRevisionFingerprint, workingCloudRevisionId],
   );
   const activeConnectionRepairPlan = useMemo(
     () => buildActiveConnectionRepairPlan(),
     // The planner reads only these reactive values; geometry helpers are pure function declarations in this component.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeSystem, connectionCandidateChoices, drawings],
+    [activeSystem, connectionCandidateChoices, drawings, pageNumber, scaleFeetPerUnit, scaleVerified, sheetScales],
   );
   const activeBuilderSummary = useMemo(
     () => systemBuilderSummary(activeValidationDashboard, activeFieldPackage, activeConnectionRepairPlan),
@@ -1726,7 +1749,7 @@ function HVACPlanStudioApp() {
   );
   const projectCommandSnapshot = useMemo(
     () => projectCommandSummary(),
-    [activeFieldPackage, activeSystem, commissioningBySystem, drawings, fieldChecklistBySystem, punchItems, releaseRecords, reviewDecisionsBySystem, rfiItems, scaleVerified],
+    [activeFieldPackage, activeSystem, commissioningBySystem, drawings, fieldChecklistBySystem, pageNumber, punchItems, releaseRecords, reviewDecisionsBySystem, rfiItems, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales],
   );
   const filteredProjectRowsSnapshot = useMemo(
     () => {
@@ -1873,11 +1896,91 @@ function HVACPlanStudioApp() {
     return systemNames[systemId] || systems.find((system) => system.id === systemId)?.label || systemId;
   }
 
+  function scaleStateForPage(page: number): SheetScaleState {
+    const saved = sheetScales[String(page)];
+    if (
+      saved &&
+      Number.isFinite(saved.feetPerUnit) &&
+      saved.feetPerUnit > 0
+    ) {
+      return saved;
+    }
+    return {
+      feetPerUnit: defaultScaleFeetPerUnit,
+      label: defaultScaleLabel,
+      verified: false,
+    };
+  }
+
+  function activateSheetScale(page: number) {
+    const next = scaleStateForPage(page);
+    setScaleFeetPerUnit(next.feetPerUnit);
+    setScaleLabel(next.label);
+    setScaleVerified(next.verified);
+    setScaleLocked(true);
+  }
+
+  function rememberActiveSheetScale(page: number, next: SheetScaleState) {
+    setSheetScales((current) => ({ ...current, [String(page)]: next }));
+    setScaleFeetPerUnit(next.feetPerUnit);
+    setScaleLabel(next.label);
+    setScaleVerified(next.verified);
+    setScaleLocked(true);
+  }
+
+  function systemScaleStatus(systemId = activeSystem) {
+    const pages = [...new Set(drawings
+      .filter((drawing) =>
+        drawingSystem(drawing) === systemId &&
+        (
+          ["supply", "return", "fresh"].includes(drawing.type) ||
+          ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") ||
+          isPrimaryAirflowEquipment(drawing)
+        )
+      )
+      .map((drawing) => drawing.page))]
+      .sort((left, right) => left - right);
+    if (!pages.length) {
+      return {
+        verified: scaleVerified,
+        pages: [pageNumber],
+        missingPages: scaleVerified ? [] : [pageNumber],
+        detail: scaleVerified ? scaleLabel : `Sheet ${pageNumber} needs a scale`,
+      };
+    }
+    const missingPages = pages.filter((page) => !scaleStateForPage(page).verified);
+    const labels = [...new Set(pages
+      .map((page) => scaleStateForPage(page))
+      .filter((scale) => scale.verified)
+      .map((scale) => scale.label))];
+    return {
+      verified: missingPages.length === 0,
+      pages,
+      missingPages,
+      detail: missingPages.length
+        ? `Verify scale on sheet${missingPages.length === 1 ? "" : "s"} ${missingPages.join(", ")}`
+        : labels.length === 1
+          ? `${labels[0]} on ${pages.length} sheet${pages.length === 1 ? "" : "s"}`
+          : `${pages.length} sheet scales verified`,
+    };
+  }
+
+  function systemSheetScaleSnapshot(systemId = activeSystem) {
+    return Object.fromEntries(
+      systemScaleStatus(systemId).pages.map((page) => [
+        String(page),
+        { ...scaleStateForPage(page) },
+      ]),
+    );
+  }
+
   function resetProjectWorkflowState() {
-    setScaleFeetPerUnit(1 / 24.3);
-    setScaleLabel('1/4" = 1\'-0"');
+    setScaleFeetPerUnit(defaultScaleFeetPerUnit);
+    setScaleLabel(defaultScaleLabel);
     setScaleLocked(true);
     setScaleVerified(false);
+    setSheetScales({});
+    setScaleHelperReturnPending(false);
     setSystemNames(defaultSystemNames);
     setActiveSystem("system-1");
     setShowCfmLabels(false);
@@ -1920,12 +2023,37 @@ function HVACPlanStudioApp() {
 
   function applyProjectSnapshot(project: SavedProject, sourceFingerprint?: string) {
     const restoredDrawings = Array.isArray(project.drawings) ? project.drawings : [];
+    const restoredSheetScales = Object.fromEntries(
+      Object.entries(project.sheetScales || {}).filter(([, scale]) =>
+        Number.isFinite(scale?.feetPerUnit) &&
+        scale.feetPerUnit > 0 &&
+        Boolean(scale.label)
+      )
+    ) as Record<string, SheetScaleState>;
+    if (!Object.keys(restoredSheetScales).length && project.scaleVerified) {
+      const legacyScale: SheetScaleState = {
+        feetPerUnit: project.scaleFeetPerUnit || defaultScaleFeetPerUnit,
+        label: project.scaleLabel || defaultScaleLabel,
+        verified: true,
+      };
+      // Older saves had one global scale. Keep that evidence on the first sheet only;
+      // every additional sheet must be confirmed instead of inheriting a possibly wrong scale.
+      restoredSheetScales["1"] = legacyScale;
+    }
+    const firstSheetScale = restoredSheetScales["1"] || {
+      feetPerUnit: defaultScaleFeetPerUnit,
+      label: defaultScaleLabel,
+      verified: false,
+    };
     setDrawings(synchronizeFittingSizes(restoredDrawings, restoredDrawings));
-    setScaleFeetPerUnit(project.scaleFeetPerUnit || 1 / 24.3);
-    setScaleLabel(project.scaleLabel || '1/4" = 1\'-0"');
+    setPageNumber(1);
+    setSheetScales(restoredSheetScales);
+    setScaleFeetPerUnit(firstSheetScale.feetPerUnit);
+    setScaleLabel(firstSheetScale.label);
     setScaleLocked(true);
-    setScaleVerified(project.scaleVerified ?? false);
+    setScaleVerified(firstSheetScale.verified);
     setCalibrating(false);
+    setScaleHelperReturnPending(false);
     if (sourceFingerprint && project.pdfFingerprint && project.pdfFingerprint !== sourceFingerprint) {
       setBranchMessage("A revised PDF was detected. Existing markups were restored, but every prior field release is now stale");
     }
@@ -2012,11 +2140,18 @@ function HVACPlanStudioApp() {
       '1/2" = 1\'-0"': 48.6,
     };
     setDuctSize(setup.defaultDuctSize);
-    setScaleFeetPerUnit(1 / unitsPerFoot[setup.scale]);
-    setScaleLabel(setup.scale);
+    const setupScale: SheetScaleState = {
+      feetPerUnit: 1 / unitsPerFoot[setup.scale],
+      label: setup.scale,
+      verified: false,
+    };
+    setSheetScales({ "1": setupScale });
+    setScaleFeetPerUnit(setupScale.feetPerUnit);
+    setScaleLabel(setupScale.label);
     setScaleLocked(true);
     setScaleVerified(false);
     setCalibrating(false);
+    setScaleHelperReturnPending(false);
     setMeasureDraft([]);
     setBranchMessage(
       `Project setup ready · ${setup.tonnage} ton / ${Number(setup.tonnage) * 400} CFM reference · verify the drawing scale before measurement`,
@@ -2872,8 +3007,10 @@ function HVACPlanStudioApp() {
 
   function goToPage(page: number) {
     if (!pdf) return;
+    const nextPage = Math.max(1, Math.min(pdf.numPages, page));
     setPlanEvidenceRegion(null);
-    setPageNumber(Math.max(1, Math.min(pdf.numPages, page)));
+    setPageNumber(nextPage);
+    activateSheetScale(nextPage);
     requestAnimationFrame(() => centerPlan());
   }
 
@@ -2894,7 +3031,7 @@ function HVACPlanStudioApp() {
       releaseStale: activeFieldPackage.stale,
     });
     return {
-      version: 4,
+      version: 5,
       fileName,
       drawings,
       savedAt: new Date().toISOString(),
@@ -2902,6 +3039,7 @@ function HVACPlanStudioApp() {
       scaleFeetPerUnit,
       scaleLabel,
       scaleVerified,
+      sheetScales,
       systemNames,
       showCfmLabels,
       showLengthLabels,
@@ -2949,7 +3087,7 @@ function HVACPlanStudioApp() {
         })),
       },
     };
-  }, [activeBuilderSummary, activeFieldPackage, activePlanAnalysis, activeSystem, assistantAutonomyMode, assistantRepairRecords, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
+  }, [activeBuilderSummary, activeFieldPackage, activePlanAnalysis, activeSystem, assistantAutonomyMode, assistantRepairRecords, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
 
   const saveProject = useCallback(() => {
     if (!pdf) return;
@@ -3677,7 +3815,7 @@ function HVACPlanStudioApp() {
       const previous = drawing.points[index];
       return total + Math.hypot(point.x - previous.x, point.y - previous.y);
     }, 0);
-    return units * scaleFeetPerUnit;
+    return units * scaleStateForPage(drawing.page).feetPerUnit;
   }
 
   function velocityFpm(size: string, cfm = 0) {
@@ -5055,6 +5193,7 @@ function HVACPlanStudioApp() {
     const setup = airflowSetupSummary();
     const network = airflowNetwork();
     const targets = activeRoomAirflowTargets();
+    const activeScaleStatus = systemScaleStatus(activeSystem);
     const equipmentSources = setup.equipment.map((drawing) =>
       drawing.cfmSource === "manual" && (drawing.cfm || 0) > 0
         ? "manual"
@@ -5158,7 +5297,7 @@ function HVACPlanStudioApp() {
         ["supply", "return", "fresh"].includes(drawing.type) &&
         !drawing.fitting
       ).length,
-      scaleVerified,
+      scaleVerified: activeScaleStatus.verified,
       airflowTargetSource,
       planningSeedTerminalCount,
       missingTerminalCfm,
@@ -5253,6 +5392,7 @@ function HVACPlanStudioApp() {
 
   function exportSystemBalanceRunCsv() {
     const model = buildSystemBalanceModel();
+    const activeScaleStatus = systemScaleStatus(activeSystem);
     if (!model.runs.length) {
       setBranchMessage("No velocity-screened size candidates or over-capacity runs are waiting");
       return;
@@ -5265,7 +5405,7 @@ function HVACPlanStudioApp() {
       ["Evidence fingerprint", model.evidenceFingerprint],
       ["Airflow target source", model.airflowTargetSource],
       ["Room target source", model.roomTargetSource],
-      ["Drawing scale", model.scaleVerified ? scaleLabel : "UNVERIFIED — LOSS HIDDEN"],
+      ["Drawing scale", model.scaleVerified ? activeScaleStatus.detail : `UNVERIFIED — ${activeScaleStatus.detail}`],
       [],
       ["Run ID", "Type", "Room / Route", "Airflow Source", "Planning CFM", "Current Size", "Velocity-Screened Candidate", "Current FPM", "Candidate FPM", "Limit FPM", "Current-Segment Rough Loss", "Status"],
       ...model.runs.map((run) => [
@@ -5313,12 +5453,16 @@ function HVACPlanStudioApp() {
   }
 
   function cloudReleaseFingerprintFromProject(project: Partial<SavedProject>) {
+    const hasSheetScales = Boolean(project.sheetScales && Object.keys(project.sheetScales).length);
     const releaseState = {
       drawings: [...(project.drawings || [])].sort((left, right) => left.id.localeCompare(right.id)),
       pdfFingerprint: project.pdfFingerprint || "",
-      scaleFeetPerUnit: project.scaleFeetPerUnit || 0,
-      scaleLabel: project.scaleLabel || "",
-      scaleVerified: Boolean(project.scaleVerified),
+      sheetScales: project.sheetScales || {},
+      ...(!hasSheetScales ? {
+        scaleFeetPerUnit: project.scaleFeetPerUnit || 0,
+        scaleLabel: project.scaleLabel || "",
+        scaleVerified: Boolean(project.scaleVerified),
+      } : {}),
       systemNames: project.systemNames || {},
       velocityRules: {
         supply: project.supplyVelocityLimit || 0,
@@ -5396,7 +5540,7 @@ function HVACPlanStudioApp() {
         detail: `${drawing.size}" at ${cfm} CFM is approximately ${pressure.frictionRate.toFixed(2)} in. w.g./100 ft. Review size, compression, and routing.`,
         drawingId: drawing.id,
       });
-      if (scaleVerified && pressure.pressureDrop > .15) issues.push({
+      if (scaleStateForPage(drawing.page).verified && pressure.pressureDrop > .15) issues.push({
         severity: pressure.pressureDrop > .25 ? "critical" : "warning",
         title: "Run pressure loss high",
         detail: `${pressure.equivalentLength.toFixed(0)} equivalent ft produces approximately ${pressure.pressureDrop.toFixed(2)} in. w.g. loss.`,
@@ -5808,6 +5952,8 @@ function HVACPlanStudioApp() {
         roomType: drawing.roomType || "",
         elevation: drawing.elevation || "",
         labelOffset: drawing.labelOffset,
+        runNumber: drawing.runNumber || "",
+        sizeReviewed: drawing.sizeReviewed !== false,
         fitting: drawing.fitting,
         symbol: drawing.symbol,
       }));
@@ -5818,9 +5964,11 @@ function HVACPlanStudioApp() {
         ? { roomTargetReviewFingerprint: roomAirflowTargetReviewFingerprints[systemId] }
         : {}),
       pdfFingerprint,
-      scaleFeetPerUnit,
-      scaleLabel,
-      scaleVerified,
+      sheetScales: Object.fromEntries(
+        [...new Set(scopedDrawings.map((drawing) => drawing.page))]
+          .sort((left, right) => left - right)
+          .map((page) => [String(page), scaleStateForPage(page)])
+      ),
       visibleLabels: { showCfmLabels, showLengthLabels, showFittingLabels },
       velocityRules: { supplyVelocityLimit, returnVelocityLimit, freshVelocityLimit, residentialFlexMax },
     }));
@@ -5989,14 +6137,30 @@ function HVACPlanStudioApp() {
       }
     }
 
+    const repairPages = [...new Set([...runs.map((run) => run.page), ...targets.map((target) => target.page)])]
+      .sort((left, right) => left - right);
+    const repairSheetScales = Object.fromEntries(
+      repairPages.map((page) => {
+        const pageScale = scaleStateForPage(page);
+        return [String(page), {
+          verified: pageScale.verified,
+          feetPerUnit: pageScale.feetPerUnit,
+        }];
+      }),
+    );
+    const singleSheetScale = repairPages.length === 1
+      ? scaleStateForPage(repairPages[0])
+      : { verified: false, feetPerUnit: defaultScaleFeetPerUnit };
+
     return buildConnectionRepairPlan({
       systemId: activeSystem,
       runs,
       targets,
       choices,
       scale: {
-        verified: scaleVerified,
-        feetPerUnit: scaleFeetPerUnit,
+        verified: singleSheetScale.verified,
+        feetPerUnit: singleSheetScale.feetPerUnit,
+        byPage: repairSheetScales,
       },
     });
   }
@@ -6094,15 +6258,16 @@ function HVACPlanStudioApp() {
     );
   }
 
-  function connectionRepairDistanceValue(distance: number) {
-    if (!scaleVerified) return `${distance.toFixed(0)} plan units`;
-    const feet = distance * scaleFeetPerUnit;
+  function connectionRepairDistanceValue(distance: number, page: number) {
+    const pageScale = scaleStateForPage(page);
+    if (!pageScale.verified) return `${distance.toFixed(0)} plan units`;
+    const feet = distance * pageScale.feetPerUnit;
     return feet < 1 ? `${Math.max(1, Math.round(feet * 12))} in gap` : `${feet.toFixed(1)} ft gap`;
   }
 
   function connectionRepairDistance(item: ConnectionRepairItem) {
     const candidate = item.candidate || item.candidates[0];
-    return candidate ? connectionRepairDistanceValue(candidate.distance) : "";
+    return candidate ? connectionRepairDistanceValue(candidate.distance, item.page) : "";
   }
 
   function applySelectedConnectionRepairs() {
@@ -6289,8 +6454,7 @@ function HVACPlanStudioApp() {
       drawingSignature: systemReleaseSignature(systemId),
       rows: buildTakeoff(systemId),
       materialWastePercent,
-      scaleLabel,
-      scaleVerified,
+      sheetScales: systemSheetScaleSnapshot(systemId),
     }));
   }
 
@@ -6325,6 +6489,7 @@ function HVACPlanStudioApp() {
       return;
     }
     const material = materialSummary();
+    const activeScaleStatus = systemScaleStatus(activeSystem);
     const record: TakeoffPackageRecord = {
       id: crypto.randomUUID(),
       systemId: activeSystem,
@@ -6346,15 +6511,15 @@ function HVACPlanStudioApp() {
         const driveFile = await saveProjectPackageToDrive({
           projectName: `${fileName.replace(/\.pdf$/i, "")} — ${record.name} ${record.revision}`,
           packageType: "HVAC Plan Studio Plan Intelligence & Takeoff",
-          version: 104,
+          version: 122,
           system: systemLabel(activeSystem),
           sourcePlan: fileName,
-          scale: { label: scaleLabel, verified: scaleVerified },
+          scale: { label: activeScaleStatus.detail, verified: activeScaleStatus.verified },
           preparedBy: record.preparedBy,
           createdAt: record.createdAt,
           summary: material,
           rows,
-          manualControlNotice: "This package reports saved plan geometry. It does not reroute, resize, reconnect, balance, or renumber drawing objects.",
+          manualControlNotice: "This package reports the reviewed drawing state. Post-draw numbers and sizes do not move route geometry; connection or repair changes still require approval.",
         });
         completed = { ...record, driveFileId: driveFile.id, driveUrl: driveFile.webViewLink };
       }
@@ -6389,12 +6554,13 @@ function HVACPlanStudioApp() {
     const rows = buildTakeoff();
     if (!rows.length) return;
     const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
-    const packageStatus = activeFieldPackage.released && !activeFieldPackage.stale && scaleVerified
+    const activeScaleStatus = systemScaleStatus(activeSystem);
+    const packageStatus = activeFieldPackage.released && !activeFieldPackage.stale && activeScaleStatus.verified
       ? activeFieldPackage.status
       : "DRAFT — NOT FOR INSTALLATION";
     const csv = [
       ["Package status", packageStatus, "", "", "", ""],
-      ["Drawing scale", scaleVerified ? scaleLabel : "UNVERIFIED", "", "", "", ""],
+      ["Drawing scale", activeScaleStatus.verified ? activeScaleStatus.detail : `UNVERIFIED — ${activeScaleStatus.detail}`, "", "", "", ""],
       ["Drawing signature", systemDrawingSignature(), "", "", "", ""],
       [],
       ["System", "Category", "Item", "Size", "Order Quantity", "Purchasing / Fabrication Note"],
@@ -6556,6 +6722,7 @@ function HVACPlanStudioApp() {
     review = reviewSummary(),
     connectionModel = buildFieldConnectionModel(activeSystem),
   ) {
+    const activeScaleStatus = systemScaleStatus(activeSystem);
     const runs = fieldRunSchedule(connectionModel);
     const checklist = activeFieldChecklist();
     const checklistComplete = fieldChecklistItems.filter((item) => checklist[item.id]).length;
@@ -6598,7 +6765,7 @@ function HVACPlanStudioApp() {
       { id: "connections", label: "Saved connections verified", clear: connectionProblems === 0, detail: connectionProblems ? `${connectionProblems} review` : "Clear" },
       { id: "elevations", label: "Elevations coordinated", clear: missingElevation === 0, detail: missingElevation ? `${missingElevation} missing` : "Clear" },
       { id: "rooms", label: "Terminal rooms assigned", clear: missingRoom === 0, detail: missingRoom ? `${missingRoom} missing` : "Clear" },
-      { id: "scale", label: "Drawing scale verified", clear: scaleVerified, detail: scaleVerified ? scaleLabel : "Select a scale or calibrate" },
+      { id: "scale", label: "Drawing scale verified", clear: activeScaleStatus.verified, detail: activeScaleStatus.detail },
       { id: "checklist", label: "Field checklist complete", clear: checklistComplete === fieldChecklistItems.length, detail: `${checklistComplete}/${fieldChecklistItems.length}` },
       { id: "rfi", label: "RFIs approved or closed", clear: openRfis === 0, detail: openRfis ? `${openRfis} open` : "Clear" },
       { id: "punch", label: "Critical punch items closed", clear: criticalPunches === 0, detail: criticalPunches ? `${criticalPunches} critical` : "Clear" },
@@ -6728,7 +6895,15 @@ function HVACPlanStudioApp() {
         reviewer: row.decision?.reviewer || "",
         note: row.decision?.note || "",
       })),
-      rulesSnapshot: { scaleLabel, scaleFeetPerUnit, supplyVelocityLimit, returnVelocityLimit, freshVelocityLimit, residentialFlexMax },
+      rulesSnapshot: {
+        scaleLabel,
+        scaleFeetPerUnit,
+        sheetScales: systemSheetScaleSnapshot(activeSystem),
+        supplyVelocityLimit,
+        returnVelocityLimit,
+        freshVelocityLimit,
+        residentialFlexMax,
+      },
     };
     let record = draftRecord;
     if (workingCloudProjectId && verifiedCloudRisk?.latestRevisionId) {
@@ -6796,12 +6971,13 @@ function HVACPlanStudioApp() {
     const rows = activeFieldPackage.runs;
     if (!rows.length) return;
     const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
-    const packageStatus = activeFieldPackage.released && !activeFieldPackage.stale && scaleVerified
+    const activeScaleStatus = systemScaleStatus(activeSystem);
+    const packageStatus = activeFieldPackage.released && !activeFieldPackage.stale && activeScaleStatus.verified
       ? activeFieldPackage.status
       : "DRAFT — NOT FOR INSTALLATION";
     const csv = [
       ["Package status", packageStatus, "", "", "", "", "", ""],
-      ["Drawing scale", scaleVerified ? scaleLabel : "UNVERIFIED", "", "", "", "", "", ""],
+      ["Drawing scale", activeScaleStatus.verified ? activeScaleStatus.detail : `UNVERIFIED — ${activeScaleStatus.detail}`, "", "", "", "", "", ""],
       ["Drawing signature", systemDrawingSignature(), "", "", "", "", "", ""],
       [],
       ["System", "Duct Type", "Size", "Length LF", "Planning CFM", "Room / Area", "Elevation", "Connection Review"],
@@ -6896,6 +7072,7 @@ function HVACPlanStudioApp() {
     const openRfis = rfiItems.filter((item) => item.systemId === systemId && !["approved", "closed"].includes(item.status));
     const criticalPunches = openPunches.filter((item) => item.priority === "critical").length;
     const designReady = stats.units > 0 && supplyTerminals > 0 && stats.balanced && disconnectedRuns === 0;
+    const scaleStatus = systemScaleStatus(systemId);
     const activePackage = systemId === activeSystem ? activeFieldPackage : null;
     const releaseGatesClear = activePackage
       ? activePackage.gatesClear
@@ -6903,7 +7080,7 @@ function HVACPlanStudioApp() {
         runs.length > 0 &&
         missingElevations === 0 &&
         missingRooms === 0 &&
-        scaleVerified &&
+        scaleStatus.verified &&
         releaseChecklistComplete === fieldChecklistItems.length &&
         openRfis.length === 0 &&
         criticalPunches === 0;
@@ -7234,19 +7411,28 @@ function HVACPlanStudioApp() {
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
   }
 
-  function applyScalePreset(label: string) {
-    const unitsPerFoot: Record<string, number> = {
-      '1/8" = 1\'-0"': 12.15,
-      '3/16" = 1\'-0"': 18.225,
-      '1/4" = 1\'-0"': 24.3,
-      '1/2" = 1\'-0"': 48.6,
-    };
-    setScaleFeetPerUnit(1 / (unitsPerFoot[label] || 24.3));
-    setScaleLabel(label);
-    setScaleLocked(true);
-    setScaleVerified(true);
+  function applyResolvedScale(
+    candidate: Pick<PlanScaleCandidate, "label" | "ratio">,
+    page = pageNumber,
+  ) {
+    const resolved = resolveDetectedDrawingScale(candidate);
+    if (!resolved) return false;
+    rememberActiveSheetScale(page, {
+      feetPerUnit: resolved.feetPerUnit,
+      label: resolved.label,
+      verified: true,
+    });
     setCalibrating(false);
+    setScaleHelperReturnPending(false);
     setMeasureDraft([]);
+    return true;
+  }
+
+  function applyScalePreset(label: string) {
+    applyResolvedScale({
+      label,
+      ratio: scaleRatioFromLabel(label),
+    }, pageNumber);
   }
 
   function placeSmartBranch(point: Point) {
@@ -7722,6 +7908,7 @@ function HVACPlanStudioApp() {
           cfmSource: "planning-seed",
           systemId: activeSystem,
           elevation: "",
+          sizeReviewed: activeTool === "fresh" ? true : false,
         };
         const connected = addJunctionPoints(drawings, [draft[0], draft[draft.length - 1]]);
         setHistory(linkRunToMatchingEquipmentPlenum([...connected, drawing], drawing.id));
@@ -7913,12 +8100,18 @@ function HVACPlanStudioApp() {
       const distance = Math.hypot(point.x - measureDraft[0].x, point.y - measureDraft[0].y);
       const feet = Number(referenceFeet);
       if (distance > 1 && feet > 0) {
-        setScaleFeetPerUnit(feet / distance);
-        setScaleLabel(`Calibrated · ${feet} ft reference`);
-        setScaleLocked(true);
-        setScaleVerified(true);
+        const returnToHelper = scaleHelperReturnPending;
+        rememberActiveSheetScale(pageNumber, {
+          feetPerUnit: feet / distance,
+          label: `Calibrated · ${feet} ft reference`,
+          verified: true,
+        });
         setCalibrating(false);
+        setScaleHelperReturnPending(false);
         setMeasureDraft([]);
+        setActiveTool("select");
+        setBranchMessage(`Scale calibrated from ${feet} ft · measurements are ready`);
+        if (returnToHelper) window.requestAnimationFrame(() => openMarkupAssistant("setup"));
       }
       return;
     }
@@ -8293,10 +8486,142 @@ function HVACPlanStudioApp() {
       });
       setHistory(synchronizeFittingSizes(resized, drawings));
     } else {
-      const resized = drawings.map((drawing) => drawing.id === selectedId ? { ...drawing, size } : drawing);
-      setHistory(synchronizeFittingSizes(resized, drawings));
+      const resized = drawings.map((drawing) => drawing.id === selectedId ? {
+        ...drawing,
+        size,
+        sizeReviewed: ["supply", "return"].includes(drawing.type) ? true : drawing.sizeReviewed,
+      } : drawing);
+      setHistory(synchronizeFittingSizes(resized, drawings, { snapEndpoints: false }));
     }
     setDuctSize(size);
+  }
+
+  function orderedRunsForDetail(type?: "supply" | "return") {
+    return drawings
+      .filter((drawing) =>
+        drawingSystem(drawing) === activeSystem &&
+        !drawing.fitting &&
+        !drawing.symbol &&
+        (type ? drawing.type === type : ["supply", "return"].includes(drawing.type))
+      )
+      .slice()
+      .sort((left, right) =>
+        left.page - right.page ||
+        (left.points[0]?.y || 0) - (right.points[0]?.y || 0) ||
+        (left.points[0]?.x || 0) - (right.points[0]?.x || 0) ||
+        left.id.localeCompare(right.id)
+      );
+  }
+
+  function assignRunNumbers(type: "supply" | "return") {
+    const ordered = orderedRunsForDetail(type);
+    const prefix = type === "supply" ? "F" : "R";
+    const used = new Set(
+      ordered
+        .map((drawing) => drawing.runNumber?.trim().toUpperCase())
+        .filter((value): value is string => Boolean(value))
+    );
+    let nextNumber = 1;
+    let changed = 0;
+    const assigned = new Map<string, string>();
+    ordered.forEach((drawing) => {
+      if (drawing.runNumber?.trim()) return;
+      while (used.has(`${prefix}${nextNumber}`)) nextNumber += 1;
+      const number = `${prefix}${nextNumber}`;
+      used.add(number);
+      assigned.set(drawing.id, number);
+      changed += 1;
+      nextNumber += 1;
+    });
+    if (!changed) {
+      setBranchMessage(`${type === "supply" ? "Flex" : "Return"} run numbers are already filled in`);
+      return;
+    }
+    setHistory(drawings.map((drawing) =>
+      assigned.has(drawing.id) ? { ...drawing, runNumber: assigned.get(drawing.id) } : drawing
+    ));
+    setBranchMessage(`${changed} ${type === "supply" ? "flex" : "return"} run number${changed === 1 ? "" : "s"} added in one Undo`);
+  }
+
+  function updateSelectedRunNumber(value: string) {
+    if (!selectedRun) return;
+    const runNumber = value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 12);
+    if ((selectedRun.runNumber || "") === runNumber) return;
+    setHistory(drawings.map((drawing) =>
+      drawing.id === selectedRun.id ? { ...drawing, runNumber: runNumber || undefined } : drawing
+    ));
+    setBranchMessage(`${runNumber || "Run number"} saved on the selected ${selectedRun.type} route`);
+  }
+
+  function confirmSelectedRunSize() {
+    if (!selectedRun || selectedRun.sizeReviewed === true) return;
+    setHistory(drawings.map((drawing) =>
+      drawing.id === selectedRun.id ? { ...drawing, sizeReviewed: true } : drawing
+    ));
+    setBranchMessage(`${selectedRun.runNumber ? `${selectedRun.runNumber} · ` : ""}${selectedRun.size}″ size confirmed`);
+  }
+
+  function focusNextRunDetail(type?: "supply" | "return") {
+    const pending = orderedRunsForDetail(type).filter((drawing) =>
+      !drawing.runNumber?.trim() || drawing.sizeReviewed === false
+    );
+    if (!pending.length) {
+      setBranchMessage(`${type === "return" ? "Return" : type === "supply" ? "Flex" : "Run"} details are complete`);
+      return;
+    }
+    const currentIndex = pending.findIndex((drawing) => drawing.id === selectedId);
+    const next = pending[(currentIndex + 1 + pending.length) % pending.length];
+    focusDrawingOnPlan(next.id);
+    setLeftPanelOpen(true);
+    setRightPanelOpen(false);
+    setLeftPanelView("properties");
+    setBranchMessage(`Review ${next.runNumber || "the next run"} · confirm its number and size`);
+  }
+
+  function startSupplyDrawingPass() {
+    finishDrawing();
+    setActiveTool("supply");
+    setSelectedId(null);
+    setLeftPanelView("draw");
+    openToolsPanel();
+    setBranchMessage("Draw the blue system routes first · sizes can be confirmed afterward");
+  }
+
+  function startFlexDetailPass() {
+    focusNextRunDetail("supply");
+  }
+
+  function startReturnDrawingPass() {
+    const returnDevices = drawings.filter((drawing) =>
+      drawingSystem(drawing) === activeSystem && drawing.symbol?.kind === "returnGrille"
+    );
+    const returnRuns = orderedRunsForDetail("return");
+    finishDrawing();
+    if (!returnDevices.length) {
+      setSymbolCategory("Return air");
+      setActivePresetId("return-standard");
+      setActiveTool("returnGrille");
+      setLeftPanelView("symbols");
+      setBranchMessage("Place the return grille or can, then draw its red route");
+    } else if (!returnRuns.length) {
+      setActiveTool("return");
+      setLeftPanelView("draw");
+      setBranchMessage("Draw the red return route from the grille or can to the unit");
+    } else {
+      focusNextRunDetail("return");
+      return;
+    }
+    setSelectedId(null);
+    openToolsPanel();
+  }
+
+  function startConnectionRepairPass() {
+    if (activeConnectionRepairIssues.length) {
+      openConnectionRepairReview();
+      return;
+    }
+    setActiveTool("select");
+    openToolsPanel();
   }
 
   function updateRunLineWeight(value: number) {
@@ -9458,6 +9783,11 @@ function HVACPlanStudioApp() {
       }
       if (target?.matches("input, select, textarea")) return;
       if (event.key === "Escape") {
+        if (calibrating && scaleHelperReturnPending) {
+          event.preventDefault();
+          cancelPlanScaleCalibration();
+          return;
+        }
         setShowCommandPalette(false);
         setDraft([]);
         setContinuingRunId(null);
@@ -9565,6 +9895,7 @@ function HVACPlanStudioApp() {
   const activeTrace = selectedFitting ? branchTrace : selectedRun ? runTrace : symbolTrace;
   const activeTraceSymbolIds = "symbolIds" in activeTrace ? activeTrace.symbolIds : new Set<string>();
   const activeAirflowSetup = airflowSetupSummary();
+  const activeSystemScaleStatus = systemScaleStatus(activeSystem);
   const branchOpportunityList = activeTool === "branch" ? branchOpportunities() : [];
   const pageBranchFittings = drawings.filter((drawing) => drawing.page === pageNumber && drawing.fitting);
   const assignedBranchRunIds = new Set(pageBranchFittings.flatMap((fitting) => fitting.fitting?.connectedIds.filter(Boolean) || []));
@@ -9614,13 +9945,47 @@ function HVACPlanStudioApp() {
     !activeBuilderSummary.unconnectedDevices &&
     !activeBuilderSummary.brokenPorts
   );
+  const activeSupplyRunsForWorkflow = drawings.filter((drawing) =>
+    drawingSystem(drawing) === activeSystem &&
+    drawing.type === "supply" &&
+    !drawing.fitting &&
+    !drawing.symbol
+  );
+  const activeReturnRunsForWorkflow = drawings.filter((drawing) =>
+    drawingSystem(drawing) === activeSystem &&
+    drawing.type === "return" &&
+    !drawing.fitting &&
+    !drawing.symbol
+  );
+  const activeSupplyDevicesForWorkflow = drawings.filter((drawing) =>
+    drawingSystem(drawing) === activeSystem && drawing.symbol?.kind === "diffuser"
+  );
+  const activeReturnDevicesForWorkflow = drawings.filter((drawing) =>
+    drawingSystem(drawing) === activeSystem && drawing.symbol?.kind === "returnGrille"
+  );
+  const drawFirstWorkflow = deriveDrawFirstWorkflow({
+    pdfLoaded: Boolean(pdf),
+    hasPrimaryUnit: Boolean(activeAirflowSetup.primaryUnit),
+    supplyRunCount: activeSupplyRunsForWorkflow.length,
+    supplyDeviceCount: activeSupplyDevicesForWorkflow.length,
+    pendingSupplyNumbers: activeSupplyRunsForWorkflow.filter((drawing) => !drawing.runNumber?.trim()).length,
+    pendingSupplySizes: activeSupplyRunsForWorkflow.filter((drawing) => drawing.sizeReviewed === false).length,
+    returnRunCount: activeReturnRunsForWorkflow.length,
+    returnDeviceCount: activeReturnDevicesForWorkflow.length,
+    pendingReturnNumbers: activeReturnRunsForWorkflow.filter((drawing) => !drawing.runNumber?.trim()).length,
+    pendingReturnSizes: activeReturnRunsForWorkflow.filter((drawing) => drawing.sizeReviewed === false).length,
+    connectionProblems: activeBuilderSummary.unconnectedDevices + activeBuilderSummary.brokenPorts,
+    connectionsComplete,
+  });
+  const drawStepComplete = drawFirstWorkflow.complete;
   const airflowStepComplete = Boolean(
+    drawStepComplete &&
     activeAirflowSetup.supplyBalanced &&
     activeAirflowSetup.returnBalanced &&
     !activeBuilderSummary.sizing.length
   );
-  const fieldFirstStep = !connectionsComplete
-      ? "connect"
+  const fieldFirstStep = !drawStepComplete
+      ? "draw"
       : !airflowStepComplete
         ? "airflow"
         : activeBuilderSummary.audit.counts.critical || activeBuilderSummary.audit.counts.warning
@@ -9628,26 +9993,19 @@ function HVACPlanStudioApp() {
           : "finish";
   const fieldFirstSteps = [
     {
-      id: "connect",
-      label: "Mark & Connect",
-      detail: !pdf
-        ? "Open the plan"
-        : !scaleVerified
-          ? "Plan setup needs review · you can still draw"
-          : connectionsComplete
-            ? "Runs, equipment, cans, and T/Y ports connected"
-            : activeBuilderSummary.runs.length
-              ? `${activeBuilderSummary.unconnectedDevices + activeBuilderSummary.brokenPorts} connection${activeBuilderSummary.unconnectedDevices + activeBuilderSummary.brokenPorts === 1 ? "" : "s"} need review`
-            : "Place and connect the unit, cans, and runs",
-      complete: connectionsComplete,
+      id: "draw",
+      label: "Draw & Detail",
+      detail: drawFirstWorkflow.detail,
+      complete: drawStepComplete,
       run: () => {
         if (!pdf) {
           setShowProjectHome(true);
           return;
         }
-        setActiveTool("select");
-        setSelectedId(null);
-        openToolsPanel();
+        if (drawFirstWorkflow.stage === "routes") startSupplyDrawingPass();
+        else if (drawFirstWorkflow.stage === "flex-details") startFlexDetailPass();
+        else if (drawFirstWorkflow.stage === "returns") startReturnDrawingPass();
+        else startConnectionRepairPass();
       },
     },
     {
@@ -9668,7 +10026,7 @@ function HVACPlanStudioApp() {
           ? `${activeBuilderSummary.audit.counts.critical + activeBuilderSummary.audit.counts.warning} item${activeBuilderSummary.audit.counts.critical + activeBuilderSummary.audit.counts.warning === 1 ? "" : "s"} need attention`
           : "Plan checks clear",
       complete: Boolean(
-        pdf &&
+        airflowStepComplete &&
         !activeBuilderSummary.audit.counts.critical &&
         !activeBuilderSummary.audit.counts.warning
       ),
@@ -9682,7 +10040,13 @@ function HVACPlanStudioApp() {
         : activeFieldPackage.gatesClear
           ? "Ready to print or share"
           : "Review materials and printing blockers",
-      complete: Boolean(activeFieldPackage.released && !activeFieldPackage.stale),
+      complete: Boolean(
+        airflowStepComplete &&
+        !activeBuilderSummary.audit.counts.critical &&
+        !activeBuilderSummary.audit.counts.warning &&
+        activeFieldPackage.released &&
+        !activeFieldPackage.stale
+      ),
       run: () => {
         setRightTab("takeoff");
         openInspectorPanel();
@@ -9726,7 +10090,7 @@ function HVACPlanStudioApp() {
     branchOpportunities: assistantBranchOpportunities,
     sizingCandidateCount: activeBuilderSummary.sizing.length,
     sizingEvidenceFingerprint: stableTextHash(JSON.stringify(activeBuilderSummary.sizing)),
-    scaleVerified,
+    scaleVerified: activeSystemScaleStatus.verified,
     designCfm: activeAirflowSetup.targetCfm,
   });
   const activeDesignStandard = buildDesignStandardProfile({
@@ -9742,6 +10106,8 @@ function HVACPlanStudioApp() {
         id: drawing.id,
         type: drawing.type as "supply" | "return" | "fresh",
         size: drawing.size,
+        runNumber: drawing.runNumber,
+        sizeReviewed: drawing.sizeReviewed,
         roomName: drawing.roomName,
         roomType: drawing.roomType,
       })),
@@ -9780,7 +10146,8 @@ function HVACPlanStudioApp() {
     roomTargetsReviewed: roomAirflowTargetsAreReviewed(),
     sizingVersion: DUCT_SIZING_CALCULATION_VERSION,
     repairVersion: ASSISTANT_REPAIR_VERSION,
-    scaleVerified,
+    scaleVerified: activeSystemScaleStatus.verified,
+    sheetScales: systemSheetScaleSnapshot(activeSystem),
     rules: {
       supplyVelocityLimit,
       returnVelocityLimit,
@@ -9847,7 +10214,7 @@ function HVACPlanStudioApp() {
         ...opportunity,
       })),
     })),
-    scaleVerified,
+    scaleVerified: activeSystemScaleStatus.verified,
   });
   const assistantSelectedSizeActions = assistantRepairPlan.actions.filter((action): action is RunSizeRepairAction =>
     action.kind === "run-size" &&
@@ -10120,25 +10487,19 @@ function HVACPlanStudioApp() {
     openMarkupAssistant(view === "setup" ? "setup" : "problems");
   }
 
-  function applyDetectedPlanScale(label: string, page: number) {
+  function applyDetectedPlanScale(candidate: PlanScaleCandidate, page: number) {
     goToPage(page);
-    const supportedScale = [
-      '1/8" = 1\'-0"',
-      '3/16" = 1\'-0"',
-      '1/4" = 1\'-0"',
-      '1/2" = 1\'-0"',
-    ].includes(label);
-    if (supportedScale) {
-      applyScalePreset(label);
-      setBranchMessage(`${label} confirmed from the plan · measured work now uses this scale`);
+    if (applyResolvedScale(candidate, page)) {
+      setBranchMessage(`${candidate.label} confirmed for sheet ${page} · Plan Helper stayed open`);
       return;
     }
-    startPlanScaleCalibration(page, label);
+    startPlanScaleCalibration(page, candidate.label);
   }
 
   function startPlanScaleCalibration(page: number, detectedLabel?: string) {
     goToPage(page);
     setShowMarkupAssistant(false);
+    setScaleHelperReturnPending(true);
     setCalibrating(true);
     setMeasureDraft([]);
     setActiveTool("measure");
@@ -10146,6 +10507,15 @@ function HVACPlanStudioApp() {
     setBranchMessage(detectedLabel
       ? `${detectedLabel} was found on the plan · confirm it by picking two points on a known distance`
       : "Pick two points on a known distance to confirm this drawing scale");
+  }
+
+  function cancelPlanScaleCalibration() {
+    setCalibrating(false);
+    setMeasureDraft([]);
+    setActiveTool("select");
+    const returnToHelper = scaleHelperReturnPending;
+    setScaleHelperReturnPending(false);
+    if (returnToHelper) window.requestAnimationFrame(() => openMarkupAssistant("setup"));
   }
 
   function openFieldPackageComposer() {
@@ -10442,7 +10812,7 @@ function HVACPlanStudioApp() {
             <div className={`run-size-default ${selectedRun ? "editing" : ""}`}>
               <div>
                 <span>RUN SIZE</span>
-                <b>{selectedRun ? `SELECTED ${selectedRun.type.toUpperCase()}` : "NEW RUN DEFAULT"}</b>
+                <b>{selectedRun ? `SELECTED ${selectedRun.type.toUpperCase()}` : "PROVISIONAL · CONFIRM AFTER DRAWING"}</b>
               </div>
               <select
                 aria-label={selectedRun ? "Selected run size" : "Default new run size"}
@@ -10451,7 +10821,7 @@ function HVACPlanStudioApp() {
               >
                 {[...runSizeOptions].reverse().map((size) => <option key={size} value={size}>{size}&quot;</option>)}
               </select>
-              <small>4″–16″ in one-inch steps · selected runs update immediately.</small>
+              <small>{selectedRun ? "Selected runs update immediately." : "Draw first. New supply and return labels stay SIZE LATER until the detail pass confirms them."}</small>
             </div>
             <div className={`branch-designer ${activeTool === "branch" ? "active" : ""}`}>
               <div className="library-title"><DraftingCompass size={14} /><span>RUN-FIRST BRANCH PASS</span><b>DRAW RUNS · THEN SPLIT</b></div>
@@ -10912,6 +11282,45 @@ function HVACPlanStudioApp() {
                 <small>Supply and return only · every connected T/Y leg matches this weight automatically.</small>
               </label>}
               {selectedRun && <div className="engineering-properties">
+                {["supply", "return"].includes(selectedRun.type) && <div className={`run-detail-editor ${selectedRun.runNumber && selectedRun.sizeReviewed !== false ? "complete" : "attention"}`}>
+                  <div className="run-detail-heading">
+                    <span>
+                      <small>POST-DRAW DETAIL PASS</small>
+                      <strong>{selectedRun.type === "supply" ? "Flex number & size" : "Return number & size"}</strong>
+                    </span>
+                    <b>{selectedRun.runNumber && selectedRun.sizeReviewed !== false ? "READY" : "REVIEW"}</b>
+                  </div>
+                  <div className="run-detail-fields">
+                    <label>Run number
+                      <input
+                        key={`${selectedRun.id}-run-number`}
+                        className="property-input"
+                        defaultValue={selectedRun.runNumber || ""}
+                        placeholder={selectedRun.type === "supply" ? "F1" : "R1"}
+                        onBlur={(event) => updateSelectedRunNumber(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") event.currentTarget.blur();
+                        }}
+                      />
+                    </label>
+                    <label>Run size
+                      <select value={selectedRun.size} onChange={(event) => updateSelectedSize(event.target.value)}>
+                        {[...runSizeOptions].reverse().map((size) => <option key={size} value={size}>{size}&quot;</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="run-detail-actions">
+                    <button
+                      className="primary"
+                      disabled={selectedRun.sizeReviewed === true}
+                      onClick={confirmSelectedRunSize}
+                    >
+                      {selectedRun.sizeReviewed === true ? `${selectedRun.size}" confirmed` : `Confirm ${selectedRun.size}" size`}
+                    </button>
+                    <button onClick={() => focusNextRunDetail(selectedRun.type as "supply" | "return")}>Next unreviewed run</button>
+                  </div>
+                  <small>The route stays exactly where you drew it. This pass changes only its visible number and reviewed size.</small>
+                </div>}
                 <div className="duct-trace-summary">
                   <div>
                     <span>CONNECTED DUCT PATH</span>
@@ -10949,12 +11358,12 @@ function HVACPlanStudioApp() {
                   />
                 </label>
                 <div className="engineering-grid">
-                  <div><span>Length</span><strong>{scaleVerified ? `${drawingLengthFeet(selectedRun)} LF` : "SCALE UNVERIFIED"}</strong></div>
+                  <div><span>Length</span><strong>{scaleStateForPage(selectedRun.page).verified ? `${drawingLengthFeet(selectedRun)} LF` : "SCALE UNVERIFIED"}</strong></div>
                   <div><span>Connected airflow</span><strong>{runAirflow(selectedRun)} CFM</strong></div>
                   <div><span>Velocity</span><strong>{velocityFpm(selectedRun.size, runAirflow(selectedRun))} FPM</strong></div>
                   <div><span>Source</span><strong>{selectedRun.cfmSource === "manual" ? "MANUAL" : airflowNetwork().calculated.get(selectedRun.id) ? "TERMINAL SCHEDULE" : "PLANNING"}</strong></div>
                   <div><span>Friction rate</span><strong>{runPressure(selectedRun).frictionRate.toFixed(2)} /100 FT</strong></div>
-                  <div><span>Segment loss</span><strong>{scaleVerified ? `${runPressure(selectedRun).pressureDrop.toFixed(2)} IN. W.G.` : "SCALE UNVERIFIED"}</strong></div>
+                  <div><span>Segment loss</span><strong>{scaleStateForPage(selectedRun.page).verified ? `${runPressure(selectedRun).pressureDrop.toFixed(2)} IN. W.G.` : "SCALE UNVERIFIED"}</strong></div>
                 </div>
               </div>}
             </>}
@@ -11105,19 +11514,29 @@ function HVACPlanStudioApp() {
                 onChange={(event) => event.target.value !== "custom" && applyScalePreset(event.target.value)}
               >
                 <option value="" disabled>Choose scale…</option>
-                <option value={'1/8" = 1\'-0"'}>{'1/8" = 1\'-0"'}</option>
-                <option value={'3/16" = 1\'-0"'}>{'3/16" = 1\'-0"'}</option>
-                <option value={'1/4" = 1\'-0"'}>{'1/4" = 1\'-0"'}</option>
-                <option value={'1/2" = 1\'-0"'}>{'1/2" = 1\'-0"'}</option>
+                {scaleVerified &&
+                  !scaleLabel.startsWith("Calibrated") &&
+                  !drawingScalePresets.some((preset) => preset === scaleLabel) &&
+                  <option value={scaleLabel}>{scaleLabel} · plan recommendation</option>}
+                {drawingScalePresets.map((preset) => <option value={preset} key={preset}>{preset}</option>)}
                 <option value="custom">Custom calibrated</option>
               </select>
               {calibrating && <input className="reference-input" aria-label="Known distance in feet" type="number" min="1" value={referenceFeet} onChange={(event) => setReferenceFeet(event.target.value)} />}
-              <button className={calibrating ? "calibrate active" : "calibrate"} onClick={() => { setCalibrating((value) => !value); setMeasureDraft([]); }}>
+              <button className={calibrating ? "calibrate active" : "calibrate"} onClick={() => { setCalibrating((value) => !value); setScaleHelperReturnPending(false); setMeasureDraft([]); }}>
                 {calibrating ? `${referenceFeet} ft · pick 2 points` : scaleVerified ? "Recalibrate" : "Calibrate"}
               </button>
             </div>
             {!rightPanelOpen && <button className="panel-restore" aria-controls="workspace-inspector-panel" aria-expanded={rightPanelOpen} onClick={openInspectorPanel}>Inspector <PanelRightClose size={16} /></button>}
           </div>
+
+          {calibrating && scaleHelperReturnPending && <div className="scale-calibration-guide" role="status">
+            <span><Ruler size={17} /></span>
+            <div>
+              <strong>Confirm the recommended scale</strong>
+              <small>Pick two plan points exactly {referenceFeet} ft apart. Plan Helper will reopen when you finish.</small>
+            </div>
+            <button onClick={cancelPlanScaleCalibration}>Cancel &amp; return to Plan Helper</button>
+          </div>}
 
           <div
             ref={canvasViewportRef}
@@ -11452,8 +11871,9 @@ function HVACPlanStudioApp() {
                           y={runLabelPoint.y}
                           onPointerDown={(event) => startRunLabelDrag(event, drawing)}
                         >
-                          <title>Drag to reposition this duct-size label</title>
-                          {drawing.size}&quot;
+                          <title>Drag to reposition this run label</title>
+                          {drawing.runNumber ? `${drawing.runNumber} · ` : ""}
+                          {drawing.sizeReviewed === false ? "SIZE LATER" : `${drawing.size}"`}
                           {showLengthLabels ? ` · ${drawingLengthFeet(drawing).toFixed(1)} LF` : ""}
                           {showCfmLabels ? ` · ${runAirflow(drawing)} CFM${airflowNetwork().calculated.get(drawing.id) ? " AUTO" : ""}` : ""}
                           {drawing.elevation ? ` · EL ${drawing.elevation}` : ""}
@@ -11743,9 +12163,35 @@ function HVACPlanStudioApp() {
             </div>
 
             <div className="builder-workflow">
-              <div className={`builder-action-card connection-repair-card ${planSetupComplete && fieldFirstStep === "connect" ? "current" : "other-step"} ${connectionsComplete ? "complete" : "attention"}`}>
+              <div className={`builder-action-card connection-repair-card draw-first-card ${planSetupComplete && fieldFirstStep === "draw" ? "current" : "other-step"} ${drawStepComplete ? "complete" : "attention"}`}>
                 <div className="builder-action-icon"><Route size={17} /></div>
-                <span><i>STEP 1</i><strong>Connect &amp; repair the system</strong><small>Review each loose unit, supply can, return grille, and saved T/Y connection. Placed objects stay put, and nothing moves until you approve it.</small></span>
+                <span><i>STEP 1</i><strong>Draw the system first</strong><small>Draw the blue routes first. Then add flex numbers and reviewed sizes, place the red returns, and finish with connection repair.</small></span>
+                <div className="draw-first-pass" aria-label="Draw-first detail sequence">
+                  <div className={drawFirstWorkflow.stage === "routes" ? "active" : activeSupplyRunsForWorkflow.length && activeSupplyDevicesForWorkflow.length && activeAirflowSetup.primaryUnit ? "complete" : ""}>
+                    <b>1</b><span><strong>Draw routes</strong><small>{activeSupplyRunsForWorkflow.length} blue runs · {activeSupplyDevicesForWorkflow.length} cans</small></span>
+                  </div>
+                  <div className={drawFirstWorkflow.stage === "flex-details" ? "active" : drawFirstWorkflow.stage === "returns" || drawFirstWorkflow.stage === "connections" || drawFirstWorkflow.stage === "complete" ? "complete" : ""}>
+                    <b>2</b><span><strong>Flex details</strong><small>Numbers and reviewed sizes</small></span>
+                  </div>
+                  <div className={drawFirstWorkflow.stage === "returns" ? "active" : drawFirstWorkflow.stage === "connections" || drawFirstWorkflow.stage === "complete" ? "complete" : ""}>
+                    <b>3</b><span><strong>Add returns</strong><small>{activeReturnRunsForWorkflow.length} red runs · {activeReturnDevicesForWorkflow.length} grilles</small></span>
+                  </div>
+                  <div className={drawFirstWorkflow.stage === "connections" ? "active" : drawFirstWorkflow.stage === "complete" ? "complete" : ""}>
+                    <b>4</b><span><strong>Connect &amp; repair</strong><small>Equipment, cans, and T/Y ports</small></span>
+                  </div>
+                </div>
+                <div className="draw-first-actions">
+                  {drawFirstWorkflow.stage === "routes" && <button className="builder-primary-action" onClick={startSupplyDrawingPass}>Start drawing blue routes</button>}
+                  {drawFirstWorkflow.stage === "flex-details" && <>
+                    <button onClick={() => assignRunNumbers("supply")}>Number flex runs</button>
+                    <button className="builder-primary-action" onClick={startFlexDetailPass}>Review next flex size</button>
+                  </>}
+                  {drawFirstWorkflow.stage === "returns" && <>
+                    <button className="builder-primary-action" onClick={startReturnDrawingPass}>{activeReturnDevicesForWorkflow.length ? activeReturnRunsForWorkflow.length ? "Review return details" : "Draw return routes" : "Place return grille"}</button>
+                    {activeReturnRunsForWorkflow.length > 0 && <button onClick={() => assignRunNumbers("return")}>Number return runs</button>}
+                  </>}
+                </div>
+                {(drawFirstWorkflow.stage === "connections" || connectionReviewOpen || drawStepComplete) && <>
                 <div className="connection-repair-summary">
                   <b className="ready">{activeConnectionRepairPlan.counts.ready} can connect</b>
                   <b className="choice">{activeConnectionRepairPlan.counts.choice} need your choice</b>
@@ -11754,23 +12200,14 @@ function HVACPlanStudioApp() {
                 </div>
                 {!connectionReviewOpen ? <button
                   className="builder-primary-action connection-review-launch"
-                  disabled={connectionsComplete}
+                  disabled={drawStepComplete}
                   onClick={() => {
-                    if (activeConnectionRepairIssues.length) {
-                      openConnectionRepairReview();
-                      return;
-                    }
-                    setActiveTool("select");
-                    openToolsPanel();
+                    startConnectionRepairPass();
                   }}
                 >
                   {activeConnectionRepairIssues.length
                     ? `Review ${activeConnectionRepairIssues.length} connection fix${activeConnectionRepairIssues.length === 1 ? "" : "es"}`
-                    : !activeBuilderSummary.runs.length
-                      ? "Start by marking the unit and runs"
-                      : !activeAirflowSetup.primaryUnit
-                        ? "Select or place the system unit"
-                        : "All saved connections are aligned"}
+                    : "All saved connections are aligned"}
                 </button> : <div className="connection-repair-review">
                   <div className="connection-review-heading">
                     <div>
@@ -11853,7 +12290,7 @@ function HVACPlanStudioApp() {
                       Apply {selectedReadyConnectionRepairIds.length} selected · one Undo
                     </button>
                   </div>
-                </div>}
+                </div>}</>}
               </div>
 
               <div className={`builder-action-card ${planSetupComplete && fieldFirstStep === "airflow" ? "current" : "other-step"} ${airflowStepComplete ? "complete" : "attention"}`}>
@@ -11985,7 +12422,7 @@ function HVACPlanStudioApp() {
                 <div><dt>Returns</dt><dd>{drawings.filter((drawing) => drawing.type === "return" && drawingSystem(drawing) === activeSystem).length}</dd></div>
                 <div><dt>Return grilles</dt><dd>{drawings.filter((drawing) => drawing.symbol?.kind === "returnGrille" && drawingSystem(drawing) === activeSystem).length}</dd></div>
                 <div><dt>Indoor airflow units</dt><dd>{drawings.filter((drawing) => isPrimaryAirflowEquipment(drawing) && drawingSystem(drawing) === activeSystem).length}</dd></div>
-                <div><dt>Total duct length</dt><dd>{scaleVerified ? `${drawings.filter((drawing) => ["supply", "return", "fresh"].includes(drawing.type) && drawingSystem(drawing) === activeSystem).reduce((total, drawing) => total + drawingLengthFeet(drawing), 0).toFixed(1)} LF` : "Scale unverified"}</dd></div>
+                <div><dt>Total duct length</dt><dd>{activeSystemScaleStatus.verified ? `${drawings.filter((drawing) => ["supply", "return", "fresh"].includes(drawing.type) && drawingSystem(drawing) === activeSystem).reduce((total, drawing) => total + drawingLengthFeet(drawing), 0).toFixed(1)} LF` : activeSystemScaleStatus.detail}</dd></div>
                 <div><dt>System airflow</dt><dd>{Math.max(0, ...drawings.filter((drawing) => drawing.type === "supply" && drawingSystem(drawing) === activeSystem).map((drawing) => runAirflow(drawing)))} CFM</dd></div>
                 <div><dt>Continuous terminals</dt><dd>{drawings.filter((drawing) => ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") && drawingSystem(drawing) === activeSystem && airflowNetwork().rootedTerminalRun.has(drawing.id)).length}</dd></div>
               </dl>
@@ -12231,12 +12668,12 @@ function HVACPlanStudioApp() {
                 <div className={materialSummary().holds.length ? "attention" : "good"}><span>Fabrication holds</span><strong>{materialSummary().holds.length}</strong><small>{materialSummary().holds.length ? "Resolve before order" : "No active holds"}</small></div>
               </div>
               <div className="production-readiness-card">
-                <div className="field-section-heading"><strong>PRODUCTION READINESS</strong><span>{scaleVerified && !materialSummary().holds.length ? "REVIEWED" : "CHECK"}</span></div>
-                <label className={scaleVerified ? "clear" : "hold"}>{scaleVerified ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}<span><b>Drawing scale</b><small>{scaleVerified ? `${scaleLabel} verified` : "Verify scale before ordering measured duct"}</small></span></label>
+                <div className="field-section-heading"><strong>PRODUCTION READINESS</strong><span>{activeSystemScaleStatus.verified && !materialSummary().holds.length ? "REVIEWED" : "CHECK"}</span></div>
+                <label className={activeSystemScaleStatus.verified ? "clear" : "hold"}>{activeSystemScaleStatus.verified ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}<span><b>Drawing scale</b><small>{activeSystemScaleStatus.detail}</small></span></label>
                 <label className={activeFieldPackage.connectionProblems ? "hold" : "clear"}>{activeFieldPackage.connectionProblems ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}<span><b>Connections</b><small>{activeFieldPackage.connectionProblems ? `${activeFieldPackage.connectionProblems} open or detached connection${activeFieldPackage.connectionProblems === 1 ? "" : "s"}` : "Saved run and fitting connections are complete"}</small></span></label>
                 <label className={materialSummary().holds.length ? "hold" : "clear"}>{materialSummary().holds.length ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}<span><b>Fabrication coordination</b><small>{materialSummary().holds.length ? "Clear the highlighted plan issues before fabrication" : "No active coordination holds"}</small></span></label>
               </div>
-              <div className="production-guardrail"><ShieldAlert size={15} /><span><strong>Your drawing stays manual.</strong><small>v104 reports saved geometry only. It never reroutes, resizes, reconnects, balances, or numbers ductwork.</small></span></div>
+              <div className="production-guardrail"><ShieldAlert size={15} /><span><strong>Your drawing stays manual.</strong><small>v122 adds numbers and reviewed sizes after drawing without moving route geometry. Connection and repair changes still require approval.</small></span></div>
             </>}
             {takeoffView === "materials" && <>
               <div className="material-controls production-controls">
@@ -12783,14 +13220,14 @@ function HVACPlanStudioApp() {
               <span>Residential flex maximum {residentialFlexMax}&quot;</span>
               <span>Flex friction target ≤0.10 in. w.g./100 ft</span>
             </div>
-            <div className={`pressure-card ${!scaleVerified ? "attention" : pressureSummary().highestDrop > .15 ? "attention" : "good"}`}>
-              <div><Gauge size={16} /><span><strong>PRESSURE-LOSS ESTIMATE</strong><small>{scaleVerified ? "Current segment rough loss · bends include 8 equivalent ft each" : "Verify drawing scale before using length-based loss"}</small></span></div>
+            <div className={`pressure-card ${!activeSystemScaleStatus.verified ? "attention" : pressureSummary().highestDrop > .15 ? "attention" : "good"}`}>
+              <div><Gauge size={16} /><span><strong>PRESSURE-LOSS ESTIMATE</strong><small>{activeSystemScaleStatus.verified ? "Current segment rough loss · bends include 8 equivalent ft each" : activeSystemScaleStatus.detail}</small></span></div>
               <dl>
                 <div><dt>Average friction</dt><dd>{pressureSummary().averageFriction.toFixed(2)} in. w.g./100 ft</dd></div>
-                <div><dt>Highest segment loss</dt><dd>{scaleVerified ? `${pressureSummary().highestDrop.toFixed(2)} in. w.g.` : "Scale unverified"}</dd></div>
+                <div><dt>Highest segment loss</dt><dd>{activeSystemScaleStatus.verified ? `${pressureSummary().highestDrop.toFixed(2)} in. w.g.` : "Scale unverified"}</dd></div>
                 <div><dt>Runs reviewed</dt><dd>{pressureSummary().runs.length}</dd></div>
               </dl>
-              {scaleVerified && pressureSummary().highestRun && <button onClick={() => { setSelectedId(pressureSummary().highestRun!.id); setActiveTool("select"); }}>
+              {activeSystemScaleStatus.verified && pressureSummary().highestRun && <button onClick={() => { setSelectedId(pressureSummary().highestRun!.id); setActiveTool("select"); }}>
                 Select highest-loss run
               </button>}
               <p>Planning estimate only. Final available static pressure requires equipment data, filters, coils, grilles, fittings, and field measurements.</p>
@@ -13067,9 +13504,9 @@ function HVACPlanStudioApp() {
           goToPage(page);
           openMarkupAssistant();
         }}
-        onUseDetectedScale={(label, page) => {
+        onUseDetectedScale={(candidate, page) => {
           setShowPlanIntelligence(false);
-          applyDetectedPlanScale(label, page);
+          applyDetectedPlanScale(candidate, page);
         }}
         onStartCalibration={(page) => {
           setShowPlanIntelligence(false);
@@ -13133,6 +13570,11 @@ function HVACPlanStudioApp() {
         advancedIntelligence={activeAdvancedPlanIntelligence}
         smartSetup={activeSmartPlanSetup}
         scaleVerified={scaleVerified}
+        confirmedScaleByPage={Object.fromEntries(
+          Object.entries(sheetScales)
+            .filter(([, scale]) => scale.verified)
+            .map(([page, scale]) => [page, scale.label]),
+        )}
         onUseDetectedScale={applyDetectedPlanScale}
         onStartCalibration={startPlanScaleCalibration}
         designStandard={activeDesignStandard}
@@ -13247,7 +13689,7 @@ function HVACPlanStudioApp() {
         status={activeFieldPackage.status}
         released={activeFieldPackage.released}
         stale={activeFieldPackage.stale}
-        scaleVerified={scaleVerified}
+        scaleVerified={activeSystemScaleStatus.verified}
         releaseRevision={activeFieldPackage.latestRelease?.revision}
         drawingSignature={activeFieldPackage.signature}
         runCount={activeFieldPackage.runs.length}
