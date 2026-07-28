@@ -4,9 +4,20 @@ HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review,
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v129
+## Current release — v130
 
-v129 makes the product feel like one job instead of a collection of separate tools. A superintendent sees one obvious way into the current plan, one current workflow action, and one Fix Plan destination for every issue-review entrance. “Show where” keeps the selected item visible beside Plan Helper instead of centering it underneath the panel.
+v130 keeps the supported problem-solving loop inside one compact Fix Plan card. A user can search current evidence-backed issues, record the job condition behind an existing review issue, inspect the exact proposed change, give named final approval, see the result, and undo it without hunting through separate panels. Specialized scale, room, airflow, and sizing work still uses its existing source-linked review tool.
+
+### v130 — Answer & Fix in Place
+
+- Searches only the current evidence-backed issue list; it does not generate a new plan fact from a typed question.
+- Keeps issue location, problem, proposed fix, expected result, exact before-and-after preview, named approval, applied result, and Undo together.
+- Records an existing review issue as accepted with a note, an RFI, a punch item, or **Handled elsewhere** without leaving Fix Plan.
+- Keeps connection repairs in the same card and requires reviewer initials plus explicit final confirmation before moving the reviewed existing endpoint.
+- Keeps source-linked scale, room, airflow, and sizing tools available when the issue requires specialized review instead of pretending a general note supplied engineering evidence.
+- Adds category-limited **Handled elsewhere** records with a reviewer, reason, note or reference, source fingerprint, evidence fingerprint, page or system, and time.
+- Marks answers and condition records stale when their source or evidence changes instead of silently reusing them.
+- Keeps **Handled elsewhere** separate from a completed fix. It never clears engineering or release gates, invents CFM, or changes geometry without the existing explicit approval path.
 
 ### v129 — One Job Screen
 

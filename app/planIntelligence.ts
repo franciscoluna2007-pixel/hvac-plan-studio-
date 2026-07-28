@@ -21,7 +21,7 @@ export type PlanIntelligenceFinding = PlanFindingIdentity & {
   drawingId?: string;
   reference: string;
   resolved: boolean;
-  decisionStatus?: "accepted" | "rfi" | "punch";
+  decisionStatus?: "accepted" | "rfi" | "punch" | "handled-elsewhere";
   decisionStale?: boolean;
 };
 

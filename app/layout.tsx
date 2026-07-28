@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://hvac-plan-studio.franciscoluna2007.chatgpt.site"),
   title: {
-    default: "HVAC Plan Studio · One Job Screen",
+    default: "HVAC Plan Studio · Answer & Fix in Place",
     template: "%s · HVAC Plan Studio",
   },
-  description: "Open one job, follow one current step, and review plan fixes in one clear workspace.",
+  description: "Answer one missing plan question, preview the exact change, approve it, and undo it without leaving Fix Plan.",
   applicationName: "HVAC Plan Studio",
   keywords: ["HVAC plan setup", "HVAC plan reader", "duct plan", "HVAC takeoff", "plan markup"],
   icons: {
@@ -26,14 +26,14 @@ export const metadata: Metadata = {
     shortcut: "/favicon.svg",
   },
   openGraph: {
-    title: "HVAC Plan Studio · One Job Screen",
-    description: "Open one job, follow one current step, and review plan fixes in one clear workspace.",
+    title: "HVAC Plan Studio · Answer & Fix in Place",
+    description: "Answer one missing plan question, preview the exact change, approve it, and undo it without leaving Fix Plan.",
     type: "website",
   },
   twitter: {
     card: "summary",
-    title: "HVAC Plan Studio · One Job Screen",
-    description: "Open one job, follow one current step, and review plan fixes in one clear workspace.",
+    title: "HVAC Plan Studio · Answer & Fix in Place",
+    description: "Answer one missing plan question, preview the exact change, approve it, and undo it without leaving Fix Plan.",
   },
 };
 

@@ -12,7 +12,7 @@ test("v128 presents Plan setup and one Fix Plan instead of separate Problems and
   assert.match(assistant, /PRIMARY_VIEW_ORDER: AssistantView\[\] = \["setup", "repair-plan"\]/);
   assert.match(assistant, /\["repair-plan", "Fix Plan", repairPlan\.actions\.length\]/);
   assert.doesNotMatch(assistant, /\["recommendations", "Problems", recommendations\.length\]/);
-  assert.match(assistant, /One place to find a problem and approve its fix/);
+  assert.match(assistant, /One place to answer a question and approve the fix/);
 });
 
 test("the one-card flow answers where, wrong, fix, result, yes, and no", () => {
@@ -32,7 +32,7 @@ test("connection choices and endpoint repairs live inside the same Fix Plan", ()
   assert.match(assistant, /onChooseConnectionCandidate/);
   assert.match(assistant, /onApplyConnectionRepair/);
   assert.match(page, /connectionRepairItems=\{activeConnectionRepairIssues\}/);
-  assert.match(page, /applyConnectionRepairSelection\(\[itemId\], evidenceFingerprint\)/);
+  assert.match(page, /applyConnectionRepairSelection\(\[input\.itemId\], input\.evidenceFingerprint, \{/);
   assert.match(page, /openMarkupAssistant\("fix-plan"\)/);
 });
 
