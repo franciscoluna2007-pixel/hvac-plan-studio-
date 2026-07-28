@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://hvac-plan-studio.franciscoluna2007.chatgpt.site"),
   title: {
-    default: "HVAC Plan Studio · Draw-First Detail Workflow",
+    default: "HVAC Plan Studio · Markup Assistant Fixes 2.0",
     template: "%s · HVAC Plan Studio",
   },
-  description: "Draw routes first. Add numbers, reviewed sizes, returns, and connections in order.",
+  description: "See what to fix first, preview the exact change, and approve safe HVAC plan repairs with one Undo.",
   applicationName: "HVAC Plan Studio",
   keywords: ["HVAC plan setup", "HVAC plan reader", "duct plan", "HVAC takeoff", "plan markup"],
   icons: {
@@ -26,21 +26,21 @@ export const metadata: Metadata = {
     shortcut: "/favicon.svg",
   },
   openGraph: {
-    title: "HVAC Plan Studio · Draw-First Detail Workflow",
-    description: "Draw routes first. Add numbers, reviewed sizes, returns, and connections in order.",
+    title: "HVAC Plan Studio · Markup Assistant Fixes 2.0",
+    description: "See what to fix first, preview the exact change, and approve safe HVAC plan repairs with one Undo.",
     type: "website",
     images: [{
-      url: "/og-v122.png",
-      width: 1717,
-      height: 916,
-      alt: "HVAC Plan Studio showing the Smart Scale and Draw-First workflow over an HVAC plan.",
+      url: "/og-v123.png",
+      width: 1536,
+      height: 1024,
+      alt: "HVAC Plan Studio showing prioritized plan problems and an exact before-and-after repair preview.",
     }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "HVAC Plan Studio · Draw-First Detail Workflow",
-    description: "Draw routes first. Add numbers, reviewed sizes, returns, and connections in order.",
-    images: ["/og-v122.png"],
+    title: "HVAC Plan Studio · Markup Assistant Fixes 2.0",
+    description: "See what to fix first, preview the exact change, and approve safe HVAC plan repairs with one Undo.",
+    images: ["/og-v123.png"],
   },
 };
 

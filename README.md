@@ -4,9 +4,26 @@ HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review,
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v122
+## Current release — v123
 
-v122 makes plan setup and drawing feel like one guided field workflow: Plan Setup → Draw & Detail → Airflow & Sizes → Fix Problems → Materials & Print.
+v123 turns Plan Helper into Markup Assistant Fixes 2.0: it identifies what must be handled first, maps each problem to the right fix, previews exact before-and-after values, and applies only compatible approved changes.
+
+### v123 — Markup Assistant Fixes 2.0
+
+- Replaces the audit-like problem queue with Do first, Can fix, Needs answer, and All views.
+- Explains why each problem is ordered where it is and maps it to its exact repair action instead of every action in the same category.
+- Groups the fix list into Ready now, Needs information, and Fix on plan.
+- Shows exact Before and After values, affected objects, the safety boundary, and whether route movement is possible.
+- Adds safe blank-field numbering for proven terminal-linked supply and return legs. Existing numbers are never overwritten or silently resequenced, and trunks or unknown-role segments are not called flex runs.
+- Separates connection, airflow, and size stages. Metadata-only labels may accompany a safe stage, but incompatible engineering stages cannot be applied together.
+- Can promote a numerically matching planning-seed CFM to the current reviewed room target without pretending the number changed.
+- Uses field-level mutation checks in addition to object-scope checks. A label fix can change only `runNumber`; a CFM fix can change only terminal airflow fields; a size fix cannot move route points.
+- Requires a verified per-sheet scale before any endpoint movement and requires an explicit choice for every unsaved can, grille, or equipment match.
+- Makes size-review state explicit. Unknown is not treated as reviewed, and changing a size makes it provisional again.
+- Omits already-correct sizes instead of turning them into no-op repairs.
+- Holds size application and purchasing quantities until the affected sheet scale is confirmed.
+- Keeps return strategies, new routes, trunk changes, T/Y placement, equipment moves, and professional judgment manual or confirm-on-plan.
+- Derives the receipt's exact before-and-after fields from the applied result, including CFM source and fitting-port metadata, while keeping historical receipts readable.
 
 ### v122 — Smart Scale & Draw-First Workflow
 

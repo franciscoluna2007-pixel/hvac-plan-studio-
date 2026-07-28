@@ -13,13 +13,15 @@ export type MarkupRecommendationAction =
   | "branch-pass"
   | "sizing-review";
 
+export type MarkupRecommendationPriority = "do-first" | "next" | "later";
+
 export type MarkupRecommendation = {
   id: string;
   findingId?: string;
   drawingId?: string;
   evidenceFingerprint: string;
   severity: PlanFindingSeverity;
-  category: PlanFindingCategory | "Branch strategy";
+  category: PlanFindingCategory | "Branch strategy" | "Field details";
   title: string;
   detail: string;
   whyItMatters: string;
@@ -29,6 +31,10 @@ export type MarkupRecommendation = {
   evidence: string[];
   resolved: boolean;
   decisionStale?: boolean;
+  priorityTier: MarkupRecommendationPriority;
+  priorityScore: number;
+  priorityReason: string;
+  relatedDrawingIds: string[];
   preview?:
     | { kind: "drawing"; drawingId: string }
     | {
@@ -50,6 +56,7 @@ export type MarkupAssistantSummary = {
   warnings: number;
   sizingCandidates: number;
   branchOpportunities: number;
+  doFirst: number;
   headline: string;
 };
 
@@ -80,11 +87,54 @@ function actionForFinding(finding: PlanIntelligenceFinding): MarkupRecommendatio
   return "manual-review";
 }
 
+function priorityForFinding(finding: PlanIntelligenceFinding) {
+  if (finding.resolved) {
+    return {
+      priorityTier: "later" as const,
+      priorityScore: 0,
+      priorityReason: "This item is already resolved.",
+    };
+  }
+  if (finding.severity === "critical" || finding.category === "Connections") {
+    return {
+      priorityTier: "do-first" as const,
+      priorityScore: finding.severity === "critical" ? 100 : 90,
+      priorityReason: finding.category === "Connections"
+        ? "Fix this first because downstream airflow and sizing depend on a connected system."
+        : "Fix this first because it can block a reviewed plan release.",
+    };
+  }
+  if (finding.severity === "warning" || ["Airflow", "Duct sizing", "Return paths"].includes(finding.category)) {
+    return {
+      priorityTier: "next" as const,
+      priorityScore: finding.severity === "warning" ? 70 : 60,
+      priorityReason: "Review this after connection blockers and before the field package.",
+    };
+  }
+  return {
+    priorityTier: "later" as const,
+    priorityScore: 30,
+    priorityReason: "This improves field clarity but does not block the next calculation step.",
+  };
+}
+
+function proposedActionForFinding(finding: PlanIntelligenceFinding) {
+  if (finding.category === "Connections") {
+    return "Open Connect & repair, preview the exact endpoint or saved-port repair, then approve only the match you recognize.";
+  }
+  if (finding.category === "Return paths") {
+    return "Confirm the return strategy: dedicated return, transfer grille, jump duct, documented door undercut, or an approved open circulation path. Draw only the option you choose.";
+  }
+  return findingRecommendedAction(finding);
+}
+
 export function buildMarkupRecommendations(input: {
   findings: PlanIntelligenceFinding[];
   branchOpportunities?: BranchOpportunityEvidence[];
   sizingCandidateCount?: number;
   sizingEvidenceFingerprint?: string;
+  runNumberCandidateCount?: number;
+  runNumberEvidenceFingerprint?: string;
   scaleVerified: boolean;
   designCfm: number;
 }): MarkupRecommendation[] {
@@ -98,7 +148,7 @@ export function buildMarkupRecommendations(input: {
     title: finding.title,
     detail: finding.detail,
     whyItMatters: findingWhyItMatters(finding),
-    proposedAction: findingRecommendedAction(finding),
+    proposedAction: proposedActionForFinding(finding),
     action: actionForFinding(finding),
     confidence: confidenceForFinding(finding),
     evidence: [
@@ -108,6 +158,8 @@ export function buildMarkupRecommendations(input: {
     ],
     resolved: finding.resolved,
     decisionStale: finding.decisionStale,
+    ...priorityForFinding(finding),
+    relatedDrawingIds: finding.drawingId ? [finding.drawingId] : [],
     preview: finding.drawingId
       ? { kind: "drawing", drawingId: finding.drawingId }
       : undefined,
@@ -148,6 +200,10 @@ export function buildMarkupRecommendations(input: {
         "Endpoint and angle proximity",
       ],
       resolved: false,
+      priorityTier: "later",
+      priorityScore: 35,
+      priorityReason: "Review branch fittings after the routes and required connections are complete.",
+      relatedDrawingIds: [opportunity.mainRunId, opportunity.branchRunId],
       preview: {
         kind: "branch-junction",
         point: opportunity.center,
@@ -179,13 +235,41 @@ export function buildMarkupRecommendations(input: {
         "User-controlled velocity limits",
       ],
       resolved: false,
+      priorityTier: "next",
+      priorityScore: 65,
+      priorityReason: "Review sizing after connections and terminal airflow are current.",
+      relatedDrawingIds: [],
     });
   }
 
-  const severityOrder: Record<PlanFindingSeverity, number> = { critical: 0, warning: 1, info: 2 };
+  if ((input.runNumberCandidateCount || 0) > 0) {
+    recommendations.push({
+      id: "assistant-run-details",
+      evidenceFingerprint: `run-details-${input.runNumberEvidenceFingerprint || input.runNumberCandidateCount}`,
+      severity: "warning",
+      category: "Field details",
+      title: `${input.runNumberCandidateCount} terminal run${input.runNumberCandidateCount === 1 ? "" : "s"} need field numbers`,
+      detail: "The routes are drawn, but one or more proven terminal-linked supply or return legs still have a blank or duplicate field number.",
+      whyItMatters: "Clear F/R numbers let one-person crews match the plan, run list, material package, and field installation without guessing.",
+      proposedAction: "Preview the proposed blank-field labels, keep every existing number, and approve only the labels you want added.",
+      action: "focus",
+      confidence: 0.99,
+      evidence: [
+        "Terminal-linked routes only",
+        "Existing run numbers preserved",
+        "No trunk or unknown-role segment is auto-numbered",
+      ],
+      resolved: false,
+      priorityTier: "next",
+      priorityScore: 55,
+      priorityReason: "Finish field labels after drawing and before materials or printing.",
+      relatedDrawingIds: [],
+    });
+  }
+
   return recommendations.sort((left, right) =>
     Number(left.resolved) - Number(right.resolved) ||
-    severityOrder[left.severity] - severityOrder[right.severity] ||
+    right.priorityScore - left.priorityScore ||
     left.title.localeCompare(right.title)
   );
 }
@@ -200,6 +284,7 @@ export function summarizeMarkupAssistant(
   const openRows = recommendations.filter((row) => !row.resolved);
   const critical = openRows.filter((row) => row.severity === "critical").length;
   const warnings = openRows.filter((row) => row.severity === "warning").length;
+  const doFirst = openRows.filter((row) => row.priorityTier === "do-first").length;
   const headline = critical
     ? `${critical} condition${critical === 1 ? "" : "s"} must be fixed on the drawing before release`
     : warnings
@@ -214,6 +299,7 @@ export function summarizeMarkupAssistant(
     warnings,
     sizingCandidates,
     branchOpportunities,
+    doFirst,
     headline,
   };
 }

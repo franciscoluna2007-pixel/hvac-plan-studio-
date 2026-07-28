@@ -88,7 +88,7 @@ export type ConnectionRepairItem = {
 };
 
 export type ConnectionRepairPlan = {
-  version: "connection-repair-v120.0";
+  version: "connection-repair-v123.0";
   fingerprint: string;
   items: ConnectionRepairItem[];
   counts: {
@@ -166,7 +166,7 @@ function repairFingerprint(
   scale?: ConnectionRepairScale,
 ) {
   const source = {
-    version: "connection-repair-v120.0",
+    version: "connection-repair-v123.0",
     systemId,
     scale: scale
       ? {
@@ -232,6 +232,10 @@ function verifiedFeetPerUnit(scale?: ConnectionRepairScale, page?: number) {
     return null;
   }
   return activeScale.feetPerUnit;
+}
+
+function hasVerifiedScale(scale?: ConnectionRepairScale, page?: number) {
+  return verifiedFeetPerUnit(scale, page) != null;
 }
 
 function targetLimitKind(target: ConnectionRepairTarget) {
@@ -500,6 +504,15 @@ export function buildConnectionRepairPlan(input: {
           candidate: savedMatch,
         };
       }
+      if (!hasVerifiedScale(scale, target.page)) {
+        return {
+          ...base,
+          status: "blocked",
+          reason: "Verify this sheet's scale before moving the saved run endpoint.",
+          saved,
+          candidates: [savedMatch],
+        };
+      }
       if (savedMatch.distance > repairLimit(target, scale)) {
         return {
           ...base,
@@ -522,17 +535,6 @@ export function buildConnectionRepairPlan(input: {
     }
 
     const candidates = candidateList(runs, target, reservedEndpoints, scale);
-    const chosen = candidates.find((candidate) => candidate.id === choices[target.id]);
-    if (chosen) {
-      return {
-        ...base,
-        status: "ready",
-        reason: `You chose this unused run end: ${chosen.explanation}.`,
-        saved,
-        candidates,
-        candidate: chosen,
-      };
-    }
     if (!candidates.length) {
       return {
         ...base,
@@ -544,11 +546,40 @@ export function buildConnectionRepairPlan(input: {
         candidates,
       };
     }
+    if (!hasVerifiedScale(scale, target.page)) {
+      return {
+        ...base,
+        status: "blocked",
+        reason: "Verify this sheet's scale before the assistant moves a run endpoint.",
+        saved,
+        candidates,
+      };
+    }
+    const chosen = candidates.find((candidate) => candidate.id === choices[target.id]);
+    if (chosen) {
+      return {
+        ...base,
+        status: "ready",
+        reason: `You chose this unused run end: ${chosen.explanation}.`,
+        saved,
+        candidates,
+        candidate: chosen,
+      };
+    }
     if (isAmbiguous(candidates)) {
       return {
         ...base,
         status: "choice",
         reason: "Nearby run ends score similarly. Choose the correct endpoint on the plan.",
+        saved,
+        candidates,
+      };
+    }
+    if (target.kind === "device") {
+      return {
+        ...base,
+        status: "choice",
+        reason: `Choose the correct unused run end before connecting this placed object: ${candidates[0].explanation}.`,
         saved,
         candidates,
       };
@@ -602,7 +633,7 @@ export function buildConnectionRepairPlan(input: {
   );
 
   return {
-    version: "connection-repair-v120.0",
+    version: "connection-repair-v123.0",
     fingerprint,
     items,
     counts: {
