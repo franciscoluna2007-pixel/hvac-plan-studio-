@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   ClipboardCheck,
   Crosshair,
@@ -14,6 +15,8 @@ import {
   Gauge,
   History,
   ListChecks,
+  MapPin,
+  Pencil,
   RefreshCw,
   Route,
   ScanSearch,
@@ -45,6 +48,17 @@ import {
   type FixPlanHandledReason,
 } from "./fixPlanAnswers";
 import { rankFixPlanActions } from "./fixPlanQuery";
+import type {
+  RoomMarkupReturnStrategy,
+  RoomMarkupTransition,
+} from "./roomMarkupLifecycle";
+import { roomMarkupCandidateReviewFingerprint } from "./roomMarkupLifecycle";
+import {
+  roomMarkupCandidateCreatesTerminal,
+  type RoomMarkupPlan,
+  type RoomMarkupRoomPlan,
+  type RoomMarkupTerminalOption,
+} from "./roomMarkupPlan";
 
 type RecommendationFilter = "do-first" | "can-fix" | "needs-answer" | "all";
 type AssistantView = "setup" | "recommendations" | "standards" | "repair-plan" | "history" | "evidence";
@@ -91,6 +105,10 @@ type Props = {
   advancedIntelligence: AdvancedPlanIntelligence | null;
   smartSetup: SmartPlanSetup | null;
   suggestionLayer: AssistantSuggestionLayer;
+  roomMarkupPlan: RoomMarkupPlan;
+  roomMarkupTerminalOptions: RoomMarkupTerminalOption[];
+  activeRoomMarkupRoomId: string;
+  pendingRoomMarkupCandidateId: string | null;
   suggestionLayerVisible: boolean;
   connectionRepairItems: ConnectionRepairItem[];
   connectionRepairFingerprint: string;
@@ -104,6 +122,7 @@ type Props = {
   onStartCalibration: (page: number) => void;
   designStandard: DesignStandardProfile;
   canUndo: boolean;
+  canUndoRoomMarkup: boolean;
   onClose: () => void;
   onFocusDrawing: (drawingId: string) => void;
   onOpenManualReview: (recommendation: MarkupRecommendation) => void;
@@ -130,6 +149,18 @@ type Props = {
   }) => boolean;
   onShowIssueMarkersChange: (visible: boolean) => void;
   onSuggestionLayerVisibleChange: (visible: boolean) => void;
+  onActiveRoomMarkupRoomChange: (roomId: string) => void;
+  onUpdateRoomMarkupCandidate: (candidateId: string, transition: RoomMarkupTransition) => boolean;
+  onSetRoomMarkupReturnStrategy: (candidateId: string, strategy: RoomMarkupReturnStrategy) => boolean;
+  onMoveRoomMarkupCandidate: (candidateId: string) => void;
+  onCancelRoomMarkupMove: () => void;
+  onResetRoomMarkupCandidate: (candidateId: string) => boolean;
+  onFocusRoomMarkupCandidate: (candidateId: string) => void;
+  onApplyRoomMarkup: (
+    room: RoomMarkupRoomPlan,
+    input: { reviewer: string; note: string; confirmed: boolean },
+  ) => boolean;
+  onUndoRoomMarkup: () => void;
   onChooseConnectionCandidate: (itemId: string, candidateId: string) => void;
   onApplyConnectionRepair: (input: {
     itemId: string;
@@ -192,6 +223,24 @@ function planFactLabel(status: PlanFactStatus) {
   return "Not found";
 }
 
+function roomMarkupStatusLabel(status: RoomMarkupRoomPlan["status"]) {
+  if (status === "ready-to-add") return "Ready to add";
+  if (status === "added") return "Added";
+  if (status === "reviewed-no-markup") return "Reviewed—no markup";
+  if (status === "on-hold") return "On hold";
+  if (status === "stale") return "Source changed";
+  return "Needs review";
+}
+
+function candidateStatusLabel(status: string) {
+  if (status === "confirmed") return "Reviewed";
+  if (status === "moved") return "Moved—confirm location";
+  if (status === "edited") return "Edited—confirm details";
+  if (status === "rejected") return "Rejected";
+  if (status === "stale") return "Source changed";
+  return "Needs review";
+}
+
 export default function MarkupAssistantStudio({
   open,
   initialView = "setup",
@@ -210,6 +259,10 @@ export default function MarkupAssistantStudio({
   advancedIntelligence,
   smartSetup,
   suggestionLayer,
+  roomMarkupPlan,
+  roomMarkupTerminalOptions,
+  activeRoomMarkupRoomId,
+  pendingRoomMarkupCandidateId,
   suggestionLayerVisible,
   connectionRepairItems,
   connectionRepairFingerprint,
@@ -223,6 +276,7 @@ export default function MarkupAssistantStudio({
   onStartCalibration,
   designStandard,
   canUndo,
+  canUndoRoomMarkup,
   onClose,
   onFocusDrawing,
   onOpenManualReview,
@@ -237,6 +291,15 @@ export default function MarkupAssistantStudio({
   onRecordIssueAnswer,
   onShowIssueMarkersChange,
   onSuggestionLayerVisibleChange,
+  onActiveRoomMarkupRoomChange,
+  onUpdateRoomMarkupCandidate,
+  onSetRoomMarkupReturnStrategy,
+  onMoveRoomMarkupCandidate,
+  onCancelRoomMarkupMove,
+  onResetRoomMarkupCandidate,
+  onFocusRoomMarkupCandidate,
+  onApplyRoomMarkup,
+  onUndoRoomMarkup,
   onChooseConnectionCandidate,
   onApplyConnectionRepair,
   onFocusConnectionRepair,
@@ -262,6 +325,16 @@ export default function MarkupAssistantStudio({
   const [answerReviewer, setAnswerReviewer] = useState("");
   const [answerNote, setAnswerNote] = useState("");
   const [handledReason, setHandledReason] = useState<FixPlanHandledReason>("field-verification");
+  const [roomReviewOpen, setRoomReviewOpen] = useState(false);
+  const [roomReviewer, setRoomReviewer] = useState("");
+  const [roomReviewNote, setRoomReviewNote] = useState("");
+  const [roomApprovalKey, setRoomApprovalKey] = useState("");
+  const [editingRoomCandidateId, setEditingRoomCandidateId] = useState("");
+  const [editingRoomName, setEditingRoomName] = useState("");
+  const [editingRoomOptionId, setEditingRoomOptionId] = useState("");
+  const [editingRoomNote, setEditingRoomNote] = useState("");
+  const [rejectingRoomCandidateId, setRejectingRoomCandidateId] = useState("");
+  const [roomRejectionReason, setRoomRejectionReason] = useState("");
   const [applyResult, setApplyResult] = useState<{
     title: string;
     expectedResult: string;
@@ -272,6 +345,49 @@ export default function MarkupAssistantStudio({
     fingerprint: string;
     actionIds: string[];
   }>({ fingerprint: "", actionIds: [] });
+  const activeRoomMarkupIndex = Math.max(0, roomMarkupPlan.rooms.findIndex((room) =>
+    room.id === activeRoomMarkupRoomId
+  ));
+  const activeRoomMarkup = roomMarkupPlan.rooms[activeRoomMarkupIndex] || roomMarkupPlan.rooms[0];
+  const roomApprovalFingerprint = activeRoomMarkup
+    ? JSON.stringify({
+      id: activeRoomMarkup.id,
+      roomId: activeRoomMarkup.roomId,
+      roomName: activeRoomMarkup.roomName,
+      page: activeRoomMarkup.page,
+      systemId: activeRoomMarkup.systemId,
+      sourceFingerprint: roomMarkupPlan.sourceFingerprint,
+      appliedCandidateIds: activeRoomMarkup.appliedCandidateIds,
+      createdDrawingIdsByCandidate: activeRoomMarkup.createdDrawingIdsByCandidate,
+      reviewer: roomReviewer.trim(),
+      reviewNote: roomReviewNote.trim(),
+      items: activeRoomMarkup.items.map(({ candidate }) =>
+        roomMarkupCandidateReviewFingerprint(candidate)
+      ),
+    })
+    : "";
+  const roomApprovalChecked = Boolean(
+    roomApprovalKey &&
+    roomApprovalKey === roomApprovalFingerprint
+  );
+
+  function chooseRoomMarkup(room: RoomMarkupRoomPlan) {
+    if (pendingRoomMarkupCandidateId) onCancelRoomMarkupMove();
+    onActiveRoomMarkupRoomChange(room.id);
+    setRoomApprovalKey("");
+    setRoomReviewNote("");
+    setEditingRoomCandidateId("");
+    setEditingRoomName("");
+    setRejectingRoomCandidateId("");
+  }
+
+  function openRoomMarkupReview() {
+    const firstRoom = activeRoomMarkup || roomMarkupPlan.rooms.find((room) =>
+      ["needs-review", "on-hold", "stale", "ready-to-add"].includes(room.status)
+    ) || roomMarkupPlan.rooms[0];
+    if (firstRoom) chooseRoomMarkup(firstRoom);
+    setRoomReviewOpen(true);
+  }
   const skippedActionIds = useMemo(
     () => skippedFixState.fingerprint === fixPlanFingerprint
       ? skippedFixState.actionIds
@@ -1180,38 +1296,441 @@ export default function MarkupAssistantStudio({
               </label>
             </form>
 
-            <section className={`assistant-suggestion-layer-control ${suggestionLayer.status}`} aria-live="polite">
+            <section className={`assistant-suggestion-layer-control room-markup-entry ${roomMarkupPlan.status}`} aria-live="polite">
               <div className="assistant-suggestion-layer-icon">
                 {suggestionLayerVisible ? <Eye size={22} /> : <EyeOff size={22} />}
               </div>
               <div>
-                <small>TRANSPARENT PLAN LAYER · PAGE {suggestionLayer.page}</small>
-                <h3>{suggestionLayer.headline}</h3>
-                <p>{suggestionLayer.detail}</p>
-                {suggestionLayer.status === "review" && <span>
-                  <b>{suggestionLayer.suggestions.filter((item) => item.kind === "supply").length}</b> supply review zones ·{" "}
-                  <b>{suggestionLayer.suggestions.filter((item) => item.kind === "return").length}</b> return-path review zones ·{" "}
+                <small>ROOM MARKUP · PAGE {roomMarkupPlan.page}</small>
+                <h3>{roomMarkupPlan.status === "review"
+                  ? "Review one room at a time"
+                  : roomMarkupPlan.rooms.length
+                    ? "Room review history"
+                    : roomMarkupPlan.headline}</h3>
+                <p>{roomMarkupPlan.status === "review"
+                  ? "Ghost symbols do not change the plan. Confirm, move, edit, reject, or add each room with one Undo."
+                  : roomMarkupPlan.rooms.length
+                    ? "Open the reviewed rooms to inspect what was added, reopen a review-only decision, or use the available room Undo."
+                    : roomMarkupPlan.detail}</p>
+                {roomMarkupPlan.rooms.length > 0 && <span>
+                  <b>{roomMarkupPlan.counts.rooms}</b> room{roomMarkupPlan.counts.rooms === 1 ? "" : "s"} ·{" "}
+                  <b>{roomMarkupPlan.counts.candidates}</b> ghost question{roomMarkupPlan.counts.candidates === 1 ? "" : "s"} ·{" "}
                   {confidenceLabel(suggestionLayer.confidence)} evidence confidence
                 </span>}
-                {suggestionLayer.status === "blocked" && <ul>
-                  {suggestionLayer.missingInformation.slice(0, 4).map((item) => <li key={item}>{item}</li>)}
+                {roomMarkupPlan.status === "blocked" && <ul>
+                  {roomMarkupPlan.missingInformation.slice(0, 4).map((item) => <li key={item}>{item}</li>)}
                 </ul>}
               </div>
-              {suggestionLayer.status === "review"
-                ? <button
-                  type="button"
-                  className={suggestionLayerVisible ? "active" : ""}
-                  aria-pressed={suggestionLayerVisible}
-                  aria-label={`${suggestionLayerVisible ? "Hide" : "Show"} supply and return review zones on PDF page ${suggestionLayer.page}`}
-                  onClick={() => onSuggestionLayerVisibleChange(!suggestionLayerVisible)}
-                >
-                  {suggestionLayerVisible ? <EyeOff size={17} /> : <Eye size={17} />}
-                  {suggestionLayerVisible ? "Hide layer" : "Show on plan"}
-                </button>
-                : suggestionLayer.status === "blocked"
+              {roomMarkupPlan.status === "review" || roomMarkupPlan.rooms.length > 0
+                ? <div className="room-markup-entry-actions">
+                  {roomMarkupPlan.overlayCandidates.length > 0 && <button
+                    type="button"
+                    className={suggestionLayerVisible ? "active" : ""}
+                    aria-pressed={suggestionLayerVisible}
+                    aria-label={`${suggestionLayerVisible ? "Hide" : "Show"} room markup ghosts on PDF page ${roomMarkupPlan.page}`}
+                    onClick={() => onSuggestionLayerVisibleChange(!suggestionLayerVisible)}
+                  >
+                    {suggestionLayerVisible ? <EyeOff size={17} /> : <Eye size={17} />}
+                    {suggestionLayerVisible ? "Hide ghosts" : "Show ghosts"}
+                  </button>}
+                  <button type="button" className="primary" onClick={openRoomMarkupReview}>
+                    <ListChecks size={17} /> {roomMarkupPlan.status === "review" ? "Review rooms" : "Open room history"}
+                  </button>
+                </div>
+                : roomMarkupPlan.status === "blocked"
                   ? <button type="button" onClick={() => setView("setup")}><ScanSearch size={17} /> Finish plan setup</button>
                   : null}
             </section>
+
+            {roomReviewOpen && activeRoomMarkup && <section className="room-markup-workspace" aria-label="Room-by-room markup">
+              <header className="room-markup-progress">
+                <button
+                  type="button"
+                  aria-label="Previous room"
+                  disabled={activeRoomMarkupIndex <= 0}
+                  onClick={() => chooseRoomMarkup(roomMarkupPlan.rooms[activeRoomMarkupIndex - 1])}
+                ><ChevronLeft size={18} /></button>
+                <div>
+                  <small>ROOM {activeRoomMarkupIndex + 1} OF {roomMarkupPlan.rooms.length} · PAGE {activeRoomMarkup.page} · {systemName.toUpperCase()}</small>
+                  <strong>{activeRoomMarkup.roomName}</strong>
+                  <span className={activeRoomMarkup.status}>{roomMarkupStatusLabel(activeRoomMarkup.status)}</span>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Next room"
+                  disabled={activeRoomMarkupIndex >= roomMarkupPlan.rooms.length - 1}
+                  onClick={() => chooseRoomMarkup(roomMarkupPlan.rooms[activeRoomMarkupIndex + 1])}
+                ><ChevronRight size={18} /></button>
+                <button type="button" className="room-markup-close" onClick={() => setRoomReviewOpen(false)}><X size={17} /> Close</button>
+              </header>
+
+              <article className={`room-markup-room-card ${activeRoomMarkup.status}`}>
+                <header>
+                  <div>
+                    <small>SOURCE FACTS</small>
+                    <h3>{activeRoomMarkup.roomName}</h3>
+                    <p>
+                      Page {activeRoomMarkup.page} · {systemName}
+                      {activeRoomMarkup.ceilingHeight
+                        ? ` · ${activeRoomMarkup.ceilingHeight.label} ceiling`
+                        : " · ceiling height needs confirmation"}
+                    </p>
+                  </div>
+                  {activeRoomMarkup.sourceRegion && <button
+                    type="button"
+                    onClick={() => onShowPlanSetupSource(activeRoomMarkup.page, activeRoomMarkup.sourceRegion)}
+                  ><Crosshair size={16} /> Source</button>}
+                </header>
+                <p className="room-markup-boundary">Ghost marks are suggestions. Nothing is added until you approve this room.</p>
+
+                {["added", "reviewed-no-markup"].includes(activeRoomMarkup.status) ? <section className="room-markup-result" aria-live="polite">
+                  <CheckCircle2 size={25} />
+                  <div>
+                    <small>{activeRoomMarkup.status === "added" ? "ROOM MARKUP ADDED" : "ROOM REVIEW SAVED"}</small>
+                    <h3>{activeRoomMarkup.status === "added"
+                      ? `${activeRoomMarkup.createdDrawingIds.length} reviewed icon${activeRoomMarkup.createdDrawingIds.length === 1 ? "" : "s"} added`
+                      : "No terminal markup was added"}</h3>
+                    <p>No duct, CFM, run size, run number, fitting, or connection changed.</p>
+                  </div>
+                  <button type="button" disabled={!canUndoRoomMarkup} onClick={onUndoRoomMarkup}>
+                    <Undo2 size={16} /> Undo room
+                  </button>
+                  <button
+                    type="button"
+                    disabled={activeRoomMarkupIndex >= roomMarkupPlan.rooms.length - 1}
+                    onClick={() => chooseRoomMarkup(roomMarkupPlan.rooms[activeRoomMarkupIndex + 1])}
+                  >Next room <ArrowRight size={16} /></button>
+                </section> : <>
+                  <div className="room-markup-candidates">
+                    {activeRoomMarkup.items.map((item) => {
+                      const candidate = item.candidate;
+                      const alreadyApplied = activeRoomMarkup.appliedCandidateIds.includes(candidate.id);
+                      const options = roomMarkupTerminalOptions.filter((option) => option.kind === candidate.kind);
+                      const selectedOption = options.find((option) =>
+                        option.optionId === (editingRoomCandidateId === candidate.id
+                          ? editingRoomOptionId
+                          : candidate.terminalSelection?.optionId)
+                      ) || options[0];
+                      const returnStrategy = candidate.answers["return-strategy"];
+                      const ghostVisible = roomMarkupPlan.overlayCandidates.some(
+                        (overlayCandidate) => overlayCandidate.id === candidate.id,
+                      );
+                      return <article className={`room-markup-candidate ${candidate.kind} ${candidate.status}`} key={candidate.id}>
+                        <header>
+                          <span>{candidate.kind === "supply" ? "S" : "R"}</span>
+                          <div>
+                            <small>{candidate.kind === "supply" ? "SUPPLY LOCATION" : "RETURN-AIR PATH"}</small>
+                            <strong>{candidate.kind === "supply" ? candidate.terminalSelection?.label || "Supply terminal" : returnStrategy || "Choose a return strategy"}</strong>
+                          </div>
+                          <i>{candidateStatusLabel(candidate.status)}</i>
+                        </header>
+                        <p>{candidate.kind === "supply"
+                          ? "Suggested near the readable room label. Confirm exterior walls and glass, ceiling pattern, throw, load, and diffuser type."
+                          : "How will air return when this room's door is closed? Another return path is a job note, not verified return capacity."}</p>
+                        {item.questions.length > 0 && <ul className="room-markup-questions">
+                          {item.questions.filter((question) => !question.resolved).map((question) =>
+                            <li key={question.id}><AlertTriangle size={14} /> {question.prompt}</li>
+                          )}
+                        </ul>}
+
+                        {!alreadyApplied && editingRoomCandidateId === candidate.id && <div className="room-markup-edit">
+                          <label>
+                            Room name shown on the PDF
+                            <input
+                              value={editingRoomName}
+                              onChange={(event) => setEditingRoomName(event.target.value)}
+                              placeholder="Bedroom 2"
+                            />
+                          </label>
+                          <label>
+                            Terminal shown if this room is added
+                            <select
+                              value={selectedOption?.optionId || ""}
+                              onChange={(event) => setEditingRoomOptionId(event.target.value)}
+                            >
+                              {options.map((option) => <option key={option.optionId} value={option.optionId}>
+                                {option.label} · {option.size}
+                              </option>)}
+                            </select>
+                          </label>
+                          <label>
+                            Room note
+                            <textarea
+                              value={editingRoomNote}
+                              onChange={(event) => setEditingRoomNote(event.target.value)}
+                              placeholder="Example: keep clear of fan or light."
+                            />
+                          </label>
+                          <div>
+                            <button
+                              type="button"
+                              disabled={!selectedOption || !editingRoomName.trim()}
+                              onClick={() => {
+                                if (!selectedOption) return;
+                                const saved = onUpdateRoomMarkupCandidate(candidate.id, {
+                                  type: "edit",
+                                  roomName: editingRoomName,
+                                  terminalSelection: selectedOption,
+                                  note: editingRoomNote,
+                                });
+                                if (saved) setEditingRoomCandidateId("");
+                              }}
+                            ><CheckCircle2 size={15} /> Save details</button>
+                            <button type="button" onClick={() => setEditingRoomCandidateId("")}>Cancel</button>
+                          </div>
+                        </div>}
+
+                        {!alreadyApplied && rejectingRoomCandidateId === candidate.id && <div className="room-markup-reject">
+                          <label>
+                            Why is this suggestion not being used?
+                            <input
+                              value={roomRejectionReason}
+                              onChange={(event) => setRoomRejectionReason(event.target.value)}
+                              placeholder="Existing approved terminal, room served another way…"
+                            />
+                          </label>
+                          <div>
+                            <button
+                              type="button"
+                              disabled={!roomRejectionReason.trim()}
+                              onClick={() => {
+                                const rejected = onUpdateRoomMarkupCandidate(candidate.id, {
+                                  type: "reject",
+                                  reason: roomRejectionReason,
+                                });
+                                if (rejected) {
+                                  setRejectingRoomCandidateId("");
+                                  setRoomRejectionReason("");
+                                }
+                              }}
+                            >Reject suggestion</button>
+                            <button type="button" onClick={() => setRejectingRoomCandidateId("")}>Cancel</button>
+                          </div>
+                        </div>}
+
+                        <div className="room-markup-candidate-actions">
+                          <button
+                            type="button"
+                            disabled={!ghostVisible}
+                            onClick={() => onFocusRoomMarkupCandidate(candidate.id)}
+                          ><MapPin size={15} /> Show</button>
+                          {candidate.id === pendingRoomMarkupCandidateId
+                            ? <button type="button" onClick={onCancelRoomMarkupMove}><X size={15} /> Cancel move</button>
+                            : <button type="button" disabled={!ghostVisible} onClick={() => onMoveRoomMarkupCandidate(candidate.id)}><MapPin size={15} /> Move</button>}
+                          <button
+                            type="button"
+                            disabled={alreadyApplied || ["rejected", "stale"].includes(candidate.status)}
+                            onClick={() => {
+                              setEditingRoomCandidateId(candidate.id);
+                              setEditingRoomName(candidate.room.value || "");
+                              setEditingRoomOptionId(candidate.terminalSelection?.optionId || options[0]?.optionId || "");
+                              setEditingRoomNote(candidate.note || "");
+                            }}
+                          ><Pencil size={15} /> Edit details</button>
+                        </div>
+
+                        {ghostVisible && !["rejected", "stale"].includes(candidate.status) && <details className="room-markup-keyboard-move">
+                          <summary>Move with keyboard</summary>
+                          <div role="group" aria-label={`Nudge ${candidate.kind} ghost location`}>
+                            {([
+                              ["Left", -.01, 0],
+                              ["Up", 0, -.01],
+                              ["Down", 0, .01],
+                              ["Right", .01, 0],
+                            ] as const).map(([label, deltaX, deltaY]) => <button
+                              type="button"
+                              key={label}
+                              aria-label={`Move ${candidate.kind} ghost ${label.toLowerCase()} one percent`}
+                              onClick={() => onUpdateRoomMarkupCandidate(candidate.id, {
+                                type: "move",
+                                reviewPoint: {
+                                  x: Math.max(0, Math.min(1, candidate.reviewPoint.x + deltaX)),
+                                  y: Math.max(0, Math.min(1, candidate.reviewPoint.y + deltaY)),
+                                },
+                              })}
+                            >{label}</button>)}
+                          </div>
+                          <small>Each press moves the ghost 1% of the PDF page. Confirm the location again afterward.</small>
+                        </details>}
+
+                        {!alreadyApplied && !candidate.systemId && candidate.status !== "stale" && <button
+                          type="button"
+                          className="room-markup-system"
+                          onClick={() => onUpdateRoomMarkupCandidate(candidate.id, {
+                            type: "edit",
+                            systemId: roomMarkupPlan.systemId,
+                            systemLabel: systemName,
+                          })}
+                        >This room belongs to {systemName}</button>}
+
+                        {alreadyApplied ? <div className="room-markup-kept">
+                          <CheckCircle2 size={17} />
+                          <span>
+                            <strong>Existing reviewed icon stays unchanged</strong>
+                            <small>{candidate.terminalSelection?.label} · {candidate.terminalSelection?.size} · move, type, and rejection controls are locked</small>
+                          </span>
+                          {candidate.status === "stale"
+                            ? <button
+                              type="button"
+                              onClick={() => onResetRoomMarkupCandidate(candidate.id)}
+                            ><RefreshCw size={15} /> Review current evidence</button>
+                            : candidate.status !== "confirmed" && <button
+                              type="button"
+                              className="primary"
+                              disabled={item.openQuestionCount > 0}
+                              onClick={() => onUpdateRoomMarkupCandidate(candidate.id, { type: "confirm" })}
+                            >Confirm existing icon</button>}
+                          </div>
+                          : candidate.status === "stale" ? <button
+                          type="button"
+                          className="room-markup-refresh"
+                          onClick={() => onResetRoomMarkupCandidate(candidate.id)}
+                        ><RefreshCw size={15} /> Refresh from current PDF</button>
+                          : candidate.status === "rejected" ? <div className="room-markup-rejected">
+                            <span>{candidate.rejectionReason}</span>
+                            <button type="button" onClick={() => onResetRoomMarkupCandidate(candidate.id)}>Review again</button>
+                          </div>
+                            : candidate.kind === "supply" ? <div className="room-markup-decision-actions">
+                              <button
+                                type="button"
+                                className="primary"
+                                disabled={item.openQuestionCount > 0 || candidate.status === "confirmed"}
+                                onClick={() => onUpdateRoomMarkupCandidate(candidate.id, { type: "confirm" })}
+                              ><CheckCircle2 size={16} /> {candidate.status === "confirmed" ? "Location reviewed" : "Use this location"}</button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRejectingRoomCandidateId(candidate.id);
+                                  setRoomRejectionReason("");
+                                }}
+                              >Reject suggestion</button>
+                            </div>
+                              : <div className="room-markup-return-actions" role="group" aria-label={`Return-air strategy for ${candidate.room.value || "this room"}`}>
+                                <button
+                                  type="button"
+                                  className={returnStrategy === "Dedicated return" ? "active" : ""}
+                                  aria-pressed={returnStrategy === "Dedicated return"}
+                                  onClick={() => onSetRoomMarkupReturnStrategy(candidate.id, "Dedicated return")}
+                                >Add dedicated return</button>
+                                <span>Uses another return path:</span>
+                                {(["Transfer grille", "Jump duct", "Approved door undercut"] as RoomMarkupReturnStrategy[]).map((strategy) =>
+                                  <button
+                                    type="button"
+                                    className={returnStrategy === strategy ? "active" : ""}
+                                    aria-pressed={returnStrategy === strategy}
+                                    key={strategy}
+                                    onClick={() => onSetRoomMarkupReturnStrategy(candidate.id, strategy)}
+                                  >{strategy}</button>
+                                )}
+                                <button
+                                  type="button"
+                                  className={returnStrategy === "Needs field review" ? "hold" : ""}
+                                  aria-pressed={returnStrategy === "Needs field review"}
+                                  onClick={() => onSetRoomMarkupReturnStrategy(candidate.id, "Needs field review")}
+                                >Not sure—hold room</button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRejectingRoomCandidateId(candidate.id);
+                                    setRoomRejectionReason("");
+                                  }}
+                                >Reject suggestion</button>
+                              </div>}
+                      </article>;
+                    })}
+                  </div>
+
+                  {activeRoomMarkup.status === "ready-to-add" && <section className="room-markup-final">
+                    <header>
+                      <CheckCircle2 size={22} />
+                      <div>
+                        <small>READY TO ADD</small>
+                        <h3>
+                          {activeRoomMarkup.supplyToAdd} supply terminal{activeRoomMarkup.supplyToAdd === 1 ? "" : "s"} ·{" "}
+                          {activeRoomMarkup.returnToAdd
+                            ? `${activeRoomMarkup.returnToAdd} dedicated return grille${activeRoomMarkup.returnToAdd === 1 ? "" : "s"}`
+                            : "no dedicated return grille"}
+                        </h3>
+                      </div>
+                    </header>
+                    <ul className="room-markup-final-items" aria-label="Exact room markup">
+                      {activeRoomMarkup.items.map(({ candidate }) => {
+                        const createsTerminal = roomMarkupCandidateCreatesTerminal(candidate);
+                        const alreadyApplied = activeRoomMarkup.appliedCandidateIds.includes(candidate.id);
+                        const strategy = candidate.answers["return-strategy"];
+                        return <li key={candidate.id}>
+                          <b>
+                            {createsTerminal
+                              ? alreadyApplied ? "KEEP EXISTING" : "ADD"
+                              : "NO SYMBOL"}
+                          </b>
+                          <span>
+                            <strong>{createsTerminal
+                              ? `${candidate.terminalSelection?.label} · ${candidate.terminalSelection?.size}`
+                              : candidate.status === "rejected"
+                                ? `${candidate.kind} suggestion rejected`
+                                : strategy || `${candidate.kind} reviewed without markup`}</strong>
+                            <small>{createsTerminal
+                              ? `${candidate.terminalSelection?.elevation || "Elevation not listed"} · ${Math.round(candidate.reviewPoint.x * 100)}% across, ${Math.round(candidate.reviewPoint.y * 100)}% down`
+                              : candidate.rejectionReason || "Decision is recorded without creating plan geometry"}</small>
+                          </span>
+                        </li>;
+                      })}
+                    </ul>
+                    <p>No duct, CFM, run size, run number, fitting, connection, equipment, wall, or room geometry will be added.</p>
+                    <label>
+                      Reviewer / initials
+                      <input value={roomReviewer} onChange={(event) => setRoomReviewer(event.target.value)} placeholder="FL" />
+                    </label>
+                    <label>
+                      Job note <span>optional</span>
+                      <textarea value={roomReviewNote} onChange={(event) => setRoomReviewNote(event.target.value)} placeholder="What did you verify in this room?" />
+                    </label>
+                    <label className="room-markup-approval">
+                      <input
+                        type="checkbox"
+                        checked={roomApprovalChecked}
+                        onChange={(event) => setRoomApprovalKey(
+                          event.target.checked ? roomApprovalFingerprint : ""
+                        )}
+                      />
+                      <span>I confirmed this room, its HVAC system, and the locations shown.</span>
+                    </label>
+                    <div>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={!roomReviewer.trim() || !roomApprovalChecked}
+                        onClick={() => {
+                          const applied = onApplyRoomMarkup(activeRoomMarkup, {
+                            reviewer: roomReviewer,
+                            note: roomReviewNote,
+                            confirmed: roomApprovalChecked,
+                          });
+                          if (applied) setRoomApprovalKey("");
+                        }}
+                      >Add reviewed items · one Undo</button>
+                      <button type="button" onClick={() => onSuggestionLayerVisibleChange(true)}>Keep as ghosts</button>
+                    </div>
+                  </section>}
+                </>}
+              </article>
+
+              <details className="room-markup-all-rooms">
+                <summary>All rooms <span>{roomMarkupPlan.counts.rooms}</span></summary>
+                <div>
+                  {roomMarkupPlan.rooms.map((room) => <button
+                    type="button"
+                    className={room.id === activeRoomMarkup.id ? "active" : ""}
+                    key={room.id}
+                    onClick={() => chooseRoomMarkup(room)}
+                  >
+                    <strong>{room.roomName}</strong>
+                    <span>{roomMarkupStatusLabel(room.status)}</span>
+                  </button>)}
+                </div>
+              </details>
+            </section>}
 
             {stale && <div className="repair-plan-stale" role="alert">
               <AlertTriangle size={20} />

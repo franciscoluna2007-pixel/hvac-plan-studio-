@@ -4,9 +4,20 @@ HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review,
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v130
+## Current release — v131
 
-v130 keeps the supported problem-solving loop inside one compact Fix Plan card. A user can search current evidence-backed issues, record the job condition behind an existing review issue, inspect the exact proposed change, give named final approval, see the result, and undo it without hunting through separate panels. Specialized scale, room, airflow, and sizing work still uses its existing source-linked review tool.
+v131 turns sufficiently verified PDF evidence into a room-by-room checklist with staged supply and return ghost symbols. The reviewer handles one room at a time, answers any missing room, system, sheet-scale, or return-strategy question, adjusts each ghost, and gives explicit approval before terminal symbols are added with one Undo.
+
+### v131 — Room-by-Room Markup
+
+- Shows source- and evidence-bound supply and return ghosts on the selected PDF sheet without changing the plan.
+- Reviews one room at a time. Each candidate can be confirmed, moved, edited, rejected, or refreshed when its evidence becomes stale.
+- Requires a stable HVAC system and verified scale for the candidate's actual sheet before anything can be added.
+- Keeps the return-air decision explicit: dedicated return, transfer grille, jump duct, approved door undercut, or hold for field review.
+- Requires reviewer initials and a room-confirmation checkbox before applying the reviewed room.
+- Creates only reviewed supply terminal symbols and dedicated-return terminal symbols at their final ghost locations.
+- Records the room decision and creates one Undo entry. There is no Accept All or bulk room approval.
+- Never adds or changes ductwork, CFM, run sizes, run numbers, fittings, connections, equipment, walls, or room geometry.
 
 ### v130 — Answer & Fix in Place
 

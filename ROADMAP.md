@@ -84,8 +84,8 @@ Advanced coordination remains available without crowding the first screen.
 | v128 | Fix Plan & Contextual Markup | Shipped |
 | v129 | One Job Screen | Shipped |
 | v130 | Answer & Fix in Place | Shipped |
-| v131 | Room-by-Room Markup | Next |
-| v132 | Finish the Job | Planned |
+| v131 | Room-by-Room Markup | Shipped |
+| v132 | Finish the Job | Next |
 | v117 | Multi-company commercial operations | Planned for later |
 
 ## v129 — One Job Screen
@@ -129,11 +129,29 @@ A superintendent or one-person HVAC contractor can handle the current supported 
 
 Answers are project- and source-bound, not company rules. A detected value still needs confirmation, and a user-entered value stays labeled as such. **Handled elsewhere** records document workflow context only: they do not resolve engineering findings, satisfy airflow or pressure requirements, change geometry, or clear purchasing, field-package, or release gates. Any source or evidence fingerprint change makes the record stale.
 
-## Next solo-operator releases
+## v131 — Room-by-Room Markup
 
-### v131 — Room-by-Room Markup
+### Outcome
 
-Turn sufficient PDF evidence into a room checklist and toggleable ghost supply/return candidates. The user confirms, moves, edits, or rejects each candidate; uncertain rooms, systems, scale, and return strategy remain explicit questions rather than automatic placement.
+A superintendent or one-person HVAC contractor can review staged supply and return ghosts one room at a time, correct each proposed location, answer the return-air question, and add only the approved terminal symbols without giving the assistant control of the duct system.
+
+### Shipped capabilities
+
+- Builds a deterministic room checklist from current, source-linked PDF evidence and stages toggleable supply and return ghosts over the selected sheet.
+- Keeps review scoped to one room. Each ghost can be confirmed, moved, edited, rejected, or refreshed after an evidence change.
+- Keeps uncertain room identity, HVAC system, sheet scale, and return strategy as explicit questions.
+- Requires a stable system assignment and verified scale for the exact PDF sheet before apply.
+- Provides explicit return strategies: dedicated return, transfer grille, jump duct, approved door undercut, or hold for field review.
+- Uses each candidate's final review point for both the overlay ghost and any approved terminal symbol.
+- Requires reviewer initials plus a room-confirmation checkbox. There is no Accept All or bulk room approval.
+- Adds only reviewed supply terminal symbols and dedicated-return terminal symbols, records the decision, and creates one Undo entry.
+- Persists room candidates and room application records in the current version 7 project snapshot.
+
+### Safety boundary
+
+Ghosts are staged review marks, not installed design. V131 never adds or changes ductwork, CFM, run sizes, run numbers, fittings, connections, equipment, walls, or room geometry. A non-dedicated return strategy records the reviewed return-air decision but creates no return symbol or return path. Only the terminal symbols approved for the one current room may be created, and one Undo restores that room change.
+
+## Next solo-operator release
 
 ### v132 — Finish the Job
 
