@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://hvac-plan-studio.franciscoluna2007.chatgpt.site"),
   title: {
-    default: "HVAC Plan Studio · Open PDF & Draw",
+    default: "HVAC Plan Studio · Direct Symbol Editing",
     template: "%s · HVAC Plan Studio",
   },
-  description: "Open a PDF and start drawing immediately, or use guided setup when you want help with plan details.",
+  description: "Move and resize HVAC labels and icons directly on the plan, with nearby actions that stay out of the way.",
   applicationName: "HVAC Plan Studio",
   keywords: ["HVAC plan setup", "HVAC plan reader", "duct plan", "HVAC takeoff", "plan markup"],
   icons: {
@@ -26,21 +26,14 @@ export const metadata: Metadata = {
     shortcut: "/favicon.svg",
   },
   openGraph: {
-    title: "HVAC Plan Studio · Open PDF & Draw",
-    description: "Open a PDF and start drawing immediately, or use guided setup when you want help with plan details.",
+    title: "HVAC Plan Studio · Direct Symbol Editing",
+    description: "Move and resize HVAC labels and icons directly on the plan, with nearby actions that stay out of the way.",
     type: "website",
-    images: [{
-      url: "/og-v125.png",
-      width: 1536,
-      height: 1024,
-      alt: "HVAC Plan Studio showing direct PDF opening and optional guided setup over an HVAC floor plan.",
-    }],
   },
   twitter: {
-    card: "summary_large_image",
-    title: "HVAC Plan Studio · Open PDF & Draw",
-    description: "Open a PDF and start drawing immediately, or use guided setup when you want help with plan details.",
-    images: ["/og-v125.png"],
+    card: "summary",
+    title: "HVAC Plan Studio · Direct Symbol Editing",
+    description: "Move and resize HVAC labels and icons directly on the plan, with nearby actions that stay out of the way.",
   },
 };
 

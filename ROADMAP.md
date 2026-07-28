@@ -1,6 +1,6 @@
 # HVAC Plan Studio — Product Overview and Roadmap
 
-Last revised: July 27, 2026
+Last revised: July 28, 2026
 
 ## Product overview
 
@@ -54,6 +54,7 @@ Advanced coordination remains available without crowding the first screen.
 - A guided batch changes only the reviewed object set and creates one Undo entry.
 - Planning calculations never become a Manual J, S, D, or T result by changing a label.
 - Warning, evidence, and consequence text is workstation-readable: 15 px working copy, 13 px metadata, 12 px labels, 44 px controls.
+- Generated mock product imagery is not used. Social preview images must be an approved capture of the real built or production interface; otherwise image metadata stays absent.
 
 ## Release status
 
@@ -73,7 +74,29 @@ Advanced coordination remains available without crowding the first screen.
 | v123 | Markup Assistant Fixes 2.0 | Shipped |
 | v124 | Open PDF & Draw | Shipped |
 | v125 | Setup When You Need It | Shipped |
+| v126 | Direct Symbol Editing | Shipped |
 | v117 | Multi-company commercial operations | Planned for later |
+
+## v126 — Direct Symbol Editing
+
+### Outcome
+
+A superintendent can select a placed supply, return, or equipment icon and finish its presentation without leaving the plan or fighting a distant toolbar.
+
+### Shipped capabilities
+
+- Upright labels that drag independently to any nearby clear location.
+- A round on-label handle for direct label sizing.
+- Larger, zoom-aware icon corner controls for mouse, pen, and intentional touch editing.
+- Signed corner resizing that stops at the minimum instead of rebounding after the pointer crosses the icon center.
+- Smaller explicit defaults for newly placed icons and labels, with legacy missing-scale values still rendered at 100 percent.
+- A viewport-aware action wheel beside a single selected icon, with rotate, mirror, duplicate, delete, and close actions.
+- Separate 0.10 mm Fine defaults for newly drawn supply and return runs; historical run weights remain unchanged.
+- Removal of generated promotional raster assets and large-image metadata.
+
+### Safety boundary
+
+Icon and label presentation edits do not change scheduled face size, neck size, airflow, duct geometry, connected run identity, or equipment system assignment. Every completed drag creates one Undo entry.
 
 ## v125 — Setup When You Need It
 

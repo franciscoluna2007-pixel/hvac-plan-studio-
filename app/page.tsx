@@ -9,6 +9,7 @@ import FieldPackageComposer from "./FieldPackageComposer";
 import GuidedProjectSetup, { type ProjectSetupValues } from "./GuidedProjectSetup";
 import ProjectCommandPalette, { type ProjectCommand } from "./ProjectCommandPalette";
 import ProjectHome from "./ProjectHome";
+import SymbolActionWheel from "./PlanSymbolActionWheel";
 import { trackProductEvent } from "./productAnalytics";
 import SystemBalanceStudio from "./SystemBalanceStudio";
 import MarkupAssistantStudio, { type PlanHelperPrimaryView } from "./MarkupAssistantStudio";
@@ -65,6 +66,16 @@ import {
   type PdfStartMode,
 } from "./pdfStartPreference";
 import { projectStorageKey, resolveProjectRestore } from "./projectStorage";
+import { positionSymbolActionWheel } from "./symbolActionWheel";
+import {
+  clampSymbolLabelOffset,
+  defaultSymbolLabelScale,
+  defaultSymbolScale,
+  estimateSymbolLabelBox,
+  normalizedSymbolLabelScale,
+  normalizedSymbolScale,
+  signedCornerScale,
+} from "./symbolEditing";
 import {
   buildFindingIdentity,
   type PlanFindingCategory,
@@ -787,6 +798,8 @@ type SymbolMeta = {
   rotation: number;
   scaleX?: number;
   scaleY?: number;
+  labelOffset?: Point;
+  labelScale?: number;
   variant?: string;
   neckSize?: string;
   connectedRunId?: string;
@@ -906,9 +919,11 @@ type DragState =
   | ({ kind: "point"; drawingId: string; pointIndex: number; before: Drawing[] } & EditPointer)
   | ({ kind: "line"; drawingId: string; start: Point; original: Point[]; before: Drawing[] } & EditPointer)
   | ({ kind: "label"; drawingId: string; start: Point; originalOffset: Point; before: Drawing[] } & EditPointer)
+  | ({ kind: "symbol-label"; drawingId: string; start: Point; originalOffset: Point; before: Drawing[] } & EditPointer)
+  | ({ kind: "symbol-label-resize"; drawingId: string; anchor: Point; startDistance: number; originalScale: number; before: Drawing[] } & EditPointer)
   | ({ kind: "fitting"; drawingId: string; start: Point; originalCenter: Point; originalPorts: Point[]; connectedIds: string[]; before: Drawing[] } & EditPointer)
   | ({ kind: "symbol"; drawingId: string; before: Drawing[] } & EditPointer)
-  | ({ kind: "symbol-resize"; drawingId: string; center: Point; rotation: number; halfWidth: number; halfHeight: number; before: Drawing[] } & EditPointer)
+  | ({ kind: "symbol-resize"; drawingId: string; center: Point; rotation: number; halfWidth: number; halfHeight: number; cornerX: -1 | 1; cornerY: -1 | 1; before: Drawing[] } & EditPointer)
   | ({ kind: "group"; start: Point; ids: string[]; originals: Record<string, Point[]>; before: Drawing[] } & EditPointer);
 type EditPointer = {
   pointerId: number;
@@ -1342,7 +1357,7 @@ function HVACPlanStudioApp() {
   const [symbolSearch, setSymbolSearch] = useState("");
   const [placementRotation, setPlacementRotation] = useState(0);
   const [ductSize, setDuctSize] = useState("14");
-  const [runLineWeight, setRunLineWeight] = useState(0.2);
+  const [runLineWeights, setRunLineWeights] = useState({ supply: 0.1, return: 0.1 });
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [undoStack, setUndoStack] = useState<Drawing[][]>([]);
   const [redoStack, setRedoStack] = useState<Drawing[][]>([]);
@@ -1352,6 +1367,7 @@ function HVACPlanStudioApp() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectionBox, setSelectionBox] = useState<{ start: Point; end: Point; additive: boolean; pointerId: number } | null>(null);
   const [renderSize, setRenderSize] = useState({ width: 0, height: 0 });
+  const [canvasViewportSize, setCanvasViewportSize] = useState({ width: 1, height: 1 });
   const [renderedPageNumber, setRenderedPageNumber] = useState(0);
   const [hoverPoint, setHoverPoint] = useState<Point | null>(null);
   const [snapMarker, setSnapMarker] = useState<Point | null>(null);
@@ -1711,6 +1727,9 @@ function HVACPlanStudioApp() {
         });
       }
       viewportSizeRef.current = { width, height };
+      setCanvasViewportSize((current) =>
+        current.width === width && current.height === height ? current : { width, height }
+      );
 
       if (!initialResponsiveLayoutRef.current) {
         initialResponsiveLayoutRef.current = true;
@@ -2979,8 +2998,25 @@ function HVACPlanStudioApp() {
 
   function handleViewportPointerDownCapture(event: PointerEvent<HTMLDivElement>) {
     if (isCanvasUiTarget(event.target)) return;
+    const directTouchEdit = event.pointerType === "touch"
+      && event.target instanceof Element
+      && Boolean(event.target.closest("[data-plan-edit-control]"));
     if (event.pointerType === "touch") {
       if (!pdf) return;
+      if (directTouchEdit) {
+        event.preventDefault();
+        if (
+          touchPointersRef.current.size ||
+          touchGestureRef.current ||
+          activePenPointerIdRef.current !== null ||
+          performance.now() - lastPenActivityRef.current < 650 ||
+          panRef.current ||
+          !beginEditTransaction(event.pointerId)
+        ) {
+          event.stopPropagation();
+        }
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       if (
@@ -3055,7 +3091,15 @@ function HVACPlanStudioApp() {
 
   function handleViewportPointerUpCapture(event: PointerEvent<HTMLDivElement>) {
     if (event.pointerType === "touch") {
-      if (!touchPointersRef.current.has(event.pointerId)) return;
+      if (!touchPointersRef.current.has(event.pointerId)) {
+        if (activeEditPointerIdRef.current === event.pointerId && !dragRef.current) {
+          activeEditPointerIdRef.current = null;
+          if (editTransactionRef.current?.pointerId === event.pointerId) {
+            editTransactionRef.current = null;
+          }
+        }
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       finishTouchPointer(
@@ -3091,7 +3135,12 @@ function HVACPlanStudioApp() {
   function handleViewportPointerCancelCapture(event: PointerEvent<HTMLDivElement>) {
     completedEditPointerIdsRef.current.delete(event.pointerId);
     if (event.pointerType === "touch") {
-      if (!touchPointersRef.current.has(event.pointerId)) return;
+      if (!touchPointersRef.current.has(event.pointerId)) {
+        if (activeEditPointerIdRef.current === event.pointerId) {
+          restoreEditTransaction(event.pointerId);
+        }
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       finishTouchPointer(
@@ -4772,11 +4821,14 @@ function HVACPlanStudioApp() {
         kind: "reducer",
         label,
         rotation: recommendation.rotation,
+        scaleX: defaultSymbolScale("reducer"),
+        scaleY: defaultSymbolScale("reducer"),
+        labelScale: defaultSymbolLabelScale("reducer"),
         variant: "reducer",
       },
     };
     setHistory([...drawings, symbol]);
-    setSelectedId(symbol.id);
+    selectOnly(symbol.id);
     setActiveTool("select");
     setBranchMessage(`${label} placed for review · connected duct sizes were not changed`);
   }
@@ -7879,12 +7931,15 @@ function HVACPlanStudioApp() {
         kind,
         label: placedLabel,
         rotation: placementRotation,
+        scaleX: defaultSymbolScale(kind),
+        scaleY: defaultSymbolScale(kind),
+        labelScale: defaultSymbolLabelScale(kind),
         variant: preset?.variant,
         neckSize: ["diffuser", "returnGrille"].includes(kind) ? (kind === "returnGrille" ? "12" : "8") : undefined,
       },
     };
     setHistory([...drawings, symbol]);
-    setSelectedId(symbol.id);
+    selectOnly(symbol.id);
   }
 
   function segmentIntersection(a: Point, b: Point, c: Point, d: Point) {
@@ -8048,7 +8103,9 @@ function HVACPlanStudioApp() {
           type: activeTool as DrawType,
           points: draft,
           size: ductSize,
-          lineWeight: ["supply", "return"].includes(activeTool) ? runLineWeight : 0.2,
+          lineWeight: activeTool === "supply" || activeTool === "return"
+            ? runLineWeights[activeTool]
+            : 0.2,
           page: pageNumber,
           cfm: 0,
           cfmSource: "planning-seed",
@@ -8530,7 +8587,7 @@ function HVACPlanStudioApp() {
       symbol: copied.symbol ? { ...structuredClone(copied.symbol), connectedRunId: undefined, connectedEnd: undefined, returnRunId: undefined, returnEnd: undefined } : undefined,
     };
     setHistory([...drawings, pasted]);
-    setSelectedId(pasted.id);
+    selectOnly(pasted.id);
     clipboardRef.current = structuredClone(pasted);
   }
 
@@ -8574,7 +8631,7 @@ function HVACPlanStudioApp() {
     };
     clipboardRef.current = structuredClone(duplicate);
     setHistory([...drawings, duplicate]);
-    setSelectedId(duplicate.id);
+    selectOnly(duplicate.id);
   }
 
   function mirrorSelectedHorizontal() {
@@ -8776,13 +8833,18 @@ function HVACPlanStudioApp() {
 
   function updateRunLineWeight(value: number) {
     const lineWeight = normalizedRunLineWeight(value);
-    setRunLineWeight(lineWeight);
     const selected = drawings.find((drawing) =>
       drawing.id === selectedId &&
       !drawing.fitting &&
       !drawing.symbol &&
       ["supply", "return"].includes(drawing.type)
     );
+    const runType = selected?.type === "return"
+      ? "return"
+      : selected?.type === "supply"
+        ? "supply"
+        : activeTool === "return" ? "return" : "supply";
+    setRunLineWeights((current) => ({ ...current, [runType]: lineWeight }));
     if (!selected) return;
     setHistory(drawings.map((drawing) =>
       drawing.id === selected.id ? { ...drawing, lineWeight } : drawing
@@ -9188,6 +9250,7 @@ function HVACPlanStudioApp() {
   function startRunLabelDrag(event: PointerEvent<SVGTextElement>, drawing: Drawing) {
     if (activeTool !== "select" || event.button !== 0 || drawingLocked(drawing)) return;
     event.stopPropagation();
+    if (!beginEditTransaction(event.pointerId)) return;
     event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
     dragRef.current = {
       kind: "label",
@@ -9201,6 +9264,50 @@ function HVACPlanStudioApp() {
     selectOnly(drawing.id);
     setActiveSystem(drawingSystem(drawing));
     setBranchMessage("Drag the duct-size label to a clear location");
+  }
+
+  function startSymbolLabelDrag(event: PointerEvent<SVGGElement>, drawing: Drawing) {
+    if (activeTool !== "select" || !drawing.symbol || event.button !== 0 || drawingLocked(drawing)) return;
+    event.stopPropagation();
+    if (!beginEditTransaction(event.pointerId)) return;
+    event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      kind: "symbol-label",
+      drawingId: drawing.id,
+      start: canvasPoint(event as unknown as PointerEvent<SVGSVGElement>),
+      originalOffset: clampSymbolLabelOffset(drawing.symbol.labelOffset),
+      before: drawings,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+    };
+    selectOnly(drawing.id);
+    setActiveSystem(drawingSystem(drawing));
+    setBranchMessage("Move the label near its icon · the icon stays in place");
+  }
+
+  function startSymbolLabelResize(
+    event: PointerEvent<SVGGElement>,
+    drawing: Drawing,
+    anchor: Point,
+  ) {
+    if (activeTool !== "select" || !drawing.symbol || event.button !== 0 || drawingLocked(drawing)) return;
+    event.stopPropagation();
+    if (!beginEditTransaction(event.pointerId)) return;
+    event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
+    const raw = canvasPoint(event as unknown as PointerEvent<SVGSVGElement>);
+    dragRef.current = {
+      kind: "symbol-label-resize",
+      drawingId: drawing.id,
+      anchor,
+      startDistance: Math.max(1, raw.x - anchor.x),
+      originalScale: normalizedSymbolLabelScale(drawing.symbol.labelScale),
+      before: drawings,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+    };
+    selectOnly(drawing.id);
+    setActiveSystem(drawingSystem(drawing));
+    setBranchMessage("Drag the round label handle to set a readable size");
   }
 
   function startFittingDrag(event: PointerEvent<SVGGElement>, drawing: Drawing) {
@@ -9253,10 +9360,6 @@ function HVACPlanStudioApp() {
     setActiveSystem(drawingSystem(drawing));
   }
 
-  function normalizedSymbolScale(value?: number) {
-    return Math.max(.4, Math.min(3, Number(value) || 1));
-  }
-
   function symbolResizeBounds(drawing: Drawing) {
     const dimensions = symbolDimensions(drawing.size);
     const variant = drawing.symbol?.variant || "";
@@ -9272,9 +9375,15 @@ function HVACPlanStudioApp() {
     };
   }
 
-  function startSymbolResize(event: PointerEvent<SVGRectElement>, drawing: Drawing) {
+  function startSymbolResize(
+    event: PointerEvent<SVGGElement>,
+    drawing: Drawing,
+    cornerX: -1 | 1,
+    cornerY: -1 | 1,
+  ) {
     if (activeTool !== "select" || !drawing.symbol || event.button !== 0 || drawingLocked(drawing)) return;
     event.stopPropagation();
+    if (!beginEditTransaction(event.pointerId)) return;
     event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
     const bounds = symbolResizeBounds(drawing);
     dragRef.current = {
@@ -9284,6 +9393,8 @@ function HVACPlanStudioApp() {
       rotation: drawing.symbol.rotation,
       halfWidth: bounds.width / 2,
       halfHeight: bounds.height / 2,
+      cornerX,
+      cornerY,
       before: drawings,
       pointerId: event.pointerId,
       pointerType: event.pointerType,
@@ -9316,7 +9427,7 @@ function HVACPlanStudioApp() {
   }
 
   function handlePointerMove(event: PointerEvent<SVGSVGElement>) {
-    if (event.pointerType === "touch" || panRef.current || touchGestureRef.current) return;
+    if (panRef.current || touchGestureRef.current || (event.pointerType === "touch" && !dragRef.current)) return;
     const raw = canvasPoint(event);
     const drag = dragRef.current;
     if (drag && drag.pointerId !== event.pointerId) return;
@@ -9357,6 +9468,28 @@ function HVACPlanStudioApp() {
               ? { ...drawing, labelOffset: { x: drag.originalOffset.x + dx, y: drag.originalOffset.y + dy } }
               : drawing
           ));
+        } else if (drag.kind === "symbol-label") {
+          const dx = raw.x - drag.start.x;
+          const dy = raw.y - drag.start.y;
+          const labelOffset = clampSymbolLabelOffset({
+            x: drag.originalOffset.x + dx,
+            y: drag.originalOffset.y + dy,
+          });
+          setDrawings((current) => current.map((drawing) =>
+            drawing.id === drag.drawingId && drawing.symbol
+              ? { ...drawing, symbol: { ...drawing.symbol, labelOffset } }
+              : drawing
+          ));
+        } else if (drag.kind === "symbol-label-resize") {
+          const distance = Math.max(0, raw.x - drag.anchor.x);
+          const labelScale = normalizedSymbolLabelScale(
+            drag.originalScale * distance / drag.startDistance
+          );
+          setDrawings((current) => current.map((drawing) =>
+            drawing.id === drag.drawingId && drawing.symbol
+              ? { ...drawing, symbol: { ...drawing.symbol, labelScale } }
+              : drawing
+          ));
         } else if (drag.kind === "fitting") {
           const nextCenter = raw;
           setDrawings((current) => current.map((drawing) => {
@@ -9388,8 +9521,8 @@ function HVACPlanStudioApp() {
           const dy = raw.y - drag.center.y;
           const localX = dx * Math.cos(radians) + dy * Math.sin(radians);
           const localY = -dx * Math.sin(radians) + dy * Math.cos(radians);
-          let scaleX = normalizedSymbolScale(Math.abs(localX) / Math.max(1, drag.halfWidth));
-          let scaleY = normalizedSymbolScale(Math.abs(localY) / Math.max(1, drag.halfHeight));
+          let scaleX = signedCornerScale(localX, drag.cornerX, drag.halfWidth);
+          let scaleY = signedCornerScale(localY, drag.cornerY, drag.halfHeight);
           if (event.shiftKey) {
             const uniformScale = Math.max(scaleX, scaleY);
             scaleX = uniformScale;
@@ -9577,7 +9710,7 @@ function HVACPlanStudioApp() {
   }
 
   function endDrag(event: PointerEvent<SVGSVGElement>, cancelled = false) {
-    if (event.pointerType === "touch") return;
+    if (event.pointerType === "touch" && !dragRef.current) return;
     if (activeEditPointerIdRef.current !== null && activeEditPointerIdRef.current !== event.pointerId) return;
     if (selectionBox) {
       if (selectionBox.pointerId !== event.pointerId) return;
@@ -9659,6 +9792,10 @@ function HVACPlanStudioApp() {
       });
     } else if (drag.kind === "symbol-resize") {
       setBranchMessage("Icon resized visually · scheduled face and neck sizes were not changed");
+    } else if (drag.kind === "symbol-label") {
+      setBranchMessage("Icon label repositioned · plan geometry was not changed");
+    } else if (drag.kind === "symbol-label-resize") {
+      setBranchMessage("Icon label size changed · plan geometry was not changed");
     } else if (drag.kind === "label") {
       setBranchMessage("Duct-size label repositioned · route geometry was not changed");
     }
@@ -9706,48 +9843,134 @@ function HVACPlanStudioApp() {
     const scaleY = normalizedSymbolScale(drawing.symbol.scaleY);
     const resizeBounds = symbolResizeBounds(drawing);
     const labelPositionY = labelY - (scaleY - 1) * resizeBounds.height / 2;
+    const labelOffset = clampSymbolLabelOffset(drawing.symbol.labelOffset);
+    const labelScale = normalizedSymbolLabelScale(drawing.symbol.labelScale);
+    const labelBox = estimateSymbolLabelBox(displayLabel, labelScale);
+    const labelX = labelOffset.x;
+    const labelBaselineY = labelPositionY + labelOffset.y;
+    const labelCenterY = labelBaselineY - labelBox.height / 2 + 3;
+    const labelMoved = Math.hypot(labelOffset.x, labelOffset.y) > 12;
+    const visibleHandleSize = Math.max(3, Math.min(10, 7 / Math.max(.25, zoom)));
+    const resizeHitRadius = Math.max(5, Math.min(22, 13 / Math.max(.25, zoom)));
+    const labelHandleRadius = Math.max(2, Math.min(8, 4 / Math.max(.25, zoom)));
+    const labelHitRadius = Math.max(5, Math.min(22, 12 / Math.max(.25, zoom)));
     if (variant !== "__legacy") return <g
       className={artworkClass}
-      transform={`translate(${center.x} ${center.y}) rotate(${rotation})`}
+      transform={`translate(${center.x} ${center.y})`}
       onPointerDown={preview ? undefined : (event) => startSymbolDrag(event, drawing)}
     >
-      <g className="symbol-visual" transform={`scale(${scaleX} ${scaleY})`}>
-        <circle className="symbol-hit" cx="0" cy="0" r={interactionRadius} />
-        <SymbolArtwork kind={kind} variant={variant} width={symbolWidth} height={symbolHeight} />
-        {selected && isPrimaryAirflowEquipment(drawing) && (() => {
-          const ports = equipmentPlenumPorts(drawing).local;
-          return <>
-            <circle className="equipment-plenum-port return-port" cx={ports.return.x} cy={ports.return.y} r="4.2" />
-            <circle className="equipment-plenum-port supply-port" cx={ports.supply.x} cy={ports.supply.y} r="4.2" />
-          </>;
-        })()}
-        {["diffuser", "returnGrille"].includes(kind) && <>
-          <circle className="can-neck-point" cx="0" cy="0" r="3.5" />
-          {drawing.symbol.connectedRunId && <circle className="terminal-link-ring" cx="0" cy="0" r="6" />}
-          {selected && <text className="can-neck-label" x="6" y="4">Ø{drawing.symbol.neckSize || "8"} NECK</text>}
+      <g transform={`rotate(${rotation})`}>
+        <g className="symbol-visual" transform={`scale(${scaleX} ${scaleY})`}>
+          <circle className="symbol-hit" cx="0" cy="0" r={interactionRadius} />
+          <SymbolArtwork kind={kind} variant={variant} width={symbolWidth} height={symbolHeight} />
+          {selected && isPrimaryAirflowEquipment(drawing) && (() => {
+            const ports = equipmentPlenumPorts(drawing).local;
+            return <>
+              <circle className="equipment-plenum-port return-port" cx={ports.return.x} cy={ports.return.y} r="4.2" />
+              <circle className="equipment-plenum-port supply-port" cx={ports.supply.x} cy={ports.supply.y} r="4.2" />
+            </>;
+          })()}
+          {["diffuser", "returnGrille"].includes(kind) && <>
+            <circle className="can-neck-point" cx="0" cy="0" r="3.5" />
+            {drawing.symbol.connectedRunId && <circle className="terminal-link-ring" cx="0" cy="0" r="6" />}
+            {selected && <text className="can-neck-label" x="6" y="4">Ø{drawing.symbol.neckSize || "8"} NECK</text>}
+          </>}
+          {selected && <circle className="rotation-ring" cx="0" cy="0" r={interactionRadius} />}
+        </g>
+        {selected && !preview && <>
+          <rect
+            className="symbol-resize-outline"
+            x={-resizeBounds.width * scaleX / 2}
+            y={-resizeBounds.height * scaleY / 2}
+            width={resizeBounds.width * scaleX}
+            height={resizeBounds.height * scaleY}
+          />
+          {([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([cornerX, cornerY]) => {
+            const handleX = cornerX * resizeBounds.width * scaleX / 2;
+            const handleY = cornerY * resizeBounds.height * scaleY / 2;
+            const cursorClass = cornerX === cornerY
+              ? "symbol-resize-corner-nwse"
+              : "symbol-resize-corner-nesw";
+            return <g
+              key={`${cornerX}-${cornerY}`}
+              className={cursorClass}
+              data-plan-edit-control
+              onPointerDown={(event) => startSymbolResize(event, drawing, cornerX, cornerY)}
+            >
+              <circle
+                className="symbol-resize-hit"
+                cx={handleX}
+                cy={handleY}
+                r={resizeHitRadius}
+              />
+              <rect
+                className={`symbol-resize-handle ${cursorClass}`}
+                x={handleX - visibleHandleSize / 2}
+                y={handleY - visibleHandleSize / 2}
+                width={visibleHandleSize}
+                height={visibleHandleSize}
+                rx={visibleHandleSize * .2}
+              />
+            </g>;
+          })}
         </>}
-        {selected && <circle className="rotation-ring" cx="0" cy="0" r={interactionRadius} />}
       </g>
-      <text className="symbol-label" x="0" y={labelPositionY} textAnchor="middle">{displayLabel}</text>
-      {selected && !preview && <>
+      {labelMoved && <path
+        className="symbol-label-leader"
+        d={`M 0 0 L ${labelX} ${labelCenterY}`}
+      />}
+      <g
+        className="symbol-label-editor"
+        transform={`translate(${labelX} ${labelBaselineY})`}
+        data-plan-edit-control
+        onPointerDown={preview ? undefined : (event) => startSymbolLabelDrag(event, drawing)}
+      >
         <rect
-          className="symbol-resize-outline"
-          x={-resizeBounds.width * scaleX / 2}
-          y={-resizeBounds.height * scaleY / 2}
-          width={resizeBounds.width * scaleX}
-          height={resizeBounds.height * scaleY}
+          className="symbol-label-hit"
+          x={-labelBox.halfWidth}
+          y={-labelBox.height + 3}
+          width={labelBox.width}
+          height={labelBox.height}
+          rx="2"
         />
-        {([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([cornerX, cornerY]) => <rect
-          className="symbol-resize-handle"
-          key={`${cornerX}-${cornerY}`}
-          x={cornerX * resizeBounds.width * scaleX / 2 - 3.5}
-          y={cornerY * resizeBounds.height * scaleY / 2 - 3.5}
-          width="7"
-          height="7"
-          rx="1.4"
-          onPointerDown={(event) => startSymbolResize(event, drawing)}
-        />)}
-      </>}
+        {selected && !preview && <rect
+          className="symbol-label-outline"
+          x={-labelBox.halfWidth}
+          y={-labelBox.height + 3}
+          width={labelBox.width}
+          height={labelBox.height}
+          rx="2"
+        />}
+        <text
+          className="symbol-label"
+          x="0"
+          y="0"
+          textAnchor="middle"
+          style={{ fontSize: `${10 * labelScale}px` }}
+        >
+          {displayLabel}
+        </text>
+        {selected && !preview && <g
+          data-plan-edit-control
+          onPointerDown={(event) => startSymbolLabelResize(event, drawing, {
+            x: center.x + labelX,
+            y: center.y + labelCenterY,
+          })}
+        >
+          <circle
+            className="symbol-label-size-hit"
+            cx={labelBox.halfWidth}
+            cy={-labelBox.height / 2 + 3}
+            r={labelHitRadius}
+          />
+          <circle
+            className="symbol-label-size-handle"
+            cx={labelBox.halfWidth}
+            cy={-labelBox.height / 2 + 3}
+            r={labelHandleRadius}
+          />
+        </g>}
+      </g>
     </g>;
 
     // Compatibility renderer for any deliberately imported legacy symbol variant.
@@ -9931,7 +10154,7 @@ function HVACPlanStudioApp() {
         setShowCommandPalette((visible) => !visible);
         return;
       }
-      if (target?.matches("input, select, textarea")) return;
+      if (target?.closest("input, select, textarea, button, [data-canvas-ui]")) return;
       if (event.key === "Escape") {
         if (calibrating && scaleHelperReturnPending) {
           event.preventDefault();
@@ -10036,6 +10259,28 @@ function HVACPlanStudioApp() {
   const selectedDrawing = drawings.find((drawing) => drawing.id === selectedId);
   const selectedFitting = selectedDrawing?.fitting ? selectedDrawing : undefined;
   const selectedRun = selectedDrawing && !selectedDrawing.fitting && ["supply", "return", "fresh"].includes(selectedDrawing.type) ? selectedDrawing : undefined;
+  const selectedSymbolWheel = selectedDrawing?.symbol
+    && selectedDrawing.page === pageNumber
+    && selectedIds.length <= 1
+    && pdf
+    ? positionSymbolActionWheel({
+      anchor: {
+        x: camera.x + selectedDrawing.points[0].x * zoom,
+        y: camera.y + selectedDrawing.points[0].y * zoom,
+      },
+      viewport: canvasViewportSize,
+      objectRadius: (() => {
+        const bounds = symbolResizeBounds(selectedDrawing);
+        const width = bounds.width * normalizedSymbolScale(selectedDrawing.symbol?.scaleX);
+        const height = bounds.height * normalizedSymbolScale(selectedDrawing.symbol?.scaleY);
+        return Math.hypot(width, height) / 2;
+      })(),
+      zoom,
+    })
+    : null;
+  const selectedSymbolWheelVisible = Boolean(
+    selectedDrawing?.symbol && selectedSymbolWheel && !selectedSymbolWheel.hidden
+  );
   const branchTrace = branchNetworkTrace(selectedFitting);
   const branchHealth = branchNetworkConnectionHealth(selectedFitting);
   const branchRepairPreview = branchNetworkRepairPreview(selectedFitting);
@@ -11403,8 +11648,25 @@ function HVACPlanStudioApp() {
                   <span>PLAN ICON SIZE</span>
                   <strong>{Math.round(normalizedSymbolScale(selectedDrawing.symbol.scaleX) * 100)}% × {Math.round(normalizedSymbolScale(selectedDrawing.symbol.scaleY) * 100)}%</strong>
                 </div>
-                <button onClick={() => updateSelectedSymbol({ scaleX: 1, scaleY: 1 })}>Reset size</button>
-                <small>Select the icon and drag any blue corner. Hold Shift while dragging to keep the original proportions.</small>
+                <button onClick={() => {
+                  const scale = defaultSymbolScale(selectedDrawing.symbol!.kind);
+                  updateSelectedSymbol({ scaleX: scale, scaleY: scale });
+                }}>Reset size</button>
+                <small>Drag a blue corner directly on the icon. Hold Shift to keep the original proportions.</small>
+              </div>
+              <div className="symbol-resize-control symbol-label-control">
+                <div>
+                  <span>LABEL POSITION &amp; SIZE</span>
+                  <strong>{Math.round(normalizedSymbolLabelScale(selectedDrawing.symbol.labelScale) * 100)}% · {Math.hypot(
+                    selectedDrawing.symbol.labelOffset?.x || 0,
+                    selectedDrawing.symbol.labelOffset?.y || 0
+                  ) > 1 ? "CUSTOM POSITION" : "DEFAULT POSITION"}</strong>
+                </div>
+                <button onClick={() => updateSelectedSymbol({
+                  labelOffset: { x: 0, y: 0 },
+                  labelScale: defaultSymbolLabelScale(selectedDrawing.symbol!.kind),
+                })}>Reset label</button>
+                <small>Drag the label beside the icon. Drag its round handle to resize it without moving the icon.</small>
               </div>
               {isPrimaryAirflowEquipment(selectedDrawing) && <label>Primary equipment size
                 <select
@@ -11575,7 +11837,9 @@ function HVACPlanStudioApp() {
               {((selectedRun && ["supply", "return"].includes(selectedRun.type)) || (!selectedDrawing && ["supply", "return"].includes(activeTool))) && <label className="line-weight-control">
                 Run line weight
                 <select
-                  value={selectedRun ? normalizedRunLineWeight(selectedRun.lineWeight) : runLineWeight}
+                  value={selectedRun
+                    ? normalizedRunLineWeight(selectedRun.lineWeight)
+                    : runLineWeights[activeTool === "return" ? "return" : "supply"]}
                   onChange={(event) => updateRunLineWeight(Number(event.target.value))}
                 >
                   <option value="0.1">0.10 mm · Fine</option>
@@ -11857,7 +12121,7 @@ function HVACPlanStudioApp() {
               if (draft.length) finishDrawing();
             }}
           >
-            {selectedId && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
+            {selectedId && !selectedSymbolWheelVisible && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
               <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T/Y FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : "DUCT RUN"}</strong>
               {!selectedDrawing?.symbol && !selectedDrawing?.measurement && <select
                 aria-label="Quick duct size"
@@ -11877,6 +12141,17 @@ function HVACPlanStudioApp() {
               <button className="danger" title="Delete selection" onClick={deleteSelected}><Trash2 size={15} /></button>
               <button title="Clear selection" onClick={() => selectOnly(null)}><X size={15} /></button>
             </div>}
+            {selectedDrawing?.symbol && selectedSymbolWheelVisible && selectedSymbolWheel && <SymbolActionWheel
+              x={selectedSymbolWheel.center.x}
+              y={selectedSymbolWheel.center.y}
+              label={selectedDrawing.symbol.label || "HVAC icon"}
+              onRotateLeft={() => rotateSelectedSymbol(-15)}
+              onRotateRight={() => rotateSelectedSymbol(15)}
+              onMirror={mirrorSelectedHorizontal}
+              onDuplicate={duplicateSelected}
+              onDelete={deleteSelected}
+              onClose={() => selectOnly(null)}
+            />}
             {draft.length > 0 && ["supply", "return", "fresh"].includes(activeTool) && <div className="live-draft-hud" data-canvas-ui>
               <span>LIVE RUN</span>
               <strong>{ductSize}&quot; · {liveDraftFeet.toFixed(1)} LF</strong>
@@ -12293,7 +12568,17 @@ function HVACPlanStudioApp() {
                       </g>)}
                     </g>}
                     {draft.length > 0 && <g className="draft-drawing">
-                      <polyline points={[...draft, ...(hoverPoint ? [hoverPoint] : [])].map((point) => `${point.x},${point.y}`).join(" ")} stroke={drawingColors[activeTool as DrawType]} style={{ strokeWidth: runStrokeWidth(runLineWeight) }} />
+                      <polyline
+                        points={[...draft, ...(hoverPoint ? [hoverPoint] : [])].map((point) => `${point.x},${point.y}`).join(" ")}
+                        stroke={drawingColors[activeTool as DrawType]}
+                        style={{
+                          strokeWidth: runStrokeWidth(
+                            activeTool === "supply" || activeTool === "return"
+                              ? runLineWeights[activeTool]
+                              : 0.2
+                          ),
+                        }}
+                      />
                       {draft.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="4" fill={drawingColors[activeTool as DrawType]} />)}
                     </g>}
                     {measureDraft.length > 0 && hoverPoint && <g className="measure-preview">
@@ -12369,6 +12654,9 @@ function HVACPlanStudioApp() {
                         symbol: {
                           kind: symbolPreview.kind,
                           rotation: placementRotation,
+                          scaleX: defaultSymbolScale(symbolPreview.kind),
+                          scaleY: defaultSymbolScale(symbolPreview.kind),
+                          labelScale: defaultSymbolLabelScale(symbolPreview.kind),
                           variant: preset?.variant,
                           label: equipmentType
                             ? `${systemLabel(activeSystem).toUpperCase()} · ${selected.size} ${equipmentType}`
