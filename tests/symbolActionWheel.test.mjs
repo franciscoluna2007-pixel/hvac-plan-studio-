@@ -70,6 +70,22 @@ function assertDoesNotOverlap(position, anchor, gap = 12) {
   );
 }
 
+function distanceFromPointToBounds(point, bounds) {
+  const right = bounds.left + bounds.width;
+  const bottom = bounds.top + bounds.height;
+  const dx = Math.max(bounds.left - point.x, 0, point.x - right);
+  const dy = Math.max(bounds.top - point.y, 0, point.y - bottom);
+  return Math.hypot(dx, dy);
+}
+
+function assertClearsBounds(position, bounds, gap = 12) {
+  assert.ok(
+    distanceFromPointToBounds(position.center, bounds) + Number.EPSILON >=
+      position.wheelRadius + gap,
+    "wheel footprint should keep the requested gap from the selected visual bounds",
+  );
+}
+
 test("places a fixed-size wheel deterministically beside a centered symbol", () => {
   const position = positionSymbolActionWheel(input());
 
@@ -112,6 +128,93 @@ test("uses zoomed object radius to keep a large selected symbol clear", () => {
   assert.equal(position.objectRadiusPx, 120);
   assertInside(position, { width: 1000, height: 700 });
   assertDoesNotOverlap(position, anchor);
+});
+
+test("keeps the exact gap from a wide text box despite the legacy radius cap", () => {
+  const avoidBounds = {
+    left: 250,
+    top: 300,
+    width: 300,
+    height: 100,
+  };
+  const position = positionSymbolActionWheel(input({
+    anchor: { x: 400, y: 350 },
+    avoidBounds,
+    maxObjectRadiusPx: 80,
+  }));
+
+  assert.equal(position.hidden, false);
+  assert.equal(position.placement, "right");
+  assert.deepEqual(position.center, { x: 658, y: 350 });
+  assertInside(position, { width: 1000, height: 700 });
+  assertClearsBounds(position, avoidBounds);
+});
+
+test("flips left while clearing a tall icon and label box near the right edge", () => {
+  const avoidBounds = {
+    left: 780,
+    top: 250,
+    width: 140,
+    height: 200,
+  };
+  const position = positionSymbolActionWheel(input({
+    anchor: { x: 850, y: 350 },
+    avoidBounds,
+  }));
+
+  assert.equal(position.hidden, false);
+  assert.equal(position.placement, "left");
+  assert.deepEqual(position.center, { x: 672, y: 350 });
+  assertInside(position, { width: 1000, height: 700 });
+  assertClearsBounds(position, avoidBounds);
+});
+
+test("preserves rectangle clearance when the perpendicular axis is clamped", () => {
+  const avoidBounds = {
+    left: 30,
+    top: 5,
+    width: 80,
+    height: 40,
+  };
+  const viewport = { width: 600, height: 400 };
+  const position = positionSymbolActionWheel(input({
+    anchor: { x: 70, y: 25 },
+    avoidBounds,
+    viewport,
+  }));
+
+  assert.equal(position.hidden, false);
+  assert.equal(position.placement, "right");
+  assertInside(position, viewport);
+  assertClearsBounds(position, avoidBounds);
+});
+
+test("hides when no cardinal placement can clear the selected visual bounds", () => {
+  const position = positionSymbolActionWheel(input({
+    anchor: { x: 300, y: 200 },
+    avoidBounds: {
+      left: 120,
+      top: 80,
+      width: 360,
+      height: 240,
+    },
+    viewport: { width: 600, height: 400 },
+  }));
+
+  assert.equal(position.hidden, true);
+  assertFinite(position);
+});
+
+test("rejects malformed visual bounds without returning invalid coordinates", () => {
+  for (const avoidBounds of [
+    { left: Number.NaN, top: 20, width: 40, height: 40 },
+    { left: 20, top: 20, width: -1, height: 40 },
+    { left: 20, top: Number.POSITIVE_INFINITY, width: 40, height: 40 },
+  ]) {
+    const position = positionSymbolActionWheel(input({ avoidBounds }));
+    assert.equal(position.hidden, true);
+    assertFinite(position);
+  }
 });
 
 test("keeps the wheel nearby and visible for a symbol at maximum workspace zoom", () => {

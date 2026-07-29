@@ -5,15 +5,17 @@ import test from "node:test";
 const studioPath = new URL("../app/FieldRedlineStudio.tsx", import.meta.url);
 const wheelPath = new URL("../app/RedlineActionWheel.tsx", import.meta.url);
 const canvasPath = new URL("../app/RedlineCanvasLayer.tsx", import.meta.url);
+const visualBoundsPath = new URL("../app/redlineVisualBounds.ts", import.meta.url);
 const stylesPath = new URL("../app/globals.css", import.meta.url);
 
 async function sources() {
-  const [studio, wheel, canvas] = await Promise.all([
+  const [studio, wheel, canvas, visualBounds] = await Promise.all([
     readFile(studioPath, "utf8"),
     readFile(wheelPath, "utf8"),
     readFile(canvasPath, "utf8"),
+    readFile(visualBoundsPath, "utf8"),
   ]);
-  return { studio, wheel, canvas };
+  return { studio, wheel, canvas, visualBounds };
 }
 
 test("Field Redline Studio keeps the compact tool order and HVAC safety boundary", async () => {
@@ -167,8 +169,35 @@ test("the selection wheel operates on redlines only and exposes grouped multi-se
   assert.doesNotMatch(wheel, /duct run|fitting actions|CFM|connection/i);
 });
 
+test("the redline action component has an accessible linear fallback", async () => {
+  const [{ wheel }, styles] = await Promise.all([
+    sources(),
+    readFile(stylesPath, "utf8"),
+  ]);
+
+  assert.match(wheel, /layout\?: "wheel" \| "strip"/);
+  assert.match(wheel, /layout === "strip" \? " is-strip" : ""/);
+  assert.match(
+    wheel,
+    /aria-orientation=\{layout === "strip" \? "horizontal" : undefined\}/,
+  );
+  assert.match(
+    wheel,
+    /onWheel=\{layout === "strip" \? \(event\) => event\.stopPropagation\(\) : undefined\}/,
+  );
+  assert.match(wheel, /scrollIntoView\(\{[\s\S]*?inline: "nearest"/);
+  assert.match(
+    styles,
+    /\.redline-selection-wheel\.is-strip\s*\{[\s\S]*?display: flex;[\s\S]*?overflow-x: auto;[\s\S]*?overscroll-behavior-inline: contain;[\s\S]*?pointer-events: auto;/,
+  );
+  assert.match(
+    styles,
+    /\.redline-selection-wheel\.is-strip \.redline-wheel-action,[\s\S]*?position: static;/,
+  );
+});
+
 test("the canvas overlay is SVG-only, page-bound, and renders committed plus transient redlines", async () => {
-  const { canvas } = await sources();
+  const { canvas, visualBounds } = await sources();
 
   assert.match(canvas, /import type \{[\s\S]*RedlineAnnotation[\s\S]*\} from "\.\/redlineDomain"/);
   assert.match(canvas, /annotation\.layerId === layer\.id/);
@@ -180,9 +209,13 @@ test("the canvas overlay is SVG-only, page-bound, and renders committed plus tra
   assert.match(canvas, /width: number/);
   assert.match(canvas, /height: number/);
   assert.match(canvas, /zoom\?: number/);
-  assert.match(canvas, /point\.x[\s\S]*size\.width/);
-  assert.match(canvas, /point\.y[\s\S]*size\.height/);
-  assert.match(canvas, /annotation\.style\.strokeWidth[\s\S]*size\.shortSide/);
+  assert.match(visualBounds, /point\.x[\s\S]*size\.width/);
+  assert.match(visualBounds, /point\.y[\s\S]*size\.height/);
+  assert.match(
+    visualBounds,
+    /annotation\.style\.strokeWidth[\s\S]*size\.shortSide/,
+  );
+  assert.match(canvas, /redlineSelectionVisualBounds/);
   assert.match(canvas, /SELECTION_HANDLE_RADIUS_PX \/ safeZoom/);
   assert.match(canvas, /redline-canvas-committed/);
   assert.match(canvas, /redline-transient-draft/);

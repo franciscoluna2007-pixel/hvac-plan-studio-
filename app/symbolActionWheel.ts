@@ -8,6 +8,17 @@ export type SymbolActionWheelViewport = {
   height: number;
 };
 
+export type SymbolActionWheelAvoidBounds = {
+  /** Left edge of the selected visual footprint in viewport CSS pixels. */
+  left: number;
+  /** Top edge of the selected visual footprint in viewport CSS pixels. */
+  top: number;
+  /** Width of the selected visual footprint in viewport CSS pixels. */
+  width: number;
+  /** Height of the selected visual footprint in viewport CSS pixels. */
+  height: number;
+};
+
 export type SymbolActionWheelPlacement = "right" | "left" | "below" | "above";
 
 export type SymbolActionWheelInput = {
@@ -19,6 +30,14 @@ export type SymbolActionWheelInput = {
   objectRadius: number;
   /** Current plan zoom. */
   zoom: number;
+  /**
+   * Exact selected visual footprint in viewport CSS pixels.
+   *
+   * When supplied, this rectangle is authoritative and is not reduced by the
+   * legacy object-radius cap. This keeps the wheel clear of moved labels and
+   * wide text while preserving the radius-only contract for older callers.
+   */
+  avoidBounds?: SymbolActionWheelAvoidBounds;
   /** Optional screen-space cap that keeps the wheel nearby at extreme zoom. */
   maxObjectRadiusPx?: number;
   /** Fixed wheel footprint radius in CSS pixels. */
@@ -58,6 +77,16 @@ type Direction = {
   available: number;
 };
 
+type NormalizedAvoidBounds = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+  center: SymbolActionWheelPoint;
+};
+
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
 }
@@ -76,6 +105,49 @@ function finiteNonNegative(value: number | undefined, fallback: number, maximum 
 function finiteZoom(value: number) {
   if (!Number.isFinite(value)) return 1;
   return clamp(Math.abs(value), MIN_ZOOM, MAX_ZOOM);
+}
+
+function normalizeAvoidBounds(
+  bounds: SymbolActionWheelAvoidBounds | undefined,
+): NormalizedAvoidBounds | null | undefined {
+  if (!bounds) return undefined;
+  if (
+    !Number.isFinite(bounds.left) ||
+    !Number.isFinite(bounds.top) ||
+    !Number.isFinite(bounds.width) ||
+    !Number.isFinite(bounds.height) ||
+    bounds.width < 0 ||
+    bounds.height < 0
+  ) {
+    return null;
+  }
+  const width = Math.min(bounds.width, MAX_GEOMETRY_VALUE);
+  const height = Math.min(bounds.height, MAX_GEOMETRY_VALUE);
+  const left = clamp(bounds.left, -MAX_GEOMETRY_VALUE, MAX_GEOMETRY_VALUE);
+  const top = clamp(bounds.top, -MAX_GEOMETRY_VALUE, MAX_GEOMETRY_VALUE);
+  const right = clamp(left + width, -MAX_GEOMETRY_VALUE, MAX_GEOMETRY_VALUE);
+  const bottom = clamp(top + height, -MAX_GEOMETRY_VALUE, MAX_GEOMETRY_VALUE);
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top),
+    center: {
+      x: left + Math.max(0, right - left) / 2,
+      y: top + Math.max(0, bottom - top) / 2,
+    },
+  };
+}
+
+function distanceFromPointToBounds(
+  point: SymbolActionWheelPoint,
+  bounds: NormalizedAvoidBounds,
+) {
+  const dx = Math.max(bounds.left - point.x, 0, point.x - bounds.right);
+  const dy = Math.max(bounds.top - point.y, 0, point.y - bounds.bottom);
+  return Math.hypot(dx, dy);
 }
 
 function fallbackCenter(
@@ -134,6 +206,18 @@ export function positionSymbolActionWheel(
   );
   const gap = finiteNonNegative(input.gap, DEFAULT_SYMBOL_ACTION_WHEEL_GAP);
   const inset = finiteNonNegative(input.inset, DEFAULT_SYMBOL_ACTION_WHEEL_INSET);
+  const requestedAvoidBounds = normalizeAvoidBounds(input.avoidBounds);
+  const avoidBounds = requestedAvoidBounds === undefined
+    ? {
+        left: anchor.x - objectRadiusPx,
+        top: anchor.y - objectRadiusPx,
+        right: anchor.x + objectRadiusPx,
+        bottom: anchor.y + objectRadiusPx,
+        width: objectRadiusPx * 2,
+        height: objectRadiusPx * 2,
+        center: { ...anchor },
+      }
+    : requestedAvoidBounds;
   const minimumX = inset + wheelRadius;
   const maximumX = viewport.width - inset - wheelRadius;
   const minimumY = inset + wheelRadius;
@@ -152,41 +236,37 @@ export function positionSymbolActionWheel(
       dx: 1,
       dy: 0,
       priority: 0,
-      available: maximumX - anchor.x,
+      available: avoidBounds ? maximumX - avoidBounds.right : Number.NEGATIVE_INFINITY,
     },
     {
       placement: "left",
       dx: -1,
       dy: 0,
       priority: 1,
-      available: anchor.x - minimumX,
+      available: avoidBounds ? avoidBounds.left - minimumX : Number.NEGATIVE_INFINITY,
     },
     {
       placement: "below",
       dx: 0,
       dy: 1,
       priority: 2,
-      available: maximumY - anchor.y,
+      available: avoidBounds ? maximumY - avoidBounds.bottom : Number.NEGATIVE_INFINITY,
     },
     {
       placement: "above",
       dx: 0,
       dy: -1,
       priority: 3,
-      available: anchor.y - minimumY,
+      available: avoidBounds ? avoidBounds.top - minimumY : Number.NEGATIVE_INFINITY,
     },
   ];
   directions.sort((left, right) =>
     right.available - left.available || left.priority - right.priority
   );
 
-  const requiredDistance = Math.min(
-    objectRadiusPx + wheelRadius + gap,
-    MAX_GEOMETRY_VALUE,
-  );
   const firstDirection = directions[0];
   let center = fallbackCenter(
-    anchor,
+    avoidBounds?.center || anchor,
     viewport,
     minimumX,
     maximumX,
@@ -196,12 +276,27 @@ export function positionSymbolActionWheel(
   let placement = firstDirection.placement;
   let safePlacementFound = false;
 
-  if (anchorIsVisible && viewportCanContainWheel) {
+  if (anchorIsVisible && viewportCanContainWheel && avoidBounds) {
     for (const direction of directions) {
-      const rawCenter = {
-        x: anchor.x + direction.dx * requiredDistance,
-        y: anchor.y + direction.dy * requiredDistance,
-      };
+      const rawCenter = direction.placement === "right"
+        ? {
+            x: avoidBounds.right + gap + wheelRadius,
+            y: avoidBounds.center.y,
+          }
+        : direction.placement === "left"
+          ? {
+              x: avoidBounds.left - gap - wheelRadius,
+              y: avoidBounds.center.y,
+            }
+          : direction.placement === "below"
+            ? {
+                x: avoidBounds.center.x,
+                y: avoidBounds.bottom + gap + wheelRadius,
+              }
+            : {
+                x: avoidBounds.center.x,
+                y: avoidBounds.top - gap - wheelRadius,
+              };
       const candidate = {
         x: clamp(rawCenter.x, minimumX, maximumX),
         y: clamp(rawCenter.y, minimumY, maximumY),
@@ -211,10 +306,10 @@ export function positionSymbolActionWheel(
         y: candidate.y - anchor.y,
       };
       const directionalTravel = offset.x * direction.dx + offset.y * direction.dy;
-      const separation = Math.hypot(offset.x, offset.y);
+      const separation = distanceFromPointToBounds(candidate, avoidBounds);
       if (
         directionalTravel > 0 &&
-        separation + Number.EPSILON >= requiredDistance
+        separation + Number.EPSILON >= wheelRadius + gap
       ) {
         center = candidate;
         placement = direction.placement;

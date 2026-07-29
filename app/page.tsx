@@ -16,6 +16,7 @@ import FieldRedlineStudio, {
 } from "./FieldRedlineStudio";
 import RedlineActionWheel from "./RedlineActionWheel";
 import RedlineCanvasLayer from "./RedlineCanvasLayer";
+import { redlineSelectionVisualBounds } from "./redlineVisualBounds";
 import { trackProductEvent } from "./productAnalytics";
 import SystemBalanceStudio from "./SystemBalanceStudio";
 import MarkupAssistantStudio, {
@@ -120,6 +121,7 @@ import {
   stepSymbolScale,
 } from "./symbolEditing";
 import {
+  estimateDuctLabelBox,
   normalizedDuctLabelScale,
   resetDuctLabelScale,
   stepDuctLabelScale,
@@ -3345,13 +3347,25 @@ function HVACPlanStudioApp() {
 
   function handleViewportPointerDownCapture(event: PointerEvent<HTMLDivElement>) {
     if (isCanvasUiTarget(event.target)) return;
+    const planEditControl = event.target instanceof Element
+      ? event.target.closest("[data-plan-edit-control]")
+      : null;
+    const planEditControlKind = planEditControl?.getAttribute(
+      "data-plan-edit-control",
+    );
     const directTouchEdit = event.pointerType === "touch"
       && (
+        Boolean(fieldRedline.open && fieldRedline.pendingDetail) ||
         (
-          event.target instanceof Element &&
-          Boolean(event.target.closest("[data-plan-edit-control]"))
+          planEditControlKind === "redline" &&
+          fieldRedline.open &&
+          ["select", "erase"].includes(fieldRedline.activeTool)
         ) ||
-        Boolean(fieldRedline.open && fieldRedline.pendingDetail)
+        (
+          planEditControlKind === "hvac" &&
+          !fieldRedline.open &&
+          activeTool === "select"
+        )
       );
     if (event.pointerType === "touch") {
       if (!pdf) return;
@@ -8975,7 +8989,11 @@ function HVACPlanStudioApp() {
       },
     };
     setHistory([...drawings, symbol]);
-    selectOnly(symbol.id);
+    selectOnly(null);
+    setLeftPanelView("symbols");
+    setBranchMessage(
+      `${placedLabel} placed · placement stays active for the next icon`,
+    );
   }
 
   function segmentIntersection(a: Point, b: Point, c: Point, d: Point) {
@@ -11014,6 +11032,45 @@ function HVACPlanStudioApp() {
     setActiveSystem(drawingSystem(drawing));
   }
 
+  function displayedSymbolLabel(drawing: Drawing) {
+    if (!drawing.symbol) return "";
+    const { kind, label, variant } = drawing.symbol;
+    const formattedSize = drawing.size.replace(/x/g, "×");
+    const defaultTerminalLabel = kind === "returnGrille"
+      ? `${formattedSize} RETURN`
+      : `${formattedSize} SUPPLY`;
+    const usesCatalogLabel =
+      ["diffuser", "returnGrille"].includes(kind) &&
+      symbolPresets.some((preset) =>
+        preset.kind === kind &&
+        preset.variant === variant &&
+        preset.label === label
+      );
+    return ["diffuser", "returnGrille"].includes(kind)
+      ? usesCatalogLabel
+        ? defaultTerminalLabel
+        : label.trim() || defaultTerminalLabel
+      : label;
+  }
+
+  function symbolLabelBaseY(drawing: Drawing) {
+    if (!drawing.symbol) return 0;
+    const { kind, variant } = drawing.symbol;
+    const verticalEquipment =
+      kind === "equipment" &&
+      ["vertical-air-handler", "vertical-furnace"].includes(variant || "");
+    const { height: symbolHeight } = symbolDimensions(drawing.size);
+    return kind === "equipment"
+      ? verticalEquipment ? -52 : -44
+      : kind === "fan"
+        ? -31
+        : kind === "airflow"
+          ? -12
+          : ["diffuser", "returnGrille"].includes(kind)
+            ? -symbolHeight / 2 - 10
+            : -22;
+  }
+
   function symbolResizeBounds(drawing: Drawing) {
     const dimensions = symbolDimensions(drawing.size);
     const variant = drawing.symbol?.variant || "";
@@ -11026,6 +11083,52 @@ function HVACPlanStudioApp() {
     return {
       width: Math.max(20, dimensions.width),
       height: Math.max(16, dimensions.height),
+    };
+  }
+
+  function symbolVisualPlanBounds(drawing: Drawing) {
+    if (!drawing.symbol) return null;
+    const center = drawing.points[0];
+    const resizeBounds = symbolResizeBounds(drawing);
+    const scaleX = normalizedSymbolScale(drawing.symbol.scaleX);
+    const scaleY = normalizedSymbolScale(drawing.symbol.scaleY);
+    const rotation = drawing.symbol.rotation * Math.PI / 180;
+    const cosine = Math.abs(Math.cos(rotation));
+    const sine = Math.abs(Math.sin(rotation));
+    const scaledWidth = resizeBounds.width * scaleX;
+    const scaledHeight = resizeBounds.height * scaleY;
+    const iconHalfWidth =
+      (scaledWidth * cosine + scaledHeight * sine) / 2;
+    const iconHalfHeight =
+      (scaledWidth * sine + scaledHeight * cosine) / 2;
+    const visiblePadding = 6 / Math.max(0.25, zoom);
+    const labelOffset = clampSymbolLabelOffset(drawing.symbol.labelOffset);
+    const labelScale = normalizedSymbolLabelScale(drawing.symbol.labelScale);
+    const labelBox = estimateSymbolLabelBox(
+      displayedSymbolLabel(drawing),
+      labelScale,
+    );
+    const labelPositionY =
+      symbolLabelBaseY(drawing) -
+      (scaleY - 1) * resizeBounds.height / 2;
+    const labelBaselineY = labelPositionY + labelOffset.y;
+    const iconLeft = center.x - iconHalfWidth - visiblePadding;
+    const iconTop = center.y - iconHalfHeight - visiblePadding;
+    const iconRight = center.x + iconHalfWidth + visiblePadding;
+    const iconBottom = center.y + iconHalfHeight + visiblePadding;
+    const labelLeft =
+      center.x + labelOffset.x - labelBox.halfWidth - visiblePadding;
+    const labelTop =
+      center.y + labelBaselineY - labelBox.height + 3 - visiblePadding;
+    const labelRight =
+      center.x + labelOffset.x + labelBox.halfWidth + visiblePadding;
+    const labelBottom =
+      center.y + labelBaselineY + 3 + visiblePadding;
+    return {
+      left: Math.min(iconLeft, labelLeft),
+      top: Math.min(iconTop, labelTop),
+      right: Math.max(iconRight, labelRight),
+      bottom: Math.max(iconBottom, labelBottom),
     };
   }
 
@@ -11464,34 +11567,15 @@ function HVACPlanStudioApp() {
   function renderSymbol(drawing: Drawing, preview = false) {
     if (!drawing.symbol) return null;
     const center = drawing.points[0];
-    const { kind, label, rotation, variant } = drawing.symbol;
-    const formattedSize = drawing.size.replace(/x/g, "×");
-    const defaultTerminalLabel = kind === "returnGrille"
-      ? `${formattedSize} RETURN`
-      : `${formattedSize} SUPPLY`;
-    const usesCatalogLabel = ["diffuser", "returnGrille"].includes(kind) && symbolPresets.some((preset) =>
-      preset.kind === kind &&
-      preset.variant === variant &&
-      preset.label === label
-    );
-    const displayLabel = ["diffuser", "returnGrille"].includes(kind)
-      ? usesCatalogLabel ? defaultTerminalLabel : label.trim() || defaultTerminalLabel
-      : label;
+    const { kind, rotation, variant } = drawing.symbol;
+    const displayLabel = displayedSymbolLabel(drawing);
     const selected = isSelected(drawing.id);
     const { width: symbolWidth, height: symbolHeight } = symbolDimensions(drawing.size);
     const grilleLines = Array.from({ length: Math.max(3, Math.min(8, Math.round(symbolWidth / 5))) }, (_, index) =>
       -symbolWidth / 2 + ((index + 1) * symbolWidth) / (Math.max(3, Math.min(8, Math.round(symbolWidth / 5))) + 1));
     const artworkClass = `hvac-symbol symbol-${kind} variant-${variant || "standard"} ${drawing.symbol.connectedRunId ? "terminal-linked" : ""} ${activeTraceSymbolIds.has(drawing.id) ? "traced-symbol" : ""} ${preview ? "symbol-preview" : ""} ${selected ? "selected-symbol" : ""}`;
     const verticalEquipment = kind === "equipment" && ["vertical-air-handler", "vertical-furnace"].includes(variant || "");
-    const labelY = kind === "equipment"
-      ? verticalEquipment ? -52 : -44
-      : kind === "fan"
-        ? -31
-        : kind === "airflow"
-          ? -12
-          : ["diffuser", "returnGrille"].includes(kind)
-            ? -symbolHeight / 2 - 10
-            : -22;
+    const labelY = symbolLabelBaseY(drawing);
     const interactionRadius = kind === "equipment" ? verticalEquipment ? 47 : 43 : kind === "fan" ? 31 : 25;
     const scaleX = normalizedSymbolScale(drawing.symbol.scaleX);
     const scaleY = normalizedSymbolScale(drawing.symbol.scaleY);
@@ -11554,7 +11638,7 @@ function HVACPlanStudioApp() {
             return <g
               key={`${cornerX}-${cornerY}`}
               className={cursorClass}
-              data-plan-edit-control
+              data-plan-edit-control="hvac"
               onPointerDown={(event) => startSymbolResize(event, drawing, cornerX, cornerY)}
             >
               <circle
@@ -11582,7 +11666,7 @@ function HVACPlanStudioApp() {
       <g
         className="symbol-label-editor"
         transform={`translate(${labelX} ${labelBaselineY})`}
-        data-plan-edit-control
+        data-plan-edit-control="hvac"
         onPointerDown={preview ? undefined : (event) => startSymbolLabelDrag(event, drawing)}
       >
         <rect
@@ -11614,7 +11698,7 @@ function HVACPlanStudioApp() {
           {displayLabel}
         </text>
         {selected && !preview && <g
-          data-plan-edit-control
+          data-plan-edit-control="hvac"
           onPointerDown={(event) => startSymbolLabelResize(event, drawing, {
             x: center.x + labelX,
             y: center.y + labelCenterY,
@@ -12001,17 +12085,22 @@ function HVACPlanStudioApp() {
   });
   const selectedFitting = selectedDrawing?.fitting ? selectedDrawing : undefined;
   const selectedRun = selectedDrawing && !selectedDrawing.fitting && ["supply", "return", "fresh"].includes(selectedDrawing.type) ? selectedDrawing : undefined;
-  const selectedRunHasLabel = Boolean(
-    selectedRun &&
-    (
+  const selectedRunLabelText = selectedRun
+    ? [
       selectedRun.runNumber?.trim() ||
-      selectedRun.sizeReviewed === true ||
-      showLengthLabels ||
-      showCfmLabels ||
-      selectedRun.elevation
-    )
-  );
-  const selectedRunWheelAnchor = selectedRun
+        undefined,
+      selectedRun.sizeReviewed === true ? `${selectedRun.size}"` : "",
+      showLengthLabels ? `${drawingLengthFeet(selectedRun).toFixed(1)} LF` : "",
+      showCfmLabels
+        ? `${runAirflow(selectedRun)} CFM${
+            airflowNetwork().calculated.get(selectedRun.id) ? " AUTO" : ""
+          }`
+        : "",
+      selectedRun.elevation ? `EL ${selectedRun.elevation}` : "",
+    ].filter(Boolean).join(" · ")
+    : "";
+  const selectedRunHasLabel = Boolean(selectedRunLabelText);
+  const selectedRunGeometryWheelAnchor = selectedRun
     ? [
       ...selectedRun.points,
       ...selectedRun.points.slice(0, -1).map((point, index) => ({
@@ -12027,17 +12116,86 @@ function HVACPlanStudioApp() {
         Math.hypot(right.x - viewportCenter.x, right.y - viewportCenter.y);
     })[0]
     : undefined;
+  const selectedRunLabelPoint = selectedRun && selectedRunHasLabel
+    ? {
+        x:
+          selectedRun.points[Math.floor(selectedRun.points.length / 2)].x +
+          8 +
+          (selectedRun.labelOffset?.x || 0),
+        y:
+          selectedRun.points[Math.floor(selectedRun.points.length / 2)].y -
+          8 +
+          (selectedRun.labelOffset?.y || 0),
+      }
+    : undefined;
+  const selectedRunWheelAnchor =
+    selectedRunLabelPoint || selectedRunGeometryWheelAnchor;
+  const planSelectionActionsVisible =
+    activeTool === "select" &&
+    !splitMode &&
+    !calibrating &&
+    !pendingRoomMarkupCandidateId &&
+    !fieldRedline.open &&
+    draft.length === 0 &&
+    !continuingRunId &&
+    !pendingBranchFittingId &&
+    !queuedBranchRunId;
+  const redlineSelectionActionsVisible =
+    fieldRedline.open &&
+    fieldRedline.activeTool === "select" &&
+    !fieldRedline.pendingDetail &&
+    !fieldRedline.dialog;
+  const planBoundsToViewportBounds = (bounds: {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+  }) => ({
+    left: camera.x + bounds.left * zoom,
+    top: camera.y + bounds.top * zoom,
+    width: Math.max(0, (bounds.right - bounds.left) * zoom),
+    height: Math.max(0, (bounds.bottom - bounds.top) * zoom),
+  });
+  const selectedSymbolPlanBounds = selectedDrawing?.symbol
+    ? symbolVisualPlanBounds(selectedDrawing)
+    : null;
+  const selectedSymbolAvoidBounds = selectedSymbolPlanBounds
+    ? planBoundsToViewportBounds(selectedSymbolPlanBounds)
+    : undefined;
+  const selectedRunAvoidBounds =
+    selectedRun &&
+    selectedRunLabelPoint &&
+    selectedRunLabelText
+      ? (() => {
+          const box = estimateDuctLabelBox(
+            selectedRunLabelText,
+            selectedRun.labelScale,
+          );
+          return planBoundsToViewportBounds({
+            left: selectedRunLabelPoint.x - 4,
+            top: selectedRunLabelPoint.y - box.height - 4,
+            right: selectedRunLabelPoint.x + box.width + 4,
+            bottom: selectedRunLabelPoint.y + 4,
+          });
+        })()
+      : undefined;
   const selectedSymbolWheel = selectedDrawing?.symbol
+    && planSelectionActionsVisible
     && !selectedDrawingLocked
     && selectedDrawing.page === pageNumber
     && selectedIds.length <= 1
     && pdf
     ? positionSymbolActionWheel({
       anchor: {
-        x: camera.x + selectedDrawing.points[0].x * zoom,
-        y: camera.y + selectedDrawing.points[0].y * zoom,
+        x: selectedSymbolAvoidBounds
+          ? selectedSymbolAvoidBounds.left + selectedSymbolAvoidBounds.width / 2
+          : camera.x + selectedDrawing.points[0].x * zoom,
+        y: selectedSymbolAvoidBounds
+          ? selectedSymbolAvoidBounds.top + selectedSymbolAvoidBounds.height / 2
+          : camera.y + selectedDrawing.points[0].y * zoom,
       },
       viewport: canvasViewportSize,
+      avoidBounds: selectedSymbolAvoidBounds,
       objectRadius: (() => {
         const bounds = symbolResizeBounds(selectedDrawing);
         const width = bounds.width * normalizedSymbolScale(selectedDrawing.symbol?.scaleX);
@@ -12045,6 +12203,7 @@ function HVACPlanStudioApp() {
         return Math.hypot(width, height) / 2;
       })(),
       zoom,
+      gap: 18,
       maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
     })
     : null;
@@ -12052,6 +12211,7 @@ function HVACPlanStudioApp() {
     selectedDrawing?.symbol && selectedSymbolWheel && !selectedSymbolWheel.hidden
   );
   const selectedRunWheel = selectedRun &&
+    planSelectionActionsVisible &&
     !selectedDrawingLocked &&
     selectedRun.page === pageNumber &&
     selectedIds.length <= 1 &&
@@ -12059,16 +12219,23 @@ function HVACPlanStudioApp() {
     selectedRunWheelAnchor
     ? positionSymbolActionWheel({
       anchor: {
-        x: camera.x + selectedRunWheelAnchor.x * zoom,
-        y: camera.y + selectedRunWheelAnchor.y * zoom,
+        x: selectedRunAvoidBounds
+          ? selectedRunAvoidBounds.left + selectedRunAvoidBounds.width / 2
+          : camera.x + selectedRunWheelAnchor.x * zoom,
+        y: selectedRunAvoidBounds
+          ? selectedRunAvoidBounds.top + selectedRunAvoidBounds.height / 2
+          : camera.y + selectedRunWheelAnchor.y * zoom,
       },
       viewport: canvasViewportSize,
+      avoidBounds: selectedRunAvoidBounds,
       objectRadius: 18,
       zoom,
+      gap: 18,
       maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
     })
     : null;
   const selectedFittingWheel = selectedFitting &&
+    planSelectionActionsVisible &&
     !selectedDrawingLocked &&
     selectedFitting.page === pageNumber &&
     selectedIds.length <= 1 &&
@@ -12081,6 +12248,7 @@ function HVACPlanStudioApp() {
       viewport: canvasViewportSize,
       objectRadius: 24,
       zoom,
+      gap: 18,
       maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
     })
     : null;
@@ -12090,39 +12258,55 @@ function HVACPlanStudioApp() {
     selectedSymbolWheelVisible ||
     selectedRunWheelVisible ||
     selectedFittingWheelVisible;
+  const selectedRedlineIds = new Set(fieldRedline.selection);
+  const selectedRedlineAnnotations =
+    fieldRedline.renderedDocument?.annotations.filter((annotation) =>
+      selectedRedlineIds.has(annotation.id) &&
+      annotation.binding.page === pageNumber &&
+      annotation.binding.sourceFingerprint ===
+        fieldRedline.binding?.sourceFingerprint
+    ) || [];
+  const selectedRedlinePlanBounds = redlineSelectionVisualBounds(
+    selectedRedlineAnnotations,
+    renderSize.width,
+    renderSize.height,
+    zoom,
+  );
+  const selectedRedlineAvoidBounds = selectedRedlinePlanBounds
+    ? planBoundsToViewportBounds({
+        left: selectedRedlinePlanBounds.x,
+        top: selectedRedlinePlanBounds.y,
+        right: selectedRedlinePlanBounds.x + selectedRedlinePlanBounds.width,
+        bottom: selectedRedlinePlanBounds.y + selectedRedlinePlanBounds.height,
+      })
+    : undefined;
   const redlineSelectionWheel =
-    fieldRedline.open &&
-    fieldRedline.selectionBounds &&
+    redlineSelectionActionsVisible &&
+    selectedRedlineAvoidBounds &&
     fieldRedline.selection.length
       ? positionSymbolActionWheel({
         anchor: {
           x:
-            camera.x +
-            (fieldRedline.selectionBounds.left +
-              fieldRedline.selectionBounds.width / 2) *
-              renderSize.width *
-              zoom,
+            selectedRedlineAvoidBounds.left +
+            selectedRedlineAvoidBounds.width / 2,
           y:
-            camera.y +
-            (fieldRedline.selectionBounds.top +
-              fieldRedline.selectionBounds.height / 2) *
-              renderSize.height *
-              zoom,
+            selectedRedlineAvoidBounds.top +
+            selectedRedlineAvoidBounds.height / 2,
         },
         viewport: canvasViewportSize,
-        objectRadius:
-          Math.hypot(
-            fieldRedline.selectionBounds.width * renderSize.width,
-            fieldRedline.selectionBounds.height * renderSize.height,
-          ) / 2,
+        avoidBounds: selectedRedlineAvoidBounds,
+        objectRadius: 0,
         zoom,
-        wheelRadius: 152,
+        gap: 18,
+        wheelRadius: 166,
         maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
       })
       : null;
   const redlineSelectionWheelVisible = Boolean(
-    redlineSelectionWheel &&
-    (!redlineSelectionWheel.hidden || canvasViewportSize.width <= 900),
+    redlineSelectionWheel,
+  );
+  const redlineSelectionWheelUsesStrip = Boolean(
+    redlineSelectionWheel?.hidden && canvasViewportSize.width > 900,
   );
   const branchTrace = branchNetworkTrace(selectedFitting);
   const branchHealth = branchNetworkConnectionHealth(selectedFitting);
@@ -14269,7 +14453,7 @@ function HVACPlanStudioApp() {
               if (draft.length) finishDrawing();
             }}
           >
-            {selectedId && !selectedContextWheelVisible && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
+            {selectedId && planSelectionActionsVisible && !selectedContextWheelVisible && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
               <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T/Y FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : "DUCT RUN"}{selectedDrawingLocked ? " · LAYER LOCKED" : ""}</strong>
               {!selectedDrawingLocked && selectedIds.length === 1 && !selectedDrawing?.symbol && !selectedDrawing?.measurement && <select
                 aria-label="Quick duct size"
@@ -14351,6 +14535,7 @@ function HVACPlanStudioApp() {
             {redlineSelectionWheelVisible && redlineSelectionWheel && <RedlineActionWheel
               x={redlineSelectionWheel.center.x}
               y={redlineSelectionWheel.center.y}
+              layout={redlineSelectionWheelUsesStrip ? "strip" : "wheel"}
               selectedAnnotationIds={fieldRedline.selection}
               grouped={fieldRedline.grouped}
               autoFocus={redlineWheelKeyboardOpen}
