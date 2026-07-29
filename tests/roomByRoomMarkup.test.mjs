@@ -32,10 +32,10 @@ function sourceBetween(source, start, end) {
   return source.slice(startIndex, endIndex);
 }
 
-test("persists room candidates and application receipts in the version 8 project state", () => {
+test("persists room candidates and application receipts in the version 9 project state", () => {
   assert.match(
     page,
-    /type SavedProject = \{\s*version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8;/,
+    /type SavedProject = \{\s*version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9;/,
   );
   assert.match(page, /roomMarkupCandidatesBySystem\?: Record<string, RoomMarkupCandidate\[\]>/);
   assert.match(page, /roomMarkupApplicationRecords\?: RoomMarkupApplicationRecord\[\]/);
@@ -45,7 +45,7 @@ test("persists room candidates and application receipts in the version 8 project
     "const buildProjectSnapshot = useCallback((): SavedProject => {",
     "const saveProject = useCallback(() => {",
   );
-  assert.match(snapshot, /version: 8,/);
+  assert.match(snapshot, /version: 9,/);
   assert.match(snapshot, /roomMarkupCandidatesBySystem,/);
   assert.match(snapshot, /roomMarkupApplicationRecords,/);
   assert.match(page, /setRoomMarkupCandidatesBySystem\(project\.roomMarkupCandidatesBySystem \|\| \{\}\)/);
@@ -221,7 +221,10 @@ test("lets touch placement reach the PDF while a ghost move is pending", () => {
   );
   assert.match(placementCapture, /event\.stopPropagation\(\)/);
   assert.match(placementCapture, /handleDrawingClick\(event\)/);
-  assert.match(page, /onPointerDownCapture=\{handleRoomMarkupPlacementCapture\}/);
+  assert.match(
+    page,
+    /onPointerDownCapture=\{fieldRedline\.open \? undefined : handleRoomMarkupPlacementCapture\}/,
+  );
 });
 
 test("keeps Room Markup touch-friendly, mobile, and out of print", () => {
@@ -240,14 +243,14 @@ test("keeps Room Markup touch-friendly, mobile, and out of print", () => {
   );
 });
 
-test("keeps V131 documented beneath the current V132 release", () => {
-  assert.match(layout, /HVAC Plan Studio · Finish the Job/);
+test("keeps V131 and V132 documented beneath the current V133 release", () => {
+  assert.match(layout, /HVAC Plan Studio · Field Redline Studio/);
   assert.match(
     layout,
-    /Review materials, clear plan holds/,
+    /Draw source-bound field redlines/,
   );
-  assert.match(analytics, /app_version: "132"/);
-  assert.match(readme, /## Current release — v132/);
+  assert.match(analytics, /app_version: "133"/);
+  assert.match(readme, /## Current release — v133/);
   assert.match(readme, /There is no Accept All or bulk room approval\./);
   assert.match(
     readme,
@@ -255,6 +258,8 @@ test("keeps V131 documented beneath the current V132 release", () => {
   );
   assert.match(roadmap, /\| v131 \| Room-by-Room Markup \| Shipped \|/);
   assert.match(roadmap, /\| v132 \| Finish the Job \| Shipped \|/);
+  assert.match(roadmap, /\| v133 \| Field Redline Studio \| Shipped \|/);
   assert.match(roadmap, /## v131 — Room-by-Room Markup/);
   assert.match(roadmap, /## v132 — Finish the Job/);
+  assert.match(roadmap, /## v133 — Field Redline Studio/);
 });

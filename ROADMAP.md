@@ -18,7 +18,7 @@ Every primary workspace now uses the same five plain-language job steps:
 2. **Draw & Detail** — draw supply routes first, number and confirm flex runs, add returns, then connect and repair.
 3. **Airflow & Sizes** — review room airflow, connected paths, and duct sizes.
 4. **Fix Plan** — see the issue, its location and evidence, the proposed change, and approve or skip one fix at a time.
-5. **Materials & Print** — review materials, blockers, and the field package.
+5. **Finish the Job** — review materials, blockers, checklist, approval, and controlled output.
 
 Plan setup reads the PDF in the background for drawing scales, rooms, ceiling heights, equipment, systems, zones, and missing information. It does not block basic drawing; only work that depends on an unconfirmed fact pauses.
 
@@ -60,6 +60,7 @@ Advanced coordination remains available without crowding the first screen.
 - Planning calculations never become a Manual J, S, D, or T result by changing a label.
 - Warning, evidence, and consequence text is workstation-readable: 15 px working copy, 13 px metadata, 12 px labels, 44 px controls.
 - Generated mock product imagery is not used. Social preview images must be an approved capture of the real built or production interface; otherwise image metadata stays absent.
+- Field redlines remain source/page-bound annotations. They never enter HVAC geometry, airflow, sizing, takeoff, repair, approval, or release fingerprints.
 
 ## Release status
 
@@ -86,7 +87,32 @@ Advanced coordination remains available without crowding the first screen.
 | v130 | Answer & Fix in Place | Shipped |
 | v131 | Room-by-Room Markup | Shipped |
 | v132 | Finish the Job | Shipped |
+| v133 | Field Redline Studio | Shipped |
 | v117 | Multi-company commercial operations | Planned for later |
+
+## v133 — Field Redline Studio
+
+### Outcome
+
+A superintendent or one-person HVAC contractor can mark the exact PDF sheet with field notes, highlights, callouts, revision clouds, and reusable redline details; edit them near the plan; and export a clean marked sheet without changing the HVAC design model.
+
+### Shipped capabilities
+
+- A compact plan-level studio with Select, Pen, Highlight, Erase, Arrow, Rectangle, Circle, Cloud, Text, and **Area select**.
+- Source-fingerprint and exact-page binding, normalized coordinates, a locked/visible/opacity-controlled layer, and separately preserved quarantined recovery data.
+- Pressure/coalesced pen input, pen/palm safeguards, intentional touch selection, 44 px targets, keyboard cycling, roving focus, and a compact small-screen action tray.
+- Move, resize, rotate, duplicate, text edit, style edit, group, align, distribute, delete, and redline-only Undo/Redo with count and memory caps.
+- Four favorite field styles and reusable **My Details** templates with a transparent placement preview.
+- Explicit conversion of selected redlines into a draft RFI or open punch item carrying the exact source, page, bounds, annotation IDs, and redline fingerprint.
+- Current-sheet and selected-area PNG, JPG, and PDF exports at Standard or controlled 4K quality.
+- Direct target-resolution PDF crop rendering, committed-overlay style capture, transient-state filtering, and a non-overlapping export footer.
+- Visible export status, separate HVAC release and redline review fields, draft watermarking, and **FIELD REDLINE - NOT APPROVED HVAC DESIGN**.
+
+### Safety boundary
+
+Field Redline Studio is an annotation workspace, not a second repair engine. It cannot change runs, CFM, sizes, fittings, equipment, terminals, connections, system assignments, material quantities, engineering findings, approvals, or releases. Export excludes selection handles, action wheels, hover targets, active cursors, placement ghosts, unfinished strokes, measurements in progress, assistant suggestions, repair previews, and tool chrome.
+
+Live co-editing, public broadcasting, automatic handwriting interpretation, reusable complete duct systems, decorative brush libraries, and arbitrary recoloring of semantic HVAC lines remain deliberately postponed.
 
 ## v129 — One Job Screen
 

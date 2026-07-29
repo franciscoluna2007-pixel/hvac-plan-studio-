@@ -43,8 +43,11 @@ test("v130 answers are source-bound and handled-elsewhere never clears review", 
   assert.match(page, /fixPlanAnswerCompletesReview\(\{/);
   assert.match(page, /status === "handled-elsewhere"/);
   assert.match(page, /remains open in Fix Plan/);
-  assert.match(page, /version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8/);
-  assert.match(page, /version: 8/);
+  assert.match(page, /version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9;/);
+  assert.match(
+    page,
+    /const buildProjectSnapshot = useCallback\(\(\): SavedProject => \{[\s\S]*?return \{\s*version: 9,/,
+  );
   assert.match(page, /\[activeSystem, activeValidationIssues, fileName, pdfFingerprint, punchItems, reviewDecisionsBySystem, rfiItems\]/);
   assert.doesNotMatch(assistant, /onReopenIssueAnswer/);
 });

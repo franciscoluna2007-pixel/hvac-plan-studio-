@@ -135,7 +135,10 @@ test("integrates one visible Finish the Job path and preserves manual issue appr
   assert.match(page, /existing && latestMaterialReview\(\)\?\.id === existing\.id/);
   assert.match(page, /Current material quantities reviewed/);
   assert.match(page, /materialFingerprint: materialReviewFingerprint\(\)/);
-  assert.match(page, /version: 8,/);
+  assert.match(
+    page,
+    /const buildProjectSnapshot = useCallback\(\(\): SavedProject => \{[\s\S]*?return \{\s*version: 9,/,
+  );
   assert.match(page, /materialReviewRecords,/);
   assert.doesNotMatch(page, /label: "Materials & Print"/);
 });
@@ -184,10 +187,12 @@ test("keeps V132 warnings and supporting copy above the readability floor", () =
   assert.match(styles, /@media \(max-height: 680px\) and \(min-width: 761px\)/);
 });
 
-test("publishes V132 product metadata and roadmap", () => {
-  assert.match(analytics, /app_version: "132"/);
-  assert.match(readme, /## Current release — v132/);
+test("keeps V132 documented beneath the current V133 product metadata", () => {
+  assert.match(analytics, /app_version: "133"/);
+  assert.match(readme, /## Current release — v133/);
+  assert.match(readme, /### v133 — Field Redline Studio/);
   assert.match(readme, /### v132 — Finish the Job/);
+  assert.match(roadmap, /\| v133 \| Field Redline Studio \| Shipped \|/);
   assert.match(roadmap, /\| v132 \| Finish the Job \| Shipped \|/);
   assert.match(roadmap, /## v132 — Finish the Job/);
 });

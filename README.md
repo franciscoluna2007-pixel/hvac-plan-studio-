@@ -4,9 +4,27 @@ HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review,
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v132
+## Current release — v133
 
-v132 gives a superintendent or one-person HVAC business one guided **Finish the Job** path for material review, unresolved plan holds, the field checklist, named revision approval, and controlled output. It replaces the former split between Materials, hidden release tools, and package composition without weakening any release gate.
+v133 adds **Field Redline Studio**: a compact, source-bound layer for field notes, highlights, callouts, revision clouds, reusable details, and controlled marked-plan export. It is deliberately separate from HVAC engineering objects and from the assistant repair workflow.
+
+### v133 — Field Redline Studio
+
+- Opens from the plan toolbar without adding another top-level job step or forcing a guided workflow.
+- Adds pen, pressure-aware ink, highlighter, arrow, rectangle, circle, revision cloud, text, erase, Select, and **Area select** tools.
+- Keeps redlines in normalized page coordinates and binds every item to the exact PDF fingerprint and page.
+- Supports move, resize smaller/larger, rotate, duplicate, group, align, distribute, delete, text editing, and selected-style updates from nearby controls.
+- Provides an independent redline Undo/Redo history with both command-count and retained-memory limits.
+- Adds one dedicated redline layer with visibility, lock, opacity, four favorite styles, and reusable **My Details** templates.
+- Uses intentional touch targets, pen/palm safeguards, keyboard navigation, compact mobile controls, and a nearby action wheel or small-screen action tray.
+- Converts selected redlines only into explicit draft RFIs or open punch items with source/page links; nothing is sent or approved automatically.
+- Exports the current sheet or selected area as PNG, JPG, or PDF at Standard or controlled 4K quality from the PDF source and committed overlay.
+- Removes selection handles, action wheels, previews, ghosts, hover targets, and repair suggestions from exports.
+- Carries a separate, non-overlapping footer and the warning **FIELD REDLINE - NOT APPROVED HVAC DESIGN**.
+- Quarantines mismatched or unsafe saved redlines without discarding the original recovery payload.
+- Never changes runs, CFM, sizes, fittings, equipment, connections, takeoff quantities, approval state, or HVAC release fingerprints.
+
+Deliberately postponed: live co-editing, public broadcasting, automatic handwriting interpretation, reusable complete duct systems, decorative brush libraries, and arbitrary recoloring of semantic HVAC lines.
 
 ### v132 — Finish the Job
 

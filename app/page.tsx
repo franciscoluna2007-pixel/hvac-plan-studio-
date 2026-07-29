@@ -11,6 +11,11 @@ import GuidedProjectSetup, { type ProjectSetupValues } from "./GuidedProjectSetu
 import ProjectCommandPalette, { type ProjectCommand } from "./ProjectCommandPalette";
 import ProjectHome from "./ProjectHome";
 import SymbolActionWheel from "./PlanSymbolActionWheel";
+import FieldRedlineStudio, {
+  type RedlineStudioDialogState,
+} from "./FieldRedlineStudio";
+import RedlineActionWheel from "./RedlineActionWheel";
+import RedlineCanvasLayer from "./RedlineCanvasLayer";
 import { trackProductEvent } from "./productAnalytics";
 import SystemBalanceStudio from "./SystemBalanceStudio";
 import MarkupAssistantStudio, {
@@ -119,6 +124,20 @@ import {
   resetDuctLabelScale,
   stepDuctLabelScale,
 } from "./ductLabelEditing";
+import {
+  buildFieldRedlineExportPlan,
+  downloadFieldRedlineExportArtifact,
+  renderFieldRedlineExportArtifact,
+} from "./fieldRedlineExport";
+import {
+  renderCommittedFieldRedlineScene,
+  resolveFieldRedlineRenderLayout,
+} from "./fieldRedlineRenderer";
+import {
+  useFieldRedlineController,
+  type FieldRedlineIssueDraft,
+} from "./useFieldRedlineController";
+import type { RedlineSnapshotV1 } from "./redlineDomain";
 import {
   buildFindingIdentity,
   type PlanFindingCategory,
@@ -1083,7 +1102,7 @@ type SheetScaleState = {
 };
 
 type SavedProject = {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
   fileName: string;
   drawings: Drawing[];
   savedAt: string;
@@ -1127,7 +1146,36 @@ type SavedProject = {
   cloudProjectId?: string;
   cloudRevisionId?: string;
   cloudReleaseFingerprint?: string;
+  fieldRedlines?: RedlineSnapshotV1;
+  fieldRedlineQuarantine?: unknown;
 };
+
+function savedFieldRedlinesMatchSource(
+  project: SavedProject,
+  sourceFingerprint: string,
+  sourcePageCount: number,
+) {
+  const binding = project.fieldRedlines?.document.binding;
+  if (!binding) return true;
+  return Boolean(
+    sourceFingerprint &&
+    sourcePageCount > 0 &&
+    binding.sourceFingerprint === sourceFingerprint &&
+    binding.pageCount === sourcePageCount &&
+    (!project.pdfFingerprint ||
+      project.pdfFingerprint === sourceFingerprint),
+  );
+}
+
+function blockedFieldRedlineRestoreData(project: SavedProject) {
+  if (!project.fieldRedlines) return project.fieldRedlineQuarantine;
+  return {
+    kind: "blocked-field-redline-restore",
+    reason: "source-mismatch",
+    snapshot: project.fieldRedlines,
+    previousQuarantine: project.fieldRedlineQuarantine,
+  };
+}
 
 function boundedPlanAnalysisSnapshot(analysis: PlanAnalysis | null) {
   if (!analysis) return null;
@@ -1194,6 +1242,20 @@ type CommissioningRecord = {
   checklist: Record<string, boolean>;
 };
 
+type FieldRedlineSourceLink = {
+  version: "field-redline-link-v133.0";
+  sourceFingerprint: string;
+  page: number;
+  annotationIds: string[];
+  redlineFingerprint: string;
+  bounds?: {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+  };
+};
+
 type PunchItem = {
   id: string;
   systemId: string;
@@ -1206,6 +1268,7 @@ type PunchItem = {
   status: "open" | "resolved";
   createdAt: string;
   resolvedAt?: string;
+  sourceRedline?: FieldRedlineSourceLink;
 };
 
 type RfiItem = {
@@ -1227,6 +1290,7 @@ type RfiItem = {
   updatedAt: string;
   approvalBy?: string;
   approvedAt?: string;
+  sourceRedline?: FieldRedlineSourceLink;
 };
 
 type ValidationSeverity = "critical" | "warning" | "info";
@@ -1418,6 +1482,9 @@ function HVACPlanStudioApp() {
   const canvasViewportRef = useRef<HTMLDivElement>(null);
   const pdfStageRef = useRef<HTMLDivElement>(null);
   const planSheetRef = useRef<HTMLDivElement>(null);
+  const planOverlayRef = useRef<SVGSVGElement>(null);
+  const fieldRedlineLaunchRef = useRef<HTMLElement | null>(null);
+  const fieldRedlineToolbarButtonRef = useRef<HTMLButtonElement>(null);
   const displaySettingsTriggerRef = useRef<HTMLButtonElement>(null);
   const displaySettingsCloseRef = useRef<HTMLButtonElement>(null);
   const displaySettingsPanelRef = useRef<HTMLElement>(null);
@@ -1681,6 +1748,68 @@ function HVACPlanStudioApp() {
   const [roomAirflowTargetReviewFingerprints, setRoomAirflowTargetReviewFingerprints] = useState<Record<string, string>>({});
   const [selectedCfmProposalIds, setSelectedCfmProposalIds] = useState<string[]>([]);
   const [balanceReviewRecords, setBalanceReviewRecords] = useState<BalanceReviewRecord[]>([]);
+  const [redlineWheelKeyboardOpen, setRedlineWheelKeyboardOpen] = useState(false);
+  const [fieldRedlineMessage, setFieldRedlineMessage] = useState(
+    "Choose a redline tool, then mark the current sheet.",
+  );
+
+  const fieldRedline = useFieldRedlineController({
+    page: pageNumber,
+    pageAspectRatio:
+      renderSize.width > 0 && renderSize.height > 0
+        ? renderSize.width / renderSize.height
+        : 1,
+    onMessage: (value) => {
+      setBranchMessage(value);
+      setFieldRedlineMessage(value);
+    },
+    onExport: exportFieldRedlines,
+    onIssueDraft: handleFieldRedlineIssueDraft,
+  });
+  const resetFieldRedlinePageInteraction =
+    fieldRedline.resetPageInteraction;
+  const showPlanPage = useCallback(
+    (nextPage: number) => {
+      resetFieldRedlinePageInteraction();
+      setPageNumber(nextPage);
+    },
+    [resetFieldRedlinePageInteraction],
+  );
+
+  function openFieldRedlineStudio() {
+    if (document.activeElement instanceof HTMLElement) {
+      fieldRedlineLaunchRef.current = document.activeElement;
+    }
+    finishDrawing();
+    setActiveTool("select");
+    selectOnly(null);
+    setFieldRedlineMessage(
+      "Field redlines stay separate from runs, CFM, sizes, and connections.",
+    );
+    fieldRedline.setOpen(true);
+  }
+
+  function closeFieldRedlineStudio() {
+    fieldRedline.setOpen(false);
+    fieldRedline.setTool("select");
+    fieldRedline.select([]);
+    window.requestAnimationFrame(() => {
+      const launch = fieldRedlineLaunchRef.current;
+      if (launch?.isConnected) launch.focus();
+      else fieldRedlineToolbarButtonRef.current?.focus();
+    });
+  }
+
+  function openRedlineSelectionWheelFromKeyboard(annotationId: string) {
+    fieldRedline.select([annotationId]);
+    setRedlineWheelKeyboardOpen(true);
+  }
+
+  function closeRedlineSelectionWheel() {
+    setRedlineWheelKeyboardOpen(false);
+    fieldRedline.select([]);
+    window.requestAnimationFrame(() => planOverlayRef.current?.focus());
+  }
 
   const currentCloudReleaseFingerprint = useMemo(() => cloudReleaseFingerprintFromProject({
     drawings,
@@ -2193,7 +2322,12 @@ function HVACPlanStudioApp() {
     setReleaseNote("");
   }
 
-  function applyProjectSnapshot(project: SavedProject, sourceFingerprint?: string) {
+  function applyProjectSnapshot(
+    project: SavedProject,
+    sourceFingerprint?: string,
+    sourcePageCount?: number,
+    fieldRedlineRestoreMode: "restore" | "quarantine" = "restore",
+  ) {
     const restoredDrawings = Array.isArray(project.drawings) ? project.drawings : [];
     const restoredSheetScales = Object.fromEntries(
       Object.entries(project.sheetScales || {}).filter(([, scale]) =>
@@ -2218,7 +2352,7 @@ function HVACPlanStudioApp() {
       verified: false,
     };
     setDrawings(synchronizeFittingSizes(restoredDrawings, restoredDrawings));
-    setPageNumber(1);
+    showPlanPage(1);
     setSheetScales(restoredSheetScales);
     setScaleFeetPerUnit(firstSheetScale.feetPerUnit);
     setScaleLabel(firstSheetScale.label);
@@ -2226,7 +2360,12 @@ function HVACPlanStudioApp() {
     setScaleVerified(firstSheetScale.verified);
     setCalibrating(false);
     setScaleHelperReturnPending(false);
-    if (sourceFingerprint && project.pdfFingerprint && project.pdfFingerprint !== sourceFingerprint) {
+    if (
+      fieldRedlineRestoreMode === "restore" &&
+      sourceFingerprint &&
+      project.pdfFingerprint &&
+      project.pdfFingerprint !== sourceFingerprint
+    ) {
       setBranchMessage("A revised PDF was detected. Existing markups were restored, but every prior field release is now stale");
     }
     setSystemNames({ ...defaultSystemNames, ...(project.systemNames || {}) });
@@ -2282,13 +2421,45 @@ function HVACPlanStudioApp() {
       project.cloudReleaseFingerprint ||
       (project.cloudProjectId ? cloudReleaseFingerprintFromProject(project) : null),
     );
+    const redlineSourceFingerprint =
+      sourceFingerprint ||
+      project.pdfFingerprint ||
+      project.fieldRedlines?.document.binding.sourceFingerprint;
+    const redlinePageCount =
+      sourcePageCount ||
+      project.fieldRedlines?.document.binding.pageCount ||
+      pdf?.numPages ||
+      1;
+    if (redlineSourceFingerprint) {
+      const expectedRedlineSource = {
+        sourceFingerprint: redlineSourceFingerprint,
+        pageCount: redlinePageCount,
+      };
+      if (fieldRedlineRestoreMode === "quarantine") {
+        fieldRedline.restoreSnapshot(
+          undefined,
+          expectedRedlineSource,
+          blockedFieldRedlineRestoreData(project),
+        );
+      } else {
+        fieldRedline.restoreSnapshot(
+          project.fieldRedlines,
+          expectedRedlineSource,
+          project.fieldRedlineQuarantine,
+        );
+      }
+    }
     setSelectedCfmProposalIds([]);
     setActiveReviewIssueId(null);
     setUndoStack([]);
     setRedoStack([]);
   }
 
-  function resetForNewSource() {
+  function resetForNewSource(
+    sourceFingerprint?: string,
+    sourcePageCount?: number,
+    title?: string,
+  ) {
     setDrawings([]);
     setWorkingCloudProjectId(null);
     setWorkingCloudRevisionId(null);
@@ -2296,9 +2467,20 @@ function HVACPlanStudioApp() {
     resetProjectWorkflowState();
     setUndoStack([]);
     setRedoStack([]);
+    if (sourceFingerprint && sourcePageCount) {
+      fieldRedline.resetForSource(
+        sourceFingerprint,
+        sourcePageCount,
+        title,
+      );
+    }
   }
 
-  function restoreProject(name: string, sourceFingerprint: string): ProjectRestoreResult {
+  function restoreProject(
+    name: string,
+    sourceFingerprint: string,
+    sourcePageCount: number,
+  ): ProjectRestoreResult {
     try {
       const exactStored = localStorage.getItem(projectStorageKey(name, sourceFingerprint));
       const legacyStored = localStorage.getItem(projectStorageKey(name));
@@ -2308,13 +2490,17 @@ function HVACPlanStudioApp() {
         sourceFingerprint,
       );
       if (decision.status !== "restored") {
-        resetForNewSource();
+        resetForNewSource(sourceFingerprint, sourcePageCount, name);
         return decision.status;
       }
-      applyProjectSnapshot(decision.project, sourceFingerprint);
+      applyProjectSnapshot(
+        decision.project,
+        sourceFingerprint,
+        sourcePageCount,
+      );
       return "restored";
     } catch {
-      resetForNewSource();
+      resetForNewSource(sourceFingerprint, sourcePageCount, name);
       return "new";
     }
   }
@@ -2460,9 +2646,13 @@ function HVACPlanStudioApp() {
       setWorkingCloudRevisionId(null);
       setWorkingCloudRevisionFingerprint(null);
       setFileName(projectName);
-      setPageNumber(1);
+      showPlanPage(1);
       setZoom(1);
-      const restoreResult = restoreProject(projectName, sourceFingerprint);
+      const restoreResult = restoreProject(
+        projectName,
+        sourceFingerprint,
+        document.numPages,
+      );
       applyProjectSetup(context.setup);
       if (context.mode === "direct") setBranchMessage(directOpenStatus(restoreResult));
       setShowProjectHome(false);
@@ -2515,9 +2705,13 @@ function HVACPlanStudioApp() {
       setWorkingCloudRevisionId(null);
       setWorkingCloudRevisionFingerprint(null);
       setFileName(projectName);
-      setPageNumber(1);
+      showPlanPage(1);
       setZoom(1);
-      const restoreResult = restoreProject(projectName, sourceFingerprint);
+      const restoreResult = restoreProject(
+        projectName,
+        sourceFingerprint,
+        document.numPages,
+      );
       applyProjectSetup(context.setup);
       if (context.mode === "direct") setBranchMessage(directOpenStatus(restoreResult));
       setShowProjectHome(false);
@@ -2564,7 +2758,8 @@ function HVACPlanStudioApp() {
     setLoading(true);
     setError("");
     try {
-      let sourceFingerprint = savedProject.pdfFingerprint || "";
+      let sourceFingerprint = pdfFingerprint || "";
+      let sourcePageCount = pdf?.numPages || 0;
       if (project.source_drive_file_id) {
         const source = await loadPdfFromDriveId(
           project.source_drive_file_id,
@@ -2572,17 +2767,44 @@ function HVACPlanStudioApp() {
         );
         sourceFingerprint = stableByteHash(source.bytes);
         const document = await pdfjsLib.getDocument({ data: source.bytes }).promise;
+        sourcePageCount = document.numPages;
         await replacePdfDocument(document);
         setPdfFingerprint(sourceFingerprint);
         setSourceDriveFileId(project.source_drive_file_id);
         setSourceFileName(project.source_file_name || `${project.name}.pdf`);
-        setPageNumber(1);
+        showPlanPage(1);
         setZoom(1);
       } else if (!pdf) {
         setBranchMessage("Cloud revision restored. Open the matching source PDF to place the saved HVAC drawing over its plan");
       }
+      const fieldRedlinesBlocked = Boolean(savedProject.fieldRedlines) &&
+        !savedFieldRedlinesMatchSource(
+          savedProject,
+          sourceFingerprint,
+          sourcePageCount,
+        );
+      const redlineBinding = savedProject.fieldRedlines?.document.binding;
+      const safeRestoreFingerprint =
+        sourceFingerprint ||
+        savedProject.pdfFingerprint ||
+        redlineBinding?.sourceFingerprint ||
+        "";
+      const safeRestorePageCount =
+        sourcePageCount ||
+        redlineBinding?.pageCount ||
+        1;
       setFileName(savedProject.fileName || project.name);
-      applyProjectSnapshot(savedProject, sourceFingerprint);
+      applyProjectSnapshot(
+        savedProject,
+        safeRestoreFingerprint,
+        safeRestorePageCount,
+        fieldRedlinesBlocked ? "quarantine" : "restore",
+      );
+      if (fieldRedlinesBlocked) {
+        setFieldRedlineMessage(
+          "Saved field redlines were quarantined because this PDF does not exactly match their source. Open the matching PDF, then restore this revision again.",
+        );
+      }
       setWorkingCloudProjectId(project.id);
       setWorkingCloudRevisionId(revision.id);
       setWorkingCloudRevisionFingerprint(
@@ -2609,7 +2831,10 @@ function HVACPlanStudioApp() {
       }
       setBranchMessage(
         `Cloud revision R${revision.revision_number} restored · local autosave is active` +
-        (receiptHistoryRefreshed ? " · repair receipts refreshed" : " · repair receipt refresh unavailable"),
+        (receiptHistoryRefreshed ? " · repair receipts refreshed" : " · repair receipt refresh unavailable") +
+        (fieldRedlinesBlocked
+          ? " · field redlines quarantined until the matching PDF is open"
+          : ""),
       );
       setShowCloudProjects(false);
       setShowProjectHome(false);
@@ -3121,8 +3346,13 @@ function HVACPlanStudioApp() {
   function handleViewportPointerDownCapture(event: PointerEvent<HTMLDivElement>) {
     if (isCanvasUiTarget(event.target)) return;
     const directTouchEdit = event.pointerType === "touch"
-      && event.target instanceof Element
-      && Boolean(event.target.closest("[data-plan-edit-control]"));
+      && (
+        (
+          event.target instanceof Element &&
+          Boolean(event.target.closest("[data-plan-edit-control]"))
+        ) ||
+        Boolean(fieldRedline.open && fieldRedline.pendingDetail)
+      );
     if (event.pointerType === "touch") {
       if (!pdf) return;
       if (pendingRoomMarkupCandidateId) {
@@ -3325,7 +3555,7 @@ function HVACPlanStudioApp() {
     if (!pdf) return;
     const nextPage = Math.max(1, Math.min(pdf.numPages, page));
     setPlanEvidenceRegion(null);
-    setPageNumber(nextPage);
+    showPlanPage(nextPage);
     activateSheetScale(nextPage);
     requestAnimationFrame(() => centerPlan());
   }
@@ -3347,7 +3577,7 @@ function HVACPlanStudioApp() {
       releaseStale: activeFieldPackage.stale,
     });
     return {
-      version: 8,
+      version: 9,
       fileName,
       drawings,
       savedAt: new Date().toISOString(),
@@ -3389,6 +3619,9 @@ function HVACPlanStudioApp() {
       cloudProjectId: workingCloudProjectId || undefined,
       cloudRevisionId: workingCloudRevisionId || undefined,
       cloudReleaseFingerprint: currentCloudReleaseFingerprint,
+      fieldRedlines: fieldRedline.snapshot,
+      fieldRedlineQuarantine:
+        fieldRedline.quarantinedSnapshot || undefined,
       workflowSummary: {
         version: 1,
         activeSystemId: activeSystem,
@@ -3406,7 +3639,7 @@ function HVACPlanStudioApp() {
         })),
       },
     };
-  }, [activeBuilderSummary, activeFieldPackage, activePlanAnalysis, activeSystem, assistantAutonomyMode, assistantRepairRecords, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialReviewRecords, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, roomMarkupApplicationRecords, roomMarkupCandidatesBySystem, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
+  }, [activeBuilderSummary, activeFieldPackage, activePlanAnalysis, activeSystem, assistantAutonomyMode, assistantRepairRecords, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fieldRedline.quarantinedSnapshot, fieldRedline.snapshot, fileName, freshVelocityLimit, lockedLayers, materialReviewRecords, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, roomMarkupApplicationRecords, roomMarkupCandidatesBySystem, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
 
   const saveProject = useCallback(() => {
     if (!pdf) return;
@@ -6130,7 +6363,7 @@ function HVACPlanStudioApp() {
         point,
         avoidAssistant: options.avoidAssistant,
       };
-      setPageNumber(drawing.page);
+      showPlanPage(drawing.page);
       return;
     }
     requestAnimationFrame(() => focusPlanPoint(point, options));
@@ -7952,6 +8185,315 @@ function HVACPlanStudioApp() {
     if (drawing.symbol) return `${drawing.symbol.label} · ${drawing.size || "Per plan"}`;
     if (drawing.fitting) return `${drawing.fitting.style === "tee90" ? "Tee" : "Wye"} · ${drawing.fitting.upstreamSize}×${drawing.fitting.downstreamSize}×${drawing.fitting.branchSize}`;
     return `${drawing.type.toUpperCase()} · ${drawing.size}" · ${drawing.roomName?.trim() || "Room unassigned"}`;
+  }
+
+  function fieldRedlineSourceLink(
+    draft: FieldRedlineIssueDraft,
+  ): FieldRedlineSourceLink {
+    return {
+      version: "field-redline-link-v133.0",
+      sourceFingerprint: draft.binding.sourceFingerprint,
+      page: draft.binding.page,
+      annotationIds: [...draft.annotationIds],
+      redlineFingerprint: draft.redlineFingerprint,
+      ...(draft.bounds
+        ? {
+          bounds: {
+            left: draft.bounds.left,
+            top: draft.bounds.top,
+            right: draft.bounds.right,
+            bottom: draft.bounds.bottom,
+          },
+        }
+        : {}),
+    };
+  }
+
+  function handleFieldRedlineIssueDraft(draft: FieldRedlineIssueDraft) {
+    if (!draft.annotationIds.length || !draft.title.trim()) return;
+    const now = new Date().toISOString();
+    const sourceRedline = fieldRedlineSourceLink(draft);
+    if (draft.kind === "rfi") {
+      const number = Math.max(0, ...rfiItems.map((item) => item.number)) + 1;
+      const item: RfiItem = {
+        id: crypto.randomUUID(),
+        number,
+        systemId: activeSystem,
+        subject: draft.title.trim(),
+        category: "Coordination",
+        priority: "normal",
+        question: draft.note.trim() || "Review the linked field redline and clarify the required work.",
+        proposedSolution: "",
+        assignedTo: "",
+        costImpact: "None identified",
+        scheduleImpact: "None identified",
+        response: "",
+        status: "draft",
+        createdAt: now,
+        updatedAt: now,
+        sourceRedline,
+      };
+      setRfiItems((current) => [...current, item]);
+      setBranchMessage(
+        `Draft RFI ${number} created from ${draft.annotationIds.length} field redline${draft.annotationIds.length === 1 ? "" : "s"} · nothing was submitted`,
+      );
+    } else {
+      const item: PunchItem = {
+        id: crypto.randomUUID(),
+        systemId: activeSystem,
+        title: draft.title.trim(),
+        category: "Coordination",
+        priority: "normal",
+        assignedTo: "",
+        note: draft.note.trim(),
+        status: "open",
+        createdAt: now,
+        sourceRedline,
+      };
+      setPunchItems((current) => [...current, item]);
+      setBranchMessage(
+        `Open punch item created from ${draft.annotationIds.length} field redline${draft.annotationIds.length === 1 ? "" : "s"} · no HVAC object changed`,
+      );
+    }
+    setRightTab("field");
+    setFieldView("coordination");
+  }
+
+  async function exportFieldRedlines(
+    request: Extract<RedlineStudioDialogState, { kind: "export" }>,
+  ) {
+    const showRedlineMessage = (value: string) => {
+      setBranchMessage(value);
+      setFieldRedlineMessage(value);
+    };
+    const sourceCanvas = canvasRef.current;
+    const overlaySvg = planOverlayRef.current;
+    const redlineDocument = fieldRedline.document;
+    if (
+      !sourceCanvas ||
+      !overlaySvg ||
+      !pdf ||
+      !redlineDocument ||
+      !fieldRedline.activeLayer ||
+      !renderSize.width ||
+      !renderSize.height
+    ) {
+      showRedlineMessage("Open a rendered PDF sheet before exporting field redlines.");
+      return;
+    }
+    if (renderedPageNumberRef.current !== pageNumber) {
+      showRedlineMessage(
+        `Wait for PDF sheet ${pageNumber} to finish rendering before export.`,
+      );
+      return;
+    }
+    if (
+      fieldRedline.transient ||
+      fieldRedline.renderedDocument !== fieldRedline.document
+    ) {
+      showRedlineMessage(
+        "Finish or cancel the current redline edit before exporting.",
+      );
+      return;
+    }
+    if (
+      redlineDocument.binding.sourceFingerprint !== pdfFingerprint ||
+      redlineDocument.binding.pageCount !== pdf.numPages
+    ) {
+      showRedlineMessage(
+        "Open the exact source PDF for these field redlines before exporting.",
+      );
+      return;
+    }
+    const overlayRedlineLayer =
+      overlaySvg.querySelector<SVGGElement>(".redline-canvas-layer");
+    if (
+      !overlayRedlineLayer ||
+      overlayRedlineLayer.dataset.redlineSource !== pdfFingerprint ||
+      overlayRedlineLayer.dataset.redlinePage !== String(pageNumber)
+    ) {
+      showRedlineMessage(
+        `Wait for field redlines on PDF sheet ${pageNumber} to finish rendering before export.`,
+      );
+      return;
+    }
+    const selectionBounds = fieldRedline.selectionBounds;
+    if (request.scope === "selected-area" && !selectionBounds) {
+      showRedlineMessage("Select at least one field redline before exporting a selected area.");
+      return;
+    }
+    const selectedVisualBoxes = fieldRedline.selection
+      .map((annotationId) => {
+        const node = overlaySvg.querySelector<SVGGElement>(
+          `[data-redline-id="${annotationId}"]`,
+        );
+        if (!node) return null;
+        try {
+          const box = node.getBBox();
+          return Number.isFinite(box.x) &&
+            Number.isFinite(box.y) &&
+            Number.isFinite(box.width) &&
+            Number.isFinite(box.height)
+            ? box
+            : null;
+        } catch {
+          return null;
+        }
+      })
+      .filter((box): box is DOMRect => Boolean(box));
+    const selectedVisualBounds = selectedVisualBoxes.length
+      ? {
+        left: Math.min(...selectedVisualBoxes.map((box) => box.x)),
+        top: Math.min(...selectedVisualBoxes.map((box) => box.y)),
+        right: Math.max(
+          ...selectedVisualBoxes.map((box) => box.x + box.width),
+        ),
+        bottom: Math.max(
+          ...selectedVisualBoxes.map((box) => box.y + box.height),
+        ),
+      }
+      : null;
+    const scope = request.scope === "selected-area" && selectionBounds
+      ? {
+        kind: "selected-area" as const,
+        selection: {
+          x:
+            selectedVisualBounds?.left ??
+            selectionBounds.left * renderSize.width,
+          y:
+            selectedVisualBounds?.top ??
+            selectionBounds.top * renderSize.height,
+          width: Math.max(
+            1,
+            selectedVisualBounds
+              ? selectedVisualBounds.right - selectedVisualBounds.left
+              : selectionBounds.width * renderSize.width,
+          ),
+          height: Math.max(
+            1,
+            selectedVisualBounds
+              ? selectedVisualBounds.bottom - selectedVisualBounds.top
+              : selectionBounds.height * renderSize.height,
+          ),
+        },
+      }
+      : { kind: "current-sheet" as const };
+    const visibleCount = fieldRedline.activeLayer.visible
+      ? fieldRedline.pageAnnotations.length
+      : 0;
+    const committedSceneFingerprint = stableTextHash(JSON.stringify(
+      canonicalReleaseValue({
+        releaseFingerprint: currentCloudReleaseFingerprint,
+        page: pageNumber,
+        drawings: drawings
+          .filter((drawing) => drawing.page === pageNumber)
+          .sort((left, right) => left.id.localeCompare(right.id)),
+        display: {
+          visibleLayers,
+          showCfmLabels,
+          showLengthLabels,
+          showFittingLabels,
+          backgroundOpacity,
+        },
+        redlines: fieldRedline.fingerprint,
+      }),
+    ));
+    const exportPlan = buildFieldRedlineExportPlan({
+      sheet: {
+        id: `${pdfFingerprint || "source"}:${pageNumber}`,
+        page: pageNumber,
+        label: `Sheet ${pageNumber} of ${pdf?.numPages || 1}`,
+        width: renderSize.width,
+        height: renderSize.height,
+      },
+      scope,
+      preset: request.quality,
+      format: request.format,
+      filename: `${fileName}-sheet-${pageNumber}-field-redline.${request.format}`,
+      sourceFingerprint: pdfFingerprint,
+      committedSceneFingerprint,
+      hvacRelease: {
+        current: activeFieldPackage.released && !activeFieldPackage.stale,
+        revision: activeFieldPackage.latestRelease?.revision,
+        fingerprint: activeFieldPackage.releaseSignature,
+      },
+      redlines: {
+        visibleCount,
+        fingerprint: fieldRedline.fingerprint,
+        reviewedFingerprint: null,
+      },
+      projectName: fileName,
+      systemName: systemLabel(activeSystem),
+      reviewer: "",
+      exportedAt: new Date().toISOString(),
+    });
+    // Freeze the committed overlay before the first asynchronous PDF operation.
+    // This prevents later page changes or edits from being mixed into this export.
+    const committedOverlaySvg =
+      overlaySvg.cloneNode(true) as SVGSVGElement;
+    try {
+      const pdfPage = await pdf.getPage(pageNumber);
+      const renderLayout = resolveFieldRedlineRenderLayout(
+        exportPlan.renderRequest,
+      );
+      const exportSourceCanvas = document.createElement("canvas");
+      exportSourceCanvas.width = Math.max(
+        1,
+        Math.round(renderLayout.plan.width),
+      );
+      exportSourceCanvas.height = Math.max(
+        1,
+        Math.round(renderLayout.plan.height),
+      );
+      const exportSourceContext = exportSourceCanvas.getContext(
+        "2d",
+        { alpha: false },
+      );
+      if (!exportSourceContext) {
+        throw new Error("This browser cannot render the PDF export crop.");
+      }
+      const baseViewport = pdfPage.getViewport({ scale: 1 });
+      const editorScale = renderSize.width / Math.max(1, baseViewport.width);
+      const cropScale = Math.max(
+        exportSourceCanvas.width / exportPlan.crop.width,
+        exportSourceCanvas.height / exportPlan.crop.height,
+      );
+      const exportViewport = pdfPage.getViewport({
+        scale: editorScale * cropScale,
+      });
+      await pdfPage.render({
+        canvasContext: exportSourceContext,
+        viewport: exportViewport,
+        transform: [
+          1,
+          0,
+          0,
+          1,
+          -exportPlan.crop.x * cropScale,
+          -exportPlan.crop.y * cropScale,
+        ],
+        background: "#ffffff",
+      }).promise;
+      const artifact = await renderFieldRedlineExportArtifact(
+        exportPlan,
+        (renderRequest) => renderCommittedFieldRedlineScene({
+          request: renderRequest,
+          sourceCanvas: exportSourceCanvas,
+          sourceCanvasCoversCrop: true,
+          overlaySvg: committedOverlaySvg,
+        }),
+      );
+      downloadFieldRedlineExportArtifact(artifact);
+      showRedlineMessage(
+        `${artifact.filename} exported · ${artifact.status.label} · selection handles and temporary previews excluded`,
+      );
+    } catch (exportError) {
+      showRedlineMessage(
+        exportError instanceof Error
+          ? exportError.message
+          : "The field redline export could not be created.",
+      );
+    }
   }
 
   function createPunchItem() {
@@ -11276,6 +11818,76 @@ function HVACPlanStudioApp() {
         return;
       }
       if (target?.closest("input, select, textarea, button, [data-canvas-ui]")) return;
+      if (fieldRedline.open) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          fieldRedline.setTool("select");
+          fieldRedline.select([]);
+          return;
+        }
+        if (event.key === "Delete" || event.key === "Backspace") {
+          event.preventDefault();
+          fieldRedline.handleSelectionAction(
+            "delete",
+            fieldRedline.selection,
+          );
+          return;
+        }
+        if ((event.ctrlKey || event.metaKey) && key === "z") {
+          event.preventDefault();
+          event.shiftKey ? fieldRedline.redo() : fieldRedline.undo();
+          return;
+        }
+        if ((event.ctrlKey || event.metaKey) && key === "y") {
+          event.preventDefault();
+          fieldRedline.redo();
+          return;
+        }
+        if ((event.ctrlKey || event.metaKey) && key === "d") {
+          event.preventDefault();
+          fieldRedline.handleSelectionAction(
+            "duplicate",
+            fieldRedline.selection,
+          );
+          return;
+        }
+        if (
+          fieldRedline.selection.length &&
+          ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(
+            event.key,
+          )
+        ) {
+          event.preventDefault();
+          const step = event.shiftKey ? 10 : 1;
+          fieldRedline.runCommand({
+            type: "move-selection",
+            annotationIds: fieldRedline.selection,
+            delta: {
+              x:
+                (event.key === "ArrowLeft"
+                  ? -step
+                  : event.key === "ArrowRight"
+                    ? step
+                    : 0) / Math.max(1, renderSize.width),
+              y:
+                (event.key === "ArrowUp"
+                  ? -step
+                  : event.key === "ArrowDown"
+                    ? step
+                    : 0) / Math.max(1, renderSize.height),
+            },
+          });
+          return;
+        }
+        if (pdf && event.key === "PageUp") {
+          event.preventDefault();
+          goToPage(pageNumber - 1);
+        } else if (pdf && event.key === "PageDown") {
+          event.preventDefault();
+          goToPage(pageNumber + 1);
+        }
+        return;
+      }
       if (event.key === "Escape") {
         if (calibrating && scaleHelperReturnPending) {
           event.preventDefault();
@@ -11478,6 +12090,40 @@ function HVACPlanStudioApp() {
     selectedSymbolWheelVisible ||
     selectedRunWheelVisible ||
     selectedFittingWheelVisible;
+  const redlineSelectionWheel =
+    fieldRedline.open &&
+    fieldRedline.selectionBounds &&
+    fieldRedline.selection.length
+      ? positionSymbolActionWheel({
+        anchor: {
+          x:
+            camera.x +
+            (fieldRedline.selectionBounds.left +
+              fieldRedline.selectionBounds.width / 2) *
+              renderSize.width *
+              zoom,
+          y:
+            camera.y +
+            (fieldRedline.selectionBounds.top +
+              fieldRedline.selectionBounds.height / 2) *
+              renderSize.height *
+              zoom,
+        },
+        viewport: canvasViewportSize,
+        objectRadius:
+          Math.hypot(
+            fieldRedline.selectionBounds.width * renderSize.width,
+            fieldRedline.selectionBounds.height * renderSize.height,
+          ) / 2,
+        zoom,
+        wheelRadius: 152,
+        maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
+      })
+      : null;
+  const redlineSelectionWheelVisible = Boolean(
+    redlineSelectionWheel &&
+    (!redlineSelectionWheel.hidden || canvasViewportSize.width <= 900),
+  );
   const branchTrace = branchNetworkTrace(selectedFitting);
   const branchHealth = branchNetworkConnectionHealth(selectedFitting);
   const branchRepairPreview = branchNetworkRepairPreview(selectedFitting);
@@ -12405,7 +13051,7 @@ function HVACPlanStudioApp() {
   }
 
   const activeFieldRuns = activeFieldPackage.runs;
-  const modalWorkspaceActive = showProjectHome || showProjectSetup || showPlanIntelligence || showFieldPackageComposer || showFinishJobStudio || showSystemBalanceStudio || showDisplaySettings;
+  const modalWorkspaceActive = showProjectHome || showProjectSetup || showPlanIntelligence || showFieldPackageComposer || showFinishJobStudio || showSystemBalanceStudio || showDisplaySettings || Boolean(fieldRedline.dialog);
   const packagePrintClasses = printPackageSections.map((section) => `package-include-${section}`).join(" ");
   const packagePrintReleased = activeFieldPackage.released &&
     !activeFieldPackage.stale &&
@@ -12643,6 +13289,15 @@ function HVACPlanStudioApp() {
       recommended: true,
       keywords: "fix plan plan helper issue repair routing return branch ty recommendation approval",
       run: () => openMarkupAssistant("fix-plan"),
+    },
+    {
+      id: "field-redline",
+      label: "Open Field Redline Studio",
+      detail: "Draw review notes, callouts, highlights, and export a clean marked-up sheet",
+      group: "Review",
+      disabled: !pdf,
+      keywords: "redline pen highlight arrow cloud text markup field note export",
+      run: openFieldRedlineStudio,
     },
     {
       id: "airflow",
@@ -13542,6 +14197,20 @@ function HVACPlanStudioApp() {
             >
               <FileText size={15} /> Sheets
             </button>
+            <button
+              ref={fieldRedlineToolbarButtonRef}
+              className={`redline-open-button ${fieldRedline.open ? "active" : ""}`}
+              disabled={!pdf}
+              aria-pressed={fieldRedline.open}
+              aria-controls="field-redline-studio"
+              onClick={() => {
+                if (fieldRedline.open) closeFieldRedlineStudio();
+                else openFieldRedlineStudio();
+              }}
+              title="Draw source-bound field notes without changing HVAC design objects"
+            >
+              <StickyNote size={15} /> Redline
+            </button>
             {pdf && <div className="page-controls">
               <button aria-label="First page" disabled={pageNumber === 1} onClick={() => goToPage(1)}>«</button>
               <button aria-label="Previous page" disabled={pageNumber === 1} onClick={() => goToPage(pageNumber - 1)}><ChevronLeft size={16} /></button>
@@ -13678,6 +14347,36 @@ function HVACPlanStudioApp() {
               }}
               onDelete={deleteSelected}
               onClose={() => selectOnly(null)}
+            />}
+            {redlineSelectionWheelVisible && redlineSelectionWheel && <RedlineActionWheel
+              x={redlineSelectionWheel.center.x}
+              y={redlineSelectionWheel.center.y}
+              selectedAnnotationIds={fieldRedline.selection}
+              grouped={fieldRedline.grouped}
+              autoFocus={redlineWheelKeyboardOpen}
+              label={`${fieldRedline.selection.length} field redline${fieldRedline.selection.length === 1 ? "" : "s"}`}
+              canDuplicate
+              canRotate
+              canEditText={
+                fieldRedline.selection.length === 1 &&
+                fieldRedline.document?.annotations.some(
+                  (annotation) =>
+                    annotation.id === fieldRedline.selection[0] &&
+                    annotation.kind === "text",
+                )
+              }
+              canGroup={fieldRedline.selection.length >= 2 && !fieldRedline.grouped}
+              canUngroup={fieldRedline.grouped}
+              canAlign={fieldRedline.selection.length >= 2}
+              canDistribute={fieldRedline.selection.length >= 3}
+              onAction={(action, annotationIds) => {
+                setRedlineWheelKeyboardOpen(false);
+                fieldRedline.handleSelectionAction(action, annotationIds);
+                if (action === "delete") {
+                  window.requestAnimationFrame(() => planOverlayRef.current?.focus());
+                }
+              }}
+              onClose={closeRedlineSelectionWheel}
             />}
             {showAssistantSuggestionLayer && roomMarkupPlan.overlayCandidates.length > 0 && <div
               className={`assistant-suggestion-layer-hud ${pendingRoomMarkupCandidateId ? "moving" : ""}`}
@@ -13845,13 +14544,29 @@ function HVACPlanStudioApp() {
                 <div ref={planSheetRef} className="plan-sheet" style={{ width: renderSize.width * zoom, height: renderSize.height * zoom }}>
                   <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} style={{ opacity: backgroundOpacity / 100 }} />
                   <svg
-                    className={`drawing-layer tool-${activeTool}`}
+                    ref={planOverlayRef}
+                    tabIndex={fieldRedline.open ? 0 : -1}
+                    aria-label="Plan drawing canvas"
+                    className={`drawing-layer tool-${activeTool} ${fieldRedline.open ? `field-redline-active redline-tool-${fieldRedline.activeTool}` : ""}`}
                     viewBox={`0 0 ${renderSize.width || 1} ${renderSize.height || 1}`}
-                    onPointerDownCapture={handleRoomMarkupPlacementCapture}
-                    onPointerDown={handleDrawingClick}
-                    onPointerMove={handlePointerMove}
-                    onPointerUp={endDrag}
-                    onPointerCancel={(event) => endDrag(event, true)}
+                    onPointerDownCapture={fieldRedline.open ? undefined : handleRoomMarkupPlacementCapture}
+                    onPointerDown={(event) => {
+                      if (!fieldRedline.handlePointerDown(event)) handleDrawingClick(event);
+                    }}
+                    onPointerMove={(event) => {
+                      if (!fieldRedline.handlePointerMove(event)) handlePointerMove(event);
+                    }}
+                    onPointerUp={(event) => {
+                      if (!fieldRedline.finishPointer(event)) endDrag(event);
+                    }}
+                    onPointerCancel={(event) => {
+                      if (!fieldRedline.finishPointer(event, true)) endDrag(event, true);
+                    }}
+                    onLostPointerCapture={(event) => {
+                      if (!fieldRedline.finishPointer(event, true)) {
+                        endDrag(event, true);
+                      }
+                    }}
                     onPointerLeave={() => { if (!dragRef.current) { setHoverPoint(null); setSnapMarker(null); setSnapInfo(null); setAlignmentGuides([]); setBranchPreview(null); setSymbolPreview(null); } }}
                     onContextMenu={(event) => event.preventDefault()}
                   >
@@ -14013,6 +14728,35 @@ function HVACPlanStudioApp() {
                         </text>}
                       </g>;
                     })}
+                    {fieldRedline.renderedDocument && fieldRedline.binding && fieldRedline.activeLayer && <g
+                      className={`field-redline-layer-host ${fieldRedline.pendingDetail ? "is-detail-previewing" : ""}`}
+                      data-export-role="field-redlines"
+                      aria-hidden={!fieldRedline.open}
+                      style={{ pointerEvents: fieldRedline.open ? "auto" : "none" }}
+                    >
+                      <RedlineCanvasLayer
+                        binding={fieldRedline.binding}
+                        width={renderSize.width || 1}
+                        height={renderSize.height || 1}
+                        zoom={zoom}
+                        layer={fieldRedline.activeLayer}
+                        annotations={fieldRedline.renderedDocument.annotations}
+                        selection={{
+                          annotationIds: fieldRedline.selection,
+                          bounds: fieldRedline.selectionBounds || undefined,
+                        }}
+                        transient={fieldRedline.transient}
+                        interactive={
+                          fieldRedline.open && !fieldRedline.pendingDetail
+                        }
+                        onAnnotationPointerDown={(annotationId, event) => {
+                          setRedlineWheelKeyboardOpen(false);
+                          fieldRedline.handleAnnotationPointerDown(annotationId, event);
+                        }}
+                        onAnnotationFocus={(annotationId) => fieldRedline.select([annotationId])}
+                        onAnnotationActivate={openRedlineSelectionWheelFromKeyboard}
+                      />
+                    </g>}
                     {showAssistantSuggestionLayer && roomMarkupPlan.overlayCandidates.length > 0 && <g
                       id="assistant-suggestion-layer"
                       className="assistant-suggestion-layer"
@@ -15421,6 +16165,36 @@ function HVACPlanStudioApp() {
           <div className="status-card"><span className="pulse" /><div><strong>{splitMode ? "Split run mode" : calibrating && pdf ? "Scale calibration" : activeTool === "measure" && pdf ? "Measurement tool" : symbolTools.includes(activeTool as SymbolKind) && pdf ? "HVAC symbol placement" : activeTool === "branch" && pdf ? pendingBranchFittingId ? "Choose branch run" : queuedBranchRunId ? "Run-first branch armed" : branchWorkflow === "run-first" ? "Pick completed branch run" : "Smart T/Y placement" : continuingRunId ? "Extending connected branch run" : draft.length ? "Drawing in progress" : pdf ? "Construction plan loaded" : "Drawing engine ready"}</strong><small>{splitMode ? "Click the duct centerline where you want two editable sections · Esc cancels" : calibrating && pdf ? `Pick two points exactly ${referenceFeet} ft apart` : activeTool === "measure" && pdf ? "Pick two points to place a field dimension" : symbolTools.includes(activeTool as SymbolKind) && pdf ? `Wheel rotates preview · Shift+wheel 45° · ${placementRotation}° · click places` : activeTool === "branch" && pdf ? branchMessage || (branchWorkflow === "run-first" ? "Click a completed diffuser run, then click its main trunk location" : "Click anywhere on a blue supply run · trunk splits automatically") : continuingRunId ? "Left-click: add route points · Shift: lock 45°/90° · Right-click: finish on the same run" : draft.length ? "Left-click: add point · Shift: lock 45°/90° · Right-click: finish · Esc: cancel" : pdf ? `${pdf.numPages} page PDF · ${drawings.length} drawing objects` : "Upload a plan to start drafting"}</small></div></div>
         </aside>
       </section>
+
+      {fieldRedline.activeLayer && <FieldRedlineStudio
+        open={fieldRedline.open}
+        jobName={fileName}
+        sheetLabel={`Sheet ${pageNumber} of ${pdf?.numPages || 1}`}
+        activeTool={fieldRedline.activeTool}
+        style={fieldRedline.style}
+        layer={fieldRedline.activeLayer}
+        favorites={fieldRedline.document?.favorites || []}
+        myDetails={fieldRedline.document?.myDetails || []}
+        selectedAnnotationCount={fieldRedline.selection.length}
+        statusMessage={fieldRedlineMessage}
+        stylePanelOpen={fieldRedline.stylePanelOpen}
+        dialog={fieldRedline.dialog}
+        canUndo={fieldRedline.canUndo}
+        canRedo={fieldRedline.canRedo}
+        onToolChange={fieldRedline.setTool}
+        onStyleChange={fieldRedline.setStyle}
+        onApplyStyleToSelection={fieldRedline.applyStyleToSelection}
+        onLayerChange={fieldRedline.updateLayer}
+        onStylePanelOpenChange={fieldRedline.setStylePanelOpen}
+        onFavoriteUse={fieldRedline.useFavorite}
+        onFavoriteAssign={fieldRedline.assignFavorite}
+        onDialogChange={fieldRedline.setDialog}
+        onDialogConfirm={fieldRedline.handleDialogConfirm}
+        onDetailPreviewChange={fieldRedline.setDetailPreview}
+        onUndo={fieldRedline.undo}
+        onRedo={fieldRedline.redo}
+        onDone={closeFieldRedlineStudio}
+      />}
 
       <section className="print-takeoff">
         <div className="print-section-heading package-print-section package-section-materials">
