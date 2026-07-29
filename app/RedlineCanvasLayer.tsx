@@ -10,13 +10,19 @@ import type {
   RedlinePoint,
   RedlineStrokeAnnotation,
 } from "./redlineDomain";
-
-export type RedlineCanvasBounds = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
+import {
+  redlineAnnotationVisualBounds,
+  redlineCanvasArrowHeadPoints,
+  redlineCanvasArrowHeadSize,
+  redlineCanvasCalloutBounds,
+  redlineCanvasPageSize,
+  redlineCanvasPoint,
+  redlineCanvasStrokeWidth,
+  redlineSelectionVisualBounds,
+  redlineTextLayout,
+  type RedlineCanvasBounds,
+  type RedlineCanvasPageSize,
+} from "./redlineVisualBounds";
 
 export type RedlineCanvasTransient =
   | { kind: "annotation"; annotation: RedlineAnnotation }
@@ -46,13 +52,6 @@ export type RedlineCanvasLayerProps = {
   onAnnotationActivate?: (annotationId: string) => void;
 };
 
-type PageSize = {
-  width: number;
-  height: number;
-  shortSide: number;
-};
-
-const MIN_PIXEL_STROKE_WIDTH = 0.5;
 const SELECTION_PADDING_PX = 6;
 const SELECTION_HANDLE_RADIUS_PX = 4;
 const EMPTY_SELECTION: RedlineCanvasSelection = { annotationIds: [] };
@@ -61,44 +60,12 @@ function finite(value: number, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
 }
 
-function pageSize(width: number, height: number): PageSize {
-  const safeWidth = Math.max(1, finite(width, 1));
-  const safeHeight = Math.max(1, finite(height, 1));
-  return {
-    width: safeWidth,
-    height: safeHeight,
-    shortSide: Math.min(safeWidth, safeHeight),
-  };
-}
-
-function pagePoint(point: RedlinePoint, size: PageSize): RedlinePoint {
-  return {
-    x: Math.max(0, Math.min(1, finite(point.x))) * size.width,
-    y: Math.max(0, Math.min(1, finite(point.y))) * size.height,
-  };
-}
-
-function pageBounds(
-  start: RedlinePoint,
-  end: RedlinePoint,
-  size: PageSize,
-): RedlineCanvasBounds {
-  const safeStart = pagePoint(start, size);
-  const safeEnd = pagePoint(end, size);
-  return {
-    x: Math.min(safeStart.x, safeEnd.x),
-    y: Math.min(safeStart.y, safeEnd.y),
-    width: Math.abs(safeEnd.x - safeStart.x),
-    height: Math.abs(safeEnd.y - safeStart.y),
-  };
-}
-
 function domainBoundsToPageBounds(
   bounds: RedlineBounds,
-  size: PageSize,
+  size: RedlineCanvasPageSize,
 ): RedlineCanvasBounds {
-  const start = pagePoint({ x: bounds.left, y: bounds.top }, size);
-  const end = pagePoint(
+  const start = redlineCanvasPoint({ x: bounds.left, y: bounds.top }, size);
+  const end = redlineCanvasPoint(
     {
       x: bounds.right,
       y: bounds.bottom,
@@ -113,10 +80,13 @@ function domainBoundsToPageBounds(
   };
 }
 
-function pointsPath(points: readonly RedlinePoint[], size: PageSize) {
+function pointsPath(
+  points: readonly RedlinePoint[],
+  size: RedlineCanvasPageSize,
+) {
   return points
     .map((point, index) => {
-      const safePoint = pagePoint(point, size);
+      const safePoint = redlineCanvasPoint(point, size);
       return `${index === 0 ? "M" : "L"} ${safePoint.x} ${safePoint.y}`;
     })
     .join(" ");
@@ -143,84 +113,17 @@ function isStrokeAnnotation(
   return annotation.kind === "ink" || annotation.kind === "highlighter";
 }
 
-function pixelStrokeWidth(
-  annotation: RedlineAnnotation,
-  size: PageSize,
-) {
-  return Math.max(
-    MIN_PIXEL_STROKE_WIDTH,
-    finite(annotation.style.strokeWidth) * size.shortSide,
-  );
-}
-
-function strokeBounds(
-  annotation: RedlineStrokeAnnotation,
-  size: PageSize,
-): RedlineCanvasBounds {
-  if (!annotation.points.length) {
-    return { x: 0, y: 0, width: 0, height: 0 };
-  }
-
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  for (const point of annotation.points) {
-    const safePoint = pagePoint(point, size);
-    minX = Math.min(minX, safePoint.x);
-    minY = Math.min(minY, safePoint.y);
-    maxX = Math.max(maxX, safePoint.x);
-    maxY = Math.max(maxY, safePoint.y);
-  }
-
-  const strokePadding = pixelStrokeWidth(annotation, size) / 2;
-  return {
-    x: minX - strokePadding,
-    y: minY - strokePadding,
-    width: maxX - minX + strokePadding * 2,
-    height: maxY - minY + strokePadding * 2,
-  };
-}
-
-function calloutBounds(
-  annotation: RedlineCalloutAnnotation,
-  size: PageSize,
-): RedlineCanvasBounds {
-  const bounds = pageBounds(annotation.start, annotation.end, size);
-  if (annotation.kind !== "text") return bounds;
-
-  const textScale = Math.max(0.5, finite(annotation.style.textScale ?? 1, 1));
-  const fontSize = size.shortSide * 0.02 * textScale;
-  const lines = (annotation.text || "Text").split(/\r?\n/);
-  const longestLine = lines.reduce(
-    (longest, line) => Math.max(longest, line.length),
-    1,
-  );
-  const estimatedWidth = longestLine * fontSize * 0.52;
-  const estimatedHeight = Math.max(1, lines.length) * fontSize * 1.25;
-  return {
-    x: bounds.x,
-    y: bounds.y,
-    width: Math.max(bounds.width, estimatedWidth),
-    height: Math.max(bounds.height, estimatedHeight),
-  };
-}
-
-function annotationBounds(
-  annotation: RedlineAnnotation,
-  size: PageSize,
-): RedlineCanvasBounds {
-  return isStrokeAnnotation(annotation)
-    ? strokeBounds(annotation, size)
-    : calloutBounds(annotation, size);
-}
-
 function annotationHitBounds(
   annotation: RedlineAnnotation,
-  size: PageSize,
+  size: RedlineCanvasPageSize,
   zoom: number,
 ): RedlineCanvasBounds {
-  const bounds = annotationBounds(annotation, size);
+  const bounds = redlineAnnotationVisualBounds(
+    annotation,
+    size.width,
+    size.height,
+    zoom,
+  );
   const minimum = 44 / Math.max(0.1, finite(zoom, 1));
   const width = Math.max(minimum, bounds.width);
   const height = Math.max(minimum, bounds.height);
@@ -232,58 +135,11 @@ function annotationHitBounds(
   };
 }
 
-function combineBounds(
-  annotations: readonly RedlineAnnotation[],
-  size: PageSize,
-): RedlineCanvasBounds | undefined {
-  if (!annotations.length) return undefined;
-  const first = annotationBounds(annotations[0], size);
-  let minX = first.x;
-  let minY = first.y;
-  let maxX = first.x + first.width;
-  let maxY = first.y + first.height;
-
-  for (let index = 1; index < annotations.length; index += 1) {
-    const next = annotationBounds(annotations[index], size);
-    minX = Math.min(minX, next.x);
-    minY = Math.min(minY, next.y);
-    maxX = Math.max(maxX, next.x + next.width);
-    maxY = Math.max(maxY, next.y + next.height);
-  }
-
-  return {
-    x: minX,
-    y: minY,
-    width: maxX - minX,
-    height: maxY - minY,
-  };
-}
-
-function arrowHeadPoints(start: RedlinePoint, end: RedlinePoint, size: number) {
-  const safeStart = { x: finite(start.x), y: finite(start.y) };
-  const safeEnd = { x: finite(end.x), y: finite(end.y) };
-  const angle = Math.atan2(
-    safeEnd.y - safeStart.y,
-    safeEnd.x - safeStart.x,
-  );
-  const safeSize = Math.max(7, finite(size, 7));
-  const spread = Math.PI / 6;
-  const first = {
-    x: safeEnd.x - safeSize * Math.cos(angle - spread),
-    y: safeEnd.y - safeSize * Math.sin(angle - spread),
-  };
-  const second = {
-    x: safeEnd.x - safeSize * Math.cos(angle + spread),
-    y: safeEnd.y - safeSize * Math.sin(angle + spread),
-  };
-  return `${safeEnd.x},${safeEnd.y} ${first.x},${first.y} ${second.x},${second.y}`;
-}
-
 function renderStroke(
   annotation: RedlineStrokeAnnotation,
-  size: PageSize,
+  size: RedlineCanvasPageSize,
 ) {
-  const strokeWidth = pixelStrokeWidth(annotation, size);
+  const strokeWidth = redlineCanvasStrokeWidth(annotation, size);
   return (
     <path
       d={pointsPath(annotation.points, size)}
@@ -300,12 +156,12 @@ function renderStroke(
 
 function renderCallout(
   annotation: RedlineCalloutAnnotation,
-  size: PageSize,
+  size: RedlineCanvasPageSize,
 ): ReactNode {
-  const start = pagePoint(annotation.start, size);
-  const end = pagePoint(annotation.end, size);
-  const bounds = pageBounds(annotation.start, annotation.end, size);
-  const strokeWidth = pixelStrokeWidth(annotation, size);
+  const start = redlineCanvasPoint(annotation.start, size);
+  const end = redlineCanvasPoint(annotation.end, size);
+  const bounds = redlineCanvasCalloutBounds(annotation.start, annotation.end, size);
+  const strokeWidth = redlineCanvasStrokeWidth(annotation, size);
   const common = {
     fill: annotation.style.fillColor || "none",
     stroke: annotation.style.color,
@@ -325,11 +181,11 @@ function renderCallout(
           {...common}
         />
         <polygon
-          points={arrowHeadPoints(
+          points={redlineCanvasArrowHeadPoints(
             start,
             end,
-            Math.max(7, size.shortSide * 0.012) + strokeWidth,
-          )}
+            redlineCanvasArrowHeadSize(annotation, size),
+          ).map((point) => `${point.x},${point.y}`).join(" ")}
           fill={annotation.style.color}
           stroke="none"
           opacity={finite(annotation.style.opacity, 1)}
@@ -378,9 +234,7 @@ function renderCallout(
     );
   }
 
-  const textScale = Math.max(0.5, finite(annotation.style.textScale ?? 1, 1));
-  const fontSize = size.shortSide * 0.02 * textScale;
-  const lines = (annotation.text || "Text").split(/\r?\n/);
+  const { fontSize, lines } = redlineTextLayout(annotation, size);
   return (
     <text
       x={bounds.x}
@@ -406,7 +260,7 @@ function renderCallout(
 
 function renderAnnotationShape(
   annotation: RedlineAnnotation,
-  size: PageSize,
+  size: RedlineCanvasPageSize,
 ) {
   return isStrokeAnnotation(annotation)
     ? renderStroke(annotation, size)
@@ -490,7 +344,7 @@ export default function RedlineCanvasLayer({
 }: RedlineCanvasLayerProps) {
   if (!layer.visible || layer.opacity <= 0) return null;
 
-  const size = pageSize(width, height);
+  const size = redlineCanvasPageSize(width, height);
   const pageAnnotations = annotations.filter(
     (annotation) =>
       annotation.layerId === layer.id && bindingMatches(annotation, binding),
@@ -500,9 +354,12 @@ export default function RedlineCanvasLayer({
     selectedIds.has(annotation.id),
   );
   const selectedBounds =
-    selection.bounds
-      ? domainBoundsToPageBounds(selection.bounds, size)
-      : combineBounds(selectedAnnotations, size);
+    redlineSelectionVisualBounds(selectedAnnotations, width, height, zoom) ||
+    (
+      selection.bounds
+        ? domainBoundsToPageBounds(selection.bounds, size)
+        : undefined
+    );
   const transientAnnotation =
     transient?.kind === "annotation" &&
     transient.annotation.layerId === layer.id &&

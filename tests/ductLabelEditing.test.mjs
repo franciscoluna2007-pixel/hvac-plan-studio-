@@ -8,6 +8,7 @@ const {
   MIN_DUCT_LABEL_SCALE,
   MAX_DUCT_LABEL_SCALE,
   DUCT_LABEL_SCALE_STEP,
+  estimateDuctLabelBox,
   normalizedDuctLabelScale,
   resetDuctLabelScale,
   stepDuctLabelScale,
@@ -39,4 +40,17 @@ test("steps duct labels deterministically and stops at each limit", () => {
   assert.equal(stepDuctLabelScale(0.4, -1), 0.4);
   assert.equal(stepDuctLabelScale(1.95, 1), 2);
   assert.equal(stepDuctLabelScale(2, 1), 2);
+});
+
+test("estimates a larger footprint for long and enlarged duct labels", () => {
+  const short = estimateDuctLabelBox('8"', 1);
+  const long = estimateDuctLabelBox('RUN 12 · 14" · 63.5 LF · 925 CFM', 1);
+  const enlarged = estimateDuctLabelBox(
+    'RUN 12 · 14" · 63.5 LF · 925 CFM',
+    2,
+  );
+
+  assert.ok(long.width > short.width);
+  assert.ok(enlarged.width > long.width);
+  assert.ok(enlarged.height > long.height);
 });

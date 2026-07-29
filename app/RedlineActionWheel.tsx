@@ -51,6 +51,7 @@ export type RedlineSelectionAction =
 export type RedlineActionWheelProps = {
   x: number;
   y: number;
+  layout?: "wheel" | "strip";
   selectedAnnotationIds: readonly string[];
   grouped: boolean;
   label?: string;
@@ -316,6 +317,7 @@ export default function RedlineActionWheel(props: RedlineActionWheelProps) {
   const selectionLabel =
     props.label ||
     `${selectedCount} selected redline${selectedCount === 1 ? "" : "s"}`;
+  const layout = props.layout ?? "wheel";
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     event.stopPropagation();
@@ -340,24 +342,26 @@ export default function RedlineActionWheel(props: RedlineActionWheelProps) {
 
   return (
     <div
-      className="redline-selection-wheel"
+      className={`redline-selection-wheel${layout === "strip" ? " is-strip" : ""}`}
       role="toolbar"
       aria-label={`Redline actions for ${selectionLabel}`}
+      aria-orientation={layout === "strip" ? "horizontal" : undefined}
       data-selection-scope="redlines-only"
       data-selection-count={selectedCount}
       data-action-count={actions.length}
       data-canvas-ui
       onKeyDown={handleKeyDown}
-      style={
-        {
-          left: props.x,
-          top: props.y,
-          transform: "translate(-50%, -50%)",
-        } satisfies CSSProperties
-      }
+      onWheel={layout === "strip" ? (event) => event.stopPropagation() : undefined}
+      style={layout === "wheel"
+        ? {
+            left: props.x,
+            top: props.y,
+            transform: "translate(-50%, -50%)",
+          } satisfies CSSProperties
+        : undefined}
     >
       <span className="redline-selection-wheel-caption" aria-hidden="true">
-        Redline actions only
+        {layout === "strip" ? "Redline actions" : "Redline actions only"}
       </span>
       {actions.map((action, index) => {
         const position = perimeterPosition(index, actions.length);
@@ -375,14 +379,26 @@ export default function RedlineActionWheel(props: RedlineActionWheelProps) {
             aria-label={action.label}
             title={action.label}
             tabIndex={safeFocusIndex === index ? 0 : -1}
-            onFocus={() => setFocusIndex(index)}
+            onFocus={(event) => {
+              setFocusIndex(index);
+              if (layout === "strip") {
+                event.currentTarget.scrollIntoView({
+                  block: "nearest",
+                  inline: "nearest",
+                });
+              }
+            }}
             onClick={() =>
               props.onAction(action.id, props.selectedAnnotationIds)
             }
             style={{
               ...CONTROL_TARGET_STYLE,
-              left: `${position.left}%`,
-              top: `${position.top}%`,
+              ...(layout === "wheel"
+                ? {
+                    left: `${position.left}%`,
+                    top: `${position.top}%`,
+                  }
+                : {}),
             }}
           >
             <Icon size={17} aria-hidden="true" />
@@ -399,12 +415,19 @@ export default function RedlineActionWheel(props: RedlineActionWheelProps) {
         aria-label="Close redline actions"
         title="Close redline actions"
         tabIndex={safeFocusIndex === actions.length ? 0 : -1}
-        onFocus={() => setFocusIndex(actions.length)}
+        onFocus={(event) => {
+          setFocusIndex(actions.length);
+          if (layout === "strip") {
+            event.currentTarget.scrollIntoView({
+              block: "nearest",
+              inline: "nearest",
+            });
+          }
+        }}
         onClick={props.onClose}
         style={{
           ...CONTROL_TARGET_STYLE,
-          left: "50%",
-          top: "50%",
+          ...(layout === "wheel" ? { left: "50%", top: "50%" } : {}),
         }}
       >
         <X size={18} aria-hidden="true" />
