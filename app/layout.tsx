@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://hvac-plan-studio.franciscoluna2007.chatgpt.site"),
   title: {
-    default: "HVAC Plan Studio · Finish the Job",
+    default: "HVAC Plan Studio · Field Redline Studio",
     template: "%s · HVAC Plan Studio",
   },
-  description: "Review materials, clear plan holds, complete the field checklist, issue a named revision, and print or share from one guided closeout path.",
+  description: "Draw source-bound field redlines, organize review notes, and export a clear marked-up plan without changing the approved HVAC design.",
   applicationName: "HVAC Plan Studio",
   keywords: ["HVAC plan setup", "HVAC plan reader", "duct plan", "HVAC takeoff", "plan markup"],
   icons: {
@@ -26,14 +26,14 @@ export const metadata: Metadata = {
     shortcut: "/favicon.svg",
   },
   openGraph: {
-    title: "HVAC Plan Studio · Finish the Job",
-    description: "Review materials, clear plan holds, complete the field checklist, issue a named revision, and print or share from one guided closeout path.",
+    title: "HVAC Plan Studio · Field Redline Studio",
+    description: "Draw source-bound field redlines, organize review notes, and export a clear marked-up plan without changing the approved HVAC design.",
     type: "website",
   },
   twitter: {
     card: "summary",
-    title: "HVAC Plan Studio · Finish the Job",
-    description: "Review materials, clear plan holds, complete the field checklist, issue a named revision, and print or share from one guided closeout path.",
+    title: "HVAC Plan Studio · Field Redline Studio",
+    description: "Draw source-bound field redlines, organize review notes, and export a clear marked-up plan without changing the approved HVAC design.",
   },
 };
 

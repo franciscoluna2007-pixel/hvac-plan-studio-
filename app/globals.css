@@ -15481,3 +15481,818 @@ textarea:focus-visible,
     display: none !important;
   }
 }
+
+/* V133 — Field Redline Studio */
+.field-redline-studio {
+  position: fixed;
+  z-index: 240;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  width: min(1180px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: minmax(190px, .8fr) minmax(420px, 2fr) minmax(170px, .75fr) minmax(210px, .9fr);
+  grid-template-areas:
+    "heading tools style actions"
+    "safety safety layer favorites";
+  gap: 8px;
+  padding: 10px;
+  color: #e8f4fb;
+  background: rgba(7, 25, 38, .97);
+  border: 1px solid rgba(94, 203, 255, .32);
+  border-radius: 16px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, .42);
+  backdrop-filter: blur(16px);
+}
+
+.field-redline-studio button,
+.redline-dialog button,
+.redline-selection-wheel button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(148, 184, 204, .28);
+  border-radius: 9px;
+  color: inherit;
+  background: rgba(20, 50, 68, .9);
+  font: inherit;
+  cursor: pointer;
+}
+
+.field-redline-studio button:hover:not(:disabled),
+.field-redline-studio button:focus-visible,
+.redline-dialog button:hover:not(:disabled),
+.redline-dialog button:focus-visible,
+.redline-selection-wheel button:hover:not(:disabled),
+.redline-selection-wheel button:focus-visible {
+  border-color: #5dccff;
+  outline: 2px solid rgba(93, 204, 255, .35);
+  outline-offset: 1px;
+}
+
+.field-redline-studio button:disabled,
+.redline-dialog button:disabled {
+  opacity: .42;
+  cursor: not-allowed;
+}
+
+.field-redline-studio button.primary,
+.redline-dialog button.primary {
+  color: #03121c;
+  background: #69d5ff;
+  border-color: #9be3ff;
+  font-weight: 800;
+}
+
+.redline-dock-heading {
+  grid-area: heading;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.redline-dock-heading > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.redline-dock-heading small,
+.redline-favorites header small,
+.redline-layer-controls small {
+  color: #8eb5ca;
+  font-size: 10px;
+  letter-spacing: .08em;
+}
+
+.redline-dock-heading strong,
+.redline-dock-heading span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.redline-dock-heading strong {
+  font-size: 14px;
+}
+
+.redline-dock-heading span {
+  color: #a8c6d6;
+  font-size: 11px;
+}
+
+.redline-history-actions,
+.redline-layer-controls header > div {
+  display: flex;
+  gap: 4px;
+}
+
+.redline-tool-strip {
+  grid-area: tools;
+  display: grid;
+  grid-template-columns: repeat(10, minmax(44px, 1fr));
+  gap: 4px;
+  min-width: 0;
+}
+
+.field-redline-studio .redline-tool {
+  min-width: 44px !important;
+  padding: 5px 2px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.redline-tool small {
+  max-width: 100%;
+  overflow: hidden;
+  color: #b8cfdb;
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.redline-tool.active {
+  color: #061a25;
+  background: #72d8ff;
+  border-color: #b2ebff;
+}
+
+.redline-tool.active small {
+  color: #061a25;
+  font-weight: 800;
+}
+
+.redline-style-disclosure {
+  grid-area: style;
+  position: relative;
+}
+
+.redline-style-trigger {
+  width: 100%;
+  padding: 0 10px;
+}
+
+.redline-style-swatch {
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .4);
+}
+
+.redline-style-panel {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: calc(100% + 12px);
+  width: min(310px, calc(100vw - 36px));
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  color: #e8f4fb;
+  background: #0b2637;
+  border: 1px solid rgba(105, 213, 255, .42);
+  border-radius: 12px;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, .4);
+}
+
+.redline-style-panel label,
+.redline-layer-controls label {
+  display: grid;
+  grid-template-columns: minmax(80px, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  color: #bcd2dd;
+  font-size: 12px;
+}
+
+.redline-style-panel select,
+.redline-style-panel input[type="color"] {
+  color: #eefaff;
+  background: #102f42;
+  border: 1px solid #43687a;
+  border-radius: 8px;
+}
+
+.redline-style-panel input[type="range"],
+.redline-layer-controls input[type="range"] {
+  min-width: 82px;
+  accent-color: #69d5ff;
+}
+
+.redline-apply-style {
+  width: 100%;
+  padding-inline: 10px;
+  grid-column: 1 / -1;
+}
+
+.redline-layer-controls {
+  grid-area: layer;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  align-items: center;
+  padding: 5px 7px;
+  background: rgba(17, 47, 64, .76);
+  border-radius: 9px;
+}
+
+.redline-layer-controls label {
+  grid-template-columns: auto minmax(54px, 1fr) auto;
+  gap: 4px;
+}
+
+.redline-layer-controls input[type="range"] {
+  width: 100%;
+  min-width: 0;
+}
+
+.redline-layer-controls header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.redline-layer-controls header > span {
+  min-width: 0;
+  display: grid;
+}
+
+.redline-layer-controls strong {
+  overflow: hidden;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.redline-layer-controls button {
+  min-width: 44px !important;
+  min-height: 44px !important;
+}
+
+.redline-favorites {
+  grid-area: favorites;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+}
+
+.redline-favorites header {
+  display: grid;
+}
+
+.redline-favorite-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(38px, 1fr));
+  gap: 4px;
+}
+
+.redline-favorite-strip button {
+  min-width: 44px !important;
+  min-height: 44px !important;
+  padding: 3px;
+  flex-direction: column;
+}
+
+.redline-favorite-strip button > span {
+  width: 14px;
+  height: 5px;
+  border-radius: 4px;
+}
+
+.redline-favorite-strip small {
+  max-width: 48px;
+  overflow: hidden;
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.redline-dock-actions {
+  grid-area: actions;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+}
+
+.redline-dock-actions button {
+  min-width: 0 !important;
+  padding: 0 7px;
+  font-size: 11px;
+}
+
+.redline-safety-note {
+  grid-area: safety;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  min-width: 0;
+  color: #a9c7d6;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.redline-safety-note > svg {
+  grid-row: 1 / 3;
+  margin-top: 2px;
+}
+
+.redline-safety-note span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.redline-safety-note strong {
+  color: #d8f2ff;
+}
+
+.redline-studio-status {
+  margin-left: 0;
+  color: #72d8ff;
+  font-weight: 700;
+  text-align: left;
+  white-space: normal !important;
+}
+
+.drawing-layer.field-redline-active > g:not(.field-redline-layer-host) {
+  pointer-events: none;
+}
+
+.drawing-layer.field-redline-active.redline-tool-pen,
+.drawing-layer.field-redline-active.redline-tool-highlight,
+.drawing-layer.field-redline-active.redline-tool-arrow,
+.drawing-layer.field-redline-active.redline-tool-rectangle,
+.drawing-layer.field-redline-active.redline-tool-circle,
+.drawing-layer.field-redline-active.redline-tool-cloud,
+.drawing-layer.field-redline-active.redline-tool-text,
+.drawing-layer.field-redline-active.redline-tool-lasso {
+  cursor: crosshair;
+}
+
+.drawing-layer.field-redline-active.redline-tool-erase {
+  cursor: not-allowed;
+}
+
+.redline-canvas-layer {
+  color: #09a8ef;
+}
+
+.redline-tool-select .redline-annotation {
+  cursor: move;
+  outline: none;
+}
+
+.redline-tool-erase .redline-annotation {
+  cursor: not-allowed;
+}
+
+.redline-tool-pen .redline-annotation,
+.redline-tool-highlight .redline-annotation,
+.redline-tool-arrow .redline-annotation,
+.redline-tool-rectangle .redline-annotation,
+.redline-tool-circle .redline-annotation,
+.redline-tool-cloud .redline-annotation,
+.redline-tool-text .redline-annotation,
+.redline-tool-lasso .redline-annotation {
+  cursor: crosshair;
+}
+
+.redline-annotation:focus-visible {
+  filter: drop-shadow(0 0 4px rgba(0, 164, 234, .9));
+}
+
+.redline-annotation.is-selected {
+  filter: drop-shadow(0 0 3px rgba(0, 164, 234, .72));
+}
+
+.redline-selection-overlay,
+.redline-transient-selection-box,
+.redline-transient-lasso {
+  color: #008cc8;
+}
+
+.redline-transient-draft {
+  opacity: .7;
+}
+
+.redline-selection-wheel {
+  position: absolute;
+  z-index: 230;
+  width: 304px;
+  height: 304px;
+  color: #e9f8ff;
+  background: radial-gradient(circle, rgba(7, 31, 45, .97) 0 29%, rgba(7, 31, 45, .74) 30% 66%, transparent 67%);
+  border-radius: 50%;
+  filter: drop-shadow(0 14px 24px rgba(0, 0, 0, .38));
+  pointer-events: none;
+}
+
+.redline-selection-wheel-caption {
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  width: 82px;
+  transform: translate(-50%, -50%);
+  color: #91b8ca;
+  font-size: 9px;
+  line-height: 1.15;
+  text-align: center;
+  pointer-events: none;
+}
+
+.redline-wheel-action {
+  position: absolute;
+  width: 52px;
+  height: 52px;
+  padding: 3px;
+  transform: translate(-50%, -50%);
+  flex-direction: column;
+  color: #eaf8ff !important;
+  background: #10364b !important;
+  border-color: rgba(130, 210, 245, .45) !important;
+  pointer-events: auto;
+}
+
+.redline-wheel-action small {
+  max-width: 48px;
+  overflow: hidden;
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.redline-wheel-action.center {
+  width: 58px;
+  height: 58px;
+  background: #183043 !important;
+}
+
+.redline-wheel-action.danger {
+  color: #ffe2e2 !important;
+  background: #5c2025 !important;
+  border-color: #a74b53 !important;
+}
+
+.redline-dialog-scrim {
+  position: fixed;
+  z-index: 300;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 12, 19, .72);
+  backdrop-filter: blur(4px);
+}
+
+.redline-dialog {
+  width: min(560px, 100%);
+  max-height: min(760px, calc(100vh - 40px));
+  overflow: auto;
+  color: #eaf7fd;
+  background: #0a2637;
+  border: 1px solid rgba(105, 213, 255, .38);
+  border-radius: 16px;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, .48);
+}
+
+.redline-dialog > header,
+.redline-dialog > footer {
+  position: sticky;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #0a2637;
+}
+
+.redline-dialog > header {
+  top: 0;
+  border-bottom: 1px solid rgba(140, 192, 217, .18);
+}
+
+.redline-dialog > footer {
+  bottom: 0;
+  justify-content: flex-end;
+  border-top: 1px solid rgba(140, 192, 217, .18);
+}
+
+.redline-dialog h2 {
+  margin: 2px 0 0;
+  font-size: 20px;
+}
+
+.redline-dialog header small {
+  color: #72d8ff;
+  font-size: 10px;
+  letter-spacing: .1em;
+}
+
+.redline-dialog-body {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.redline-dialog-body > p {
+  margin: 0;
+  color: #bbd2de;
+  line-height: 1.55;
+}
+
+.redline-dialog-body > label {
+  display: grid;
+  gap: 6px;
+  color: #d8ebf4;
+  font-weight: 700;
+}
+
+.redline-dialog input,
+.redline-dialog textarea,
+.redline-dialog select {
+  width: 100%;
+  padding: 9px 10px;
+  color: #f2fbff;
+  background: #102f42;
+  border: 1px solid #486c7e;
+  border-radius: 8px;
+  font: inherit;
+}
+
+.redline-choice-grid,
+.redline-details-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid rgba(134, 187, 212, .22);
+  border-radius: 10px;
+}
+
+.redline-details-list {
+  grid-template-columns: 1fr;
+  max-height: 300px;
+  overflow: auto;
+}
+
+.redline-choice-grid legend,
+.redline-details-list legend {
+  padding: 0 6px;
+  color: #98c4d9;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.redline-choice-grid label,
+.redline-details-list label {
+  gap: 8px;
+  padding: 6px 9px;
+  color: #d9eaf2;
+  background: rgba(18, 55, 75, .72);
+  border-radius: 8px;
+}
+
+.redline-choice-grid input,
+.redline-details-list input {
+  width: auto;
+}
+
+.redline-details-list span {
+  display: grid;
+}
+
+.redline-details-list small {
+  color: #99b9c9;
+}
+
+.redline-dialog-notice {
+  padding: 11px 12px;
+  color: #bcd6e2;
+  background: rgba(51, 138, 176, .14);
+  border-left: 3px solid #59cfff;
+  border-radius: 6px;
+  line-height: 1.45;
+}
+
+.redline-issue-kind {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.redline-issue-kind button[aria-pressed="true"] {
+  color: #071922;
+  background: #72d8ff;
+  font-weight: 800;
+}
+
+@media (max-width: 1100px) {
+  .field-redline-studio {
+    grid-template-columns: minmax(150px, .7fr) minmax(420px, 2fr) minmax(150px, .7fr);
+    grid-template-areas:
+      "heading tools actions"
+      "safety layer favorites";
+  }
+
+  .redline-style-disclosure {
+    position: absolute;
+    right: 260px;
+    bottom: 65px;
+  }
+
+  .redline-style-trigger {
+    width: 110px;
+  }
+}
+
+@media (max-width: 900px) {
+  .field-redline-studio {
+    left: 8px;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    width: auto;
+    max-height: 52vh;
+    overflow: auto;
+    transform: none;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "heading actions"
+      "tools tools"
+      "style style"
+      "layer layer"
+      "favorites favorites"
+      "safety safety";
+    border-radius: 14px;
+  }
+
+  .redline-tool-strip {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    padding-bottom: 3px;
+  }
+
+  .field-redline-studio .redline-tool {
+    flex: 0 0 58px;
+    scroll-snap-align: start;
+  }
+
+  .redline-style-disclosure {
+    position: relative;
+    right: auto;
+    bottom: auto;
+  }
+
+  .redline-style-panel {
+    position: static;
+    width: 100%;
+    margin-top: 8px;
+    box-sizing: border-box;
+  }
+
+  .redline-layer-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .redline-favorites {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .redline-safety-note span {
+    white-space: normal;
+  }
+
+  .redline-dock-actions button {
+    width: 44px;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .redline-selection-wheel {
+    position: fixed !important;
+    left: 8px !important;
+    right: 8px !important;
+    top: auto !important;
+    bottom: calc(54vh + env(safe-area-inset-bottom)) !important;
+    width: auto;
+    height: auto;
+    max-height: 40vh;
+    overflow: auto;
+    padding: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 5px;
+    transform: none !important;
+    background: rgba(7, 31, 45, .98);
+    border: 1px solid rgba(105, 213, 255, .4);
+    border-radius: 14px;
+  }
+
+  .redline-selection-wheel-caption {
+    position: static;
+    width: 100%;
+    transform: none;
+    padding: 3px;
+  }
+
+  .redline-wheel-action,
+  .redline-wheel-action.center {
+    position: static;
+    width: 56px;
+    height: 50px;
+    transform: none;
+  }
+
+  .redline-choice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .redline-dialog-scrim {
+    align-items: end;
+    padding: 8px;
+  }
+
+  .redline-dialog {
+    width: 100%;
+    max-height: 86vh;
+    border-radius: 16px 16px 8px 8px;
+  }
+}
+
+@media (max-height: 700px) and (min-width: 901px) {
+  .field-redline-studio {
+    bottom: 6px;
+    max-height: 48vh;
+    overflow: auto;
+  }
+
+  .redline-style-disclosure {
+    position: relative;
+    right: auto;
+    bottom: auto;
+  }
+
+  .redline-selection-wheel {
+    width: 260px;
+    height: 260px;
+  }
+
+  .redline-style-panel {
+    position: static;
+    width: 100%;
+    margin-top: 8px;
+    box-sizing: border-box;
+  }
+
+  .redline-style-panel label {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .redline-style-panel input[type="range"] {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-height: 700px) and (min-width: 901px) and (max-width: 1100px) {
+  .field-redline-studio {
+    grid-template-areas:
+      "heading tools actions"
+      "style style style"
+      "safety layer favorites";
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field-redline-studio,
+  .redline-selection-wheel,
+  .redline-dialog {
+    scroll-behavior: auto;
+  }
+}
+
+@media print {
+  .field-redline-studio,
+  .redline-selection-wheel,
+  .redline-dialog-scrim,
+  .redline-transient-draft,
+  .redline-transient-lasso,
+  .redline-transient-selection-box,
+  .redline-selection-overlay,
+  .redline-hit-target {
+    display: none !important;
+  }
+}
