@@ -85,7 +85,7 @@ Advanced coordination remains available without crowding the first screen.
 | v129 | One Job Screen | Shipped |
 | v130 | Answer & Fix in Place | Shipped |
 | v131 | Room-by-Room Markup | Shipped |
-| v132 | Finish the Job | Next |
+| v132 | Finish the Job | Shipped |
 | v117 | Multi-company commercial operations | Planned for later |
 
 ## v129 — One Job Screen
@@ -151,11 +151,31 @@ A superintendent or one-person HVAC contractor can review staged supply and retu
 
 Ghosts are staged review marks, not installed design. V131 never adds or changes ductwork, CFM, run sizes, run numbers, fittings, connections, equipment, walls, or room geometry. A non-dedicated return strategy records the reviewed return-air decision but creates no return symbol or return path. Only the terminal symbols approved for the one current room may be created, and one Undo restores that room change.
 
-## Next solo-operator release
+## v132 — Finish the Job
 
-### v132 — Finish the Job
+### Outcome
 
-Guide materials review, unresolved holds, field checklist, revision naming, print, and share as one closeout path for a superintendent or one-person business. Multi-company administration remains postponed until this solo workflow is proven.
+A superintendent or one-person HVAC contractor can close out the active system from one guided workspace instead of finding Materials, release gates, checklist, revision approval, and print tools in different panels.
+
+### Shipped capabilities
+
+- The fifth job step is now **Finish the Job** and opens one closeout workspace at the first incomplete task.
+- Material review shows current quantities and allowance, then records a named, fingerprinted receipt that becomes stale when the material basis changes.
+- Unresolved technical gates appear as plain-language hold cards with one direct action each.
+- The real per-system field checklist is completed in place without a bulk-complete shortcut.
+- Final revision approval is bound to the exact source, coordination, material, reviewer, revision, and note state.
+- A duplicate revision name, stale confirmation, release already in progress, open gate, or changed cloud approval creates no release.
+- Controlled output remains user-triggered. Browser printing supports Save as PDF, the app can copy an exact revision summary, and the user shares the saved PDF from the device.
+- Selected print sections have their own readiness. Materials require the current review, startup requires current commissioning data, and the marked plan requires verified scale and visible HVAC layers.
+- Every final package requires its release certificate and carries source, drawing, and output fingerprints plus the exact current-sheet scope.
+- Draft routes, measurements, repair previews, room ghosts, selection UI, and suggestion layers are excluded from print.
+- Existing takeoff, Fix Plan, cloud revision, release, RFI, punch, and commissioning tools remain available as the specialized engines behind the one closeout path.
+
+### Safety boundary
+
+V132 is workflow and release control. It never changes duct geometry, terminals, fittings, connections, airflow, sizes, equipment, rooms, walls, or source evidence. Every issue remains manual and fingerprint-bound. Opening a print dialog is not recorded as proof that a package was printed or shared, and any selected output section that is not current prints as a clearly marked draft.
+
+Multi-company administration remains postponed until the solo workflow is proven.
 
 ## v128 — Fix Plan & Contextual Markup
 

@@ -6,6 +6,7 @@ import { checkDriveConfiguration, loadPdfFromDriveId, pickPdfFromDrive, saveProj
 import CloudProjectsPanel, { type CloudProjectRisk } from "./CloudProjectsPanel";
 import AIPlanWorkspace from "./AIPlanWorkspace";
 import FieldPackageComposer from "./FieldPackageComposer";
+import FinishJobStudio from "./FinishJobStudio";
 import GuidedProjectSetup, { type ProjectSetupValues } from "./GuidedProjectSetup";
 import ProjectCommandPalette, { type ProjectCommand } from "./ProjectCommandPalette";
 import ProjectHome from "./ProjectHome";
@@ -17,6 +18,14 @@ import MarkupAssistantStudio, {
   type PlanHelperPrimaryView,
 } from "./MarkupAssistantStudio";
 import { type FieldPackageSectionId } from "./fieldPackage";
+import {
+  FINISH_JOB_VERSION,
+  buildFinishJobModel,
+  buildOutputSectionReadiness,
+  finishJobApprovalFingerprint,
+  selectedOutputIsReady,
+  type FinishJobGate,
+} from "./finishJob";
 import type { PlanAnalysis, PlanEvidence } from "./planReader";
 import { buildAdvancedPlanIntelligence } from "./advancedPlanIntelligence";
 import { buildAssistantSuggestionLayer } from "./assistantSuggestionLayer";
@@ -1074,7 +1083,7 @@ type SheetScaleState = {
 };
 
 type SavedProject = {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
   fileName: string;
   drawings: Drawing[];
   savedAt: string;
@@ -1108,6 +1117,7 @@ type SavedProject = {
   reviewDecisionsBySystem?: Record<string, Record<string, ReviewDecision>>;
   releaseRecords?: SystemReleaseRecord[];
   takeoffPackageRecords?: TakeoffPackageRecord[];
+  materialReviewRecords?: MaterialReviewRecord[];
   assistantAutonomyMode?: RepairAutonomyMode;
   assistantRepairRecords?: RepairBatchRecord[];
   roomMarkupCandidatesBySystem?: Record<string, RoomMarkupCandidate[]>;
@@ -1260,6 +1270,10 @@ type SystemReleaseRecord = {
   runCount: number;
   designCfm: number;
   pdfFingerprint?: string;
+  finishJobVersion?: typeof FINISH_JOB_VERSION;
+  materialFingerprint?: string;
+  materialReviewId?: string;
+  finishApprovalFingerprint?: string;
   gateSnapshot?: Array<{ id: string; label: string; clear: boolean; detail: string }>;
   checklistSnapshot?: Array<{ id: string; label: string; checked: boolean }>;
   issueSnapshot?: Array<{ id: string; ruleId: string; evidenceFingerprint: string; severity: ValidationSeverity; title: string; detail: string; disposition: string; reviewer: string; note: string }>;
@@ -1272,6 +1286,16 @@ type SystemReleaseRecord = {
     freshVelocityLimit: number;
     residentialFlexMax: string;
   };
+};
+
+type MaterialReviewRecord = {
+  id: string;
+  systemId: string;
+  fingerprint: string;
+  reviewedBy: string;
+  reviewedAt: string;
+  lineItemCount: number;
+  wastePercent: number;
 };
 
 type TakeoffRow = {
@@ -1388,6 +1412,8 @@ function HVACPlanStudioApp() {
   const inputRef = useRef<HTMLInputElement>(null);
   const pendingPdfOpenRef = useRef<PdfOpenContext | null>(null);
   const pdfOpenRequestRef = useRef(0);
+  const releaseIssueLockRef = useRef(false);
+  const finishApprovalFingerprintRef = useRef("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasViewportRef = useRef<HTMLDivElement>(null);
   const pdfStageRef = useRef<HTMLDivElement>(null);
@@ -1468,6 +1494,9 @@ function HVACPlanStudioApp() {
   const [showPlanIntelligence, setShowPlanIntelligence] = useState(false);
   const [planWorkspaceInitialView, setPlanWorkspaceInitialView] = useState<"setup" | "reader" | "findings">("setup");
   const [showFieldPackageComposer, setShowFieldPackageComposer] = useState(false);
+  const [showFinishJobStudio, setShowFinishJobStudio] = useState(false);
+  const [returnToFinishAfterPackage, setReturnToFinishAfterPackage] = useState(false);
+  const [returnToFinishGateId, setReturnToFinishGateId] = useState<string | null>(null);
   const [showSystemBalanceStudio, setShowSystemBalanceStudio] = useState(false);
   const [showMarkupAssistant, setShowMarkupAssistant] = useState(false);
   const [assistantInitialView, setAssistantInitialView] = useState<PlanHelperPrimaryView>("setup");
@@ -1595,6 +1624,7 @@ function HVACPlanStudioApp() {
   const [fieldChecklistBySystem, setFieldChecklistBySystem] = useState<Record<string, Record<string, boolean>>>({});
   const [releaseRecords, setReleaseRecords] = useState<SystemReleaseRecord[]>([]);
   const [takeoffPackageRecords, setTakeoffPackageRecords] = useState<TakeoffPackageRecord[]>([]);
+  const [materialReviewRecords, setMaterialReviewRecords] = useState<MaterialReviewRecord[]>([]);
   const [takeoffView, setTakeoffView] = useState<"overview" | "materials" | "installer" | "packages">("overview");
   const [takeoffPackageName, setTakeoffPackageName] = useState("");
   const [takeoffRevision, setTakeoffRevision] = useState("");
@@ -1603,6 +1633,7 @@ function HVACPlanStudioApp() {
   const [releaseRevision, setReleaseRevision] = useState("");
   const [releaseBy, setReleaseBy] = useState("");
   const [releaseNote, setReleaseNote] = useState("");
+  const [releaseIssuing, setReleaseIssuing] = useState(false);
   const [materialWastePercent, setMaterialWastePercent] = useState(10);
   const [commissioningBySystem, setCommissioningBySystem] = useState<Record<string, CommissioningRecord>>({});
   const [punchItems, setPunchItems] = useState<PunchItem[]>([]);
@@ -1862,7 +1893,7 @@ function HVACPlanStudioApp() {
   );
   const activeFieldPackage = useMemo(
     () => fieldPackageSummary(activeReviewSummary, activeFieldConnections),
-    [activeFieldConnections, activeReviewSummary, activeSystem, cloudProjectRisk, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, freshVelocityLimit, pdfFingerprint, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, supplyVelocityLimit, workingCloudProjectId, workingCloudRevisionFingerprint, workingCloudRevisionId],
+    [activeFieldConnections, activeReviewSummary, activeSystem, cloudProjectRisk, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, freshVelocityLimit, materialReviewRecords, materialWastePercent, pdfFingerprint, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, rfiItems, roomAirflowTargets, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, supplyVelocityLimit, systemNames, workingCloudProjectId, workingCloudRevisionFingerprint, workingCloudRevisionId],
   );
   const activeConnectionRepairPlan = useMemo(
     () => buildActiveConnectionRepairPlan(),
@@ -2142,6 +2173,7 @@ function HVACPlanStudioApp() {
     setReviewDecisionsBySystem({});
     setReleaseRecords([]);
     setTakeoffPackageRecords([]);
+    setMaterialReviewRecords([]);
     setAssistantAutonomyMode("prepare");
     setAssistantSelectedActionIds([]);
     setAssistantPreparedEvidenceFingerprint("");
@@ -2222,6 +2254,9 @@ function HVACPlanStudioApp() {
     setReviewDecisionsBySystem(project.reviewDecisionsBySystem || {});
     setReleaseRecords(project.releaseRecords || []);
     setTakeoffPackageRecords(project.takeoffPackageRecords || []);
+    setMaterialReviewRecords(
+      Array.isArray(project.materialReviewRecords) ? project.materialReviewRecords : [],
+    );
     setAssistantAutonomyMode(project.assistantAutonomyMode || "prepare");
     setAssistantSelectedActionIds([]);
     setAssistantPreparedEvidenceFingerprint("");
@@ -3312,7 +3347,7 @@ function HVACPlanStudioApp() {
       releaseStale: activeFieldPackage.stale,
     });
     return {
-      version: 7,
+      version: 8,
       fileName,
       drawings,
       savedAt: new Date().toISOString(),
@@ -3345,6 +3380,7 @@ function HVACPlanStudioApp() {
       reviewDecisionsBySystem,
       releaseRecords,
       takeoffPackageRecords,
+      materialReviewRecords,
       assistantAutonomyMode,
       assistantRepairRecords,
       roomMarkupCandidatesBySystem,
@@ -3370,7 +3406,7 @@ function HVACPlanStudioApp() {
         })),
       },
     };
-  }, [activeBuilderSummary, activeFieldPackage, activePlanAnalysis, activeSystem, assistantAutonomyMode, assistantRepairRecords, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, roomMarkupApplicationRecords, roomMarkupCandidatesBySystem, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
+  }, [activeBuilderSummary, activeFieldPackage, activePlanAnalysis, activeSystem, assistantAutonomyMode, assistantRepairRecords, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fileName, freshVelocityLimit, lockedLayers, materialReviewRecords, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, roomMarkupApplicationRecords, roomMarkupCandidatesBySystem, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
 
   const saveProject = useCallback(() => {
     if (!pdf) return;
@@ -6319,6 +6355,7 @@ function HVACPlanStudioApp() {
         symbol: drawing.symbol,
       }));
     return stableTextHash(JSON.stringify({
+      systemName: systemLabel(systemId),
       drawings: scopedDrawings,
       roomTargets: Object.entries(roomAirflowTargets[systemId] || {}).sort(([a], [b]) => a.localeCompare(b)),
       ...(roomAirflowTargetReviewFingerprints[systemId]
@@ -6361,8 +6398,14 @@ function HVACPlanStudioApp() {
       .slice()
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((item) => ({ id: item.id, priority: item.priority, status: item.status, resolvedAt: item.resolvedAt || "" }));
+    const materialFingerprint = materialReviewFingerprint(systemId);
+    const materialReview = latestMaterialReview(systemId);
     return stableTextHash(JSON.stringify({
       drawingSignature: systemDrawingSignature(systemId),
+      materialReview: {
+        fingerprint: materialFingerprint,
+        current: Boolean(materialReview && materialReview.fingerprint === materialFingerprint),
+      },
       checklist: fieldChecklistItems.map((item) => [item.id, Boolean(activeFieldChecklist(systemId)[item.id])]),
       reviewDecisions,
       rfiState,
@@ -6962,8 +7005,7 @@ function HVACPlanStudioApp() {
     return rows;
   }
 
-  function materialSummary(systemId = activeSystem) {
-    const rows = buildTakeoff(systemId);
+  function materialSummary(systemId = activeSystem, rows = buildTakeoff(systemId)) {
     const flexBoxes = rows.filter((row) => row.item.includes("flex duct")).reduce((total, row) => total + (Number(row.note.match(/^(\d+)/)?.[1]) || 0), 0);
     const deviceCount = rows.filter((row) => row.category === "Air devices" && !row.item.includes("can") && !row.item.includes("box")).reduce((total, row) => total + (Number(row.quantity.match(/^(\d+)/)?.[1]) || 0), 0);
     const fittingCount = rows.filter((row) => row.category === "Fittings").reduce((total, row) => total + (Number(row.quantity.match(/^(\d+)/)?.[1]) || 0), 0);
@@ -6973,14 +7015,74 @@ function HVACPlanStudioApp() {
     return { flexBoxes, deviceCount, fittingCount, holds };
   }
 
-  function activeTakeoffSignature(systemId = activeSystem) {
+  function materialReviewFingerprint(systemId = activeSystem, materialRows?: TakeoffRow[]) {
     return stableTextHash(JSON.stringify({
+      version: FINISH_JOB_VERSION,
       systemId,
-      drawingSignature: systemReleaseSignature(systemId),
-      rows: buildTakeoff(systemId),
+      drawingSignature: systemDrawingSignature(systemId),
+      rows: materialRows || buildTakeoff(systemId),
       materialWastePercent,
       sheetScales: systemSheetScaleSnapshot(systemId),
     }));
+  }
+
+  function activeTakeoffSignature(systemId = activeSystem) {
+    return materialReviewFingerprint(systemId);
+  }
+
+  function latestMaterialReview(systemId = activeSystem) {
+    return materialReviewRecords
+      .filter((record) => record.systemId === systemId)
+      .slice()
+      .sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt))[0];
+  }
+
+  function recordMaterialsReviewed(reviewedBy: string) {
+    const rows = buildTakeoff();
+    if (!rows.length) {
+      setBranchMessage("Draw ductwork or place HVAC equipment before reviewing materials");
+      return;
+    }
+    if (!reviewedBy.trim()) {
+      setBranchMessage("Add your name or initials before confirming the material review");
+      return;
+    }
+    const fingerprint = materialReviewFingerprint();
+    const existing = materialReviewRecords.find((record) =>
+      record.systemId === activeSystem && record.fingerprint === fingerprint
+    );
+    if (existing && latestMaterialReview()?.id === existing.id) {
+      setBranchMessage(`These material quantities are already current · reviewed by ${existing.reviewedBy}`);
+      return;
+    }
+    const record: MaterialReviewRecord = {
+      id: crypto.randomUUID(),
+      systemId: activeSystem,
+      fingerprint,
+      reviewedBy: reviewedBy.trim(),
+      reviewedAt: new Date().toISOString(),
+      lineItemCount: rows.length,
+      wastePercent: materialWastePercent,
+    };
+    setMaterialReviewRecords((current) => [record, ...current]);
+    if (!releaseBy.trim()) setReleaseBy(record.reviewedBy);
+    setBranchMessage(`${systemLabel(activeSystem)} materials reviewed · ${rows.length} current line items`);
+  }
+
+  function currentFinishApprovalFingerprint(
+    materialFingerprint = materialReviewFingerprint(),
+  ) {
+    const materialReview = latestMaterialReview();
+    return finishJobApprovalFingerprint({
+      systemId: activeSystem,
+      sourceFingerprint: pdfFingerprint,
+      releaseSignature: activeFieldPackage.releaseSignature,
+      materialFingerprint,
+      materialReviewId: materialReview?.id || "",
+      revision: releaseRevision,
+      reviewedBy: releaseBy,
+      note: releaseNote,
+    });
   }
 
   function activeTakeoffPackages() {
@@ -7036,7 +7138,7 @@ function HVACPlanStudioApp() {
         const driveFile = await saveProjectPackageToDrive({
           projectName: `${fileName.replace(/\.pdf$/i, "")} — ${record.name} ${record.revision}`,
           packageType: "HVAC Plan Studio Plan Intelligence & Takeoff",
-          version: 122,
+          version: 132,
           system: systemLabel(activeSystem),
           sourcePlan: fileName,
           scale: { label: activeScaleStatus.detail, verified: activeScaleStatus.verified },
@@ -7283,7 +7385,26 @@ function HVACPlanStudioApp() {
       else if (cloudReviewHolds) cloudGateDetail = `${activeCloudRisk.openCriticalWork} critical · ${activeCloudRisk.pendingApprovals} pending · ${activeCloudRisk.changesRequested} changes requested`;
       else cloudGateDetail = `Revision R${activeCloudRisk.latestRevisionNumber} approved`;
     }
+    const materialRows = buildTakeoff();
+    const currentMaterialReview = latestMaterialReview();
+    const currentMaterialFingerprint = materialReviewFingerprint();
+    const materialsCurrent = Boolean(
+      materialRows.length &&
+      currentMaterialReview?.fingerprint === currentMaterialFingerprint
+    );
     const gates = [
+      {
+        id: "materials",
+        label: "Current material quantities reviewed",
+        clear: materialsCurrent,
+        detail: !materialRows.length
+          ? "No material list"
+          : materialsCurrent
+            ? `${materialRows.length} items · ${currentMaterialReview?.reviewedBy}`
+            : currentMaterialReview
+              ? "Quantities changed · review again"
+              : `${materialRows.length} items need review`,
+      },
       { id: "runs", label: "Duct runs drawn", clear: Boolean(runs.length), detail: runs.length ? `${runs.length} runs` : "No duct runs" },
       { id: "critical", label: "Critical review issues fixed", clear: critical === 0, detail: critical ? `${critical} critical` : "Clear" },
       { id: "warning", label: "Warnings reviewed", clear: review.openWarnings === 0, detail: review.openWarnings ? `${review.openWarnings} open` : review.acceptedWarnings ? `${review.acceptedWarnings} accepted` : "Clear" },
@@ -7335,7 +7456,20 @@ function HVACPlanStudioApp() {
     };
   }
 
-  async function issueSystemRelease() {
+  async function issueSystemRelease(approvalFingerprint: string) {
+    const expectedApprovalFingerprint =
+      finishApprovalFingerprintRef.current || currentFinishApprovalFingerprint();
+    if (!approvalFingerprint || approvalFingerprint !== expectedApprovalFingerprint) {
+      setBranchMessage("The plan or approval details changed. Review the exact current revision and confirm it again");
+      return;
+    }
+    if (releaseIssueLockRef.current) {
+      setBranchMessage("This revision is already being checked");
+      return;
+    }
+    releaseIssueLockRef.current = true;
+    setReleaseIssuing(true);
+    try {
     let verifiedCloudRisk: CloudProjectRisk | null = null;
     if (workingCloudProjectId) {
       const previousRisk = cloudProjectRisk?.projectId === workingCloudProjectId ? cloudProjectRisk : null;
@@ -7380,6 +7514,10 @@ function HVACPlanStudioApp() {
         return;
       }
     }
+    if (finishApprovalFingerprintRef.current !== expectedApprovalFingerprint) {
+      setBranchMessage("The plan or approval details changed during the final check. Review the current revision and confirm it again");
+      return;
+    }
     const summary = activeFieldPackage;
     if (!summary.gatesClear) {
       setBranchMessage("Release is blocked. Clear every release gate first");
@@ -7387,6 +7525,13 @@ function HVACPlanStudioApp() {
     }
     if (!releaseRevision.trim() || !releaseBy.trim()) {
       setBranchMessage("Add the revision and released-by name before issuing");
+      return;
+    }
+    if (releaseRecords.some((record) =>
+      record.systemId === activeSystem &&
+      record.revision.toLowerCase() === releaseRevision.trim().toLowerCase()
+    )) {
+      setBranchMessage(`Revision ${releaseRevision.trim()} already exists. Use a new revision name`);
       return;
     }
     if (summary.released && summary.latestRelease?.revision.toLowerCase() === releaseRevision.trim().toLowerCase()) {
@@ -7407,6 +7552,10 @@ function HVACPlanStudioApp() {
       runCount: summary.runs.length,
       designCfm: designAirflow().targetCfm,
       pdfFingerprint,
+      finishJobVersion: FINISH_JOB_VERSION,
+      materialFingerprint: materialReviewFingerprint(),
+      materialReviewId: latestMaterialReview()?.id,
+      finishApprovalFingerprint: approvalFingerprint,
       gateSnapshot: summary.gates.map((gate) => ({ ...gate })),
       checklistSnapshot: fieldChecklistItems.map((item) => ({ ...item, checked: Boolean(activeFieldChecklist()[item.id]) })),
       issueSnapshot: activeReviewedIssueRows.map((row) => ({
@@ -7432,6 +7581,10 @@ function HVACPlanStudioApp() {
     };
     let record = draftRecord;
     if (workingCloudProjectId && verifiedCloudRisk?.latestRevisionId) {
+      if (finishApprovalFingerprintRef.current !== expectedApprovalFingerprint) {
+        setBranchMessage("The release changed before cloud issue. Nothing was issued; review and confirm the current revision again");
+        return;
+      }
       try {
         const cloudRelease = await issueCloudFieldRelease({
           projectId: workingCloudProjectId,
@@ -7456,6 +7609,10 @@ function HVACPlanStudioApp() {
     setReleaseRecords((current) => [...current, record]);
     setBranchMessage(`${systemLabel(activeSystem)} revision ${record.revision} released for field use`);
     setReleaseNote("");
+    } finally {
+      releaseIssueLockRef.current = false;
+      setReleaseIssuing(false);
+    }
   }
 
   function exportReleaseManifestCsv() {
@@ -7680,6 +7837,10 @@ function HVACPlanStudioApp() {
   }
 
   function openReleaseGate(gateId: string) {
+    if (gateId === "materials" || gateId === "checklist") {
+      openFinishJobStudio();
+      return;
+    }
     if (gateId === "cloud") {
       setShowCloudProjects(true);
       return;
@@ -11081,7 +11242,7 @@ function HVACPlanStudioApp() {
         }
         return;
       }
-      if (showPlanIntelligence || showFieldPackageComposer || showSystemBalanceStudio) {
+      if (showPlanIntelligence || showFieldPackageComposer || showFinishJobStudio || showSystemBalanceStudio) {
         if (event.key === "Escape") event.preventDefault();
         return;
       }
@@ -11327,6 +11488,101 @@ function HVACPlanStudioApp() {
   const activeTraceSymbolIds = "symbolIds" in activeTrace ? activeTrace.symbolIds : new Set<string>();
   const activeAirflowSetup = airflowSetupSummary();
   const activeSystemScaleStatus = systemScaleStatus(activeSystem);
+  const activeMaterialRows = useMemo(
+    () => buildTakeoff(),
+    // buildTakeoff reads only the active system drawing rows, sheet scales, and allowance.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeSystem, drawings, materialWastePercent, sheetScales],
+  );
+  const activeMaterialSummary = useMemo(
+    () => materialSummary(activeSystem, activeMaterialRows),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeMaterialRows, activeSystem, activeValidationIssues],
+  );
+  const activeMaterialFingerprint = useMemo(
+    () => materialReviewFingerprint(activeSystem, activeMaterialRows),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeMaterialRows, activeSystem, freshVelocityLimit, pdfFingerprint, residentialFlexMax, returnVelocityLimit, roomAirflowTargetReviewFingerprints, roomAirflowTargets, sheetScales, showCfmLabels, showFittingLabels, showLengthLabels, supplyVelocityLimit, systemNames],
+  );
+  const activeMaterialReview = useMemo(
+    () => latestMaterialReview(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeSystem, materialReviewRecords],
+  );
+  const activeMaterialReviewCurrent = Boolean(
+    activeMaterialReview && activeMaterialReview.fingerprint === activeMaterialFingerprint
+  );
+  const activeFinishJob = useMemo(() => buildFinishJobModel({
+    materialRowCount: activeMaterialRows.length,
+    materialReviewCurrent: activeMaterialReviewCurrent,
+    gates: activeFieldPackage.gates,
+    checklistComplete: activeFieldPackage.checklistComplete,
+    checklistTotal: fieldChecklistItems.length,
+    releaseCurrent: activeFieldPackage.released,
+    releaseStale: activeFieldPackage.stale,
+    releaseRevision: activeFieldPackage.latestRelease?.revision,
+  }), [activeFieldPackage, activeMaterialReviewCurrent, activeMaterialRows.length]);
+  const activeOutputSectionReadiness = useMemo(() => buildOutputSectionReadiness({
+    releaseCurrent: activeFieldPackage.released && !activeFieldPackage.stale,
+    materialReviewCurrent: activeMaterialReviewCurrent,
+    commissioningReady: commissioningSummary().ready,
+    scaleVerified: activeSystemScaleStatus.verified,
+    hvacLayersVisible: Object.values(visibleLayers).every(Boolean),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [activeFieldPackage.released, activeFieldPackage.stale, activeMaterialReviewCurrent, activeSystem, activeSystemScaleStatus.verified, commissioningBySystem, visibleLayers]);
+  const activeFinishApprovalFingerprint = useMemo(() => finishJobApprovalFingerprint({
+    systemId: activeSystem,
+    sourceFingerprint: pdfFingerprint,
+    releaseSignature: activeFieldPackage.releaseSignature,
+    materialFingerprint: activeMaterialFingerprint,
+    materialReviewId: activeMaterialReview?.id || "",
+    revision: releaseRevision,
+    reviewedBy: releaseBy,
+    note: releaseNote,
+  }), [activeFieldPackage.releaseSignature, activeMaterialFingerprint, activeMaterialReview?.id, activeSystem, pdfFingerprint, releaseBy, releaseNote, releaseRevision]);
+  finishApprovalFingerprintRef.current = activeFinishApprovalFingerprint;
+  const returnToFinishGateClear = Boolean(
+    returnToFinishGateId &&
+    activeFieldPackage.gates.find((gate) => gate.id === returnToFinishGateId)?.clear
+  );
+  useEffect(() => {
+    if (!returnToFinishGateId || !returnToFinishGateClear || showFinishJobStudio) return;
+    const frame = window.requestAnimationFrame(() => {
+      setShowCloudProjects(false);
+      setShowMarkupAssistant(false);
+      setActiveMarkupRecommendation(undefined);
+      setAssistantFocusedRecommendationId("");
+      setReturnToFinishGateId(null);
+      setShowFinishJobStudio(true);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [returnToFinishGateClear, returnToFinishGateId, showFinishJobStudio]);
+  const duplicateReleaseRevision = Boolean(
+    releaseRevision.trim() &&
+    releaseRecords.some((record) =>
+      record.systemId === activeSystem &&
+      record.revision.toLowerCase() === releaseRevision.trim().toLowerCase()
+    )
+  );
+  const finishIssueBlockedReason = !activeMaterialReviewCurrent
+    ? "Review the current material quantities first."
+    : !activeFieldPackage.gatesClear
+      ? "Clear every current release hold first."
+      : !releaseRevision.trim()
+        ? "Add a revision name."
+        : !releaseBy.trim()
+          ? "Add the reviewer name or initials."
+          : duplicateReleaseRevision
+            ? `Revision ${releaseRevision.trim()} already exists. Use a new name.`
+            : "";
+  const finishCanIssue = Boolean(
+    activeFieldPackage.gatesClear &&
+    activeMaterialReviewCurrent &&
+    releaseRevision.trim() &&
+    releaseBy.trim() &&
+    !duplicateReleaseRevision &&
+    !releaseIssuing
+  );
   const branchOpportunityList = activeTool === "branch" ? branchOpportunities() : [];
   const pageBranchFittings = drawings.filter((drawing) => drawing.page === pageNumber && drawing.fitting);
   const assignedBranchRunIds = new Set(pageBranchFittings.flatMap((fitting) => fitting.fitting?.connectedIds.filter(Boolean) || []));
@@ -11473,23 +11729,17 @@ function HVACPlanStudioApp() {
     },
     {
       id: "finish",
-      label: "Materials & Print",
+      label: "Finish the Job",
       detail: !pdf
         ? "Available after the plan is opened"
-        : activeFieldPackage.gatesClear
-          ? "Ready to print or share"
-          : "Review materials and printing blockers",
+        : activeFinishJob.summary,
       complete: Boolean(
         airflowStepComplete &&
         !activeBuilderSummary.audit.counts.critical &&
         !activeBuilderSummary.audit.counts.warning &&
-        activeFieldPackage.released &&
-        !activeFieldPackage.stale
+        activeFinishJob.jobReady
       ),
-      run: () => {
-        setRightTab("takeoff");
-        openInspectorPanel();
-      },
+      run: openFinishJobStudio,
     },
   ] as const;
   const activeSmartPlanSetup = buildSmartPlanSetup(activePlanAnalysis);
@@ -12155,8 +12405,21 @@ function HVACPlanStudioApp() {
   }
 
   const activeFieldRuns = activeFieldPackage.runs;
-  const modalWorkspaceActive = showProjectHome || showProjectSetup || showPlanIntelligence || showFieldPackageComposer || showSystemBalanceStudio || showDisplaySettings;
+  const modalWorkspaceActive = showProjectHome || showProjectSetup || showPlanIntelligence || showFieldPackageComposer || showFinishJobStudio || showSystemBalanceStudio || showDisplaySettings;
   const packagePrintClasses = printPackageSections.map((section) => `package-include-${section}`).join(" ");
+  const packagePrintReleased = activeFieldPackage.released &&
+    !activeFieldPackage.stale &&
+    selectedOutputIsReady(printPackageSections, activeOutputSectionReadiness);
+  const packageOutputFingerprint = stableTextHash(JSON.stringify({
+    version: FINISH_JOB_VERSION,
+    systemId: activeSystem,
+    systemName: systemLabel(activeSystem),
+    releaseId: activeFieldPackage.latestRelease?.id || "",
+    releaseSignature: activeFieldPackage.releaseSignature,
+    sections: [...printPackageSections].sort(),
+    sheet: pageNumber,
+    visibleLayers,
+  }));
 
   function openAIPlanReader(view: "setup" | "reader" | "findings" = "setup") {
     setPlanWorkspaceInitialView(view);
@@ -12195,14 +12458,53 @@ function HVACPlanStudioApp() {
     if (returnToHelper) window.requestAnimationFrame(() => openMarkupAssistant("setup"));
   }
 
-  function openFieldPackageComposer() {
+  function presentFieldPackageComposer(returnToFinish: boolean) {
     setShowCommandPalette(false);
     setShowCloudProjects(false);
     setShowPlanIntelligence(false);
     setShowMarkupAssistant(false);
     setShowProjectHome(false);
     setShowProjectSetup(false);
+    setShowFinishJobStudio(false);
+    setReturnToFinishAfterPackage(returnToFinish);
     setShowFieldPackageComposer(true);
+  }
+
+  function openFieldPackageComposer() {
+    presentFieldPackageComposer(false);
+  }
+
+  function openFieldPackageFromFinish() {
+    presentFieldPackageComposer(true);
+  }
+
+  function closeFieldPackageComposer() {
+    setShowFieldPackageComposer(false);
+    if (returnToFinishAfterPackage) {
+      setReturnToFinishAfterPackage(false);
+      window.requestAnimationFrame(() => setShowFinishJobStudio(true));
+    }
+  }
+
+  function resumeFinishJobFromGate() {
+    if (!returnToFinishGateId) return false;
+    setReturnToFinishGateId(null);
+    window.requestAnimationFrame(() => setShowFinishJobStudio(true));
+    return true;
+  }
+
+  function openFinishJobStudio() {
+    setShowCommandPalette(false);
+    setShowCloudProjects(false);
+    setShowPlanIntelligence(false);
+    setShowMarkupAssistant(false);
+    setShowFieldPackageComposer(false);
+    setReturnToFinishAfterPackage(false);
+    setReturnToFinishGateId(null);
+    setShowSystemBalanceStudio(false);
+    setShowProjectHome(false);
+    setShowProjectSetup(false);
+    setShowFinishJobStudio(true);
   }
 
   function openSystemBalanceStudio() {
@@ -12211,6 +12513,7 @@ function HVACPlanStudioApp() {
     setShowPlanIntelligence(false);
     setShowMarkupAssistant(false);
     setShowFieldPackageComposer(false);
+    setShowFinishJobStudio(false);
     setShowProjectHome(false);
     setShowProjectSetup(false);
     setSelectedCfmProposalIds([]);
@@ -12226,6 +12529,7 @@ function HVACPlanStudioApp() {
     setShowCloudProjects(false);
     setShowPlanIntelligence(false);
     setShowFieldPackageComposer(false);
+    setShowFinishJobStudio(false);
     setShowSystemBalanceStudio(false);
     setShowProjectHome(false);
     setShowProjectSetup(false);
@@ -12243,6 +12547,7 @@ function HVACPlanStudioApp() {
   function printSelectedFieldPackage(sections: FieldPackageSectionId[]) {
     setPrintPackageSections(sections);
     setShowFieldPackageComposer(false);
+    setReturnToFinishAfterPackage(false);
     selectOnly(null);
     setActiveReviewIssueId("");
     setPendingBranchFittingId(null);
@@ -12252,6 +12557,28 @@ function HVACPlanStudioApp() {
     setSnapMarker(null);
     setAlignmentGuides([]);
     window.setTimeout(() => window.print(), 80);
+  }
+
+  async function copyCurrentFinishJobSummary() {
+    if (!activeFieldPackage.released || activeFieldPackage.stale) {
+      setBranchMessage("Issue the current revision before copying its controlled summary");
+      return;
+    }
+    const revision = activeFieldPackage.latestRelease?.revision || "reviewed";
+    const title = `${fileName} · ${systemLabel(activeSystem)} · Revision ${revision}`;
+    const text = [
+      title,
+      `Released by: ${activeFieldPackage.latestRelease?.releasedBy || "Unknown"}`,
+      `Released: ${activeFieldPackage.latestRelease ? new Date(activeFieldPackage.latestRelease.releasedAt).toLocaleString() : "Unknown"}`,
+      `Drawing fingerprint: ${activeFieldPackage.signature}`,
+      "Save the controlled package as a PDF and attach that file when sharing it.",
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setBranchMessage(`Revision ${revision} summary copied Â· attach the saved PDF when sharing`);
+    } catch {
+      setBranchMessage("Copy was not available. Print or save the field package, then share that PDF from your device");
+    }
   }
 
   const projectCommands: ProjectCommand[] = [
@@ -12361,7 +12688,7 @@ function HVACPlanStudioApp() {
   ];
 
   return (
-    <main className={`app-shell field-first-workspace layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${activeFieldPackage.released && !activeFieldPackage.stale ? "package-print-released" : "package-print-draft"}`}>
+    <main className={`app-shell field-first-workspace layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showFinishJobStudio ? "finish-job-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${packagePrintReleased ? "package-print-released" : "package-print-draft"}`}>
       <input
         ref={inputRef}
         className="file-input"
@@ -12463,7 +12790,7 @@ function HVACPlanStudioApp() {
         <dl>
           <div><dt>Sheet</dt><dd>{pageNumber} of {pdf?.numPages || 1}</dd></div>
           <div><dt>Scale</dt><dd>{scaleLabel}</dd></div>
-          <div><dt>Airflow</dt><dd>{Math.max(0, ...drawings.filter((drawing) => drawing.type === "supply").map((drawing) => drawing.cfm || 0))} CFM</dd></div>
+          <div><dt>Airflow</dt><dd>{designAirflow().targetCfm} CFM design</dd></div>
         </dl>
       </section>
 
@@ -14661,8 +14988,8 @@ function HVACPlanStudioApp() {
                 <label>Released by<input value={releaseBy} onChange={(event) => setReleaseBy(event.target.value)} placeholder="Name / initials" /></label>
                 <label className="wide">Release note<textarea value={releaseNote} onChange={(event) => setReleaseNote(event.target.value)} placeholder="Scope, approved exceptions, and installer instructions…" /></label>
               </div>
-              <button disabled={!activeFieldPackage.gatesClear || !releaseRevision.trim() || !releaseBy.trim() || Boolean(activeFieldPackage.released && activeFieldPackage.latestRelease?.revision.toLowerCase() === releaseRevision.trim().toLowerCase())} onClick={issueSystemRelease}>
-                {activeFieldPackage.stale ? "Issue updated revision" : "Issue for field use"}
+              <button onClick={openFinishJobStudio}>
+                {activeFieldPackage.stale ? "Review and issue updated revision" : "Finish and issue revision"}
               </button>
               <p>Every release stores a drawing fingerprint. Any later duct, fitting, equipment, airflow, room, scale, or rule change marks it stale.</p>
               {releaseRecords.filter((record) => record.systemId === activeSystem).length > 0 && <div className="release-history">
@@ -15143,6 +15470,9 @@ function HVACPlanStudioApp() {
             <span>Released by: <b>{activeFieldPackage.latestRelease?.releasedBy || "—"}</b></span>
             <span>Released: <b>{activeFieldPackage.latestRelease ? new Date(activeFieldPackage.latestRelease.releasedAt).toLocaleString() : "—"}</b></span>
             <span>Drawing fingerprint: <b>{activeFieldPackage.signature}</b></span>
+            <span>Output fingerprint: <b>{packageOutputFingerprint}</b></span>
+            <span>Source fingerprint: <b>{pdfFingerprint || "NO SOURCE"}</b></span>
+            <span>Plan scope: <b>Sheet {pageNumber} of {pdf?.numPages || 1}</b></span>
           </div>
           <div className="print-release-summary">
             <span>Critical issues: <b>{activeFieldPackage.critical}</b></span>
@@ -15454,6 +15784,7 @@ function HVACPlanStudioApp() {
           setShowMarkupAssistant(false);
           setActiveMarkupRecommendation(undefined);
           setAssistantFocusedRecommendationId("");
+          resumeFinishJobFromGate();
         }}
         onActiveRecommendationChange={setActiveMarkupRecommendation}
         onFocusDrawing={(drawingId) => {
@@ -15600,6 +15931,76 @@ function HVACPlanStudioApp() {
         onExportRooms={exportRoomScheduleCsv}
         onExportRuns={exportSystemBalanceRunCsv}
       />}
+      {showFinishJobStudio && <FinishJobStudio
+        open={showFinishJobStudio}
+        projectName={fileName}
+        systemName={systemLabel(activeSystem)}
+        model={activeFinishJob}
+        materialRows={activeMaterialRows}
+        materialAllowance={materialWastePercent}
+        materialFlexRolls={activeMaterialSummary.flexBoxes}
+        materialDeviceCount={activeMaterialSummary.deviceCount}
+        materialFittingCount={activeMaterialSummary.fittingCount}
+        materialHoldCount={activeMaterialSummary.holds.length}
+        materialReview={activeMaterialReview ? {
+          id: activeMaterialReview.id,
+          reviewedBy: activeMaterialReview.reviewedBy,
+          reviewedAt: activeMaterialReview.reviewedAt,
+          current: activeMaterialReviewCurrent,
+        } : undefined}
+        checklist={fieldChecklistItems.map((item) => ({
+          ...item,
+          checked: Boolean(activeFieldChecklist()[item.id]),
+        }))}
+        release={{
+          released: activeFieldPackage.released,
+          stale: activeFieldPackage.stale,
+          status: activeFieldPackage.status,
+          revision: activeFieldPackage.latestRelease?.revision,
+          releasedBy: activeFieldPackage.latestRelease?.releasedBy,
+          releasedAt: activeFieldPackage.latestRelease?.releasedAt,
+        }}
+        revision={releaseRevision}
+        reviewedBy={releaseBy}
+        note={releaseNote}
+        approvalFingerprint={activeFinishApprovalFingerprint}
+        issuing={releaseIssuing}
+        canIssue={finishCanIssue}
+        issueBlockedReason={finishIssueBlockedReason}
+        onClose={() => {
+          if (!releaseIssuing) setShowFinishJobStudio(false);
+        }}
+        onMaterialAllowanceChange={(value) => {
+          if (!releaseIssuing) setMaterialWastePercent(value);
+        }}
+        onReviewMaterials={(reviewer) => {
+          if (!releaseIssuing) recordMaterialsReviewed(reviewer);
+        }}
+        onOpenGate={(gate: FinishJobGate) => {
+          if (releaseIssuing) return;
+          setReturnToFinishGateId(gate.id);
+          setShowFinishJobStudio(false);
+          openReleaseGate(gate.id);
+        }}
+        onChecklistChange={(id, checked) => {
+          if (!releaseIssuing) updateFieldChecklist(id, checked);
+        }}
+        onRevisionChange={(value) => {
+          if (!releaseIssuing) setReleaseRevision(value);
+        }}
+        onReviewedByChange={(value) => {
+          if (!releaseIssuing) setReleaseBy(value);
+        }}
+        onNoteChange={(value) => {
+          if (!releaseIssuing) setReleaseNote(value);
+        }}
+        onIssue={(fingerprint) => void issueSystemRelease(fingerprint)}
+        onOpenPrint={openFieldPackageFromFinish}
+        onCopySummary={() => void copyCurrentFinishJobSummary()}
+        onDownloadMaterials={exportPurchaseSheetCsv}
+        onDownloadRuns={exportFieldRunScheduleCsv}
+        onDownloadRelease={exportReleaseManifestCsv}
+      />}
       <FieldPackageComposer
         open={showFieldPackageComposer}
         projectName={fileName}
@@ -15616,7 +16017,9 @@ function HVACPlanStudioApp() {
         connectionProblems={activeFieldPackage.connectionProblems}
         gateCount={activeFieldPackage.gates.length}
         clearedGateCount={activeFieldPackage.gates.filter((gate) => gate.clear).length}
-        onClose={() => setShowFieldPackageComposer(false)}
+        sectionReadiness={activeOutputSectionReadiness}
+        pageLabel={`Sheet ${pageNumber} of ${pdf?.numPages || 1}`}
+        onClose={closeFieldPackageComposer}
         onPrint={printSelectedFieldPackage}
         onDownloadManifest={exportReleaseManifestCsv}
         onDownloadRuns={exportFieldRunScheduleCsv}
@@ -15653,7 +16056,8 @@ function HVACPlanStudioApp() {
         }}
         onClose={() => {
           setShowCloudProjects(false);
-          if (!pdf) setShowProjectHome(true);
+          const returningToFinish = resumeFinishJobFromGate();
+          if (!pdf && !returningToFinish) setShowProjectHome(true);
         }}
       />
       <ProjectCommandPalette

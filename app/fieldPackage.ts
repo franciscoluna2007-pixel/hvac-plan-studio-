@@ -35,8 +35,8 @@ export const fieldPackagePresets: Array<{
 }> = [
   {
     id: "installer",
-    label: "Estimator",
-    detail: "Marked plan, run schedule, materials, airflow, and open findings",
+    label: "Field package",
+    detail: "Marked plan, run schedule, materials, airflow, and field decisions",
     sections: ["plan", "release", "materials", "airflow", "coordination"],
   },
   {

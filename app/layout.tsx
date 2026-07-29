@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://hvac-plan-studio.franciscoluna2007.chatgpt.site"),
   title: {
-    default: "HVAC Plan Studio · Room-by-Room Markup",
+    default: "HVAC Plan Studio · Finish the Job",
     template: "%s · HVAC Plan Studio",
   },
-  description: "Review staged supply and return ghosts one room at a time, approve only terminal symbols, and undo the room without changing ductwork or calculations.",
+  description: "Review materials, clear plan holds, complete the field checklist, issue a named revision, and print or share from one guided closeout path.",
   applicationName: "HVAC Plan Studio",
   keywords: ["HVAC plan setup", "HVAC plan reader", "duct plan", "HVAC takeoff", "plan markup"],
   icons: {
@@ -26,14 +26,14 @@ export const metadata: Metadata = {
     shortcut: "/favicon.svg",
   },
   openGraph: {
-    title: "HVAC Plan Studio · Room-by-Room Markup",
-    description: "Review staged supply and return ghosts one room at a time, approve only terminal symbols, and undo the room without changing ductwork or calculations.",
+    title: "HVAC Plan Studio · Finish the Job",
+    description: "Review materials, clear plan holds, complete the field checklist, issue a named revision, and print or share from one guided closeout path.",
     type: "website",
   },
   twitter: {
     card: "summary",
-    title: "HVAC Plan Studio · Room-by-Room Markup",
-    description: "Review staged supply and return ghosts one room at a time, approve only terminal symbols, and undo the room without changing ductwork or calculations.",
+    title: "HVAC Plan Studio · Finish the Job",
+    description: "Review materials, clear plan holds, complete the field checklist, issue a named revision, and print or share from one guided closeout path.",
   },
 };
 

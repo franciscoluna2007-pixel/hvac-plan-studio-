@@ -32,10 +32,10 @@ function sourceBetween(source, start, end) {
   return source.slice(startIndex, endIndex);
 }
 
-test("persists room candidates and application receipts in the version 7 project state", () => {
+test("persists room candidates and application receipts in the version 8 project state", () => {
   assert.match(
     page,
-    /type SavedProject = \{\s*version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7;/,
+    /type SavedProject = \{\s*version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8;/,
   );
   assert.match(page, /roomMarkupCandidatesBySystem\?: Record<string, RoomMarkupCandidate\[\]>/);
   assert.match(page, /roomMarkupApplicationRecords\?: RoomMarkupApplicationRecord\[\]/);
@@ -45,7 +45,7 @@ test("persists room candidates and application receipts in the version 7 project
     "const buildProjectSnapshot = useCallback((): SavedProject => {",
     "const saveProject = useCallback(() => {",
   );
-  assert.match(snapshot, /version: 7,/);
+  assert.match(snapshot, /version: 8,/);
   assert.match(snapshot, /roomMarkupCandidatesBySystem,/);
   assert.match(snapshot, /roomMarkupApplicationRecords,/);
   assert.match(page, /setRoomMarkupCandidatesBySystem\(project\.roomMarkupCandidatesBySystem \|\| \{\}\)/);
@@ -240,21 +240,21 @@ test("keeps Room Markup touch-friendly, mobile, and out of print", () => {
   );
 });
 
-test("publishes V131 metadata and documents V132 as the next release", () => {
-  assert.match(layout, /HVAC Plan Studio · Room-by-Room Markup/);
+test("keeps V131 documented beneath the current V132 release", () => {
+  assert.match(layout, /HVAC Plan Studio · Finish the Job/);
   assert.match(
     layout,
-    /Review staged supply and return ghosts one room at a time, approve only terminal symbols/,
+    /Review materials, clear plan holds/,
   );
-  assert.match(analytics, /app_version: "131"/);
-  assert.match(readme, /## Current release — v131/);
+  assert.match(analytics, /app_version: "132"/);
+  assert.match(readme, /## Current release — v132/);
   assert.match(readme, /There is no Accept All or bulk room approval\./);
   assert.match(
     readme,
     /Never adds or changes ductwork, CFM, run sizes, run numbers, fittings, connections, equipment, walls, or room geometry\./,
   );
   assert.match(roadmap, /\| v131 \| Room-by-Room Markup \| Shipped \|/);
-  assert.match(roadmap, /\| v132 \| Finish the Job \| Next \|/);
+  assert.match(roadmap, /\| v132 \| Finish the Job \| Shipped \|/);
   assert.match(roadmap, /## v131 — Room-by-Room Markup/);
-  assert.match(roadmap, /## Next solo-operator release/);
+  assert.match(roadmap, /## v132 — Finish the Job/);
 });

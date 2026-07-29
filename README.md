@@ -4,9 +4,24 @@ HVAC Plan Studio is an approval-first plan-markup, airflow-coordination, review,
 
 It keeps editable HVAC geometry over a source-plan PDF, traces reviewed airflow through connected equipment networks, explains plan findings, prepares controlled repair batches, shows purchasing impact, and preserves project-scoped review records. Manual geometry and professional judgment remain authoritative.
 
-## Current release — v131
+## Current release — v132
 
-v131 turns sufficiently verified PDF evidence into a room-by-room checklist with staged supply and return ghost symbols. The reviewer handles one room at a time, answers any missing room, system, sheet-scale, or return-strategy question, adjusts each ghost, and gives explicit approval before terminal symbols are added with one Undo.
+v132 gives a superintendent or one-person HVAC business one guided **Finish the Job** path for material review, unresolved plan holds, the field checklist, named revision approval, and controlled output. It replaces the former split between Materials, hidden release tools, and package composition without weakening any release gate.
+
+### v132 — Finish the Job
+
+- Replaces the final **Materials & Print** tile with one **Finish the Job** workspace and always starts at the first incomplete task.
+- Reviews current takeoff quantities, flex rolls, air devices, T/Y fittings, and material allowance in one readable step.
+- Records an immutable, system-scoped material-review receipt with the reviewer, time, exact takeoff fingerprint, line-item count, and allowance.
+- Marks that material review stale after a drawing, scale, quantity, or allowance change.
+- Shows only the unresolved plan and coordination holds, with a plain-language action for every gate.
+- Reuses the real system field checklist; there is no bulk check or automatic completion.
+- Requires a unique revision name, reviewer, and explicit final confirmation bound to the exact source, release, and material fingerprints.
+- Prevents double issue, rechecks cloud approval at commit time, and keeps all geometry, CFM, sizing, and connection changes outside closeout.
+- Makes field-package output section-aware: stale materials, incomplete startup data, unverified scale, or hidden HVAC layers force a draft watermark when those sections are selected.
+- Requires the release certificate in every final package and prints its source, drawing, and output fingerprints with the exact current-sheet scope.
+- Excludes draft routes, measurement previews, repair previews, room ghosts, and other transient canvas marks from print.
+- Offers honest **Print / Save as PDF**, **Copy revision summary**, and current purchase, run, and release CSV downloads; the saved PDF remains the file the user shares.
 
 ### v131 — Room-by-Room Markup
 

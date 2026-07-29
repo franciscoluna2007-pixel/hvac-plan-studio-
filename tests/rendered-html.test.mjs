@@ -47,8 +47,8 @@ test("renders production v131 text metadata without generated image metadata or 
     /^text\/html\b/i,
   );
   const html = await response.text();
-  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Room-by-Room Markup"\/>/i);
-  assert.match(html, /<meta property="og:description" content="Review staged supply and return ghosts one room at a time, approve only terminal symbols, and undo the room without changing ductwork or calculations\."\/>/i);
+  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Finish the Job"\/>/i);
+  assert.match(html, /<meta property="og:description" content="Review materials, clear plan holds, complete the field checklist, issue a named revision, and print or share from one guided closeout path\."\/>/i);
   assert.doesNotMatch(html, /(?:property|name)="(?:og:image|twitter:image)"/i);
   assert.doesNotMatch(html, /summary_large_image|og-v\d+\.png/i);
   assert.doesNotMatch(html, developmentPreviewMeta);
@@ -136,7 +136,7 @@ test("builds v106 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.match(page, /sourceFileName/);
   assert.match(page, /pendingPdfOpenRef\.current = null/);
   assert.match(page, /addEventListener\("cancel", handleFilePickerCancel\)/);
-  assert.match(page, /const modalWorkspaceActive = showProjectHome \|\| showProjectSetup \|\| showPlanIntelligence \|\| showFieldPackageComposer \|\| showSystemBalanceStudio/);
+  assert.match(page, /const modalWorkspaceActive = showProjectHome \|\| showProjectSetup \|\| showPlanIntelligence \|\| showFieldPackageComposer \|\| showFinishJobStudio \|\| showSystemBalanceStudio/);
   assert.match(page, /inert=\{modalWorkspaceActive \? true : undefined\}/);
   assert.match(home, /Open a PDF and start drawing\. Setup help is available, but it never gets in your way/);
   assert.match(home, /Jobs · plans · materials/);
@@ -175,7 +175,7 @@ test("leads solo HVAC operators through plan setup and four clear job steps", as
   assert.match(page, /label: "Draw & Detail"/);
   assert.match(page, /label: "Airflow & Sizes"/);
   assert.match(page, /label: "Fix Plan"/);
-  assert.match(page, /label: "Materials & Print"/);
+  assert.match(page, /label: "Finish the Job"/);
   assert.match(page, /className="field-first-guide"/);
   assert.match(page, /const \[rightPanelOpen, setRightPanelOpen\] = useState\(false\)/);
   assert.match(page, /function openToolsPanel\(\) \{\s*setLeftPanelOpen\(true\);\s*setRightPanelOpen\(false\)/);
@@ -193,7 +193,7 @@ test("leads solo HVAC operators through plan setup and four clear job steps", as
   assert.match(styles, /\.project-home-hero-visual,[\s\S]*display: none !important/);
   assert.match(styles, /\.left-panel-tabs/);
   assert.doesNotMatch(layout, /\/og-v\d+\.png|summary_large_image|images\s*:/);
-  assert.match(layout, /Room-by-Room Markup/);
+  assert.match(layout, /Finish the Job/);
 });
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
@@ -1904,7 +1904,7 @@ test("ships v108 tablet gestures, stylus protection, responsive drawers, and bou
   assert.match(styles, /min-width: 44px; min-height: 44px/);
   assert.match(styles, /@media \(min-width: 2560px\)/);
   assert.match(styles, /height: 100dvh/);
-  assert.match(analytics, /app_version: "131"/);
+  assert.match(analytics, /app_version: "132"/);
 
   const pinch = pinchCamera({
     anchorPlan: { x: 100, y: 200 },
@@ -1989,7 +1989,7 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(page, /label: "Draw & Detail"/);
   assert.match(page, /label: "Airflow & Sizes"/);
   assert.match(page, /label: "Fix Plan"/);
-  assert.match(page, /label: "Materials & Print"/);
+  assert.match(page, /label: "Finish the Job"/);
   assert.match(page, /const fieldFirstProgress = Math\.round\(/);
   assert.match(page, /const airflowStepComplete = Boolean\(/);
   assert.match(page, /openMarkupAssistant\("fix-plan"\)/);
@@ -2007,9 +2007,9 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(page, /runNumber\?: string/);
   assert.match(page, /sizeReviewed\?: boolean/);
   assert.match(page, /type SheetScaleState = \{/);
-  assert.match(page, /version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7/);
+  assert.match(page, /version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8/);
   assert.match(page, /sheetScales\?: Record<string, SheetScaleState>/);
-  assert.match(page, /version: 7/);
+  assert.match(page, /version: 8/);
   assert.match(page, /restoredSheetScales\["1"\] = legacyScale/);
   assert.doesNotMatch(page, /legacyPages/);
   assert.match(page, /activateSheetScale\(nextPage\)/);
@@ -2095,7 +2095,7 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(styles, /\.builder-current-step-summary/);
   assert.match(styles, /\.app-shell\.tablet-layout \.left-panel,[\s\S]*?padding-bottom: calc\(92px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(styles, /\.assistant-more-tools \{[\s\S]*?overflow-x: auto;/);
-  assert.match(layout, /HVAC Plan Studio · Room-by-Room Markup/);
+  assert.match(layout, /HVAC Plan Studio · Finish the Job/);
   assert.doesNotMatch(layout, /\/og-v\d+\.png|summary_large_image|images\s*:/);
 
   assert.match(page, /function applyDetectedPlanScale\(candidate: PlanScaleCandidate, page: number\)/);
