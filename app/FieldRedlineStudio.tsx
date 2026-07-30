@@ -42,6 +42,7 @@ import type {
 } from "./redlineDomain";
 import {
   isRedlineMarkTool,
+  redlineMarkRadius,
   type RedlineMarkSize,
 } from "./redlineMark";
 
@@ -138,10 +139,10 @@ type ToolDefinition = {
 
 const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   { id: "select", label: "Select", icon: MousePointer2 },
-  { id: "pen", label: "Pen", icon: Pencil },
+  { id: "pen", label: "Draw", icon: Pencil },
   { id: "highlight", label: "Highlight", icon: Highlighter },
-  { id: "round-mark", label: "Round mark", icon: Circle },
-  { id: "square-mark", label: "Square mark", icon: Square },
+  { id: "round-mark", label: "Draw circle", icon: Circle },
+  { id: "square-mark", label: "Draw square", icon: Square },
   { id: "erase", label: "Erase", icon: Eraser },
   { id: "arrow", label: "Arrow", icon: ArrowRight },
   { id: "rectangle", label: "Rectangle", icon: Square },
@@ -896,24 +897,33 @@ export default function FieldRedlineStudio({
               </label>
               {markTool ? (
                 <label>
-                  Mark size
-                  <select
-                    value={markSize}
+                  Mark size for quick click
+                  <input
+                    type="range"
+                    min={0.0005}
+                    max={0.15}
+                    step={0.0005}
+                    value={redlineMarkRadius(markSize)}
                     onChange={(event) =>
-                      onMarkSizeChange(event.currentTarget.value as RedlineMarkSize)
+                      onMarkSizeChange(Number(event.currentTarget.value))
                     }
                     style={FORM_CONTROL_STYLE}
-                  >
-                    <option value="small">Small</option>
-                    <option value="medium">Medium</option>
-                    <option value="large">Large</option>
-                    <option value="extra-large">Extra large</option>
-                  </select>
+                  />
+                  <output>
+                    {(redlineMarkRadius(markSize) * 200).toFixed(1)}%
+                  </output>
+                  <small className="redline-size-help">
+                    Drag on the plan for any exact size.
+                  </small>
                 </label>
               ) : (
                 <label>
                   Line width
-                  <select
+                  <input
+                    type="range"
+                    min={0.00025}
+                    max={0.04}
+                    step={0.00025}
                     value={style.strokeWidth}
                     onChange={(event) =>
                       onStyleChange({
@@ -922,13 +932,10 @@ export default function FieldRedlineStudio({
                       })
                     }
                     style={FORM_CONTROL_STYLE}
-                  >
-                    <option value={0.001}>Hairline</option>
-                    <option value={0.002}>Fine</option>
-                    <option value={0.004}>Standard</option>
-                    <option value={0.008}>Bold</option>
-                    <option value={0.014}>Highlighter</option>
-                  </select>
+                  />
+                  <output>
+                    {(style.strokeWidth * 100).toFixed(2)}%
+                  </output>
                 </label>
               )}
               <label>

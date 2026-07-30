@@ -43,14 +43,31 @@ test("symbol placement stays armed and does not auto-open selection actions", ()
   assert.doesNotMatch(placement, /selectOnly\(symbol\.id\)/);
 });
 
-test("redline actions disappear while drawing, editing dialogs, or placing details", () => {
+test("redline actions disappear while drawing, editing dialogs, or placing copies and details", () => {
   assert.match(
     page,
-    /const redlineSelectionActionsVisible =\s*fieldRedline\.open[\s\S]*?fieldRedline\.activeTool === "select"[\s\S]*?!fieldRedline\.pendingDetail[\s\S]*?!fieldRedline\.dialog/,
+    /const redlineSelectionActionsVisible =\s*fieldRedline\.open[\s\S]*?fieldRedline\.activeTool === "select"[\s\S]*?!fieldRedline\.pendingDetail[\s\S]*?!fieldRedline\.pendingCopy[\s\S]*?!fieldRedline\.dialog/,
   );
   assert.match(
     page,
     /const redlineSelectionWheel =\s*redlineSelectionActionsVisible/,
+  );
+});
+
+test("mouse copy placement wins over object selection and keeps previews out of output", () => {
+  assert.match(
+    page,
+    /onPointerDownCapture=\{fieldRedline\.open \? undefined : handleRoomMarkupPlacementCapture\}/,
+  );
+  assert.match(
+    page,
+    /if \(!pendingRoomMarkupCandidateId && !copyPlacement\) return;/,
+  );
+  assert.match(page, /className="copy-place-hud"/);
+  assert.match(page, /fieldRedline\.cancelCopyPlacement/);
+  assert.match(
+    canvas,
+    /className="redline-transient-copy"[\s\S]*?pointerEvents="none"/,
   );
 });
 

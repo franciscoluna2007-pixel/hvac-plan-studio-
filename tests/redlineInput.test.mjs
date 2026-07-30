@@ -124,6 +124,47 @@ test("coalesced input cap preserves the current pointer endpoint", () => {
   );
 });
 
+test("keeps spatially distinct browser samples that share a timestamp", () => {
+  const previous = {
+    x: 0.1,
+    y: 0.1,
+    pressure: 0.5,
+    t: 20,
+    pointerId: 7,
+    pointerType: "pen",
+  };
+  const samples = normalizeCoalescedRedlineSamples({
+    clientX: 340,
+    clientY: 230,
+    pressure: 0.5,
+    timeStamp: 20,
+    pointerId: 7,
+    pointerType: "pen",
+    getCoalescedEvents: () => [
+      {
+        clientX: 260,
+        clientY: 170,
+        pressure: 0.5,
+        timeStamp: 20,
+      },
+      {
+        clientX: 340,
+        clientY: 230,
+        pressure: 0.5,
+        timeStamp: 20,
+      },
+    ],
+  }, viewport, previous);
+
+  assert.deepEqual(
+    samples.map(({ x, y, t }) => ({ x, y, t })),
+    [
+      { x: 0.2, y: 0.2, t: 20 },
+      { x: 0.3, y: 0.3, t: 20 },
+    ],
+  );
+});
+
 test("rejects non-primary, secondary-button, touch, and pen-palm input", () => {
   assert.equal(redlinePointerCanDraw({
     pointerType: "pen",

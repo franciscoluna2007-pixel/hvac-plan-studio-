@@ -62,16 +62,14 @@ test("the dock progressively reveals style and controls layer visibility, lock, 
   assert.match(studio, /Line color/);
   assert.match(studio, /Mark color/);
   assert.match(studio, /Mark size/);
-  assert.match(studio, /value="small">Small/);
-  assert.match(studio, /value="medium">Medium/);
-  assert.match(studio, /value="large">Large/);
-  assert.match(studio, /value="extra-large">Extra large/);
+  assert.match(studio, /min=\{0\.0005\}/);
+  assert.match(studio, /max=\{0\.15\}/);
+  assert.match(studio, /Drag on the plan for any exact size\./);
   assert.match(studio, /markTool \? \{ fillColor: color \} : \{\}/);
   assert.match(studio, /Line width/);
-  assert.match(studio, /Fine/);
-  assert.match(studio, /option value=\{0\.001\}>Hairline/);
-  assert.match(studio, /option value=\{0\.002\}>Fine/);
-  assert.match(studio, /option value=\{0\.014\}>Highlighter/);
+  assert.match(studio, /min=\{0\.00025\}/);
+  assert.match(studio, /max=\{0\.04\}/);
+  assert.match(studio, /step=\{0\.00025\}/);
   assert.match(studio, /Opacity/);
   assert.match(studio, /Show or hide redline layer/);
   assert.match(studio, /Lock or unlock redline layer/);
@@ -159,6 +157,8 @@ test("details, export, and issue drafting stay explicit and controlled", async (
 test("the selection wheel operates on redlines only and exposes grouped multi-selection actions", async () => {
   const { wheel } = await sources();
 
+  assert.match(wheel, /Copy redline and place it with the mouse/);
+  assert.match(wheel, /Copy selected redlines and place them with the mouse/);
   assert.match(wheel, /data-selection-scope="redlines-only"/);
   assert.match(wheel, /Redline actions only/);
   assert.match(wheel, /selectedAnnotationIds: readonly string\[\]/);

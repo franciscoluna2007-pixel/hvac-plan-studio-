@@ -48,6 +48,26 @@ test("dragging overrides the mark preset and keeps the mark inside the PDF page"
   assert.ok(Math.abs(pixelWidth - pixelHeight) < 0.0001);
 });
 
+test("very small drags and micro quick-click marks remain available", () => {
+  const micro = marks.redlineMarkBounds({
+    center: { x: 0.5, y: 0.5 },
+    pointer: { x: 0.5, y: 0.5 },
+    pageAspectRatio: 1,
+    size: "micro",
+  });
+  const preciseDrag = marks.redlineMarkBounds({
+    center: { x: 0.5, y: 0.5 },
+    pointer: { x: 0.5005, y: 0.5005 },
+    pageAspectRatio: 1,
+    size: "large",
+  });
+
+  assert.equal(micro.usedPreset, true);
+  assert.ok(micro.end.x - micro.start.x < 0.01);
+  assert.equal(preciseDrag.usedPreset, false);
+  assert.ok(preciseDrag.end.x - preciseDrag.start.x < 0.002);
+});
+
 test("solid mark styling follows the selected redline color", () => {
   const style = marks.redlineMarkStyle({
     color: "#7c3aed",
