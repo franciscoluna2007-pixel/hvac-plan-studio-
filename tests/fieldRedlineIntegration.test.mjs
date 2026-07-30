@@ -691,6 +691,9 @@ test("Eraser size drives a swept drag preview that commits as one Undo step", ()
 });
 
 test("square and circle preview and commit the same persistent fill style", () => {
+  const redlineMarkImport = controller.match(
+    /import\s*\{([^}]*)\}\s*from "\.\/redlineMark";/,
+  )?.[1];
   const transient = sourceBlock(
     controller,
     "function transientAnnotation(",
@@ -707,6 +710,8 @@ test("square and circle preview and commit the same persistent fill style", () =
     "const handleDialogConfirm = useCallback",
   );
 
+  assert.ok(redlineMarkImport, "missing the Redline mark helper import");
+  assert.match(redlineMarkImport, /\bredlineOutlineStyle\b/);
   assert.match(
     controller,
     /function redlineDragShapeStyle\(style: RedlineStyle\)[\s\S]*?return style\.fillColor \? redlineMarkStyle\(style\) : style/,
