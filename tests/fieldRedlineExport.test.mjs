@@ -660,6 +660,81 @@ test("releases object URLs after download and removes the temporary anchor", () 
   );
 });
 
+test("keeps PDF object URLs alive while mobile and in-app viewers load them", () => {
+  const events = [];
+  let scheduled;
+  let scheduledDelay;
+  const anchor = {
+    href: "",
+    download: "",
+    rel: "",
+    target: "",
+    click() {
+      events.push([
+        "click",
+        this.href,
+        this.download,
+        this.rel,
+        this.target,
+      ]);
+    },
+    remove() {
+      events.push(["remove"]);
+    },
+  };
+
+  fieldExport.downloadFieldRedlineExportArtifact(
+    {
+      blob: new Blob(["pdf"], { type: "application/pdf" }),
+      filename: "field-redline.pdf",
+    },
+    {
+      createObjectURL(blob) {
+        events.push(["create", blob.type]);
+        return "blob:field-redline-pdf";
+      },
+      revokeObjectURL(url) {
+        events.push(["revoke", url]);
+      },
+      createAnchor() {
+        return anchor;
+      },
+      scheduleRelease(release, delayMilliseconds) {
+        scheduled = release;
+        scheduledDelay = delayMilliseconds;
+        events.push(["schedule", delayMilliseconds]);
+      },
+    },
+  );
+
+  assert.deepEqual(events, [
+    ["create", "application/pdf"],
+    [
+      "click",
+      "blob:field-redline-pdf",
+      "field-redline.pdf",
+      "noopener",
+      "_blank",
+    ],
+    ["schedule", fieldExport.FIELD_REDLINE_PDF_DOWNLOAD_RELEASE_DELAY_MS],
+  ]);
+  assert.equal(
+    scheduledDelay,
+    fieldExport.FIELD_REDLINE_PDF_DOWNLOAD_RELEASE_DELAY_MS,
+  );
+  assert.ok(scheduledDelay >= 60_000);
+  assert.equal(
+    events.some(([kind]) => kind === "revoke"),
+    false,
+  );
+
+  scheduled();
+  assert.deepEqual(events.slice(-2), [
+    ["revoke", "blob:field-redline-pdf"],
+    ["remove"],
+  ]);
+});
+
 test("releases the object URL immediately when a download click fails", () => {
   const revoked = [];
   assert.throws(

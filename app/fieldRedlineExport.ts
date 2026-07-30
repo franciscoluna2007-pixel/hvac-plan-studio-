@@ -10,6 +10,7 @@ export const FIELD_REDLINE_APPROVAL_NOTICE =
   "FIELD REDLINE - NOT APPROVED HVAC DESIGN";
 
 export const FIELD_REDLINE_DOWNLOAD_RELEASE_DELAY_MS = 1_500;
+export const FIELD_REDLINE_PDF_DOWNLOAD_RELEASE_DELAY_MS = 300_000;
 
 export const FIELD_REDLINE_EXPORT_LIMITS = Object.freeze({
   standardLongEdge: 2048,
@@ -266,6 +267,7 @@ export type FieldRedlineDownloadAnchor = {
   href: string;
   download: string;
   rel: string;
+  target?: string;
   click: () => void;
   remove?: () => void;
 };
@@ -1080,6 +1082,10 @@ export function downloadFieldRedlineExportArtifact(
   environment: FieldRedlineDownloadEnvironment = browserDownloadEnvironment(),
 ) {
   const objectUrl = environment.createObjectURL(artifact.blob);
+  const isPdf = artifact.blob.type === FORMAT_MIME_TYPES.pdf;
+  const releaseDelay = isPdf
+    ? FIELD_REDLINE_PDF_DOWNLOAD_RELEASE_DELAY_MS
+    : FIELD_REDLINE_DOWNLOAD_RELEASE_DELAY_MS;
   let released = false;
   const release = () => {
     if (released) return;
@@ -1092,6 +1098,7 @@ export function downloadFieldRedlineExportArtifact(
     anchor.href = objectUrl;
     anchor.download = artifact.filename;
     anchor.rel = "noopener";
+    if (isPdf) anchor.target = "_blank";
     anchor.click();
     const anchorToRemove = anchor;
     let cleanupFinished = false;
@@ -1100,7 +1107,7 @@ export function downloadFieldRedlineExportArtifact(
       cleanupFinished = true;
       release();
       anchorToRemove.remove?.();
-    }, FIELD_REDLINE_DOWNLOAD_RELEASE_DELAY_MS);
+    }, releaseDelay);
     anchor = undefined;
   } catch (error) {
     release();

@@ -1549,6 +1549,7 @@ function HVACPlanStudioApp() {
   const displaySettingsPanelRef = useRef<HTMLElement>(null);
   const displaySettingsLastFocusRef = useRef<HTMLElement | null>(null);
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
+  const pdfDocumentRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
   const [pdfFingerprint, setPdfFingerprint] = useState("");
   const [sourceDriveFileId, setSourceDriveFileId] = useState<string | null>(null);
   const [sourceFileName, setSourceFileName] = useState<string | null>(null);
@@ -1689,6 +1690,7 @@ function HVACPlanStudioApp() {
     if (!input) return;
     const handleFilePickerCancel = () => {
       const pendingOpen = pendingPdfOpenRef.current;
+      if (!pendingOpen) return;
       pendingPdfOpenRef.current = null;
       if (pendingOpen?.origin !== "workspace") setShowProjectHome(true);
     };
@@ -2711,7 +2713,10 @@ function HVACPlanStudioApp() {
   function startDirectLocalPdf(origin: "home" | "workspace" = "workspace") {
     if (loading) return;
     pendingPdfOpenRef.current = createPdfOpenContext("local", "direct", origin);
-    inputRef.current?.click();
+    const input = inputRef.current;
+    if (!input) return;
+    input.value = "";
+    input.click();
   }
 
   function startGuidedProject(setup: ProjectSetupValues) {
@@ -2721,8 +2726,21 @@ function HVACPlanStudioApp() {
       void openFromDrive(context);
     } else {
       pendingPdfOpenRef.current = context;
-      inputRef.current?.click();
+      const input = inputRef.current;
+      if (!input) return;
+      input.value = "";
+      input.click();
     }
+  }
+
+  function closeFieldRedlineForPdfSourceChange() {
+    fieldRedline.resetPageInteraction();
+    releaseCanvasPointersByOwner(canvasPointerOwnersRef.current, "redline");
+    fieldRedline.setDialog(null);
+    fieldRedline.setOpen(false);
+    fieldRedline.setTool("select");
+    fieldRedline.select([]);
+    setRedlineWheelKeyboardOpen(false);
   }
 
   async function replacePdfDocument(
@@ -2733,24 +2751,21 @@ function HVACPlanStudioApp() {
       await document.destroy();
       return false;
     }
+    const previous = pdfDocumentRef.current;
+    if (previous && previous !== document) saveProject();
+    closeFieldRedlineForPdfSourceChange();
     pdfRenderGenerationRef.current += 1;
     pdfRenderTaskRef.current?.cancel();
     pdfRenderTaskRef.current = null;
     pdfRenderKeyRef.current = "";
     renderedPageNumberRef.current = 0;
-    const previous = pdf;
-    if (previous && previous !== document) {
-      try {
-        await previous.destroy();
-      } catch {
-        // A replaced worker may already be shutting down. The new plan can still open safely.
-      }
-    }
-    if (requestId && requestId !== pdfOpenRequestRef.current) {
-      await document.destroy();
-      return false;
-    }
+    pdfDocumentRef.current = document;
     setPdf(document);
+    if (previous && previous !== document) {
+      void previous.destroy().catch(() => {
+        // A replaced worker may already be shutting down. The new plan stays active.
+      });
+    }
     return true;
   }
 
@@ -3001,11 +3016,11 @@ function HVACPlanStudioApp() {
     const context = pendingPdfOpenRef.current
       || createPdfOpenContext("local", "direct", "workspace");
     pendingPdfOpenRef.current = null;
+    event.target.value = "";
     if (!file) {
       return;
     }
     void openPdf(file, context);
-    event.target.value = "";
   }
 
   function onDrop(event: DragEvent<HTMLDivElement>) {

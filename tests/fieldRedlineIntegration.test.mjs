@@ -584,6 +584,87 @@ test("Redline failures stay isolated and never fall through to HVAC drawing hand
   );
 });
 
+test("a committed PDF source change closes Redline before swapping documents", () => {
+  assert.match(
+    page,
+    /const pdfDocumentRef = useRef<pdfjsLib\.PDFDocumentProxy \| null>\(null\)/,
+  );
+
+  const replacement = sourceBlock(
+    page,
+    "async function replacePdfDocument(",
+    "function directOpenStatus(",
+  );
+  const closeIndex = replacement.indexOf(
+    "closeFieldRedlineForPdfSourceChange();",
+  );
+  const saveIndex = replacement.indexOf("saveProject();");
+  const refSwapIndex = replacement.indexOf(
+    "pdfDocumentRef.current = document;",
+  );
+  const stateSwapIndex = replacement.indexOf("setPdf(document);");
+  const retireIndex = replacement.indexOf("void previous.destroy()");
+
+  assert.ok(closeIndex >= 0);
+  assert.ok(saveIndex >= 0);
+  assert.ok(saveIndex < closeIndex);
+  assert.ok(refSwapIndex > closeIndex);
+  assert.ok(stateSwapIndex > refSwapIndex);
+  assert.ok(retireIndex > stateSwapIndex);
+  assert.doesNotMatch(replacement, /await previous\.destroy\(\)/);
+  assert.match(
+    replacement,
+    /if \(requestId && requestId !== pdfOpenRequestRef\.current\) \{[\s\S]*?await document\.destroy\(\);[\s\S]*?return false;/,
+  );
+
+  const redlineClose = sourceBlock(
+    page,
+    "function closeFieldRedlineForPdfSourceChange()",
+    "async function replacePdfDocument(",
+  );
+  assert.match(redlineClose, /fieldRedline\.resetPageInteraction\(\)/);
+  assert.match(
+    redlineClose,
+    /releaseCanvasPointersByOwner\(canvasPointerOwnersRef\.current, "redline"\)/,
+  );
+  assert.match(redlineClose, /fieldRedline\.setDialog\(null\)/);
+  assert.match(redlineClose, /fieldRedline\.setOpen\(false\)/);
+  assert.match(redlineClose, /fieldRedline\.setTool\("select"\)/);
+  assert.match(redlineClose, /fieldRedline\.select\(\[\]\)/);
+});
+
+test("late file-picker cancellation cannot cover an open PDF", () => {
+  const pickerEffect = sourceBlock(
+    page,
+    "const handleFilePickerCancel = () => {",
+    'input.addEventListener("cancel", handleFilePickerCancel);',
+  );
+  assert.match(
+    pickerEffect,
+    /const pendingOpen = pendingPdfOpenRef\.current;\s*if \(!pendingOpen\) return;\s*pendingPdfOpenRef\.current = null;/,
+  );
+
+  const directPicker = sourceBlock(
+    page,
+    'function startDirectLocalPdf(origin: "home" | "workspace" = "workspace")',
+    "function startGuidedProject(",
+  );
+  assert.match(
+    directPicker,
+    /input\.value = "";\s*input\.click\(\);/,
+  );
+
+  const fileChange = sourceBlock(
+    page,
+    "function onFileChange(",
+    "function onDrop(",
+  );
+  assert.ok(
+    fileChange.indexOf('event.target.value = "";') <
+      fileChange.indexOf("if (!file)"),
+  );
+});
+
 test("Eraser size drives a swept drag preview that commits as one Undo step", () => {
   assert.match(controller, /kind: "erase";[\s\S]*?annotationIds: Set<string>/);
   assert.match(controller, /redlineEraserHitIds\(\{/);
