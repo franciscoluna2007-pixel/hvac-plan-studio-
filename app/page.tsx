@@ -144,6 +144,13 @@ import {
   useFieldRedlineController,
   type FieldRedlineIssueDraft,
 } from "./useFieldRedlineController";
+import {
+  canvasPointerOwner,
+  latchCanvasPointerOwner,
+  releaseCanvasPointerOwner,
+  releaseCanvasPointersByOwner,
+  type CanvasPointerOwner,
+} from "./pointerLifecycle";
 import type { RedlineSnapshotV1 } from "./redlineDomain";
 import {
   buildFindingIdentity,
@@ -1516,6 +1523,9 @@ function HVACPlanStudioApp() {
   const pdfStageRef = useRef<HTMLDivElement>(null);
   const planSheetRef = useRef<HTMLDivElement>(null);
   const planOverlayRef = useRef<SVGSVGElement>(null);
+  const canvasPointerOwnersRef = useRef(
+    new Map<number, CanvasPointerOwner>(),
+  );
   const fieldRedlineLaunchRef = useRef<HTMLElement | null>(null);
   const fieldRedlineToolbarButtonRef = useRef<HTMLButtonElement>(null);
   const displaySettingsTriggerRef = useRef<HTMLButtonElement>(null);
@@ -1804,8 +1814,7 @@ function HVACPlanStudioApp() {
     onExport: exportFieldRedlines,
     onIssueDraft: handleFieldRedlineIssueDraft,
   });
-  const redlineOwnsCanvas =
-    fieldRedline.open && activeTool === "select";
+  const redlineOwnsCanvas = fieldRedline.open;
   const planToolAcceptsDirectTouch =
     !redlineOwnsCanvas &&
     Boolean(
@@ -1819,18 +1828,19 @@ function HVACPlanStudioApp() {
     );
   const resetFieldRedlinePageInteraction =
     fieldRedline.resetPageInteraction;
-  const showPlanPage = useCallback(
-    (nextPage: number) => {
-      resetFieldRedlinePageInteraction();
-      setPageNumber(nextPage);
-    },
-    [resetFieldRedlinePageInteraction],
-  );
+  function showPlanPage(nextPage: number) {
+    cancelPlanPointerInteraction();
+    canvasPointerOwnersRef.current.clear();
+    resetFieldRedlinePageInteraction();
+    setPageNumber(nextPage);
+  }
 
   function openFieldRedlineStudio() {
     if (document.activeElement instanceof HTMLElement) {
       fieldRedlineLaunchRef.current = document.activeElement;
     }
+    cancelPlanPointerInteraction();
+    releaseCanvasPointersByOwner(canvasPointerOwnersRef.current, "plan");
     finishDrawing();
     setCopyPlacement(null);
     setSelectionBox(null);
@@ -1849,6 +1859,7 @@ function HVACPlanStudioApp() {
   function leaveFieldRedlineForPlanEditing() {
     if (!fieldRedline.open) return;
     fieldRedline.resetPageInteraction();
+    releaseCanvasPointersByOwner(canvasPointerOwnersRef.current, "redline");
     fieldRedline.setOpen(false);
     fieldRedline.setTool("select");
     fieldRedline.select([]);
@@ -1881,6 +1892,8 @@ function HVACPlanStudioApp() {
   }
 
   function closeFieldRedlineStudio() {
+    fieldRedline.resetPageInteraction();
+    releaseCanvasPointersByOwner(canvasPointerOwnersRef.current, "redline");
     fieldRedline.setOpen(false);
     fieldRedline.setTool("select");
     fieldRedline.select([]);
@@ -3418,9 +3431,53 @@ function HVACPlanStudioApp() {
     ));
   }
 
+  function releasePlanPointerCapture(pointerId: number) {
+    const viewport = canvasViewportRef.current;
+    if (!viewport) return;
+    try {
+      if (viewport.hasPointerCapture(pointerId)) {
+        viewport.releasePointerCapture(pointerId);
+      }
+    } catch {
+      // A browser can drop capture before React receives the matching cleanup.
+    }
+  }
+
+  function capturePlanPointer(target: HTMLDivElement, pointerId: number) {
+    try {
+      if (!target.hasPointerCapture(pointerId)) {
+        target.setPointerCapture(pointerId);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function cancelPlanPointerInteraction(pointerId = activeEditPointerIdRef.current) {
+    if (pointerId !== null) {
+      restoreEditTransaction(pointerId);
+      releasePlanPointerCapture(pointerId);
+      releaseCanvasPointerOwner(canvasPointerOwnersRef.current, pointerId);
+      completedEditPointerIdsRef.current.delete(pointerId);
+    }
+    dragRef.current = null;
+    activeEditPointerIdRef.current = null;
+    editTransactionRef.current = null;
+    setSelectionBox(null);
+    setSnapMarker(null);
+    setSnapInfo(null);
+    setAlignmentGuides([]);
+    setHoverPoint(null);
+    setBranchPreview(null);
+    setSymbolPreview(null);
+  }
+
   function beginEditTransaction(pointerId: number) {
     const owner = activeEditPointerIdRef.current;
-    if (owner !== null && owner !== pointerId) return false;
+    if (owner !== null && owner !== pointerId) {
+      cancelPlanPointerInteraction(owner);
+    }
     activeEditPointerIdRef.current = pointerId;
     if (editTransactionRef.current?.pointerId !== pointerId) {
       editTransactionRef.current = {
@@ -3572,7 +3629,7 @@ function HVACPlanStudioApp() {
         panRef.current
       ) return;
       touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      event.currentTarget.setPointerCapture(event.pointerId);
+      capturePlanPointer(event.currentTarget, event.pointerId);
       if (touchPointersRef.current.size === 2) beginTouchGesture();
       return;
     }
@@ -3588,9 +3645,7 @@ function HVACPlanStudioApp() {
         event.stopPropagation();
         return;
       }
-      if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }
+      capturePlanPointer(event.currentTarget, event.pointerId);
       activePenPointerIdRef.current = event.pointerId;
       lastPenActivityRef.current = performance.now();
       return;
@@ -3610,9 +3665,7 @@ function HVACPlanStudioApp() {
         event.stopPropagation();
         return;
       }
-      if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }
+      capturePlanPointer(event.currentTarget, event.pointerId);
     }
   }
 
@@ -3624,6 +3677,14 @@ function HVACPlanStudioApp() {
       if (activePenPointerIdRef.current !== null) return;
       touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       scheduleTouchGestureUpdate();
+      return;
+    }
+    if (
+      activeEditPointerIdRef.current === event.pointerId &&
+      event.buttons === 0 &&
+      event.pressure <= 0
+    ) {
+      cancelPlanPointerInteraction(event.pointerId);
       return;
     }
     if (
@@ -9904,7 +9965,13 @@ function HVACPlanStudioApp() {
       panRef.current ||
       touchGestureRef.current
     ) return;
-    if (activeEditPointerIdRef.current !== null && activeEditPointerIdRef.current !== event.pointerId) return;
+    if (
+      activeEditPointerIdRef.current !== null &&
+      activeEditPointerIdRef.current !== event.pointerId
+    ) {
+      cancelPlanPointerInteraction(activeEditPointerIdRef.current);
+      beginEditTransaction(event.pointerId);
+    }
     const rawPoint = canvasPoint(event);
     if (copyPlacement) {
       if (drawingLocked(copyPlacement.template.source)) {
@@ -14088,6 +14155,11 @@ function HVACPlanStudioApp() {
                         key={item.id}
                         className={`symbol-catalog-card ${item.id === activePresetId ? "selected" : ""}`}
                         title={`${item.label} · ${item.size} · ${symbolFamily(item)}`}
+                        onPointerDown={(event) => {
+                          if (event.button === 0) {
+                            armSymbolPlacement(item, true);
+                          }
+                        }}
                         onClick={() => {
                            armSymbolPlacement(item, true);
                         }}
@@ -15027,41 +15099,87 @@ function HVACPlanStudioApp() {
                     aria-label="Plan drawing canvas"
                     className={`drawing-layer tool-${activeTool} ${copyPlacement ? "copy-place-active" : ""} ${redlineOwnsCanvas ? `field-redline-active redline-tool-${fieldRedline.activeTool}` : ""}`}
                     viewBox={`0 0 ${renderSize.width || 1} ${renderSize.height || 1}`}
-                    onPointerDownCapture={redlineOwnsCanvas ? undefined : handleRoomMarkupPlacementCapture}
+                    onPointerDownCapture={(event) => {
+                      latchCanvasPointerOwner(
+                        canvasPointerOwnersRef.current,
+                        event.pointerId,
+                        redlineOwnsCanvas ? "redline" : "plan",
+                      );
+                      if (!redlineOwnsCanvas) {
+                        handleRoomMarkupPlacementCapture(event);
+                      }
+                    }}
                     onPointerDown={(event) => {
-                      if (redlineOwnsCanvas) {
+                      const owner = latchCanvasPointerOwner(
+                        canvasPointerOwnersRef.current,
+                        event.pointerId,
+                        redlineOwnsCanvas ? "redline" : "plan",
+                      );
+                      if (owner === "redline") {
                         fieldRedline.handlePointerDown(event);
                         return;
                       }
                       handleDrawingClick(event);
                     }}
                     onPointerMove={(event) => {
-                      if (redlineOwnsCanvas) {
+                      const owner = canvasPointerOwner(
+                        canvasPointerOwnersRef.current,
+                        event.pointerId,
+                        redlineOwnsCanvas ? "redline" : "plan",
+                      );
+                      if (owner === "redline") {
                         fieldRedline.handlePointerMove(event);
                         return;
                       }
                       handlePointerMove(event);
                     }}
                     onPointerUp={(event) => {
-                      if (redlineOwnsCanvas) {
+                      const owner = canvasPointerOwner(
+                        canvasPointerOwnersRef.current,
+                        event.pointerId,
+                        redlineOwnsCanvas ? "redline" : "plan",
+                      );
+                      if (owner === "redline") {
                         fieldRedline.finishPointer(event);
-                        return;
+                      } else {
+                        endDrag(event);
                       }
-                      endDrag(event);
+                      releaseCanvasPointerOwner(
+                        canvasPointerOwnersRef.current,
+                        event.pointerId,
+                      );
                     }}
                     onPointerCancel={(event) => {
-                      if (redlineOwnsCanvas) {
+                      const owner = canvasPointerOwner(
+                        canvasPointerOwnersRef.current,
+                        event.pointerId,
+                        redlineOwnsCanvas ? "redline" : "plan",
+                      );
+                      if (owner === "redline") {
                         fieldRedline.finishPointer(event, true);
-                        return;
+                      } else {
+                        endDrag(event, true);
                       }
-                      endDrag(event, true);
+                      releaseCanvasPointerOwner(
+                        canvasPointerOwnersRef.current,
+                        event.pointerId,
+                      );
                     }}
                     onLostPointerCapture={(event) => {
-                      if (redlineOwnsCanvas) {
+                      const owner = canvasPointerOwner(
+                        canvasPointerOwnersRef.current,
+                        event.pointerId,
+                        redlineOwnsCanvas ? "redline" : "plan",
+                      );
+                      if (owner === "redline") {
                         fieldRedline.finishPointer(event, true);
-                        return;
+                      } else {
+                        endDrag(event, true);
                       }
-                      endDrag(event, true);
+                      releaseCanvasPointerOwner(
+                        canvasPointerOwnersRef.current,
+                        event.pointerId,
+                      );
                     }}
                     onPointerLeave={() => {
                       if (!dragRef.current) {

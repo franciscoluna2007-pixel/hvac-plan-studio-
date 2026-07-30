@@ -545,7 +545,7 @@ test("Redline failures stay isolated and never fall through to HVAC drawing hand
 
   const canvasHandlers = sourceBlock(
     page,
-    "onPointerDownCapture={redlineOwnsCanvas ? undefined : handleRoomMarkupPlacementCapture}",
+    "onPointerDownCapture={(event) => {\n                      latchCanvasPointerOwner(",
     "onPointerLeave={() =>",
   );
   for (const handler of [
@@ -556,22 +556,23 @@ test("Redline failures stay isolated and never fall through to HVAC drawing hand
     assert.match(
       canvasHandlers,
       new RegExp(
-        `if \\(redlineOwnsCanvas\\) \\{[\\s\\S]*?fieldRedline\\.${handler}\\(event`,
+        `if \\(owner === "redline"\\) \\{[\\s\\S]*?fieldRedline\\.${handler}\\(event`,
       ),
     );
   }
   assert.match(
     canvasHandlers,
-    /if \(redlineOwnsCanvas\) \{[\s\S]*?return;[\s\S]*?\}\s*handleDrawingClick\(event\)/,
+    /latchCanvasPointerOwner\([\s\S]*?if \(owner === "redline"\) \{[\s\S]*?return;[\s\S]*?\}\s*handleDrawingClick\(event\)/,
   );
   assert.match(
     canvasHandlers,
-    /if \(redlineOwnsCanvas\) \{[\s\S]*?return;[\s\S]*?\}\s*handlePointerMove\(event\)/,
+    /canvasPointerOwner\([\s\S]*?if \(owner === "redline"\) \{[\s\S]*?return;[\s\S]*?\}\s*handlePointerMove\(event\)/,
   );
   assert.match(
     canvasHandlers,
-    /if \(redlineOwnsCanvas\) \{[\s\S]*?return;[\s\S]*?\}\s*endDrag\(event\)/,
+    /if \(owner === "redline"\) \{[\s\S]*?fieldRedline\.finishPointer\(event\);[\s\S]*?\} else \{[\s\S]*?endDrag\(event\);/,
   );
+  assert.match(canvasHandlers, /releaseCanvasPointerOwner\(/);
   assert.match(
     controller,
     /redlinePointerCanDraw\(event\.nativeEvent, \{\s*allowTouch: true,/,

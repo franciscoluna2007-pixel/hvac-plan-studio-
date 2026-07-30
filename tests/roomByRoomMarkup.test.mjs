@@ -227,7 +227,7 @@ test("lets touch placement reach the PDF while a ghost move is pending", () => {
   assert.match(placementCapture, /handleDrawingClick\(event\)/);
   assert.match(
     page,
-    /onPointerDownCapture=\{redlineOwnsCanvas \? undefined : handleRoomMarkupPlacementCapture\}/,
+    /onPointerDownCapture=\{\(event\) => \{[\s\S]*?latchCanvasPointerOwner\([\s\S]*?if \(!redlineOwnsCanvas\) \{[\s\S]*?handleRoomMarkupPlacementCapture\(event\)/,
   );
 });
 

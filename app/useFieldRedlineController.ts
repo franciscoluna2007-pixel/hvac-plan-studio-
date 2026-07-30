@@ -67,6 +67,7 @@ import type {
 import type {
   RedlineSelectionAction,
 } from "./RedlineActionWheel";
+import { shouldCancelStaleRedlinePointerMove } from "./pointerLifecycle";
 
 type ActiveRedlinePointer =
   | {
@@ -375,6 +376,14 @@ export function useFieldRedlineController({
     useState<PendingRedlineCopy | null>(null);
   const [pendingText, setPendingText] = useState<PendingText | null>(null);
   const activePointerRef = useRef<ActiveRedlinePointer | null>(null);
+  const capturedPointerRef = useRef<{
+    pointerId: number;
+    target: SVGSVGElement;
+  } | null>(null);
+  const windowPointerReleaseRef = useRef<{
+    pointerUp: (event: globalThis.PointerEvent) => void;
+    pointerCancel: (event: globalThis.PointerEvent) => void;
+  } | null>(null);
   const transientFrameRef = useRef<number | null>(null);
   const queuedTransientRef = useRef<RedlineCanvasTransient | null>(null);
 
@@ -385,6 +394,67 @@ export function useFieldRedlineController({
     }
     queuedTransientRef.current = null;
   }, []);
+
+  const detachWindowPointerRelease = useCallback(() => {
+    const listeners = windowPointerReleaseRef.current;
+    if (!listeners) return;
+    window.removeEventListener("pointerup", listeners.pointerUp);
+    window.removeEventListener("pointercancel", listeners.pointerCancel);
+    windowPointerReleaseRef.current = null;
+  }, []);
+
+  const releaseCapturedPointer = useCallback((pointerId?: number) => {
+    const captured = capturedPointerRef.current;
+    if (!captured || (
+      pointerId !== undefined &&
+      captured.pointerId !== pointerId
+    )) {
+      return;
+    }
+    capturedPointerRef.current = null;
+    try {
+      if (captured.target.hasPointerCapture(captured.pointerId)) {
+        captured.target.releasePointerCapture(captured.pointerId);
+      }
+    } catch {
+      // Capture may already have been released by the browser.
+    }
+  }, []);
+
+  const cancelActivePointerInteraction = useCallback(() => {
+    activePointerRef.current = null;
+    detachWindowPointerRelease();
+    releaseCapturedPointer();
+    clearScheduledTransient();
+    setTransient(null);
+    setPreviewDocument(null);
+  }, [
+    clearScheduledTransient,
+    detachWindowPointerRelease,
+    releaseCapturedPointer,
+  ]);
+
+  const captureActivePointer = useCallback((
+    target: SVGSVGElement,
+    pointerId: number,
+  ) => {
+    detachWindowPointerRelease();
+    try {
+      target.setPointerCapture(pointerId);
+      capturedPointerRef.current = { target, pointerId };
+    } catch {
+      capturedPointerRef.current = null;
+    }
+    const cancelIfMatching = (event: globalThis.PointerEvent) => {
+      if (event.pointerId === pointerId) cancelActivePointerInteraction();
+    };
+    const pointerUp = (event: globalThis.PointerEvent) => cancelIfMatching(event);
+    const pointerCancel = (event: globalThis.PointerEvent) =>
+      cancelIfMatching(event);
+    windowPointerReleaseRef.current = { pointerUp, pointerCancel };
+    window.addEventListener("pointerup", pointerUp);
+    window.addEventListener("pointercancel", pointerCancel);
+  }, [cancelActivePointerInteraction, detachWindowPointerRelease]);
 
   const scheduleTransient = useCallback(
     (next: RedlineCanvasTransient | null) => {
@@ -401,8 +471,8 @@ export function useFieldRedlineController({
   );
 
   useEffect(
-    () => () => clearScheduledTransient(),
-    [clearScheduledTransient],
+    () => () => cancelActivePointerInteraction(),
+    [cancelActivePointerInteraction],
   );
 
   const document = history?.present || null;
@@ -482,9 +552,9 @@ export function useFieldRedlineController({
       setPendingText(null);
       setDialogState(null);
       setActiveTool("select");
-      activePointerRef.current = null;
+      cancelActivePointerInteraction();
     },
-    [clearScheduledTransient],
+    [cancelActivePointerInteraction, clearScheduledTransient],
   );
 
   const restoreSnapshot = useCallback(
@@ -514,7 +584,7 @@ export function useFieldRedlineController({
         setPendingText(null);
         setDialogState(null);
         setActiveTool("select");
-        activePointerRef.current = null;
+        cancelActivePointerInteraction();
         message(
           `${parsed.reason} The original redline data was quarantined and preserved; a new empty layer was opened.`,
         );
@@ -532,13 +602,18 @@ export function useFieldRedlineController({
       setPendingText(null);
       setDialogState(null);
       setActiveTool("select");
-      activePointerRef.current = null;
+      cancelActivePointerInteraction();
       if (parsed.sanitized) {
         message("Field redlines were restored with unsafe values removed.");
       }
       return "restored";
     },
-    [clearScheduledTransient, message, resetForSource],
+    [
+      cancelActivePointerInteraction,
+      clearScheduledTransient,
+      message,
+      resetForSource,
+    ],
   );
 
   const runCommand = useCallback(
@@ -581,10 +656,7 @@ export function useFieldRedlineController({
   }, []);
 
   const resetPageInteraction = useCallback(() => {
-    activePointerRef.current = null;
-    clearScheduledTransient();
-    setTransient(null);
-    setPreviewDocument(null);
+    cancelActivePointerInteraction();
     setPendingDetail(null);
     setPendingCopy(null);
     const current = historyRef.current;
@@ -592,7 +664,7 @@ export function useFieldRedlineController({
     const nextHistory = replaceRedlineHistorySelection(current, []);
     historyRef.current = nextHistory;
     setHistory(nextHistory);
-  }, [clearScheduledTransient]);
+  }, [cancelActivePointerInteraction]);
 
   const setDialog = useCallback(
     (next: RedlineStudioDialogState | null) => {
@@ -606,6 +678,7 @@ export function useFieldRedlineController({
   );
 
   const setTool = useCallback((tool: FieldRedlineTool) => {
+    cancelActivePointerInteraction();
     setActiveTool(tool);
     if (tool !== "select") select([]);
     const kind = annotationKindForTool(tool);
@@ -622,10 +695,6 @@ export function useFieldRedlineController({
     }
     setPendingDetail(null);
     setPendingCopy(null);
-    clearScheduledTransient();
-    setTransient(null);
-    setPreviewDocument(null);
-    activePointerRef.current = null;
     if (tool === "pen") {
       message("Draw freehand · press, drag, and release for one smooth stroke");
     } else if (tool === "highlight") {
@@ -635,7 +704,7 @@ export function useFieldRedlineController({
     } else if (isRedlineMarkTool(tool)) {
       message("Press and drag to draw the exact size · very small circles and squares are supported");
     }
-  }, [clearScheduledTransient, message, select]);
+  }, [cancelActivePointerInteraction, message, select]);
 
   const updateLayer = useCallback(
     (layer: RedlineLayer) => {
@@ -650,32 +719,36 @@ export function useFieldRedlineController({
           order: layer.order,
         },
       });
-      if (layer.locked || !layer.visible) setActiveTool("select");
+      if (layer.locked || !layer.visible) {
+        cancelActivePointerInteraction();
+        setActiveTool("select");
+      }
       if (layer.locked || !layer.visible) setPendingCopy(null);
     },
-    [runCommand],
+    [cancelActivePointerInteraction, runCommand],
   );
 
   const useFavorite = useCallback((favorite: RedlineFavorite) => {
     setStyle(favorite.style);
-    setActiveTool(
+    setTool(
       favorite.kind === "ink"
         ? "pen"
         : favorite.kind === "highlighter"
           ? "highlight"
           : favorite.kind,
     );
-  }, []);
+  }, [setTool]);
 
   const setDetailPreview = useCallback(
     (detail: RedlineMyDetail | null) => {
+      cancelActivePointerInteraction();
       setPendingDetail(detail);
       setPreviewDocument(null);
       if (detail) {
         setActiveTool("select");
       }
     },
-    [],
+    [cancelActivePointerInteraction],
   );
 
   const assignFavorite = useCallback(
@@ -838,7 +911,7 @@ export function useFieldRedlineController({
           annotation ? { kind: "annotation", annotation } : null,
         );
       }
-      event.currentTarget.setPointerCapture(event.pointerId);
+      captureActivePointer(event.currentTarget, event.pointerId);
       event.preventDefault();
       event.stopPropagation();
       return true;
@@ -854,6 +927,7 @@ export function useFieldRedlineController({
       pageAspectRatio,
       markSize,
       message,
+      captureActivePointer,
       runCommand,
       select,
       style,
@@ -903,7 +977,7 @@ export function useFieldRedlineController({
       }
       select(nextSelection);
       const svg = event.currentTarget.ownerSVGElement;
-      svg?.setPointerCapture(event.pointerId);
+      if (svg) captureActivePointer(svg, event.pointerId);
       activePointerRef.current = {
         kind: "move",
         pointerId: event.pointerId,
@@ -916,7 +990,16 @@ export function useFieldRedlineController({
       event.stopPropagation();
       return true;
     },
-    [activeLayer, activeTool, history, open, pendingCopy, runCommand, select],
+    [
+      activeLayer,
+      activeTool,
+      captureActivePointer,
+      history,
+      open,
+      pendingCopy,
+      runCommand,
+      select,
+    ],
   );
 
   const handleTextResizePointerDown = useCallback(
@@ -963,7 +1046,7 @@ export function useFieldRedlineController({
         ),
       );
       select([annotation.id]);
-      svg.setPointerCapture(event.pointerId);
+      captureActivePointer(svg, event.pointerId);
       activePointerRef.current = {
         kind: "resize-text",
         pointerId: event.pointerId,
@@ -984,6 +1067,7 @@ export function useFieldRedlineController({
       activeLayer,
       activeTool,
       binding,
+      captureActivePointer,
       history,
       message,
       open,
@@ -1050,6 +1134,18 @@ export function useFieldRedlineController({
         return true;
       }
       if (!active || active.pointerId !== event.pointerId) return false;
+      if (shouldCancelStaleRedlinePointerMove({
+        activePointerId: active.pointerId,
+        eventPointerId: event.pointerId,
+        pointerType: event.pointerType,
+        buttons: event.buttons,
+        pressure: event.pressure,
+      })) {
+        event.preventDefault();
+        event.stopPropagation();
+        cancelActivePointerInteraction();
+        return true;
+      }
       if (!history || !activeLayer || !binding) return false;
       if (active.kind === "resize-text") {
         active.currentTextScale = textScaleFromResizePointer(
@@ -1150,6 +1246,7 @@ export function useFieldRedlineController({
     [
       activeLayer,
       binding,
+      cancelActivePointerInteraction,
       history,
       markSize,
       open,
@@ -1201,13 +1298,7 @@ export function useFieldRedlineController({
           }
         }
       }
-      activePointerRef.current = null;
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
-      clearScheduledTransient();
-      setTransient(null);
-      setPreviewDocument(null);
+      cancelActivePointerInteraction();
       if (cancelled || !history || !activeLayer || !binding) return true;
 
       if (active.kind === "stroke") {
@@ -1370,7 +1461,7 @@ export function useFieldRedlineController({
       runCommand,
       select,
       style,
-      clearScheduledTransient,
+      cancelActivePointerInteraction,
     ],
   );
 

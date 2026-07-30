@@ -57,7 +57,7 @@ test("redline actions disappear while drawing, editing dialogs, or placing copie
 test("mouse copy placement wins over object selection and keeps previews out of output", () => {
   assert.match(
     page,
-    /onPointerDownCapture=\{redlineOwnsCanvas \? undefined : handleRoomMarkupPlacementCapture\}/,
+    /onPointerDownCapture=\{\(event\) => \{[\s\S]*?latchCanvasPointerOwner\([\s\S]*?if \(!redlineOwnsCanvas\) \{[\s\S]*?handleRoomMarkupPlacementCapture\(event\)/,
   );
   assert.match(
     page,
@@ -116,6 +116,7 @@ test("arming any plan tool releases Redline and catalog icons arm placement imme
     page.indexOf("function activatePlanTool"),
   );
   assert.match(leaveRedline, /fieldRedline\.resetPageInteraction\(\)/);
+  assert.match(leaveRedline, /releaseCanvasPointersByOwner\([^)]*"redline"/);
   assert.match(leaveRedline, /fieldRedline\.setOpen\(false\)/);
   assert.match(leaveRedline, /fieldRedline\.setTool\("select"\)/);
 
@@ -135,6 +136,10 @@ test("arming any plan tool releases Redline and catalog icons arm placement imme
   assert.ok(
     armSymbol.indexOf("leaveFieldRedlineForPlanEditing()") <
       armSymbol.indexOf("setActiveTool(preset.kind)"),
+  );
+  assert.match(
+    page,
+    /onPointerDown=\{\(event\) => \{\s*if \(event\.button === 0\) \{\s*armSymbolPlacement\(item, true\);/,
   );
   assert.match(page, /onClick=\{\(\) => \{\s*armSymbolPlacement\(item, true\);/);
   assert.match(page, /armSymbolPlacement\(preset\);/);
