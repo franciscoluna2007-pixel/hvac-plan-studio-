@@ -40,11 +40,17 @@ import type {
   RedlineMyDetail,
   RedlineStyle,
 } from "./redlineDomain";
+import {
+  isRedlineMarkTool,
+  type RedlineMarkSize,
+} from "./redlineMark";
 
 export type FieldRedlineTool =
   | "select"
   | "pen"
   | "highlight"
+  | "round-mark"
+  | "square-mark"
   | "erase"
   | "arrow"
   | "rectangle"
@@ -94,6 +100,7 @@ export type FieldRedlineStudioProps = {
   sheetLabel: string;
   activeTool: FieldRedlineTool;
   style: RedlineStyle;
+  markSize: RedlineMarkSize;
   layer: RedlineLayer;
   favorites: readonly RedlineFavorite[];
   myDetails: readonly RedlineMyDetail[];
@@ -105,6 +112,7 @@ export type FieldRedlineStudioProps = {
   canRedo: boolean;
   onToolChange: (tool: FieldRedlineTool) => void;
   onStyleChange: (style: RedlineStyle) => void;
+  onMarkSizeChange: (size: RedlineMarkSize) => void;
   onApplyStyleToSelection: (style: RedlineStyle) => void;
   onLayerChange: (layer: RedlineLayer) => void;
   onStylePanelOpenChange: (open: boolean) => void;
@@ -132,6 +140,8 @@ const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   { id: "select", label: "Select", icon: MousePointer2 },
   { id: "pen", label: "Pen", icon: Pencil },
   { id: "highlight", label: "Highlight", icon: Highlighter },
+  { id: "round-mark", label: "Round mark", icon: Circle },
+  { id: "square-mark", label: "Square mark", icon: Square },
   { id: "erase", label: "Erase", icon: Eraser },
   { id: "arrow", label: "Arrow", icon: ArrowRight },
   { id: "rectangle", label: "Rectangle", icon: Square },
@@ -165,6 +175,12 @@ function isDrawableTool(tool: FieldRedlineTool) {
 function favoriteTool(favorite: RedlineFavorite): FieldRedlineTool {
   if (favorite.kind === "ink") return "pen";
   if (favorite.kind === "highlighter") return "highlight";
+  if (favorite.kind === "circle" && favorite.style.fillColor) {
+    return "round-mark";
+  }
+  if (favorite.kind === "rectangle" && favorite.style.fillColor) {
+    return "square-mark";
+  }
   return favorite.kind;
 }
 
@@ -647,6 +663,7 @@ export default function FieldRedlineStudio({
   sheetLabel,
   activeTool,
   style,
+  markSize,
   layer,
   favorites,
   myDetails,
@@ -658,6 +675,7 @@ export default function FieldRedlineStudio({
   canRedo,
   onToolChange,
   onStyleChange,
+  onMarkSizeChange,
   onApplyStyleToSelection,
   onLayerChange,
   onStylePanelOpenChange,
@@ -708,6 +726,7 @@ export default function FieldRedlineStudio({
   const layerOpacityPercent = Math.round(
     Math.max(0, Math.min(1, layer.opacity)) * 100,
   );
+  const markTool = isRedlineMarkTool(activeTool);
 
   function handleToolKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (
@@ -860,38 +879,58 @@ export default function FieldRedlineStudio({
           {stylePanelOpen ? (
             <div id="redline-style-panel" className="redline-style-panel">
               <label>
-                Line color
+                {markTool ? "Mark color" : "Line color"}
                 <input
                   type="color"
                   value={style.color}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const color = event.currentTarget.value;
                     onStyleChange({
                       ...style,
-                      color: event.currentTarget.value,
-                    })
-                  }
+                      color,
+                      ...(markTool ? { fillColor: color } : {}),
+                    });
+                  }}
                   style={CONTROL_TARGET_STYLE}
                 />
               </label>
-              <label>
-                Line width
-                <select
-                  value={style.strokeWidth}
-                  onChange={(event) =>
-                    onStyleChange({
-                      ...style,
-                      strokeWidth: Number(event.currentTarget.value),
-                    })
-                  }
-                  style={FORM_CONTROL_STYLE}
-                >
-                  <option value={0.001}>Hairline</option>
-                  <option value={0.002}>Fine</option>
-                  <option value={0.004}>Standard</option>
-                  <option value={0.008}>Bold</option>
-                  <option value={0.014}>Highlighter</option>
-                </select>
-              </label>
+              {markTool ? (
+                <label>
+                  Mark size
+                  <select
+                    value={markSize}
+                    onChange={(event) =>
+                      onMarkSizeChange(event.currentTarget.value as RedlineMarkSize)
+                    }
+                    style={FORM_CONTROL_STYLE}
+                  >
+                    <option value="small">Small</option>
+                    <option value="medium">Medium</option>
+                    <option value="large">Large</option>
+                    <option value="extra-large">Extra large</option>
+                  </select>
+                </label>
+              ) : (
+                <label>
+                  Line width
+                  <select
+                    value={style.strokeWidth}
+                    onChange={(event) =>
+                      onStyleChange({
+                        ...style,
+                        strokeWidth: Number(event.currentTarget.value),
+                      })
+                    }
+                    style={FORM_CONTROL_STYLE}
+                  >
+                    <option value={0.001}>Hairline</option>
+                    <option value={0.002}>Fine</option>
+                    <option value={0.004}>Standard</option>
+                    <option value={0.008}>Bold</option>
+                    <option value={0.014}>Highlighter</option>
+                  </select>
+                </label>
+              )}
               <label>
                 Opacity
                 <input
@@ -910,20 +949,22 @@ export default function FieldRedlineStudio({
                 />
                 <output>{lineOpacityPercent}%</output>
               </label>
-              <label>
-                Fill color
-                <input
-                  type="color"
-                  value={style.fillColor || "#ffffff"}
-                  onChange={(event) =>
-                    onStyleChange({
-                      ...style,
-                      fillColor: event.currentTarget.value,
-                    })
-                  }
-                  style={CONTROL_TARGET_STYLE}
-                />
-              </label>
+              {!markTool ? (
+                <label>
+                  Fill color
+                  <input
+                    type="color"
+                    value={style.fillColor || "#ffffff"}
+                    onChange={(event) =>
+                      onStyleChange({
+                        ...style,
+                        fillColor: event.currentTarget.value,
+                      })
+                    }
+                    style={CONTROL_TARGET_STYLE}
+                  />
+                </label>
+              ) : null}
               {selectedAnnotationCount ? (
                 <button
                   type="button"

@@ -24,6 +24,8 @@ test("Field Redline Studio keeps the compact tool order and HVAC safety boundary
     '"select"',
     '"pen"',
     '"highlight"',
+    '"round-mark"',
+    '"square-mark"',
     '"erase"',
     '"arrow"',
     '"rectangle"',
@@ -58,6 +60,13 @@ test("the dock progressively reveals style and controls layer visibility, lock, 
   assert.match(studio, /aria-expanded=\{stylePanelOpen\}/);
   assert.match(studio, /id="redline-style-panel"/);
   assert.match(studio, /Line color/);
+  assert.match(studio, /Mark color/);
+  assert.match(studio, /Mark size/);
+  assert.match(studio, /value="small">Small/);
+  assert.match(studio, /value="medium">Medium/);
+  assert.match(studio, /value="large">Large/);
+  assert.match(studio, /value="extra-large">Extra large/);
+  assert.match(studio, /markTool \? \{ fillColor: color \} : \{\}/);
   assert.match(studio, /Line width/);
   assert.match(studio, /Fine/);
   assert.match(studio, /option value=\{0\.001\}>Hairline/);
@@ -221,6 +230,8 @@ test("the canvas overlay is SVG-only, page-bound, and renders committed plus tra
   assert.match(canvas, /redline-transient-draft/);
   assert.match(canvas, /redline-transient-lasso/);
   assert.match(canvas, /redline-transient-selection-box/);
+  assert.match(canvas, /redlineCanvasCalloutBounds\(\s*transient\.start,\s*transient\.end,\s*size,/);
+  assert.doesNotMatch(canvas, /\bpageBounds\(/);
   assert.match(canvas, /redline-selection-overlay/);
   assert.match(canvas, /if \(!layer\.visible \|\| layer\.opacity <= 0\) return null/);
   assert.match(

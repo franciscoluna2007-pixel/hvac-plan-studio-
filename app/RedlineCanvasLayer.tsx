@@ -96,8 +96,14 @@ function annotationLabel(annotation: RedlineAnnotation) {
   if (annotation.kind === "ink") return "Pen redline";
   if (annotation.kind === "highlighter") return "Highlighted redline";
   if (annotation.kind === "arrow") return "Arrow redline";
-  if (annotation.kind === "rectangle") return "Rectangle redline";
-  if (annotation.kind === "circle") return "Circle redline";
+  if (annotation.kind === "rectangle") {
+    return annotation.style.fillColor
+      ? "Square mark redline"
+      : "Rectangle redline";
+  }
+  if (annotation.kind === "circle") {
+    return annotation.style.fillColor ? "Round mark redline" : "Circle redline";
+  }
   if (annotation.kind === "cloud") return "Revision cloud redline";
   if (annotation.kind === "text") {
     return annotation.text?.trim()
@@ -520,7 +526,11 @@ export default function RedlineCanvasLayer({
           aria-hidden="true"
         >
           <SelectionOutline
-            bounds={pageBounds(transient.start, transient.end, size)}
+            bounds={redlineCanvasCalloutBounds(
+              transient.start,
+              transient.end,
+              size,
+            )}
             zoom={zoom}
           />
         </g>

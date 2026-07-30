@@ -1474,6 +1474,32 @@ class WorkspaceErrorBoundary extends Component<{ children: ReactNode }, Workspac
   }
 }
 
+type RedlineCanvasErrorBoundaryProps = {
+  children: ReactNode;
+  onError: () => void;
+};
+
+class RedlineCanvasErrorBoundary extends Component<
+  RedlineCanvasErrorBoundaryProps,
+  WorkspaceErrorBoundaryState
+> {
+  state: WorkspaceErrorBoundaryState = { failed: false };
+
+  static getDerivedStateFromError(): WorkspaceErrorBoundaryState {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("Field Redline Studio recovered without closing the PDF", error, info);
+    this.props.onError();
+    void trackProductEvent("application_error", { area: "redline_canvas_boundary" });
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
 function HVACPlanStudioApp() {
   const inputRef = useRef<HTMLInputElement>(null);
   const pendingPdfOpenRef = useRef<PdfOpenContext | null>(null);
@@ -3353,9 +3379,13 @@ function HVACPlanStudioApp() {
     const planEditControlKind = planEditControl?.getAttribute(
       "data-plan-edit-control",
     );
+    const redlineDrawsWithOneTouch =
+      fieldRedline.open &&
+      !["select", "erase"].includes(fieldRedline.activeTool);
     const directTouchEdit = event.pointerType === "touch"
       && (
         Boolean(fieldRedline.open && fieldRedline.pendingDetail) ||
+        redlineDrawsWithOneTouch ||
         (
           planEditControlKind === "redline" &&
           fieldRedline.open &&
@@ -14736,21 +14766,39 @@ function HVACPlanStudioApp() {
                     viewBox={`0 0 ${renderSize.width || 1} ${renderSize.height || 1}`}
                     onPointerDownCapture={fieldRedline.open ? undefined : handleRoomMarkupPlacementCapture}
                     onPointerDown={(event) => {
-                      if (!fieldRedline.handlePointerDown(event)) handleDrawingClick(event);
+                      if (fieldRedline.open) {
+                        fieldRedline.handlePointerDown(event);
+                        return;
+                      }
+                      handleDrawingClick(event);
                     }}
                     onPointerMove={(event) => {
-                      if (!fieldRedline.handlePointerMove(event)) handlePointerMove(event);
+                      if (fieldRedline.open) {
+                        fieldRedline.handlePointerMove(event);
+                        return;
+                      }
+                      handlePointerMove(event);
                     }}
                     onPointerUp={(event) => {
-                      if (!fieldRedline.finishPointer(event)) endDrag(event);
+                      if (fieldRedline.open) {
+                        fieldRedline.finishPointer(event);
+                        return;
+                      }
+                      endDrag(event);
                     }}
                     onPointerCancel={(event) => {
-                      if (!fieldRedline.finishPointer(event, true)) endDrag(event, true);
+                      if (fieldRedline.open) {
+                        fieldRedline.finishPointer(event, true);
+                        return;
+                      }
+                      endDrag(event, true);
                     }}
                     onLostPointerCapture={(event) => {
-                      if (!fieldRedline.finishPointer(event, true)) {
-                        endDrag(event, true);
+                      if (fieldRedline.open) {
+                        fieldRedline.finishPointer(event, true);
+                        return;
                       }
+                      endDrag(event, true);
                     }}
                     onPointerLeave={() => { if (!dragRef.current) { setHoverPoint(null); setSnapMarker(null); setSnapInfo(null); setAlignmentGuides([]); setBranchPreview(null); setSymbolPreview(null); } }}
                     onContextMenu={(event) => event.preventDefault()}
@@ -14919,28 +14967,37 @@ function HVACPlanStudioApp() {
                       aria-hidden={!fieldRedline.open}
                       style={{ pointerEvents: fieldRedline.open ? "auto" : "none" }}
                     >
-                      <RedlineCanvasLayer
-                        binding={fieldRedline.binding}
-                        width={renderSize.width || 1}
-                        height={renderSize.height || 1}
-                        zoom={zoom}
-                        layer={fieldRedline.activeLayer}
-                        annotations={fieldRedline.renderedDocument.annotations}
-                        selection={{
-                          annotationIds: fieldRedline.selection,
-                          bounds: fieldRedline.selectionBounds || undefined,
+                      <RedlineCanvasErrorBoundary
+                        key={`${pdfFingerprint}:${pageNumber}:${fieldRedline.open}:${fieldRedline.activeTool}`}
+                        onError={() => {
+                          setFieldRedlineMessage(
+                            "A redline action was stopped safely. The PDF stayed open; close and reopen Redline to continue.",
+                          );
                         }}
-                        transient={fieldRedline.transient}
-                        interactive={
-                          fieldRedline.open && !fieldRedline.pendingDetail
-                        }
-                        onAnnotationPointerDown={(annotationId, event) => {
-                          setRedlineWheelKeyboardOpen(false);
-                          fieldRedline.handleAnnotationPointerDown(annotationId, event);
-                        }}
-                        onAnnotationFocus={(annotationId) => fieldRedline.select([annotationId])}
-                        onAnnotationActivate={openRedlineSelectionWheelFromKeyboard}
-                      />
+                      >
+                        <RedlineCanvasLayer
+                          binding={fieldRedline.binding}
+                          width={renderSize.width || 1}
+                          height={renderSize.height || 1}
+                          zoom={zoom}
+                          layer={fieldRedline.activeLayer}
+                          annotations={fieldRedline.renderedDocument.annotations}
+                          selection={{
+                            annotationIds: fieldRedline.selection,
+                            bounds: fieldRedline.selectionBounds || undefined,
+                          }}
+                          transient={fieldRedline.transient}
+                          interactive={
+                            fieldRedline.open && !fieldRedline.pendingDetail
+                          }
+                          onAnnotationPointerDown={(annotationId, event) => {
+                            setRedlineWheelKeyboardOpen(false);
+                            fieldRedline.handleAnnotationPointerDown(annotationId, event);
+                          }}
+                          onAnnotationFocus={(annotationId) => fieldRedline.select([annotationId])}
+                          onAnnotationActivate={openRedlineSelectionWheelFromKeyboard}
+                        />
+                      </RedlineCanvasErrorBoundary>
                     </g>}
                     {showAssistantSuggestionLayer && roomMarkupPlan.overlayCandidates.length > 0 && <g
                       id="assistant-suggestion-layer"
@@ -16357,6 +16414,7 @@ function HVACPlanStudioApp() {
         sheetLabel={`Sheet ${pageNumber} of ${pdf?.numPages || 1}`}
         activeTool={fieldRedline.activeTool}
         style={fieldRedline.style}
+        markSize={fieldRedline.markSize}
         layer={fieldRedline.activeLayer}
         favorites={fieldRedline.document?.favorites || []}
         myDetails={fieldRedline.document?.myDetails || []}
@@ -16368,6 +16426,7 @@ function HVACPlanStudioApp() {
         canRedo={fieldRedline.canRedo}
         onToolChange={fieldRedline.setTool}
         onStyleChange={fieldRedline.setStyle}
+        onMarkSizeChange={fieldRedline.setMarkSize}
         onApplyStyleToSelection={fieldRedline.applyStyleToSelection}
         onLayerChange={fieldRedline.updateLayer}
         onStylePanelOpenChange={fieldRedline.setStylePanelOpen}

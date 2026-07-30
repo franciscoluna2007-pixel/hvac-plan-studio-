@@ -529,6 +529,59 @@ test("committed export removes selection chrome and every temporary preview", ()
   assert.match(exportSource, /"repair-previews"/);
 });
 
+test("Redline failures stay isolated and never fall through to HVAC drawing handlers", () => {
+  assert.match(
+    page,
+    /class RedlineCanvasErrorBoundary extends Component/,
+  );
+  assert.match(
+    page,
+    /Field Redline Studio recovered without closing the PDF/,
+  );
+  assert.match(
+    page,
+    /The PDF stayed open; close and reopen Redline to continue\./,
+  );
+
+  const canvasHandlers = sourceBlock(
+    page,
+    "onPointerDownCapture={fieldRedline.open ? undefined : handleRoomMarkupPlacementCapture}",
+    "onPointerLeave={() =>",
+  );
+  for (const handler of [
+    "handlePointerDown",
+    "handlePointerMove",
+    "finishPointer",
+  ]) {
+    assert.match(
+      canvasHandlers,
+      new RegExp(
+        `if \\(fieldRedline\\.open\\) \\{[\\s\\S]*?fieldRedline\\.${handler}\\(event`,
+      ),
+    );
+  }
+  assert.match(
+    canvasHandlers,
+    /if \(fieldRedline\.open\) \{[\s\S]*?return;[\s\S]*?\}\s*handleDrawingClick\(event\)/,
+  );
+  assert.match(
+    canvasHandlers,
+    /if \(fieldRedline\.open\) \{[\s\S]*?return;[\s\S]*?\}\s*handlePointerMove\(event\)/,
+  );
+  assert.match(
+    canvasHandlers,
+    /if \(fieldRedline\.open\) \{[\s\S]*?return;[\s\S]*?\}\s*endDrag\(event\)/,
+  );
+  assert.match(
+    controller,
+    /redlinePointerCanDraw\(event\.nativeEvent, \{\s*allowTouch: true,/,
+  );
+  assert.match(
+    page,
+    /const redlineDrawsWithOneTouch =\s*fieldRedline\.open &&\s*!\["select", "erase"\]\.includes\(fieldRedline\.activeTool\)/,
+  );
+});
+
 test("V133 metadata and user-facing naming publish Field Redline Studio with Area select", () => {
   assert.match(analytics, /app_version: "133"/);
   assert.match(layout, /HVAC Plan Studio · Field Redline Studio/);
