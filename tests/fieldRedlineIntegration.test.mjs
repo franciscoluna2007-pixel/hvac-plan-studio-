@@ -509,6 +509,7 @@ test("committed export removes selection chrome and every temporary preview", ()
     ".redline-transient-draft",
     ".redline-transient-lasso",
     ".redline-transient-selection-box",
+    ".redline-transient-eraser",
     ".edit-handle",
     ".rotation-ring",
   ]) {
@@ -545,7 +546,7 @@ test("Redline failures stay isolated and never fall through to HVAC drawing hand
 
   const canvasHandlers = sourceBlock(
     page,
-    "onPointerDownCapture={(event) => {\n                      latchCanvasPointerOwner(",
+    "onPointerDownCapture={(event) => {",
     "onPointerLeave={() =>",
   );
   for (const handler of [
@@ -579,8 +580,73 @@ test("Redline failures stay isolated and never fall through to HVAC drawing hand
   );
   assert.match(
     page,
-    /const redlineDrawsWithOneTouch =\s*redlineOwnsCanvas &&\s*!\["select", "erase"\]\.includes\(fieldRedline\.activeTool\)/,
+    /const redlineDrawsWithOneTouch =\s*redlineOwnsCanvas &&\s*fieldRedline\.activeTool !== "select"/,
   );
+});
+
+test("Eraser size drives a swept drag preview that commits as one Undo step", () => {
+  assert.match(controller, /kind: "erase";[\s\S]*?annotationIds: Set<string>/);
+  assert.match(controller, /redlineEraserHitIds\(\{/);
+  assert.match(
+    controller,
+    /const beginEraserGesture = useCallback[\s\S]*?captureActivePointer\(svg, pointerId\)/,
+  );
+  assert.match(
+    controller,
+    /if \(active\.kind === "erase"\) \{[\s\S]*?normalizeCoalescedRedlineSamples\([\s\S]*?collectEraserHits\([\s\S]*?index === points\.length - 1/,
+  );
+  assert.match(
+    controller,
+    /if \(active\.kind === "erase"\) \{[\s\S]*?type: "delete-selection",\s*annotationIds,[\s\S]*?Undo restores this drag/,
+  );
+  assert.match(
+    controller,
+    /cancelActivePointerInteraction\(\);\s*if \(cancelled \|\| !history \|\| !activeLayer \|\| !binding\) return true;/,
+  );
+  assert.match(
+    controller,
+    /setTransient\(\{\s*kind: "eraser",\s*point: active\.current,\s*size: active\.size,/,
+  );
+});
+
+test("square and circle preview and commit the same persistent fill style", () => {
+  const transient = sourceBlock(
+    controller,
+    "function transientAnnotation(",
+    "export function useFieldRedlineController",
+  );
+  const setTool = sourceBlock(
+    controller,
+    "const setTool = useCallback",
+    "const updateLayer = useCallback",
+  );
+  const finishPointer = sourceBlock(
+    controller,
+    "const finishPointer = useCallback",
+    "const handleDialogConfirm = useCallback",
+  );
+
+  assert.match(
+    controller,
+    /function redlineDragShapeStyle\(style: RedlineStyle\)[\s\S]*?return style\.fillColor \? redlineMarkStyle\(style\) : style/,
+  );
+  assert.match(
+    transient,
+    /const annotationStyle = isRedlineMarkTool\(active\.tool\)[\s\S]*?isRedlineDragShapeTool\(active\.tool\)[\s\S]*?redlineDragShapeStyle\(style\)[\s\S]*?style: normalizeRedlineStyle\(\s*annotationKind,\s*annotationStyle,/,
+  );
+  assert.match(
+    setTool,
+    /isRedlineMarkTool\(tool\)[\s\S]*?\? redlineMarkStyle\(current\)[\s\S]*?isRedlineDragShapeTool\(tool\)[\s\S]*?\? redlineDragShapeStyle\(current\)/,
+  );
+  assert.match(
+    setTool,
+    /isRedlineDragShapeTool\(tool\)[\s\S]*?\? redlineDragShapeStyle\(current\)[\s\S]*?: redlineOutlineStyle\(current\)/,
+  );
+  assert.match(
+    finishPointer,
+    /isRedlineDragShapeTool\(active\.tool\)[\s\S]*?draft: \{[\s\S]*?style: redlineDragShapeStyle\(style\),\s*start: bounds\.start,\s*end: bounds\.end/,
+  );
+  assert.doesNotMatch(finishPointer, /style: redlineOutlineStyle/);
 });
 
 test("Redline drawing, shape, and text-edit lifecycles stay direct and uncluttered", () => {

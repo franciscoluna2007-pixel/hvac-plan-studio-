@@ -97,6 +97,22 @@ test("touch direct-edit routing is mode-aware instead of creating placement dead
   );
   assert.match(page, /data-plan-edit-control="hvac"/);
   assert.match(
+    page,
+    /className=\{artworkClass\}[\s\S]*?data-plan-edit-control=\{preview \? undefined : "hvac"\}/,
+  );
+  assert.match(
+    page,
+    /className={`measurement[\s\S]*?data-plan-edit-control=\{isCopyPreview \? undefined : "hvac"\}/,
+  );
+  assert.match(
+    page,
+    /className={`branch-fitting[\s\S]*?data-plan-edit-control="hvac"/,
+  );
+  assert.match(
+    page,
+    /return <g key=\{drawing\.id\} data-plan-edit-control="hvac" className=/,
+  );
+  assert.match(
     canvas,
     /data-plan-edit-control=\{operable \? "redline" : undefined\}/,
   );
@@ -107,6 +123,31 @@ test("touch direct-edit routing is mode-aware instead of creating placement dead
   assert.match(
     page,
     /event\.pointerType === "touch" && !planToolAcceptsDirectTouch/,
+  );
+  const pointerDownCapture = page.slice(
+    page.indexOf("function handleViewportPointerDownCapture"),
+    page.indexOf("function handleViewportPointerMoveCapture"),
+  );
+  assert.match(
+    pointerDownCapture,
+    /if \(directTouchEdit\)[\s\S]*?beginEditTransaction\(event\.pointerId\)[\s\S]*?capturePlanPointer\(\s*planOverlayRef\.current \|\| event\.currentTarget,\s*event\.pointerId,\s*\)/,
+  );
+  assert.match(page, /type DirectTouchPointer =/);
+  assert.match(
+    pointerDownCapture,
+    /directTouchPointer\.pointerId !== event\.pointerId[\s\S]*?event\.stopPropagation\(\)[\s\S]*?cancelPlanPointerInteraction\(directTouchPointer\.pointerId\)[\s\S]*?touchPointersRef\.current\.set\([\s\S]*?capturePlanPointer\([\s\S]*?beginTouchGesture\(\)/,
+  );
+  const pointerMoveCapture = page.slice(
+    page.indexOf("function handleViewportPointerMoveCapture"),
+    page.indexOf("function handleViewportPointerUpCapture"),
+  );
+  assert.match(
+    pointerMoveCapture,
+    /directTouchPointerRef\.current\.point = \{[\s\S]*?event\.clientX[\s\S]*?event\.clientY[\s\S]*?return/,
+  );
+  assert.match(
+    page,
+    /function handleViewportLostPointerCapture[\s\S]*?event\.target !== event\.currentTarget[\s\S]*?restoreEditTransaction\(event\.pointerId\)[\s\S]*?handleViewportPointerCancelCapture\(event\)/,
   );
 });
 
@@ -164,4 +205,45 @@ test("wheel placement uses the full icon, duct-label, and rendered redline bound
   assert.match(page, /avoidBounds: selectedRunAvoidBounds/);
   assert.match(page, /avoidBounds: selectedRedlineAvoidBounds/);
   assert.match(page, /wheelRadius: 166/);
+});
+
+test("Port 3 routes resolve once, lock their fitting, and use the live fitting anchor", () => {
+  const activatePlanTool = page.slice(
+    page.indexOf("function activatePlanTool"),
+    page.indexOf("function armSymbolPlacement"),
+  );
+  assert.match(
+    activatePlanTool,
+    /port3BranchDraft && tool !== "supply"[\s\S]*?!port3BranchResolvedRef\.current[\s\S]*?finishDrawing\(\)/,
+  );
+
+  const finishDrawing = page.slice(
+    page.indexOf("function finishDrawing"),
+    page.indexOf("function extendSelectedRun"),
+  );
+  assert.match(
+    finishDrawing,
+    /if \(port3BranchResolvedRef\.current\) return;[\s\S]*?port3BranchResolvedRef\.current = true/,
+  );
+  assert.match(
+    finishDrawing,
+    /const currentBranchPort =[\s\S]*?fittingPortPoints\(fitting\)\[2\][\s\S]*?routeStartsAtCurrentPort/,
+  );
+  assert.match(page, /selectedPort3FittingLocked/);
+  assert.match(page, /<fieldset className="fitting-edit-fieldset" disabled=\{selectedPort3FittingLocked\}>/);
+  assert.match(page, /attachExistingPort3RunInstead\(fitting\.id\)/);
+});
+
+test("T/Y preview topology comes from the same geometry as the committed fitting", () => {
+  const preview = page.slice(
+    page.indexOf("{branchPreview && (() => {"),
+    page.indexOf("{symbolPreview && (() => {"),
+  );
+  assert.match(preview, /const previewFitting: Drawing =/);
+  assert.match(preview, /const \[inlet, outlet, branchPort\] = fittingPortPoints\(previewFitting\)/);
+  assert.match(preview, /branchPreview\.portSizes\.join\("×"\)/);
+  assert.doesNotMatch(
+    preview,
+    /const (?:inlet|outlet|branchPort) = \{[^}]*previewScale/,
+  );
 });

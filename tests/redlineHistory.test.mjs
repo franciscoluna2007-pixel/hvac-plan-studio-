@@ -123,6 +123,30 @@ test("selection changes do not pollute the command timeline", () => {
   );
 });
 
+test("one eraser drag can delete many redlines and Undo restores them together", () => {
+  let history = createRedlineHistory(document());
+  history = executeRedlineCommand(history, textCommand("ONE", 0.1)).history;
+  history = executeRedlineCommand(history, textCommand("TWO", 0.4)).history;
+  const beforeErase = redlineDocumentFingerprint(history.present);
+  const ids = history.present.annotations.map((annotation) => annotation.id);
+  const pastCount = history.past.length;
+
+  const erased = executeRedlineCommand(history, {
+    type: "delete-selection",
+    annotationIds: ids,
+  });
+  assert.equal(erased.changed, true, erased.reason);
+  assert.equal(erased.history.present.annotations.length, 0);
+  assert.equal(erased.history.past.length, pastCount + 1);
+
+  const restored = undoRedlineHistory(erased.history);
+  assert.equal(restored.changed, true);
+  assert.equal(
+    redlineDocumentFingerprint(restored.history.present),
+    beforeErase,
+  );
+});
+
 test("caps retained snapshot bytes in addition to command count", () => {
   const probe = executeRedlineCommand(
     createRedlineHistory(document()),

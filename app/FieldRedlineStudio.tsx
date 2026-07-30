@@ -43,8 +43,15 @@ import type {
 import {
   isRedlineMarkTool,
   redlineMarkRadius,
+  redlineMarkStyle,
+  redlineOutlineStyle,
   type RedlineMarkSize,
 } from "./redlineMark";
+import {
+  REDLINE_ERASER_MAX_SIZE,
+  REDLINE_ERASER_MIN_SIZE,
+  REDLINE_ERASER_SIZE_STEP,
+} from "./redlineEraser";
 
 export type FieldRedlineTool =
   | "select"
@@ -102,6 +109,7 @@ export type FieldRedlineStudioProps = {
   activeTool: FieldRedlineTool;
   style: RedlineStyle;
   markSize: RedlineMarkSize;
+  eraserSize: number;
   layer: RedlineLayer;
   favorites: readonly RedlineFavorite[];
   myDetails: readonly RedlineMyDetail[];
@@ -114,6 +122,7 @@ export type FieldRedlineStudioProps = {
   onToolChange: (tool: FieldRedlineTool) => void;
   onStyleChange: (style: RedlineStyle) => void;
   onMarkSizeChange: (size: RedlineMarkSize) => void;
+  onEraserSizeChange: (size: number) => void;
   onApplyStyleToSelection: (style: RedlineStyle) => void;
   onLayerChange: (layer: RedlineLayer) => void;
   onStylePanelOpenChange: (open: boolean) => void;
@@ -657,6 +666,7 @@ export default function FieldRedlineStudio({
   activeTool,
   style,
   markSize,
+  eraserSize,
   layer,
   favorites,
   myDetails,
@@ -669,6 +679,7 @@ export default function FieldRedlineStudio({
   onToolChange,
   onStyleChange,
   onMarkSizeChange,
+  onEraserSizeChange,
   onApplyStyleToSelection,
   onLayerChange,
   onStylePanelOpenChange,
@@ -711,7 +722,8 @@ export default function FieldRedlineStudio({
     { length: 4 },
     (_, index) => favorites[index] || null,
   );
-  const drawingUnavailable = layer.locked || !layer.visible;
+  const drawingUnavailable =
+    layer.locked || !layer.visible || layer.opacity <= 0;
   const safeToolFocusIndex = drawingUnavailable ? 0 : toolFocusIndex;
   const lineOpacityPercent = Math.round(
     Math.max(0.1, Math.min(1, style.opacity)) * 100,
@@ -720,6 +732,10 @@ export default function FieldRedlineStudio({
     Math.max(0, Math.min(1, layer.opacity)) * 100,
   );
   const markTool = isRedlineMarkTool(activeTool);
+  const shapeTool = activeTool === "rectangle" || activeTool === "circle";
+  const solidShape = shapeTool && Boolean(style.fillColor);
+  const eraserTool = activeTool === "erase";
+  const eraserSizePercent = Math.round(eraserSize * 200) / 2;
 
   function handleToolKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (
@@ -861,17 +877,79 @@ export default function FieldRedlineStudio({
             onClick={() => onStylePanelOpenChange(!stylePanelOpen)}
             style={CONTROL_TARGET_STYLE}
           >
-            <Palette size={18} aria-hidden="true" />
-            Style
-            <span
-              className="redline-style-swatch"
-              aria-hidden="true"
-              style={{ backgroundColor: style.color }}
-            />
+            {eraserTool ? (
+              <Eraser size={18} aria-hidden="true" />
+            ) : (
+              <Palette size={18} aria-hidden="true" />
+            )}
+            {eraserTool ? "Eraser size" : "Style"}
+            {eraserTool ? (
+              <span className="redline-style-value" aria-hidden="true">
+                {eraserSizePercent}%
+              </span>
+            ) : (
+              <span
+                className="redline-style-swatch"
+                aria-hidden="true"
+                style={{ backgroundColor: style.color }}
+              />
+            )}
           </button>
           {stylePanelOpen ? (
             <div id="redline-style-panel" className="redline-style-panel">
-              <label>
+              {eraserTool ? (
+                <div className="redline-eraser-size-controls">
+                  <label htmlFor="redline-eraser-size">
+                    Eraser size
+                    <input
+                      id="redline-eraser-size"
+                      aria-label="Eraser size"
+                      type="range"
+                      aria-valuetext={`${eraserSizePercent}% brush diameter`}
+                      min={REDLINE_ERASER_MIN_SIZE}
+                      max={REDLINE_ERASER_MAX_SIZE}
+                      step={REDLINE_ERASER_SIZE_STEP}
+                      value={eraserSize}
+                      onChange={(event) =>
+                        onEraserSizeChange(Number(event.currentTarget.value))
+                      }
+                      style={FORM_CONTROL_STYLE}
+                    />
+                    <output htmlFor="redline-eraser-size">
+                      {eraserSizePercent}% brush
+                    </output>
+                  </label>
+                  <div
+                    className="redline-eraser-size-presets"
+                    role="group"
+                    aria-label="Eraser size presets"
+                  >
+                    {[
+                      ["Small", 0.02],
+                      ["Medium", 0.04],
+                      ["Large", 0.08],
+                      ["Extra large", 0.12],
+                    ].map(([label, size]) => (
+                      <button
+                        type="button"
+                        key={String(label)}
+                        aria-pressed={
+                          Math.abs(eraserSize - Number(size)) < 0.0001
+                        }
+                        onClick={() => onEraserSizeChange(Number(size))}
+                        style={CONTROL_TARGET_STYLE}
+                      >
+                        {String(label)}
+                      </button>
+                    ))}
+                  </div>
+                  <small className="redline-size-help">
+                    Drag across redlines. One drag is one Undo.
+                  </small>
+                </div>
+              ) : (
+                <>
+                  <label>
                 {markTool ? "Mark color" : "Line color"}
                 <input
                   type="color"
@@ -881,7 +959,7 @@ export default function FieldRedlineStudio({
                     onStyleChange({
                       ...style,
                       color,
-                      ...(markTool ? { fillColor: color } : {}),
+                      ...(markTool || solidShape ? { fillColor: color } : {}),
                     });
                   }}
                   style={CONTROL_TARGET_STYLE}
@@ -930,6 +1008,34 @@ export default function FieldRedlineStudio({
                   </output>
                 </label>
               )}
+              {shapeTool ? (
+                <fieldset className="redline-shape-fill-controls">
+                  <legend>Shape fill</legend>
+                  <div role="group" aria-label="Shape fill mode">
+                    <button
+                      type="button"
+                      aria-pressed={solidShape}
+                      onClick={() => onStyleChange(redlineMarkStyle(style))}
+                      style={CONTROL_TARGET_STYLE}
+                    >
+                      Solid
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={!solidShape}
+                      onClick={() => onStyleChange(redlineOutlineStyle(style))}
+                      style={CONTROL_TARGET_STYLE}
+                    >
+                      Outline
+                    </button>
+                  </div>
+                  <small className="redline-size-help">
+                    {solidShape
+                      ? "Solid uses the selected line color."
+                      : "Outline keeps the plan visible inside the shape."}
+                  </small>
+                </fieldset>
+              ) : null}
               <label>
                 Opacity
                 <input
@@ -948,22 +1054,6 @@ export default function FieldRedlineStudio({
                 />
                 <output>{lineOpacityPercent}%</output>
               </label>
-              {!markTool ? (
-                <label>
-                  Fill color
-                  <input
-                    type="color"
-                    value={style.fillColor || "#ffffff"}
-                    onChange={(event) =>
-                      onStyleChange({
-                        ...style,
-                        fillColor: event.currentTarget.value,
-                      })
-                    }
-                    style={CONTROL_TARGET_STYLE}
-                  />
-                </label>
-              ) : null}
               {selectedAnnotationCount ? (
                 <button
                   type="button"
@@ -974,6 +1064,8 @@ export default function FieldRedlineStudio({
                   Apply style to {selectedAnnotationCount} selected
                 </button>
               ) : null}
+                </>
+              )}
             </div>
           ) : null}
         </section>

@@ -456,13 +456,20 @@ test("uses nominal icon sizes, accurate equipment identities, and selected place
   assert.ok(mark.byteLength > 500);
 });
 
-test("places T/Y fittings anywhere on a trunk and supports a second-click branch attachment", async () => {
+test("places T/Y fittings anywhere on a trunk and starts a correctly sized Port 3 branch", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
   assert.match(source, /const \[pendingBranchFittingId, setPendingBranchFittingId\]/);
+  assert.match(source, /const \[port3BranchDraft, setPort3BranchDraft\]/);
   assert.match(source, /function attachPendingBranchRun\(point: Point\)/);
+  assert.match(source, /function beginPort3BranchDraft\(fitting: Drawing\)/);
+  assert.match(source, /const branchSize = fitting\.fitting\.branchSize/);
+  assert.match(source, /anchor: branchPort/);
+  assert.match(source, /commitPort3Branch\(\{/);
   assert.match(source, /connectedIds: \[upstream\.id, downstream\.id, branchRun\?\.id \|\| ""\]/);
-  assert.match(source, /Trunk split and fitting placed · now click any blue branch run to attach Port 3/);
+  assert.match(source, /Port 3 ready · draw the \$\{branchSize\}"/);
+  assert.match(source, /Attach existing run instead/);
+  assert.match(source, /no branch stub was saved/);
   assert.match(source, /Pick Port 3 run on plan/);
   assert.match(source, /Place fitting on any supply run/);
   assert.doesNotMatch(source, /No crossing route found · move the fitting closer to both existing runs/);
@@ -475,7 +482,7 @@ test("guides T/Y placement with numbered ports, endpoint previews, and recovery 
   assert.match(source, /className={`branch-workflow-hud/);
   assert.match(source, /Pick trunk/);
   assert.match(source, /Split \+ place/);
-  assert.match(source, /Attach Port 3/);
+  assert.match(source, /Draw Port 3/);
   assert.match(source, /candidateEndpoint:/);
   assert.match(source, /THIS END MOVES TO PORT 3/);
   assert.match(source, /BRANCH RUN SELECTED/);
@@ -491,7 +498,7 @@ test("keeps completed T/Y fittings readable and reveals numbered ports only whil
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
   assert.match(source, /const fittingFullyConnected = portStates\.every\(\(state\) => state\.connected\)/);
-  assert.match(source, /const showPortGuides = pendingBranchFittingId === drawing\.id/);
+  assert.match(source, /const showPortGuides =[\s\S]*?pendingBranchFittingId === drawing\.id \|\|[\s\S]*?port3BranchDraft\?\.fittingId === drawing\.id/);
   assert.match(source, /\{showPortGuides && \[inlet, outlet, branchPort\]\.map/);
   assert.match(source, /const showRunNodeHandles = runSelected \|\| Boolean\(branchCandidateClass\)/);
   assert.match(source, /\{showRunNodeHandles && drawing\.points\.map/);
@@ -500,6 +507,8 @@ test("keeps completed T/Y fittings readable and reveals numbered ports only whil
   assert.match(styles, /\.branch-fitting \.fitting-label \{/);
   assert.match(styles, /paint-order: stroke/);
   assert.match(styles, /\.branch-fitting\.showing-port-guides \.fitting-label/);
+  assert.doesNotMatch(source, /className="fitting-hit"[^>]*r="22"/);
+  assert.match(source, /className="fitting-hit"[\s\S]*?vectorEffect="non-scaling-stroke"/);
 });
 
 test("supports a continuous branch pass with manual junction suggestions", async () => {

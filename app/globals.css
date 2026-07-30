@@ -95,6 +95,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .fitting-properties { margin-top: 10px; padding: 10px; border: 1px solid #5a4a1d; border-radius: 7px; background: #19170d; }
 .fitting-property-title { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; color: #f4cc4f; font-size: 8px; font-weight: 800; letter-spacing: .7px; }
 .fitting-property-title b { padding: 3px 5px; color: #2b2203; border-radius: 4px; background: #f4cc4f; font-size: 6px; }
+.fitting-edit-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.fitting-edit-fieldset:disabled { opacity: .52; }
+.port3-edit-lock { display: grid; gap: 4px; margin-top: 10px; padding: 9px 10px; color: #f7e9aa; border: 1px solid #755d1c; border-radius: 6px; background: #2a230d; }
+.port3-edit-lock strong { color: #f4cc4f; font-size: 8px; letter-spacing: .5px; }
+.port3-edit-lock span { font-size: 8px; line-height: 1.45; }
 .network-trace-summary { margin-top: 9px; padding: 8px 9px; display: grid; gap: 3px; border: 1px solid #287594; border-radius: 6px; background: #0d2631; }
 .network-trace-summary span { color: #62d8fa; font-size: 6px; font-weight: 900; letter-spacing: .9px; }
 .network-trace-summary strong { color: #e0f8ff; font-size: 9px; }
@@ -485,7 +490,16 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .branch-fitting .fitting-leg { transition: stroke-width .16s ease; }
 .branch-fitting .fitting-leg.overloaded { stroke: #ef4444; filter: drop-shadow(0 0 3px #ef4444); }
 .branch-fitting .fitting-flow-arrow { fill: none; stroke: #fff8d1; stroke-width: 1.8; filter: none; }
-.branch-fitting .fitting-hit { fill: transparent; stroke: transparent; }
+.branch-fitting .fitting-hit {
+  fill: none;
+  stroke: transparent;
+  pointer-events: stroke;
+  vector-effect: non-scaling-stroke;
+  filter: none;
+}
+@media (pointer: coarse) {
+  .branch-fitting .fitting-hit { stroke-width: 22px !important; }
+}
 .branch-fitting .fitting-port { fill: #fff6bf; stroke: #7a5a00; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .branch-fitting .port-number { fill: #3e3100; stroke: none; font: 900 6.5px var(--font-geist-sans); }
 .branch-fitting .fitting-port-size { fill: #2f2600; stroke: white; stroke-width: 2.5px; font: 900 7px var(--font-geist-sans); }
@@ -15649,6 +15663,13 @@ textarea:focus-visible,
   box-shadow: 0 0 0 1px rgba(0, 0, 0, .4);
 }
 
+.redline-style-value {
+  margin-left: auto;
+  color: #8fe0ff;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
 .redline-style-panel {
   position: absolute;
   z-index: 2;
@@ -15692,6 +15713,33 @@ textarea:focus-visible,
 .redline-size-help {
   grid-column: 1 / -1;
   color: #8eb5ca;
+}
+
+.redline-eraser-size-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.redline-eraser-size-controls label {
+  grid-template-columns: minmax(72px, auto) minmax(110px, 1fr) auto;
+}
+
+.redline-eraser-size-presets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.field-redline-studio .redline-eraser-size-presets button {
+  min-width: 0 !important;
+  padding: 6px 8px;
+}
+
+.redline-eraser-size-presets button[aria-pressed="true"] {
+  color: #061a25;
+  background: #72d8ff;
+  border-color: #b2ebff;
+  font-weight: 800;
 }
 
 .redline-apply-style {
@@ -15905,7 +15953,7 @@ textarea:focus-visible,
 }
 
 .drawing-layer.field-redline-active.redline-tool-erase {
-  cursor: not-allowed;
+  cursor: crosshair;
 }
 
 .redline-canvas-layer {
@@ -15918,7 +15966,7 @@ textarea:focus-visible,
 }
 
 .redline-tool-erase .redline-annotation {
-  cursor: not-allowed;
+  cursor: crosshair;
 }
 
 .redline-tool-pen .redline-annotation,
@@ -15963,6 +16011,14 @@ textarea:focus-visible,
 
 .redline-transient-draft {
   opacity: .7;
+}
+
+.redline-transient-eraser {
+  fill: rgba(255, 255, 255, .18);
+  stroke: #ffffff;
+  stroke-width: 2;
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, .72));
+  pointer-events: none;
 }
 
 .redline-selection-wheel {
@@ -16419,6 +16475,7 @@ textarea:focus-visible,
   .redline-transient-lasso,
   .redline-transient-selection-box,
   .redline-transient-copy,
+  .redline-transient-eraser,
   .redline-selection-overlay,
   .redline-hit-target,
   .copy-place-preview,

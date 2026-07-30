@@ -32,6 +32,7 @@ const TRANSIENT_SELECTORS = [
   ".redline-transient-draft",
   ".redline-transient-lasso",
   ".redline-transient-selection-box",
+  ".redline-transient-eraser",
   ".edit-handle",
   ".midpoint-grip",
   ".rotation-ring",
