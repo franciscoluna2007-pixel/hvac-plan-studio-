@@ -57,6 +57,7 @@ import {
   redlineMarkAnnotationKind,
   redlineMarkBounds,
   redlineMarkStyle,
+  redlineOutlineStyle,
   type RedlineMarkSize,
   type RedlineMarkTool,
 } from "./redlineMark";
