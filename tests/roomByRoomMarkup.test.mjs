@@ -212,7 +212,11 @@ test("lets touch placement reach the PDF while a ghost move is pending", () => {
   const drawingClick = sourceBetween(page, "function handleDrawingClick(", "function undoableAssistantRepairRecord(");
   assert.match(
     drawingClick,
-    /event\.pointerType === "touch" && !pendingRoomMarkupCandidateId/,
+    /event\.pointerType === "touch" && !planToolAcceptsDirectTouch/,
+  );
+  assert.match(
+    page,
+    /const planToolAcceptsDirectTouch =[\s\S]*?pendingRoomMarkupCandidateId/,
   );
   const placementCapture = sourceBetween(
     page,
@@ -223,7 +227,7 @@ test("lets touch placement reach the PDF while a ghost move is pending", () => {
   assert.match(placementCapture, /handleDrawingClick\(event\)/);
   assert.match(
     page,
-    /onPointerDownCapture=\{fieldRedline\.open \? undefined : handleRoomMarkupPlacementCapture\}/,
+    /onPointerDownCapture=\{redlineOwnsCanvas \? undefined : handleRoomMarkupPlacementCapture\}/,
   );
 });
 

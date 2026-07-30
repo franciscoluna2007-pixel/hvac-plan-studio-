@@ -141,12 +141,10 @@ const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   { id: "select", label: "Select", icon: MousePointer2 },
   { id: "pen", label: "Draw", icon: Pencil },
   { id: "highlight", label: "Highlight", icon: Highlighter },
-  { id: "round-mark", label: "Draw circle", icon: Circle },
-  { id: "square-mark", label: "Draw square", icon: Square },
+  { id: "rectangle", label: "Draw square", icon: Square },
+  { id: "circle", label: "Draw circle", icon: Circle },
   { id: "erase", label: "Erase", icon: Eraser },
   { id: "arrow", label: "Arrow", icon: ArrowRight },
-  { id: "rectangle", label: "Rectangle", icon: Square },
-  { id: "circle", label: "Circle", icon: Circle },
   { id: "cloud", label: "Cloud", icon: Cloud },
   { id: "text", label: "Text", icon: Type },
   { id: "lasso", label: "Area select", icon: Lasso },
@@ -176,12 +174,6 @@ function isDrawableTool(tool: FieldRedlineTool) {
 function favoriteTool(favorite: RedlineFavorite): FieldRedlineTool {
   if (favorite.kind === "ink") return "pen";
   if (favorite.kind === "highlighter") return "highlight";
-  if (favorite.kind === "circle" && favorite.style.fillColor) {
-    return "round-mark";
-  }
-  if (favorite.kind === "rectangle" && favorite.style.fillColor) {
-    return "square-mark";
-  }
   return favorite.kind;
 }
 

@@ -545,7 +545,7 @@ test("Redline failures stay isolated and never fall through to HVAC drawing hand
 
   const canvasHandlers = sourceBlock(
     page,
-    "onPointerDownCapture={fieldRedline.open ? undefined : handleRoomMarkupPlacementCapture}",
+    "onPointerDownCapture={redlineOwnsCanvas ? undefined : handleRoomMarkupPlacementCapture}",
     "onPointerLeave={() =>",
   );
   for (const handler of [
@@ -556,21 +556,21 @@ test("Redline failures stay isolated and never fall through to HVAC drawing hand
     assert.match(
       canvasHandlers,
       new RegExp(
-        `if \\(fieldRedline\\.open\\) \\{[\\s\\S]*?fieldRedline\\.${handler}\\(event`,
+        `if \\(redlineOwnsCanvas\\) \\{[\\s\\S]*?fieldRedline\\.${handler}\\(event`,
       ),
     );
   }
   assert.match(
     canvasHandlers,
-    /if \(fieldRedline\.open\) \{[\s\S]*?return;[\s\S]*?\}\s*handleDrawingClick\(event\)/,
+    /if \(redlineOwnsCanvas\) \{[\s\S]*?return;[\s\S]*?\}\s*handleDrawingClick\(event\)/,
   );
   assert.match(
     canvasHandlers,
-    /if \(fieldRedline\.open\) \{[\s\S]*?return;[\s\S]*?\}\s*handlePointerMove\(event\)/,
+    /if \(redlineOwnsCanvas\) \{[\s\S]*?return;[\s\S]*?\}\s*handlePointerMove\(event\)/,
   );
   assert.match(
     canvasHandlers,
-    /if \(fieldRedline\.open\) \{[\s\S]*?return;[\s\S]*?\}\s*endDrag\(event\)/,
+    /if \(redlineOwnsCanvas\) \{[\s\S]*?return;[\s\S]*?\}\s*endDrag\(event\)/,
   );
   assert.match(
     controller,
@@ -578,7 +578,54 @@ test("Redline failures stay isolated and never fall through to HVAC drawing hand
   );
   assert.match(
     page,
-    /const redlineDrawsWithOneTouch =\s*fieldRedline\.open &&\s*!\["select", "erase"\]\.includes\(fieldRedline\.activeTool\)/,
+    /const redlineDrawsWithOneTouch =\s*redlineOwnsCanvas &&\s*!\["select", "erase"\]\.includes\(fieldRedline\.activeTool\)/,
+  );
+});
+
+test("Redline drawing, shape, and text-edit lifecycles stay direct and uncluttered", () => {
+  const setTool = sourceBlock(
+    controller,
+    "const setTool = useCallback",
+    "const updateLayer = useCallback",
+  );
+  assert.match(setTool, /if \(tool !== "select"\) select\(\[\]\)/);
+  assert.match(setTool, /isRedlineDragShapeTool\(tool\)/);
+
+  const finishPointer = sourceBlock(
+    controller,
+    "const finishPointer = useCallback",
+    "const handleDialogConfirm = useCallback",
+  );
+  assert.match(
+    finishPointer,
+    /runCommand\(\{ type: "add-annotation", draft \}\);\s*select\(\[\]\)/,
+  );
+  assert.match(
+    finishPointer,
+    /isRedlineDragShapeTool\(active\.tool\)[\s\S]*?redlineDragShapeBounds/,
+  );
+  assert.match(
+    finishPointer,
+    /if \(!bounds\) \{[\s\S]*?Press and drag to draw a circle or square[\s\S]*?return true;/,
+  );
+
+  const textConfirm = sourceBlock(
+    controller,
+    "const handleDialogConfirm = useCallback",
+    "const handleSelectionAction = useCallback",
+  );
+  assert.match(
+    textConfirm,
+    /if \(textSaved\) \{[\s\S]*?setActiveTool\("select"\)[\s\S]*?drag it to move[\s\S]*?corner to resize/,
+  );
+  assert.match(controller, /const handleTextResizePointerDown = useCallback/);
+  assert.match(
+    controller,
+    /type: "update-selection-style"[\s\S]*?changes: \{ textScale: active\.currentTextScale \}/,
+  );
+  assert.match(
+    page,
+    /setSelectionBox\(null\);[\s\S]*?setAlignmentGuides\(\[\]\);[\s\S]*?fieldRedline\.setOpen\(true\)/,
   );
 });
 

@@ -57,7 +57,7 @@ test("redline actions disappear while drawing, editing dialogs, or placing copie
 test("mouse copy placement wins over object selection and keeps previews out of output", () => {
   assert.match(
     page,
-    /onPointerDownCapture=\{fieldRedline\.open \? undefined : handleRoomMarkupPlacementCapture\}/,
+    /onPointerDownCapture=\{redlineOwnsCanvas \? undefined : handleRoomMarkupPlacementCapture\}/,
   );
   assert.match(
     page,
@@ -99,6 +99,55 @@ test("touch direct-edit routing is mode-aware instead of creating placement dead
   assert.match(
     canvas,
     /data-plan-edit-control=\{operable \? "redline" : undefined\}/,
+  );
+  assert.match(
+    page,
+    /const planToolAcceptsDirectTouch =[\s\S]*?copyPlacement[\s\S]*?pendingRoomMarkupCandidateId[\s\S]*?calibrating[\s\S]*?activeTool === "measure"[\s\S]*?activeTool === "branch"[\s\S]*?symbolTools\.includes[\s\S]*?\["supply", "return", "fresh"\]/,
+  );
+  assert.match(
+    page,
+    /event\.pointerType === "touch" && !planToolAcceptsDirectTouch/,
+  );
+});
+
+test("arming any plan tool releases Redline and catalog icons arm placement immediately", () => {
+  const leaveRedline = page.slice(
+    page.indexOf("function leaveFieldRedlineForPlanEditing"),
+    page.indexOf("function activatePlanTool"),
+  );
+  assert.match(leaveRedline, /fieldRedline\.resetPageInteraction\(\)/);
+  assert.match(leaveRedline, /fieldRedline\.setOpen\(false\)/);
+  assert.match(leaveRedline, /fieldRedline\.setTool\("select"\)/);
+
+  const activatePlanTool = page.slice(
+    page.indexOf("function activatePlanTool"),
+    page.indexOf("function armSymbolPlacement"),
+  );
+  assert.ok(
+    activatePlanTool.indexOf("leaveFieldRedlineForPlanEditing()") <
+      activatePlanTool.indexOf("setActiveTool(tool)"),
+  );
+
+  const armSymbol = page.slice(
+    page.indexOf("function armSymbolPlacement"),
+    page.indexOf("function closeFieldRedlineStudio"),
+  );
+  assert.ok(
+    armSymbol.indexOf("leaveFieldRedlineForPlanEditing()") <
+      armSymbol.indexOf("setActiveTool(preset.kind)"),
+  );
+  assert.match(page, /onClick=\{\(\) => \{\s*armSymbolPlacement\(item, true\);/);
+  assert.match(page, /armSymbolPlacement\(preset\);/);
+});
+
+test("drawing modes never render Redline selection boxes over the PDF", () => {
+  assert.match(
+    page,
+    /annotationIds: fieldRedline\.pendingCopy \|\|\s*fieldRedline\.activeTool !== "select"\s*\? \[\]/,
+  );
+  assert.match(
+    page,
+    /bounds: fieldRedline\.pendingCopy \|\|\s*fieldRedline\.activeTool !== "select"\s*\? undefined/,
   );
 });
 

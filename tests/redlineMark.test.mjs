@@ -93,3 +93,63 @@ test("returning to an outline shape removes the solid mark fill", () => {
   assert.equal("fillColor" in style, false);
   assert.equal(style.opacity, 0.65);
 });
+
+test("draw-circle and draw-square geometry starts only after a real drag", () => {
+  assert.equal(
+    marks.redlineDragShapeBounds({
+      start: { x: 0.5, y: 0.5 },
+      pointer: { x: 0.5, y: 0.5 },
+      pageAspectRatio: 1.5,
+    }),
+    null,
+  );
+
+  const tiny = marks.redlineDragShapeBounds({
+    start: { x: 0.5, y: 0.5 },
+    pointer: { x: 0.5003, y: 0.5001 },
+    pageAspectRatio: 1,
+  });
+  assert.ok(tiny);
+  assert.ok(tiny.physicalSize < 0.001);
+});
+
+test("drag shapes follow every quadrant and stay square in screen pixels", () => {
+  for (const pointer of [
+    { x: 0.7, y: 0.7 },
+    { x: 0.3, y: 0.7 },
+    { x: 0.7, y: 0.3 },
+    { x: 0.3, y: 0.3 },
+  ]) {
+    const bounds = marks.redlineDragShapeBounds({
+      start: { x: 0.5, y: 0.5 },
+      pointer,
+      pageAspectRatio: 1.5,
+    });
+    assert.ok(bounds);
+    const pixelWidth = Math.abs(bounds.end.x - bounds.start.x) * 1_200;
+    const pixelHeight = Math.abs(bounds.end.y - bounds.start.y) * 800;
+    assert.ok(Math.abs(pixelWidth - pixelHeight) < 0.0001);
+    assert.equal(
+      Math.sign(bounds.end.x - bounds.start.x),
+      Math.sign(pointer.x - 0.5),
+    );
+    assert.equal(
+      Math.sign(bounds.end.y - bounds.start.y),
+      Math.sign(pointer.y - 0.5),
+    );
+  }
+});
+
+test("drag shapes shrink at sheet edges without crossing the PDF", () => {
+  const bounds = marks.redlineDragShapeBounds({
+    start: { x: 0.96, y: 0.94 },
+    pointer: { x: 1, y: 1 },
+    pageAspectRatio: 1.25,
+  });
+  assert.ok(bounds);
+  assert.ok(bounds.end.x <= 1);
+  assert.ok(bounds.end.y <= 1);
+  const pixelWidth = Math.abs(bounds.end.x - bounds.start.x) * 1_000;
+  const pixelHeight = Math.abs(bounds.end.y - bounds.start.y) * 800;
+  assert.ok(Math.abs(pixelWidth - pixelHeight) < 0.0001);
+});

@@ -24,12 +24,10 @@ test("Field Redline Studio keeps the compact tool order and HVAC safety boundary
     '"select"',
     '"pen"',
     '"highlight"',
-    '"round-mark"',
-    '"square-mark"',
-    '"erase"',
-    '"arrow"',
     '"rectangle"',
     '"circle"',
+    '"erase"',
+    '"arrow"',
     '"cloud"',
     '"text"',
     '"lasso"',
@@ -42,6 +40,16 @@ test("Field Redline Studio keeps the compact tool order and HVAC safety boundary
   }
 
   assert.match(studio, /Field Redline Studio/);
+  assert.match(studio, /\{ id: "rectangle", label: "Draw square"/);
+  assert.match(studio, /\{ id: "circle", label: "Draw circle"/);
+  assert.equal(
+    (studio.match(/\{ id: "rectangle", label:/g) || []).length,
+    1,
+  );
+  assert.equal(
+    (studio.match(/\{ id: "circle", label:/g) || []).length,
+    1,
+  );
   assert.doesNotMatch(studio, /Notebook(?: Pro|-style| style)/i);
   assert.match(
     studio,
