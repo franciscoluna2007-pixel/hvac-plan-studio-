@@ -50,6 +50,11 @@ export type RedlineCanvasLayerProps = {
     annotationId: string,
     event: ReactPointerEvent<SVGGElement>,
   ) => void;
+  onTextResizePointerDown?: (
+    annotationId: string,
+    resizeOrigin: RedlinePoint,
+    event: ReactPointerEvent<SVGCircleElement>,
+  ) => void;
   onAnnotationFocus?: (annotationId: string) => void;
   onAnnotationActivate?: (annotationId: string) => void;
 };
@@ -285,9 +290,11 @@ function bindingMatches(
 function SelectionOutline({
   bounds,
   zoom,
+  onResizePointerDown,
 }: {
   bounds: RedlineCanvasBounds;
   zoom: number;
+  onResizePointerDown?: (event: ReactPointerEvent<SVGCircleElement>) => void;
 }) {
   const safeZoom = Math.max(0.01, finite(zoom, 1));
   const selectionPadding = SELECTION_PADDING_PX / safeZoom;
@@ -302,9 +309,13 @@ function SelectionOutline({
     [x + width, y + height],
     [x, y + height],
   ];
+  const resizeHitRadius = Math.max(handleRadius, 22 / safeZoom);
 
   return (
-    <g className="redline-selection-outline" pointerEvents="none">
+    <g
+      className="redline-selection-outline"
+      pointerEvents={onResizePointerDown ? "all" : "none"}
+    >
       <rect
         x={x}
         y={y}
@@ -316,10 +327,12 @@ function SelectionOutline({
         strokeWidth={1.5}
         strokeDasharray="5 4"
         vectorEffect="non-scaling-stroke"
+        pointerEvents="none"
       />
       {corners.map(([cornerX, cornerY], index) => (
         <circle
           key={index}
+          className={index === 2 ? "redline-selection-resize-handle" : undefined}
           cx={cornerX}
           cy={cornerY}
           r={handleRadius}
@@ -327,8 +340,22 @@ function SelectionOutline({
           stroke="white"
           strokeWidth={1.5}
           vectorEffect="non-scaling-stroke"
+          pointerEvents="none"
         />
       ))}
+      {onResizePointerDown ? (
+        <circle
+          className="redline-selection-resize-hit"
+          data-plan-edit-control="redline"
+          cx={x + width}
+          cy={y + height}
+          r={resizeHitRadius}
+          fill="transparent"
+          stroke="none"
+          pointerEvents="all"
+          onPointerDown={onResizePointerDown}
+        />
+      ) : null}
     </g>
   );
 }
@@ -344,6 +371,7 @@ export default function RedlineCanvasLayer({
   selection = EMPTY_SELECTION,
   transient = null,
   onAnnotationPointerDown,
+  onTextResizePointerDown,
   onAnnotationFocus,
   onAnnotationActivate,
 }: RedlineCanvasLayerProps) {
@@ -365,6 +393,11 @@ export default function RedlineCanvasLayer({
         ? domainBoundsToPageBounds(selection.bounds, size)
         : undefined
     );
+  const selectedText =
+    selectedAnnotations.length === 1 &&
+    selectedAnnotations[0]?.kind === "text"
+      ? selectedAnnotations[0]
+      : null;
   const transientAnnotation =
     transient?.kind === "annotation" &&
     transient.annotation.layerId === layer.id &&
@@ -557,7 +590,23 @@ export default function RedlineCanvasLayer({
           data-selection-count={selectedAnnotations.length}
           aria-hidden="true"
         >
-          <SelectionOutline bounds={selectedBounds} zoom={zoom} />
+          <SelectionOutline
+            bounds={selectedBounds}
+            zoom={zoom}
+            onResizePointerDown={
+              selectedText && onTextResizePointerDown
+                ? (event) =>
+                  onTextResizePointerDown(
+                    selectedText.id,
+                    {
+                      x: selectedBounds.x / size.width,
+                      y: selectedBounds.y / size.height,
+                    },
+                    event,
+                  )
+                : undefined
+            }
+          />
         </g>
       ) : null}
     </g>

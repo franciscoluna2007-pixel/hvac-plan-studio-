@@ -140,3 +140,73 @@ export function redlineMarkBounds(input: {
     usedPreset: dragRadius < 0.00025,
   };
 }
+
+export function redlineDragShapeBounds(input: {
+  start: RedlinePoint;
+  pointer: RedlinePoint;
+  pageAspectRatio?: number;
+  minimumPhysicalSize?: number;
+}) {
+  const aspectRatio = clamp(
+    finite(input.pageAspectRatio ?? 1, 1),
+    0.1,
+    10,
+  );
+  const start = {
+    x: clamp(finite(input.start.x, 0.5)),
+    y: clamp(finite(input.start.y, 0.5)),
+  };
+  const pointer = {
+    x: clamp(finite(input.pointer.x, start.x)),
+    y: clamp(finite(input.pointer.y, start.y)),
+  };
+  const xScale = aspectRatio >= 1 ? aspectRatio : 1;
+  const yScale = aspectRatio >= 1 ? 1 : 1 / aspectRatio;
+  const rawX = pointer.x - start.x;
+  const rawY = pointer.y - start.y;
+  const requestedPhysicalSize = Math.max(
+    Math.abs(rawX) * xScale,
+    Math.abs(rawY) * yScale,
+  );
+  const minimumPhysicalSize = clamp(
+    finite(input.minimumPhysicalSize ?? 0.00025, 0.00025),
+    0.00001,
+    0.05,
+  );
+  if (requestedPhysicalSize < minimumPhysicalSize) return null;
+
+  const directionX = rawX < 0
+    ? -1
+    : rawX > 0
+      ? 1
+      : start.x <= 0.5
+        ? 1
+        : -1;
+  const directionY = rawY < 0
+    ? -1
+    : rawY > 0
+      ? 1
+      : start.y <= 0.5
+        ? 1
+        : -1;
+  const availableX = (directionX > 0 ? 1 - start.x : start.x) * xScale;
+  const availableY = (directionY > 0 ? 1 - start.y : start.y) * yScale;
+  const physicalSize = Math.min(
+    requestedPhysicalSize,
+    availableX,
+    availableY,
+  );
+  if (physicalSize < minimumPhysicalSize) return null;
+
+  return {
+    start: {
+      x: rounded(start.x),
+      y: rounded(start.y),
+    },
+    end: {
+      x: rounded(clamp(start.x + directionX * physicalSize / xScale)),
+      y: rounded(clamp(start.y + directionY * physicalSize / yScale)),
+    },
+    physicalSize: rounded(physicalSize),
+  };
+}

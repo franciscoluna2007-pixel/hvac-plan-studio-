@@ -15948,6 +15948,19 @@ textarea:focus-visible,
   color: #008cc8;
 }
 
+.drawing-layer.field-redline-active:not(.redline-tool-select) .redline-selection-overlay {
+  display: none;
+}
+
+.redline-selection-resize-handle {
+  fill: #ffffff;
+  stroke: #008cc8;
+}
+
+.redline-selection-resize-hit {
+  cursor: nwse-resize;
+}
+
 .redline-transient-draft {
   opacity: .7;
 }

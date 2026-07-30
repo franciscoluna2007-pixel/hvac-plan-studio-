@@ -1804,6 +1804,19 @@ function HVACPlanStudioApp() {
     onExport: exportFieldRedlines,
     onIssueDraft: handleFieldRedlineIssueDraft,
   });
+  const redlineOwnsCanvas =
+    fieldRedline.open && activeTool === "select";
+  const planToolAcceptsDirectTouch =
+    !redlineOwnsCanvas &&
+    Boolean(
+      copyPlacement ||
+      pendingRoomMarkupCandidateId ||
+      calibrating ||
+      activeTool === "measure" ||
+      activeTool === "branch" ||
+      symbolTools.includes(activeTool as SymbolKind) ||
+      ["supply", "return", "fresh"].includes(activeTool),
+    );
   const resetFieldRedlinePageInteraction =
     fieldRedline.resetPageInteraction;
   const showPlanPage = useCallback(
@@ -1820,6 +1833,10 @@ function HVACPlanStudioApp() {
     }
     finishDrawing();
     setCopyPlacement(null);
+    setSelectionBox(null);
+    setAlignmentGuides([]);
+    setSnapMarker(null);
+    setSnapInfo(null);
     setActiveTool("select");
     selectOnly(null);
     setFieldRedlineMessage(
@@ -1827,6 +1844,40 @@ function HVACPlanStudioApp() {
     );
     fieldRedline.setOpen(true);
     fieldRedline.setTool("pen");
+  }
+
+  function leaveFieldRedlineForPlanEditing() {
+    if (!fieldRedline.open) return;
+    fieldRedline.resetPageInteraction();
+    fieldRedline.setOpen(false);
+    fieldRedline.setTool("select");
+    fieldRedline.select([]);
+    setRedlineWheelKeyboardOpen(false);
+  }
+
+  function activatePlanTool(tool: string) {
+    leaveFieldRedlineForPlanEditing();
+    setActiveTool(tool);
+  }
+
+  function armSymbolPlacement(
+    preset: SymbolPreset,
+    resetRotation = false,
+  ) {
+    leaveFieldRedlineForPlanEditing();
+    finishDrawing();
+    setActivePresetId(preset.id);
+    if (resetRotation) setPlacementRotation(0);
+    setActiveTool(preset.kind);
+    selectOnly(null);
+    setPendingBranchFittingId(null);
+    setQueuedBranchRunId(null);
+    setBranchHoverRunId(null);
+    setBranchPreview(null);
+    setSymbolPreview(null);
+    setBranchMessage(
+      `${preset.label} ready - move onto the plan and click or tap to place`,
+    );
   }
 
   function closeFieldRedlineStudio() {
@@ -3451,7 +3502,7 @@ function HVACPlanStudioApp() {
       return;
     }
     if (copyPlacement) return;
-    if (fieldRedline.open && event.pointerType !== "touch") {
+    if (redlineOwnsCanvas && event.pointerType !== "touch") {
       if (fieldRedline.pendingCopy && event.button === 2) {
         event.preventDefault();
         event.stopPropagation();
@@ -3470,23 +3521,24 @@ function HVACPlanStudioApp() {
       return;
     }
     const redlineDrawsWithOneTouch =
-      fieldRedline.open &&
+      redlineOwnsCanvas &&
       !["select", "erase"].includes(fieldRedline.activeTool);
     const directTouchEdit = event.pointerType === "touch"
       && (
         Boolean(
-          fieldRedline.open &&
+          redlineOwnsCanvas &&
           (fieldRedline.pendingDetail || fieldRedline.pendingCopy)
         ) ||
         redlineDrawsWithOneTouch ||
+        planToolAcceptsDirectTouch ||
         (
           planEditControlKind === "redline" &&
-          fieldRedline.open &&
+          redlineOwnsCanvas &&
           ["select", "erase"].includes(fieldRedline.activeTool)
         ) ||
         (
           planEditControlKind === "hvac" &&
-          !fieldRedline.open &&
+          !redlineOwnsCanvas &&
           activeTool === "select"
         )
       );
@@ -4079,7 +4131,7 @@ function HVACPlanStudioApp() {
     const index = branchOpportunityCursor % opportunities.length;
     const opportunity = opportunities[index];
     setBranchOpportunityCursor((index + 1) % opportunities.length);
-    setActiveTool("branch");
+    activatePlanTool("branch");
     setSelectedId(null);
     setPendingBranchFittingId(null);
     setBranchPlacementResult(null);
@@ -5329,7 +5381,7 @@ function HVACPlanStudioApp() {
     };
     setHistory([...drawings, symbol]);
     selectOnly(symbol.id);
-    setActiveTool("select");
+    activatePlanTool("select");
     setBranchMessage(`${label} placed for review · connected duct sizes were not changed`);
   }
 
@@ -6051,7 +6103,7 @@ function HVACPlanStudioApp() {
     if (!drawingIds.length) return;
     setSelectedIds(drawingIds);
     setSelectedId(drawingIds[0]);
-    setActiveTool("select");
+    activatePlanTool("select");
   }
 
   function exportRoomScheduleCsv() {
@@ -6493,7 +6545,7 @@ function HVACPlanStudioApp() {
     setActiveSystem(drawingSystem(drawing));
     setSelectedId(drawing.id);
     setSelectedIds([drawing.id]);
-    setActiveTool("select");
+    activatePlanTool("select");
     if (drawing.page !== pageNumber || renderedPageNumber !== drawing.page) {
       pendingFocusRef.current = {
         page: drawing.page,
@@ -9304,7 +9356,7 @@ function HVACPlanStudioApp() {
     const run = drawings.find((drawing) => drawing.id === selectedId && !drawing.fitting && !drawing.symbol && ["supply", "return", "fresh"].includes(drawing.type));
     if (!run || drawingLocked(run)) return;
     const endpoint = fromStart ? run.points[0] : run.points[run.points.length - 1];
-    setActiveTool(run.type);
+    activatePlanTool(run.type);
     setActiveSystem(drawingSystem(run));
     setDuctSize(run.size);
     setDraft([endpoint]);
@@ -9452,7 +9504,7 @@ function HVACPlanStudioApp() {
     const last = run.points[run.points.length - 1];
     const lastDistance = Math.hypot(last.x - portPoint.x, last.y - portPoint.y);
     const endpoint = firstDistance > lastDistance ? run.points[0] : last;
-    setActiveTool(run.type);
+    activatePlanTool(run.type);
     setActiveSystem(drawingSystem(run));
     setDuctSize(run.size);
     setDraft([endpoint]);
@@ -9567,7 +9619,7 @@ function HVACPlanStudioApp() {
     setActiveRoomMarkupRoomId(room.id);
     setPendingRoomMarkupCandidateId(candidateId);
     setShowAssistantSuggestionLayer(true);
-    setActiveTool("select");
+    activatePlanTool("select");
     setBranchMessage(`${room.roomName}: click the new ghost location on the plan · no drawing will change`);
     if (window.matchMedia("(max-width: 720px)").matches) {
       setShowMarkupAssistant(false);
@@ -9846,7 +9898,12 @@ function HVACPlanStudioApp() {
   }
 
   function handleDrawingClick(event: PointerEvent<SVGSVGElement>) {
-    if ((event.pointerType === "touch" && !pendingRoomMarkupCandidateId) || event.button !== 0 || panRef.current || touchGestureRef.current) return;
+    if (
+      (event.pointerType === "touch" && !planToolAcceptsDirectTouch) ||
+      event.button !== 0 ||
+      panRef.current ||
+      touchGestureRef.current
+    ) return;
     if (activeEditPointerIdRef.current !== null && activeEditPointerIdRef.current !== event.pointerId) return;
     const rawPoint = canvasPoint(event);
     if (copyPlacement) {
@@ -9925,7 +9982,7 @@ function HVACPlanStudioApp() {
         setCalibrating(false);
         setScaleHelperReturnPending(false);
         setMeasureDraft([]);
-        setActiveTool("select");
+        activatePlanTool("select");
         setBranchMessage(`Scale calibrated from ${feet} ft · measurements are ready`);
         if (returnToHelper) window.requestAnimationFrame(() => openMarkupAssistant("setup"));
       }
@@ -10206,7 +10263,7 @@ function HVACPlanStudioApp() {
     if (!upstream || !downstream || upstream.points.length < 2 || downstream.points.length < 2) {
       clearDeletedDrawingState([fitting.id]);
       setHistory(removeDeletedDrawingReferences(drawings, [fitting.id]));
-      setActiveTool("select");
+      activatePlanTool("select");
       setBranchMessage("T/Y fitting deleted · incomplete routes kept in place · Undo restores it");
       return;
     }
@@ -10256,7 +10313,7 @@ function HVACPlanStudioApp() {
       });
     clearDeletedDrawingState([fitting.id]);
     setHistory([...retained, healedMain]);
-    setActiveTool("select");
+    activatePlanTool("select");
     setBranchMessage("T/Y fitting deleted · main run healed · branch route kept · Undo restores it");
   }
 
@@ -10305,7 +10362,7 @@ function HVACPlanStudioApp() {
       return;
     }
     finishDrawing();
-    setActiveTool("select");
+    activatePlanTool("select");
     selectOnly(null);
     setCopyPlacement({
       template,
@@ -10341,7 +10398,7 @@ function HVACPlanStudioApp() {
   function finishCopyPlacement() {
     const lastPlacedId = copyPlacement?.placedIds.at(-1) || null;
     setCopyPlacement(null);
-    setActiveTool("select");
+    activatePlanTool("select");
     selectOnly(lastPlacedId);
     setBranchMessage(
       lastPlacedId
@@ -10515,7 +10572,7 @@ function HVACPlanStudioApp() {
 
   function startSupplyDrawingPass() {
     finishDrawing();
-    setActiveTool("supply");
+    activatePlanTool("supply");
     setSelectedId(null);
     setLeftPanelView("draw");
     openToolsPanel();
@@ -10535,11 +10592,11 @@ function HVACPlanStudioApp() {
     if (!returnDevices.length) {
       setSymbolCategory("Return air");
       setActivePresetId("return-standard");
-      setActiveTool("returnGrille");
+      activatePlanTool("returnGrille");
       setLeftPanelView("symbols");
       setBranchMessage("Place the return grille or can, then draw its red route");
     } else if (!returnRuns.length) {
-      setActiveTool("return");
+      activatePlanTool("return");
       setLeftPanelView("draw");
       setBranchMessage("Draw the red return route from the grille or can to the unit");
     } else {
@@ -10555,7 +10612,7 @@ function HVACPlanStudioApp() {
       openMarkupAssistant("fix-plan");
       return;
     }
-    setActiveTool("select");
+    activatePlanTool("select");
     openToolsPanel();
   }
 
@@ -12116,7 +12173,7 @@ function HVACPlanStudioApp() {
         return;
       }
       if (target?.closest("input, select, textarea, button, [data-canvas-ui]")) return;
-      if (fieldRedline.open) {
+      if (redlineOwnsCanvas) {
         if (event.key === "Escape") {
           event.preventDefault();
           if (fieldRedline.pendingCopy) {
@@ -12258,7 +12315,7 @@ function HVACPlanStudioApp() {
           event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0,
         );
       }
-      if (!event.ctrlKey && !event.metaKey && key === "v") setActiveTool("select");
+      if (!event.ctrlKey && !event.metaKey && key === "v") activatePlanTool("select");
       const toolShortcut: Record<string, string> = {
         s: "supply",
         b: "branch",
@@ -12271,7 +12328,7 @@ function HVACPlanStudioApp() {
       };
       if (!event.ctrlKey && !event.metaKey && toolShortcut[key]) {
         finishDrawing();
-        setActiveTool(toolShortcut[key]);
+        activatePlanTool(toolShortcut[key]);
       }
       if (pdf && event.key === "PageUp") {
         event.preventDefault();
@@ -13497,7 +13554,7 @@ function HVACPlanStudioApp() {
     setScaleHelperReturnPending(true);
     setCalibrating(true);
     setMeasureDraft([]);
-    setActiveTool("measure");
+    activatePlanTool("measure");
     openToolsPanel();
     setBranchMessage(detectedLabel
       ? `${detectedLabel} was found on the plan · confirm it by picking two points on a known distance`
@@ -13507,7 +13564,7 @@ function HVACPlanStudioApp() {
   function cancelPlanScaleCalibration() {
     setCalibrating(false);
     setMeasureDraft([]);
-    setActiveTool("select");
+    activatePlanTool("select");
     const returnToHelper = scaleHelperReturnPending;
     setScaleHelperReturnPending(false);
     if (returnToHelper) window.requestAnimationFrame(() => openMarkupAssistant("setup"));
@@ -13672,7 +13729,7 @@ function HVACPlanStudioApp() {
       group: "Draw",
       shortcut: "S",
       recommended: true,
-      run: () => { finishDrawing(); setActiveTool("supply"); },
+      run: () => { finishDrawing(); activatePlanTool("supply"); },
     },
     {
       id: "return-run",
@@ -13680,7 +13737,7 @@ function HVACPlanStudioApp() {
       detail: `Draw a ${ductSize}" return route on the active sheet`,
       group: "Draw",
       shortcut: "R",
-      run: () => { finishDrawing(); setActiveTool("return"); },
+      run: () => { finishDrawing(); activatePlanTool("return"); },
     },
     {
       id: "branch-pass",
@@ -13688,7 +13745,7 @@ function HVACPlanStudioApp() {
       detail: "Draw routes first, then split and attach each reviewed fitting",
       group: "Draw",
       shortcut: "B",
-      run: () => { finishDrawing(); setBranchWorkflow("run-first"); setActiveTool("branch"); },
+      run: () => { finishDrawing(); setBranchWorkflow("run-first"); activatePlanTool("branch"); },
     },
     {
       id: "markup-assistant",
@@ -13876,7 +13933,7 @@ function HVACPlanStudioApp() {
           </nav>
           <div className="tool-list">
             {tools.filter(({ id }) => ["select", "supply", "branch", "return", "fresh"].includes(id)).map(({ id, label, icon: Icon, tone }) => (
-              <button className={`tool ${activeTool === id ? "active" : ""}`} key={label} onClick={() => { finishDrawing(); setActiveTool(id); setSelectedId(null); setPendingBranchFittingId(null); setQueuedBranchRunId(null); setBranchHoverRunId(null); setBranchPreview(null); setSymbolPreview(null); }}>
+              <button className={`tool ${activeTool === id ? "active" : ""}`} key={label} onClick={() => { finishDrawing(); activatePlanTool(id); setSelectedId(null); setPendingBranchFittingId(null); setQueuedBranchRunId(null); setBranchHoverRunId(null); setBranchPreview(null); setSymbolPreview(null); }}>
                 <span className={`tool-icon ${tone || ""}`}><Icon size={19} /></span>
                 <span>{label}</span>
                 {activeTool === id && <kbd>{id === "select" ? "V" : "●"}</kbd>}
@@ -13901,7 +13958,7 @@ function HVACPlanStudioApp() {
               <div className="branch-mode-toggle" role="group" aria-label="T/Y placement workflow">
                 <button className={branchWorkflow === "run-first" ? "active" : ""} onClick={() => {
                   finishDrawing();
-                  setActiveTool("branch");
+                  activatePlanTool("branch");
                   setBranchWorkflow("run-first");
                   setPendingBranchFittingId(null);
                   setQueuedBranchRunId(null);
@@ -13912,7 +13969,7 @@ function HVACPlanStudioApp() {
                 }}>Run first</button>
                 <button className={branchWorkflow === "place-first" ? "active" : ""} onClick={() => {
                   finishDrawing();
-                  setActiveTool("branch");
+                  activatePlanTool("branch");
                   setBranchWorkflow("place-first");
                   setPendingBranchFittingId(null);
                   setQueuedBranchRunId(null);
@@ -13931,7 +13988,7 @@ function HVACPlanStudioApp() {
               </label>
               <button className="branch-arm" onClick={() => {
                 finishDrawing();
-                setActiveTool("branch");
+                activatePlanTool("branch");
                 setSelectedId(null);
                 setPendingBranchFittingId(null);
                 setBranchHoverRunId(null);
@@ -14032,8 +14089,7 @@ function HVACPlanStudioApp() {
                         className={`symbol-catalog-card ${item.id === activePresetId ? "selected" : ""}`}
                         title={`${item.label} · ${item.size} · ${symbolFamily(item)}`}
                         onClick={() => {
-                          setActivePresetId(item.id);
-                          setPlacementRotation(0);
+                           armSymbolPlacement(item, true);
                         }}
                       >
                         <svg viewBox="-30 -27 60 54" aria-hidden="true">
@@ -14064,11 +14120,7 @@ function HVACPlanStudioApp() {
               })()}
               <button className={`place-symbol ${symbolTools.includes(activeTool as SymbolKind) ? "active" : ""}`} onClick={() => {
                 const preset = symbolPresets.find((item) => item.id === activePresetId)!;
-                finishDrawing();
-                setActiveTool(preset.kind);
-                setSelectedId(null);
-                setBranchPreview(null);
-                setSymbolPreview(null);
+                armSymbolPlacement(preset);
               }}>
                 <Grid3X3 size={16} />
                 Place {symbolPresets.find((preset) => preset.id === activePresetId)?.label}
@@ -14076,7 +14128,7 @@ function HVACPlanStudioApp() {
               <small>Choose a catalog family, move the preview onto the plan, then use the wheel to rotate 15°. Hold Shift for 45°. Click to place.</small>
             </div>
             {tools.filter(({ id }) => id === "measure").map(({ id, label, icon: Icon, tone }) => (
-              <button className={`tool ${activeTool === id ? "active" : ""}`} key={label} onClick={() => { finishDrawing(); setActiveTool(id); setSelectedId(null); }}>
+              <button className={`tool ${activeTool === id ? "active" : ""}`} key={label} onClick={() => { finishDrawing(); activatePlanTool(id); setSelectedId(null); }}>
                 <span className={`tool-icon ${tone || ""}`}><Icon size={19} /></span><span>{label}</span>
               </button>
             ))}
@@ -14312,7 +14364,7 @@ function HVACPlanStudioApp() {
                   const fitting = drawings.find((drawing) => drawing.id === selectedId && drawing.fitting);
                   if (!fitting) return;
                   setPendingBranchFittingId(fitting.id);
-                  setActiveTool("branch");
+                  activatePlanTool("branch");
                   setBranchPreview(null);
                   setBranchMessage("Click anywhere on the blue run you want attached to Port 3");
                 }}>Pick Port 3 run on plan</button>
@@ -14539,9 +14591,9 @@ function HVACPlanStudioApp() {
               <button aria-label="Save working copy" onClick={saveProject}><Save size={15} /></button>
             </div>
             <span className="divider" />
-            <button onClick={() => setActiveTool("select")}><MousePointer2 size={16} /> {activeTool === "select" ? "Select" : tools.find((tool) => tool.id === activeTool)?.label}</button>
+            <button onClick={() => activatePlanTool("select")}><MousePointer2 size={16} /> {activeTool === "select" ? "Select" : tools.find((tool) => tool.id === activeTool)?.label}</button>
             <span className="divider" />
-            <button className={activeTool === "select" ? "active" : ""} aria-label="Pan drawing" title="Right-click and drag anywhere to pan the plan. Left-click stays reserved for drawing and selecting. On tablets, use two fingers to pan or pinch; use a stylus to draw." onClick={() => setActiveTool("select")}><Hand size={16} /> Grab plan</button>
+            <button className={activeTool === "select" ? "active" : ""} aria-label="Pan drawing" title="Right-click and drag anywhere to pan the plan. Left-click stays reserved for drawing and selecting. On tablets, use two fingers to pan or pinch; use a stylus to draw." onClick={() => activatePlanTool("select")}><Hand size={16} /> Grab plan</button>
             <button aria-label="Zoom out" onClick={zoomOut} disabled={!pdf}><ZoomOut size={17} /></button>
             <strong>{Math.round(zoom * 100)}%</strong>
             <button aria-label="Zoom in" onClick={zoomIn} disabled={!pdf}><ZoomIn size={17} /></button>
@@ -14692,7 +14744,7 @@ function HVACPlanStudioApp() {
               {!selectedDrawingLocked && selectedDrawing?.symbol && <button title="Use compact icon and label sizes" onClick={compactSelectedSymbol}><Minimize2 size={15} /> Compact</button>}
               {!selectedDrawingLocked && selectedRun && selectedIds.length === 1 && <button title="Continue drawing from the first endpoint" onClick={() => extendSelectedRun(true)}><Route size={15} /> Extend A</button>}
               {!selectedDrawingLocked && selectedRun && selectedIds.length === 1 && <button title="Continue drawing from the last endpoint" onClick={() => extendSelectedRun(false)}><Route size={15} /> Extend B</button>}
-              {!selectedDrawingLocked && selectedRun && selectedIds.length === 1 && <button className={splitMode ? "active" : ""} title="Click the selected run where it should split" onClick={() => { setActiveTool("select"); setSplitMode((enabled) => !enabled); }}><Scissors size={15} /> Split</button>}
+              {!selectedDrawingLocked && selectedRun && selectedIds.length === 1 && <button className={splitMode ? "active" : ""} title="Click the selected run where it should split" onClick={() => { activatePlanTool("select"); setSplitMode((enabled) => !enabled); }}><Scissors size={15} /> Split</button>}
               {!selectedDrawingLocked && selectedRun && selectedRunHasLabel && selectedIds.length === 1 && <button title="Make the duct label smaller" onClick={() => adjustSelectedRunLabelScale(-1)}>Label −</button>}
               {!selectedDrawingLocked && selectedRun && selectedRunHasLabel && selectedIds.length === 1 && <button title="Make the duct label larger" onClick={() => adjustSelectedRunLabelScale(1)}>Label +</button>}
               {!selectedDrawingLocked && selectedRun && selectedRunHasLabel && selectedIds.length === 1 && <button title="Reset the duct label position and size" onClick={resetSelectedRunLabel}>Reset label</button>}
@@ -14735,7 +14787,7 @@ function HVACPlanStudioApp() {
               onExtendA={() => extendSelectedRun(true)}
               onExtendB={() => extendSelectedRun(false)}
               onSplit={() => {
-                setActiveTool("select");
+                activatePlanTool("select");
                 setSplitMode((enabled) => !enabled);
               }}
               onDelete={deleteSelected}
@@ -14971,41 +15023,41 @@ function HVACPlanStudioApp() {
                   ) : null}
                   <svg
                     ref={planOverlayRef}
-                    tabIndex={fieldRedline.open ? 0 : -1}
+                    tabIndex={redlineOwnsCanvas ? 0 : -1}
                     aria-label="Plan drawing canvas"
-                    className={`drawing-layer tool-${activeTool} ${copyPlacement ? "copy-place-active" : ""} ${fieldRedline.open ? `field-redline-active redline-tool-${fieldRedline.activeTool}` : ""}`}
+                    className={`drawing-layer tool-${activeTool} ${copyPlacement ? "copy-place-active" : ""} ${redlineOwnsCanvas ? `field-redline-active redline-tool-${fieldRedline.activeTool}` : ""}`}
                     viewBox={`0 0 ${renderSize.width || 1} ${renderSize.height || 1}`}
-                    onPointerDownCapture={fieldRedline.open ? undefined : handleRoomMarkupPlacementCapture}
+                    onPointerDownCapture={redlineOwnsCanvas ? undefined : handleRoomMarkupPlacementCapture}
                     onPointerDown={(event) => {
-                      if (fieldRedline.open) {
+                      if (redlineOwnsCanvas) {
                         fieldRedline.handlePointerDown(event);
                         return;
                       }
                       handleDrawingClick(event);
                     }}
                     onPointerMove={(event) => {
-                      if (fieldRedline.open) {
+                      if (redlineOwnsCanvas) {
                         fieldRedline.handlePointerMove(event);
                         return;
                       }
                       handlePointerMove(event);
                     }}
                     onPointerUp={(event) => {
-                      if (fieldRedline.open) {
+                      if (redlineOwnsCanvas) {
                         fieldRedline.finishPointer(event);
                         return;
                       }
                       endDrag(event);
                     }}
                     onPointerCancel={(event) => {
-                      if (fieldRedline.open) {
+                      if (redlineOwnsCanvas) {
                         fieldRedline.finishPointer(event, true);
                         return;
                       }
                       endDrag(event, true);
                     }}
                     onLostPointerCapture={(event) => {
-                      if (fieldRedline.open) {
+                      if (redlineOwnsCanvas) {
                         fieldRedline.finishPointer(event, true);
                         return;
                       }
@@ -15208,8 +15260,8 @@ function HVACPlanStudioApp() {
                     {fieldRedline.renderedDocument && fieldRedline.binding && fieldRedline.activeLayer && <g
                       className={`field-redline-layer-host ${fieldRedline.pendingDetail ? "is-detail-previewing" : ""} ${fieldRedline.pendingCopy ? "is-copy-previewing" : ""}`}
                       data-export-role="field-redlines"
-                      aria-hidden={!fieldRedline.open}
-                      style={{ pointerEvents: fieldRedline.open ? "auto" : "none" }}
+                      aria-hidden={!redlineOwnsCanvas}
+                      style={{ pointerEvents: redlineOwnsCanvas ? "auto" : "none" }}
                     >
                       <RedlineCanvasErrorBoundary
                         key={`${pdfFingerprint}:${pageNumber}:${fieldRedline.open}:${fieldRedline.activeTool}`}
@@ -15227,20 +15279,30 @@ function HVACPlanStudioApp() {
                           layer={fieldRedline.activeLayer}
                           annotations={fieldRedline.renderedDocument.annotations}
                           selection={{
-                            annotationIds: fieldRedline.pendingCopy
+                            annotationIds: fieldRedline.pendingCopy ||
+                                fieldRedline.activeTool !== "select"
                               ? []
                               : fieldRedline.selection,
-                            bounds: fieldRedline.pendingCopy
+                            bounds: fieldRedline.pendingCopy ||
+                                fieldRedline.activeTool !== "select"
                               ? undefined
                               : fieldRedline.selectionBounds || undefined,
                           }}
                           transient={fieldRedline.transient}
                           interactive={
-                            fieldRedline.open && !fieldRedline.pendingDetail
+                            redlineOwnsCanvas && !fieldRedline.pendingDetail
                           }
                           onAnnotationPointerDown={(annotationId, event) => {
                             setRedlineWheelKeyboardOpen(false);
                             fieldRedline.handleAnnotationPointerDown(annotationId, event);
+                          }}
+                          onTextResizePointerDown={(annotationId, origin, event) => {
+                            setRedlineWheelKeyboardOpen(false);
+                            fieldRedline.handleTextResizePointerDown(
+                              annotationId,
+                              origin,
+                              event,
+                            );
                           }}
                           onAnnotationFocus={(annotationId) => fieldRedline.select([annotationId])}
                           onAnnotationActivate={openRedlineSelectionWheelFromKeyboard}
@@ -15864,7 +15926,7 @@ function HVACPlanStudioApp() {
               <div className="balance-system-hero">
                 <span><Wind size={18} /></span>
                 <div><small>PLANNING AIRFLOW</small><strong>{activeAirflowSetup.targetCfm} CFM</strong><p>{activeAirflowSetup.equipment.length} indoor airflow source{activeAirflowSetup.equipment.length === 1 ? "" : "s"} · editable 400 CFM/ton starting value</p></div>
-                <button disabled={!activeAirflowSetup.primaryUnit} onClick={() => { setSelectedId(activeAirflowSetup.primaryUnit?.id || null); setActiveTool("select"); }}>Select unit</button>
+                <button disabled={!activeAirflowSetup.primaryUnit} onClick={() => { setSelectedId(activeAirflowSetup.primaryUnit?.id || null); activatePlanTool("select"); }}>Select unit</button>
               </div>
               <div className="balance-system-grid">
                 <div className={activeAirflowSetup.supplyBalanced ? "good" : "attention"}><span>Supply scheduled</span><strong>{activeAirflowSetup.supplyCfm}</strong><small>{activeAirflowSetup.supplyGap > 0 ? `${activeAirflowSetup.supplyGap} remaining` : activeAirflowSetup.supplyGap < 0 ? `${Math.abs(activeAirflowSetup.supplyGap)} over` : "Target matched"}</small></div>
@@ -15879,7 +15941,7 @@ function HVACPlanStudioApp() {
               </div>
               {networkBalanceRows().length ? <div className="network-balance-list compact">
                 {networkBalanceRows().map((row) => <div className={`network-balance-card ${row.balanced ? "balanced" : "attention"}`} key={row.unit.id}>
-                  <button className="network-unit-heading" onClick={() => { setSelectedId(row.unit.id); setActiveTool("select"); }}>
+                  <button className="network-unit-heading" onClick={() => { setSelectedId(row.unit.id); activatePlanTool("select"); }}>
                     <span><strong>{row.unit.symbol?.label || "HVAC EQUIPMENT"}</strong><small>{row.rootRunId ? `${row.runCount} runs · ${row.fittingCount} fittings · ${row.terminalCount} connected supplies` : "Supply trunk not connected"}</small></span>
                     <b>{row.balanced ? "SUPPLY OK" : row.rootRunId ? "REVIEW" : "DISCONNECTED"}</b>
                   </button>
@@ -15948,7 +16010,7 @@ function HVACPlanStudioApp() {
                 {terminalCfmProposals().length ? <div className="cfm-proposal-list">
                   {terminalCfmProposals().map((proposal) => <div className={!proposal.connected ? "disconnected" : ""} key={proposal.id}>
                     <input aria-label={`Approve ${proposal.room} ${proposal.label} CFM change`} type="checkbox" disabled={!roomAirflowTargetsAreReviewed() || !proposal.connected} checked={selectedCfmProposalIds.includes(proposal.id)} onChange={() => setSelectedCfmProposalIds((current) => current.includes(proposal.id) ? current.filter((id) => id !== proposal.id) : [...current, proposal.id])} />
-                    <button onClick={() => { setSelectedId(proposal.drawingId); setActiveTool("select"); }}>
+                    <button onClick={() => { setSelectedId(proposal.drawingId); activatePlanTool("select"); }}>
                       <span><strong>{proposal.room} · {proposal.kind}</strong><small>{proposal.label} · {proposal.connected ? "connected" : "connect before release"}</small></span>
                       <b>{proposal.current} → {proposal.proposed}</b>
                     </button>
@@ -15970,7 +16032,7 @@ function HVACPlanStudioApp() {
               {sizingSuggestions().length ? <div className="balance-run-list">
                 {sizingSuggestions().map((suggestion) => <div className={`balance-run-row ${suggestion.overCapacity ? "over-capacity" : ""}`} key={suggestion.id}>
                   <input aria-label={`Approve ${suggestion.room} duct size change`} type="checkbox" disabled={suggestion.overCapacity || !suggestion.applyEligible || !suggestion.airflowReviewed} checked={selectedSizingIds.includes(suggestion.id)} onChange={() => toggleSizingSuggestion(suggestion.id)} />
-                  <button onClick={() => { setSelectedId(suggestion.id); setActiveTool("select"); }}>
+                  <button onClick={() => { setSelectedId(suggestion.id); activatePlanTool("select"); }}>
                     <span><strong>{suggestion.room} · {suggestion.type.toUpperCase()}</strong><small>{suggestion.cfm} CFM · {suggestion.currentVelocity} FPM now · {suggestion.velocity} FPM proposed</small></span>
                     <b>{suggestion.current}″ → {suggestion.recommended}″</b>
                   </button>
@@ -15994,7 +16056,7 @@ function HVACPlanStudioApp() {
             </div>
             {networkBalanceRows().length ? <div className="network-balance-list">
               {networkBalanceRows().map((row) => <div className={`network-balance-card ${row.balanced ? "balanced" : "attention"}`} key={row.unit.id}>
-                <button className="network-unit-heading" onClick={() => { setSelectedId(row.unit.id); setActiveTool("select"); }}>
+                <button className="network-unit-heading" onClick={() => { setSelectedId(row.unit.id); activatePlanTool("select"); }}>
                   <span><strong>{row.unit.symbol?.label || "HVAC EQUIPMENT"}</strong><small>{row.rootRunId ? `${row.runCount} runs · ${row.fittingCount} fittings · ${row.terminalCount} diffusers` : "Supply trunk not connected"}</small></span>
                   <b>{row.balanced ? "SCHEDULE ALIGNED" : row.rootRunId ? "REVIEW" : "DISCONNECTED"}</b>
                 </button>
@@ -16016,7 +16078,7 @@ function HVACPlanStudioApp() {
                   <span className={row.overloadedPorts ? "warning" : "clear"}>{row.overloadedPorts} undersized</span>
                   <span className={row.progressionCount ? "warning" : "clear"}>{row.progressionCount} progression</span>
                 </div>
-                {row.firstProblemFittingId && <button className="network-problem-action" onClick={() => { setSelectedId(row.firstProblemFittingId!); setActiveTool("select"); }}>
+                {row.firstProblemFittingId && <button className="network-problem-action" onClick={() => { setSelectedId(row.firstProblemFittingId!); activatePlanTool("select"); }}>
                   Select first problem branch
                 </button>}
               </div>)}
@@ -16499,7 +16561,7 @@ function HVACPlanStudioApp() {
                   if (drawingId) {
                     setSelectedId(drawingId);
                     setSelectedIds([drawingId]);
-                    setActiveTool("select");
+                    activatePlanTool("select");
                   }
                 }}><AlertTriangle size={12} /><span><strong>{room.name}</strong><small>{room.supplyCfm} supply CFM · no assigned return path</small></span></button>)}
               </div> : <p>Every supplied bedroom with room data has an assigned return path. Verify transfer paths and pressure in the field.</p>}
@@ -16542,7 +16604,7 @@ function HVACPlanStudioApp() {
                       disabled={suggestion.overCapacity || !suggestion.applyEligible || !suggestion.airflowReviewed}
                       onChange={() => toggleSizingSuggestion(suggestion.id)}
                     />
-                    <button onClick={() => { setSelectedId(suggestion.id); setActiveTool("select"); }}>
+                    <button onClick={() => { setSelectedId(suggestion.id); activatePlanTool("select"); }}>
                       <span>
                         <strong>{suggestion.type.toUpperCase()} · {suggestion.cfm} CFM · {suggestion.room}</strong>
                         <small>{suggestion.current}″ existing → {suggestion.recommended}″ recommended · {suggestion.currentVelocity} → {suggestion.velocity} FPM</small>
@@ -16565,7 +16627,7 @@ function HVACPlanStudioApp() {
               </button>
               {showReducerReview && <div className="reducer-review-list">
                 {reducerRecommendations().length ? reducerRecommendations().map((recommendation) => <div key={recommendation.id}>
-                  <button className="reducer-select" onClick={() => { setSelectedId(recommendation.id); setActiveTool("select"); }}>
+                  <button className="reducer-select" onClick={() => { setSelectedId(recommendation.id); activatePlanTool("select"); }}>
                     <span><strong>{recommendation.reducing ? "REDUCER" : "TRANSITION"} · {recommendation.current}″ → {recommendation.recommended}″</strong><small>{recommendation.type.toUpperCase()} · {recommendation.cfm} CFM · {recommendation.run.roomName?.trim() || "Room unassigned"}</small></span>
                     <b>{recommendation.currentVelocity} → {recommendation.velocity} FPM</b>
                   </button>
@@ -16586,7 +16648,7 @@ function HVACPlanStudioApp() {
                   <button
                     className={issue.severity}
                     key={issue.id}
-                    onClick={() => { setSelectedId(issue.fittingId); setActiveTool("select"); }}
+                    onClick={() => { setSelectedId(issue.fittingId); activatePlanTool("select"); }}
                   >
                     <AlertTriangle size={13} />
                     <span><strong>{issue.title}</strong><small>{issue.detail}</small></span>
@@ -16623,7 +16685,7 @@ function HVACPlanStudioApp() {
                 <div><dt>Highest segment loss</dt><dd>{activeSystemScaleStatus.verified ? `${pressureSummary().highestDrop.toFixed(2)} in. w.g.` : "Scale unverified"}</dd></div>
                 <div><dt>Runs reviewed</dt><dd>{pressureSummary().runs.length}</dd></div>
               </dl>
-              {activeSystemScaleStatus.verified && pressureSummary().highestRun && <button onClick={() => { setSelectedId(pressureSummary().highestRun!.id); setActiveTool("select"); }}>
+              {activeSystemScaleStatus.verified && pressureSummary().highestRun && <button onClick={() => { setSelectedId(pressureSummary().highestRun!.id); activatePlanTool("select"); }}>
                 Select highest-loss run
               </button>}
               <p>Planning estimate only. Final available static pressure requires equipment data, filters, coils, grilles, fittings, and field measurements.</p>
@@ -17156,7 +17218,7 @@ function HVACPlanStudioApp() {
           finishDrawing();
           setBranchWorkflow("run-first");
           setQueuedBranchRunId(opportunity.branchRunId);
-          setActiveTool("branch");
+          activatePlanTool("branch");
           setBranchPreview({
             center: opportunity.center,
             angle: opportunity.angle,

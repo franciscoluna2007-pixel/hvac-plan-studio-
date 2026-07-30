@@ -53,6 +53,7 @@ import type {
 } from "./FieldRedlineStudio";
 import {
   isRedlineMarkTool,
+  redlineDragShapeBounds,
   redlineMarkAnnotationKind,
   redlineMarkBounds,
   redlineMarkStyle,
@@ -106,6 +107,16 @@ type ActiveRedlinePointer =
       start: RedlinePoint;
       current: RedlinePoint;
       annotationIds: string[];
+      sourceDocument: RedlineDocument;
+    }
+  | {
+      kind: "resize-text";
+      pointerId: number;
+      annotationId: string;
+      originClient: RedlinePoint;
+      startDistance: number;
+      originalTextScale: number;
+      currentTextScale: number;
       sourceDocument: RedlineDocument;
     };
 
@@ -163,6 +174,28 @@ function annotationKindForTool(
     return tool;
   }
   return null;
+}
+
+function isRedlineDragShapeTool(
+  tool: FieldRedlineTool,
+): tool is "rectangle" | "circle" {
+  return tool === "rectangle" || tool === "circle";
+}
+
+function textScaleFromResizePointer(
+  active: Extract<ActiveRedlinePointer, { kind: "resize-text" }>,
+  clientX: number,
+  clientY: number,
+) {
+  const distance = Math.hypot(
+    clientX - active.originClient.x,
+    clientY - active.originClient.y,
+  );
+  const factor = distance / Math.max(1, active.startDistance);
+  return Math.max(
+    0.5,
+    Math.min(4, active.originalTextScale * factor),
+  );
 }
 
 function viewportForSvg(svg: SVGSVGElement) {
@@ -289,6 +322,14 @@ function transientAnnotation(
       size: markSize,
     })
     : null;
+  const dragShapeBounds = isRedlineDragShapeTool(active.tool)
+    ? redlineDragShapeBounds({
+      start: active.start,
+      pointer: active.current,
+      pageAspectRatio,
+    })
+    : null;
+  if (isRedlineDragShapeTool(active.tool) && !dragShapeBounds) return null;
   return {
     id: "redline-transient",
     kind: annotationKind,
@@ -298,8 +339,8 @@ function transientAnnotation(
       annotationKind,
       isRedlineMarkTool(active.tool) ? redlineMarkStyle(style) : style,
     ),
-    start: markBounds?.start || active.start,
-    end: markBounds?.end || active.current,
+    start: markBounds?.start || dragShapeBounds?.start || active.start,
+    end: markBounds?.end || dragShapeBounds?.end || active.current,
     ...(active.tool === "text" ? { text: "Text" } : {}),
   };
 }
@@ -566,6 +607,7 @@ export function useFieldRedlineController({
 
   const setTool = useCallback((tool: FieldRedlineTool) => {
     setActiveTool(tool);
+    if (tool !== "select") select([]);
     const kind = annotationKindForTool(tool);
     if (kind) {
       setStyle((current) =>
@@ -586,10 +628,14 @@ export function useFieldRedlineController({
     activePointerRef.current = null;
     if (tool === "pen") {
       message("Draw freehand · press, drag, and release for one smooth stroke");
+    } else if (tool === "highlight") {
+      message("Highlight anywhere on the PDF - press, drag, and release");
+    } else if (isRedlineDragShapeTool(tool)) {
+      message("Press and drag from one corner to draw the exact size");
     } else if (isRedlineMarkTool(tool)) {
       message("Press and drag to draw the exact size · very small circles and squares are supported");
     }
-  }, [clearScheduledTransient, message]);
+  }, [clearScheduledTransient, message, select]);
 
   const updateLayer = useCallback(
     (layer: RedlineLayer) => {
@@ -617,10 +663,6 @@ export function useFieldRedlineController({
         ? "pen"
         : favorite.kind === "highlighter"
           ? "highlight"
-          : favorite.kind === "circle" && favorite.style.fillColor
-            ? "round-mark"
-            : favorite.kind === "rectangle" && favorite.style.fillColor
-              ? "square-mark"
           : favorite.kind,
     );
   }, []);
@@ -877,6 +919,79 @@ export function useFieldRedlineController({
     [activeLayer, activeTool, history, open, pendingCopy, runCommand, select],
   );
 
+  const handleTextResizePointerDown = useCallback(
+    (
+      annotationId: string,
+      resizeOrigin: RedlinePoint,
+      event: ReactPointerEvent<SVGCircleElement>,
+    ) => {
+      if (
+        !open ||
+        !history ||
+        !activeLayer ||
+        activeLayer.locked ||
+        activeTool !== "select" ||
+        pendingCopy
+      ) {
+        return false;
+      }
+      if (
+        !redlinePointerCanDraw(event.nativeEvent, {
+          allowTouch: true,
+        })
+      ) {
+        return false;
+      }
+      const annotation = history.present.annotations.find(
+        (candidate) =>
+          candidate.id === annotationId &&
+          candidate.kind === "text" &&
+          (!binding || bindingMatches(candidate, binding)),
+      );
+      const svg = event.currentTarget.ownerSVGElement;
+      if (annotation?.kind !== "text" || !svg) return false;
+      const viewport = svg.getBoundingClientRect();
+      const originClient = {
+        x: viewport.left + resizeOrigin.x * viewport.width,
+        y: viewport.top + resizeOrigin.y * viewport.height,
+      };
+      const startDistance = Math.max(
+        1,
+        Math.hypot(
+          event.clientX - originClient.x,
+          event.clientY - originClient.y,
+        ),
+      );
+      select([annotation.id]);
+      svg.setPointerCapture(event.pointerId);
+      activePointerRef.current = {
+        kind: "resize-text",
+        pointerId: event.pointerId,
+        annotationId: annotation.id,
+        originClient,
+        startDistance,
+        originalTextScale: annotation.style.textScale ?? 1,
+        currentTextScale: annotation.style.textScale ?? 1,
+        sourceDocument: history.present,
+      };
+      setPreviewDocument(null);
+      event.preventDefault();
+      event.stopPropagation();
+      message("Drag to resize this text - its location stays fixed");
+      return true;
+    },
+    [
+      activeLayer,
+      activeTool,
+      binding,
+      history,
+      message,
+      open,
+      pendingCopy,
+      select,
+    ],
+  );
+
   const handlePointerMove = useCallback(
     (event: ReactPointerEvent<SVGSVGElement>) => {
       const active = activePointerRef.current;
@@ -935,8 +1050,27 @@ export function useFieldRedlineController({
         return true;
       }
       if (!active || active.pointerId !== event.pointerId) return false;
+      if (!history || !activeLayer || !binding) return false;
+      if (active.kind === "resize-text") {
+        active.currentTextScale = textScaleFromResizePointer(
+          active,
+          event.clientX,
+          event.clientY,
+        );
+        const preview = applyRedlineCommand(active.sourceDocument, {
+          type: "update-selection-style",
+          annotationIds: [active.annotationId],
+          changes: { textScale: active.currentTextScale },
+        });
+        setPreviewDocument(
+          preview.changed ? preview.document : active.sourceDocument,
+        );
+        event.preventDefault();
+        event.stopPropagation();
+        return true;
+      }
       const point = normalizedPointFromEvent(event);
-      if (!point || !history || !activeLayer || !binding) return false;
+      if (!point) return false;
       if (active.kind === "stroke") {
         const remaining = Math.max(
           0,
@@ -1037,26 +1171,34 @@ export function useFieldRedlineController({
       event.preventDefault();
       event.stopPropagation();
       if (!cancelled) {
-        const point = normalizedPointFromEvent(event);
-        if (active.kind === "stroke") {
-          const remaining = Math.max(
-            0,
-            REDLINE_POLICY_LIMITS.maxPointsPerStroke -
-              active.samples.length,
+        if (active.kind === "resize-text") {
+          active.currentTextScale = textScaleFromResizePointer(
+            active,
+            event.clientX,
+            event.clientY,
           );
-          active.samples.push(
-            ...normalizeCoalescedRedlineSamples(
-              event.nativeEvent,
-              viewportForSvg(event.currentTarget),
-              active.samples.at(-1),
-            ).slice(0, remaining),
-          );
-        } else if (point && (
-          active.kind === "callout" ||
-          active.kind === "selection-box" ||
-          active.kind === "move"
-        )) {
-          active.current = { x: point.x, y: point.y };
+        } else {
+          const point = normalizedPointFromEvent(event);
+          if (active.kind === "stroke") {
+            const remaining = Math.max(
+              0,
+              REDLINE_POLICY_LIMITS.maxPointsPerStroke -
+                active.samples.length,
+            );
+            active.samples.push(
+              ...normalizeCoalescedRedlineSamples(
+                event.nativeEvent,
+                viewportForSvg(event.currentTarget),
+                active.samples.at(-1),
+              ).slice(0, remaining),
+            );
+          } else if (point && (
+            active.kind === "callout" ||
+            active.kind === "selection-box" ||
+            active.kind === "move"
+          )) {
+            active.current = { x: point.x, y: point.y };
+          }
         }
       }
       activePointerRef.current = null;
@@ -1077,7 +1219,10 @@ export function useFieldRedlineController({
           layerId: activeLayer.id,
           style,
         });
-        if (draft) runCommand({ type: "add-annotation", draft });
+        if (draft) {
+          runCommand({ type: "add-annotation", draft });
+          select([]);
+        }
       } else if (active.kind === "callout") {
         const annotationKind = annotationKindForTool(active.tool);
         if (!annotationKind || annotationKind === "ink" || annotationKind === "highlighter") {
@@ -1097,6 +1242,29 @@ export function useFieldRedlineController({
               page,
               layerId: activeLayer.id,
               style: redlineMarkStyle(style),
+              start: bounds.start,
+              end: bounds.end,
+            },
+          });
+          return true;
+        }
+        if (isRedlineDragShapeTool(active.tool)) {
+          const bounds = redlineDragShapeBounds({
+            start: active.start,
+            pointer: active.current,
+            pageAspectRatio,
+          });
+          if (!bounds) {
+            message("Press and drag to draw a circle or square");
+            return true;
+          }
+          runCommand({
+            type: "add-annotation",
+            draft: {
+              kind: annotationKind,
+              page,
+              layerId: activeLayer.id,
+              style: redlineOutlineStyle(style),
               start: bounds.start,
               end: bounds.end,
             },
@@ -1176,6 +1344,18 @@ export function useFieldRedlineController({
             delta,
           });
         }
+      } else if (active.kind === "resize-text") {
+        if (
+          Math.abs(
+            active.currentTextScale - active.originalTextScale,
+          ) >= 0.005
+        ) {
+          runCommand({
+            type: "update-selection-style",
+            annotationIds: [active.annotationId],
+            changes: { textScale: active.currentTextScale },
+          });
+        }
       }
       return true;
     },
@@ -1184,6 +1364,7 @@ export function useFieldRedlineController({
       binding,
       history,
       markSize,
+      message,
       page,
       pageAspectRatio,
       runCommand,
@@ -1197,6 +1378,7 @@ export function useFieldRedlineController({
     (current: RedlineStudioDialogState) => {
       if (!history || !binding) return;
       if (current.kind === "text") {
+        let textSaved = false;
         if (current.annotationId && current.text.trim()) {
           const annotation = history.present.annotations.find(
             (candidate) =>
@@ -1212,6 +1394,7 @@ export function useFieldRedlineController({
                 text: current.text.trim(),
               },
             });
+            textSaved = true;
           }
         } else if (pendingText && current.text.trim()) {
           runCommand({
@@ -1226,8 +1409,13 @@ export function useFieldRedlineController({
               text: current.text.trim(),
             },
           });
+          textSaved = true;
         }
         setPendingText(null);
+        if (textSaved) {
+          setActiveTool("select");
+          message("Text selected - drag it to move, or drag the corner to resize");
+        }
       } else if (current.kind === "details") {
         if (current.mode === "save") {
           runCommand({
@@ -1485,6 +1673,7 @@ export function useFieldRedlineController({
     applyStyleToSelection,
     handlePointerDown,
     handleAnnotationPointerDown,
+    handleTextResizePointerDown,
     handlePointerMove,
     finishPointer,
     handleDialogConfirm,
