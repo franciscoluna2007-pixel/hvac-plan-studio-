@@ -159,8 +159,8 @@ function singleSelectionActions(
     },
     {
       id: "duplicate",
-      label: "Duplicate redline",
-      shortLabel: "Copy",
+      label: "Copy redline and place it with the mouse",
+      shortLabel: "Copy & place",
       icon: Copy,
       disabled: props.canDuplicate === false,
     },
@@ -210,8 +210,8 @@ function multipleSelectionActions(
     },
     {
       id: "duplicate",
-      label: "Duplicate selected redlines",
-      shortLabel: "Copy",
+      label: "Copy selected redlines and place them with the mouse",
+      shortLabel: "Copy & place",
       icon: Copy,
       disabled: props.canDuplicate === false,
     },

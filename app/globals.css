@@ -15689,6 +15689,11 @@ textarea:focus-visible,
   accent-color: #69d5ff;
 }
 
+.redline-size-help {
+  grid-column: 1 / -1;
+  color: #8eb5ca;
+}
+
 .redline-apply-style {
   width: 100%;
   padding-inline: 10px;
@@ -15842,6 +15847,61 @@ textarea:focus-visible,
 .drawing-layer.field-redline-active.redline-tool-text,
 .drawing-layer.field-redline-active.redline-tool-lasso {
   cursor: crosshair;
+}
+
+.drawing-layer.copy-place-active {
+  cursor: copy;
+}
+
+.copy-place-preview {
+  opacity: .48;
+  filter: drop-shadow(0 0 5px rgba(0, 174, 239, .85));
+  pointer-events: none;
+}
+
+.redline-transient-copy {
+  opacity: .48;
+  filter: drop-shadow(0 0 5px rgba(0, 174, 239, .85));
+  pointer-events: none;
+}
+
+.copy-place-hud {
+  position: absolute;
+  z-index: 25;
+  top: 12px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(520px, calc(100% - 24px));
+  padding: 8px 10px 8px 13px;
+  color: #e9f9ff;
+  background: rgba(6, 31, 45, .94);
+  border: 1px solid rgba(92, 211, 255, .56);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .34);
+  transform: translateX(-50%);
+}
+
+.copy-place-hud span {
+  display: grid;
+  gap: 1px;
+  font-size: 11px;
+}
+
+.copy-place-hud strong {
+  color: #72d8ff;
+  font-size: 12px;
+}
+
+.copy-place-hud button {
+  min-width: 58px;
+  min-height: 34px;
+  color: #061a25;
+  background: #72d8ff;
+  border: 0;
+  border-radius: 8px;
+  font-weight: 800;
 }
 
 .drawing-layer.field-redline-active.redline-tool-erase {
@@ -16345,8 +16405,11 @@ textarea:focus-visible,
   .redline-transient-draft,
   .redline-transient-lasso,
   .redline-transient-selection-box,
+  .redline-transient-copy,
   .redline-selection-overlay,
-  .redline-hit-target {
+  .redline-hit-target,
+  .copy-place-preview,
+  .copy-place-hud {
     display: none !important;
   }
 }

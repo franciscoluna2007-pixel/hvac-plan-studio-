@@ -127,6 +127,11 @@ import {
   stepDuctLabelScale,
 } from "./ductLabelEditing";
 import {
+  buildStandalonePlanCopyTemplate,
+  materializeStandalonePlanCopy,
+  type StandalonePlanCopyTemplate,
+} from "./planCopyPlacement";
+import {
   buildFieldRedlineExportPlan,
   downloadFieldRedlineExportArtifact,
   renderFieldRedlineExportArtifact,
@@ -1557,6 +1562,11 @@ function HVACPlanStudioApp() {
   const [branchPreview, setBranchPreview] = useState<BranchPreview | null>(null);
   const [pendingBranchFittingId, setPendingBranchFittingId] = useState<string | null>(null);
   const [symbolPreview, setSymbolPreview] = useState<{ kind: SymbolKind; point: Point } | null>(null);
+  const [copyPlacement, setCopyPlacement] = useState<{
+    template: StandalonePlanCopyTemplate<Drawing>;
+    preview: Drawing | null;
+    placedIds: string[];
+  } | null>(null);
   const [branchMessage, setBranchMessage] = useState("");
   const [branchPlacementResult, setBranchPlacementResult] = useState<{ fittingId: string; message: string } | null>(null);
   const [branchOpportunityCursor, setBranchOpportunityCursor] = useState(0);
@@ -1809,12 +1819,14 @@ function HVACPlanStudioApp() {
       fieldRedlineLaunchRef.current = document.activeElement;
     }
     finishDrawing();
+    setCopyPlacement(null);
     setActiveTool("select");
     selectOnly(null);
     setFieldRedlineMessage(
-      "Field redlines stay separate from runs, CFM, sizes, and connections.",
+      "Draw is ready · press and drag for one smooth freehand stroke.",
     );
     fieldRedline.setOpen(true);
+    fieldRedline.setTool("pen");
   }
 
   function closeFieldRedlineStudio() {
@@ -1903,8 +1915,21 @@ function HVACPlanStudioApp() {
     pdfStageRef.current.style.transform = `translate3d(${camera.x}px, ${camera.y}px, 0)`;
   }, [camera.x, camera.y, pdf, renderSize.height, renderSize.width]);
   const cameraRef = useRef(camera);
-  const clipboardRef = useRef<Drawing | null>(null);
+  const clipboardRef = useRef<StandalonePlanCopyTemplate<Drawing> | null>(null);
   const placementWheelAtRef = useRef(0);
+
+  useEffect(() => {
+    clipboardRef.current = null;
+    setCopyPlacement(null);
+  }, [pdfFingerprint]);
+
+  useEffect(() => {
+    setCopyPlacement(null);
+  }, [pageNumber]);
+
+  useEffect(() => {
+    if (activeTool !== "select") setCopyPlacement(null);
+  }, [activeTool]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3089,6 +3114,46 @@ function HVACPlanStudioApp() {
     if (!pdf) return;
     event.preventDefault();
     if (touchGestureRef.current || panRef.current || activeEditPointerIdRef.current !== null) return;
+    if (copyPlacement) {
+      if (!event.deltaY || !copyPlacement.template.source.symbol) return;
+      const now = performance.now();
+      if (now - placementWheelAtRef.current < 55) return;
+      placementWheelAtRef.current = now;
+      const step = event.shiftKey ? 45 : 15;
+      const direction = event.deltaY > 0 ? 1 : -1;
+      setCopyPlacement((current) => {
+        if (!current?.template.source.symbol) return current;
+        const rotation =
+          (
+            Number(current.template.source.symbol.rotation || 0) +
+            direction * step +
+            360
+          ) % 360;
+        return {
+          ...current,
+          template: {
+            ...current.template,
+            source: {
+              ...current.template.source,
+              symbol: {
+                ...current.template.source.symbol,
+                rotation,
+              },
+            },
+          },
+          preview: current.preview?.symbol
+            ? {
+                ...current.preview,
+                symbol: {
+                  ...current.preview.symbol,
+                  rotation,
+                },
+              }
+            : current.preview,
+        };
+      });
+      return;
+    }
     if (symbolPreview && symbolTools.includes(activeTool as SymbolKind)) {
       if (!event.deltaY) return;
       const now = performance.now();
@@ -3379,12 +3444,40 @@ function HVACPlanStudioApp() {
     const planEditControlKind = planEditControl?.getAttribute(
       "data-plan-edit-control",
     );
+    if (copyPlacement && event.button === 2) {
+      event.preventDefault();
+      event.stopPropagation();
+      finishCopyPlacement();
+      return;
+    }
+    if (copyPlacement) return;
+    if (fieldRedline.open && event.pointerType !== "touch") {
+      if (fieldRedline.pendingCopy && event.button === 2) {
+        event.preventDefault();
+        event.stopPropagation();
+        fieldRedline.cancelCopyPlacement();
+        return;
+      }
+      if (event.button === 2) {
+        startPlanPan(event);
+        return;
+      }
+      if (event.pointerType === "pen") {
+        cancelTouchNavigation(event.currentTarget);
+        activePenPointerIdRef.current = event.pointerId;
+        lastPenActivityRef.current = performance.now();
+      }
+      return;
+    }
     const redlineDrawsWithOneTouch =
       fieldRedline.open &&
       !["select", "erase"].includes(fieldRedline.activeTool);
     const directTouchEdit = event.pointerType === "touch"
       && (
-        Boolean(fieldRedline.open && fieldRedline.pendingDetail) ||
+        Boolean(
+          fieldRedline.open &&
+          (fieldRedline.pendingDetail || fieldRedline.pendingCopy)
+        ) ||
         redlineDrawsWithOneTouch ||
         (
           planEditControlKind === "redline" &&
@@ -9746,7 +9839,7 @@ function HVACPlanStudioApp() {
   function handleRoomMarkupPlacementCapture(
     event: PointerEvent<SVGSVGElement>,
   ) {
-    if (!pendingRoomMarkupCandidateId) return;
+    if (!pendingRoomMarkupCandidateId && !copyPlacement) return;
     event.preventDefault();
     event.stopPropagation();
     handleDrawingClick(event);
@@ -9756,6 +9849,49 @@ function HVACPlanStudioApp() {
     if ((event.pointerType === "touch" && !pendingRoomMarkupCandidateId) || event.button !== 0 || panRef.current || touchGestureRef.current) return;
     if (activeEditPointerIdRef.current !== null && activeEditPointerIdRef.current !== event.pointerId) return;
     const rawPoint = canvasPoint(event);
+    if (copyPlacement) {
+      if (drawingLocked(copyPlacement.template.source)) {
+        setBranchMessage("Unlock the destination HVAC layer before placing the copied item");
+        return;
+      }
+      const id = crypto.randomUUID();
+      const placed = materializeStandalonePlanCopy(
+        copyPlacement.template,
+        {
+          sourceFingerprint: pdfFingerprint,
+          page: pageNumber,
+          point: rawPoint,
+          id,
+          systemId: activeSystem,
+          feetPerUnit: scaleFeetPerUnit,
+        },
+      );
+      if (!placed) {
+        setCopyPlacement(null);
+        setBranchMessage("This copied item no longer matches the open PDF. Copy it again.");
+        return;
+      }
+      setHistory([...drawings, placed]);
+      setCopyPlacement((current) => current
+        ? {
+            ...current,
+            preview: materializeStandalonePlanCopy(
+              current.template,
+              {
+                sourceFingerprint: pdfFingerprint,
+                page: pageNumber,
+                point: rawPoint,
+                id: "copy-place-preview",
+                systemId: activeSystem,
+                feetPerUnit: scaleFeetPerUnit,
+              },
+            ),
+            placedIds: [...current.placedIds, id],
+          }
+        : null);
+      setBranchMessage("Placed · move and click again · Esc or right-click finishes");
+      return;
+    }
     if (pendingRoomMarkupCandidateId) {
       const normalizedPoint = {
         x: Math.max(0, Math.min(1, rawPoint.x / Math.max(1, renderSize.width))),
@@ -10124,68 +10260,94 @@ function HVACPlanStudioApp() {
     setBranchMessage("T/Y fitting deleted · main run healed · branch route kept · Undo restores it");
   }
 
-  function copySelected() {
+  function selectedStandaloneCopyTemplate() {
+    if (selectedIds.length > 1) {
+      setBranchMessage("Copy & place one standalone item at a time; connected duct networks stay protected");
+      return null;
+    }
     const selected = drawings.find((drawing) => drawing.id === selectedId);
-    if (!selected) return;
+    if (!selected) return null;
     if (drawingLocked(selected)) {
-      setBranchMessage("Unlock this HVAC layer before copying the object");
-      return;
+      setBranchMessage("Unlock this HVAC layer before copying the item");
+      return null;
     }
     if (!selected.symbol && !selected.measurement) {
-      setBranchMessage("Copy is limited to icons and measurements so duct connections cannot be duplicated accidentally");
+      setBranchMessage("Copy & place works for diffusers, grilles, equipment, notes, controls, and measurements. Connected duct routes and T/Y fittings stay protected.");
+      return null;
+    }
+    const template = buildStandalonePlanCopyTemplate(selected, pdfFingerprint);
+    if (!template) {
+      setBranchMessage("Open a PDF before using Copy & place");
+      return null;
+    }
+    return template;
+  }
+
+  function armCopyPlacement(
+    template: StandalonePlanCopyTemplate<Drawing>,
+  ) {
+    if (template.sourceFingerprint !== pdfFingerprint) {
+      clipboardRef.current = null;
+      setCopyPlacement(null);
+      setBranchMessage("That copied item belongs to a different PDF. Copy it again on this plan.");
       return;
     }
-    clipboardRef.current = structuredClone(selected);
+    if (
+      template.source.measurement &&
+      template.sourcePage !== pageNumber &&
+      !scaleVerified
+    ) {
+      setBranchMessage("Confirm this sheet scale before placing a copied measurement here.");
+      return;
+    }
+    if (drawingLocked(template.source)) {
+      setBranchMessage("Unlock the destination HVAC layer before placing the copied item");
+      return;
+    }
+    finishDrawing();
+    setActiveTool("select");
+    selectOnly(null);
+    setCopyPlacement({
+      template,
+      preview: null,
+      placedIds: [],
+    });
+    setBranchMessage("Copy follows your mouse · click to place as many as you need · Esc or right-click finishes");
+  }
+
+  function copySelected() {
+    const template = selectedStandaloneCopyTemplate();
+    if (!template) return;
+    clipboardRef.current = template;
+    setBranchMessage("Copied · press Ctrl+V or choose Copy & place to position it with the mouse");
   }
 
   function pasteDrawing() {
-    const copied = clipboardRef.current;
-    if (!copied) return;
-    if (drawingLocked(copied)) {
-      setBranchMessage("Unlock the destination HVAC layer before pasting the object");
+    const template = clipboardRef.current;
+    if (!template) {
+      setBranchMessage("Select and copy a diffuser, grille, equipment item, note, control, or measurement first");
       return;
     }
-    if (!copied.symbol && !copied.measurement) {
-      setBranchMessage("Paste is limited to icons and measurements so duct connections stay intact");
-      return;
-    }
-    const pasted: Drawing = {
-      ...structuredClone(copied),
-      id: crypto.randomUUID(),
-      page: pageNumber,
-      points: copied.points.map((point) => ({ x: point.x + 18, y: point.y + 18 })),
-      symbol: copied.symbol ? { ...structuredClone(copied.symbol), connectedRunId: undefined, connectedEnd: undefined, returnRunId: undefined, returnEnd: undefined } : undefined,
-    };
-    setHistory([...drawings, pasted]);
-    selectOnly(pasted.id);
-    clipboardRef.current = structuredClone(pasted);
+    armCopyPlacement(template);
   }
 
   function duplicateSelected() {
-    if (selectedIds.length > 1) {
-      setBranchMessage("Duplicate one icon or measurement at a time; connected duct networks are protected");
-      return;
-    }
-    const selected = drawings.find((drawing) => drawing.id === selectedId);
-    if (!selected) return;
-    if (drawingLocked(selected)) {
-      setBranchMessage("Unlock this HVAC layer before duplicating the object");
-      return;
-    }
-    if (!selected.symbol && !selected.measurement) {
-      setBranchMessage("Duplicate is limited to icons and measurements so duct connections stay intact");
-      return;
-    }
-    const duplicate: Drawing = {
-      ...structuredClone(selected),
-      id: crypto.randomUUID(),
-      page: pageNumber,
-      points: selected.points.map((point) => ({ x: point.x + 18, y: point.y + 18 })),
-      symbol: selected.symbol ? { ...structuredClone(selected.symbol), connectedRunId: undefined, connectedEnd: undefined, returnRunId: undefined, returnEnd: undefined } : undefined,
-    };
-    clipboardRef.current = structuredClone(duplicate);
-    setHistory([...drawings, duplicate]);
-    selectOnly(duplicate.id);
+    const template = selectedStandaloneCopyTemplate();
+    if (!template) return;
+    clipboardRef.current = template;
+    armCopyPlacement(template);
+  }
+
+  function finishCopyPlacement() {
+    const lastPlacedId = copyPlacement?.placedIds.at(-1) || null;
+    setCopyPlacement(null);
+    setActiveTool("select");
+    selectOnly(lastPlacedId);
+    setBranchMessage(
+      lastPlacedId
+        ? `${copyPlacement?.placedIds.length || 0} copied item${copyPlacement?.placedIds.length === 1 ? "" : "s"} placed · Undo removes the last one`
+        : "Copy & place cancelled · the plan was not changed",
+    );
   }
 
   function mirrorSelectedHorizontal() {
@@ -11217,6 +11379,28 @@ function HVACPlanStudioApp() {
     if (panRef.current || touchGestureRef.current || (event.pointerType === "touch" && !dragRef.current)) return;
     const raw = canvasPoint(event);
     const drag = dragRef.current;
+    if (copyPlacement && !drag) {
+      const preview = materializeStandalonePlanCopy(
+        copyPlacement.template,
+        {
+          sourceFingerprint: pdfFingerprint,
+          page: pageNumber,
+          point: raw,
+          id: "copy-place-preview",
+          systemId: activeSystem,
+          feetPerUnit: scaleFeetPerUnit,
+        },
+      );
+      setCopyPlacement((current) => current
+        ? { ...current, preview }
+        : null);
+      setHoverPoint(null);
+      setSnapMarker(null);
+      setSnapInfo(null);
+      setAlignmentGuides([]);
+      event.preventDefault();
+      return;
+    }
     if (drag && drag.pointerId !== event.pointerId) return;
     if (selectionBox && selectionBox.pointerId !== event.pointerId) return;
     if ((drag || selectionBox) && activeEditPointerIdRef.current !== event.pointerId) return;
@@ -11935,6 +12119,10 @@ function HVACPlanStudioApp() {
       if (fieldRedline.open) {
         if (event.key === "Escape") {
           event.preventDefault();
+          if (fieldRedline.pendingCopy) {
+            fieldRedline.cancelCopyPlacement();
+            return;
+          }
           fieldRedline.setTool("select");
           fieldRedline.select([]);
           return;
@@ -12000,6 +12188,11 @@ function HVACPlanStudioApp() {
           event.preventDefault();
           goToPage(pageNumber + 1);
         }
+        return;
+      }
+      if (copyPlacement && event.key === "Escape") {
+        event.preventDefault();
+        finishCopyPlacement();
         return;
       }
       if (event.key === "Escape") {
@@ -12162,6 +12355,7 @@ function HVACPlanStudioApp() {
     selectedRunLabelPoint || selectedRunGeometryWheelAnchor;
   const planSelectionActionsVisible =
     activeTool === "select" &&
+    !copyPlacement &&
     !splitMode &&
     !calibrating &&
     !pendingRoomMarkupCandidateId &&
@@ -12174,6 +12368,7 @@ function HVACPlanStudioApp() {
     fieldRedline.open &&
     fieldRedline.activeTool === "select" &&
     !fieldRedline.pendingDetail &&
+    !fieldRedline.pendingCopy &&
     !fieldRedline.dialog;
   const planBoundsToViewportBounds = (bounds: {
     left: number;
@@ -14511,7 +14706,7 @@ function HVACPlanStudioApp() {
               }}>Properties</button>}
               {selectedIds.length === 2 && selectedSelectionAllEditable && <button title="Join the two nearest compatible run endpoints" onClick={joinSelectedRuns}><Route size={15} /> Join runs</button>}
               {!selectedDrawingLocked && selectedIds.length === 1 && (selectedDrawing?.symbol || selectedDrawing?.measurement) && <button title="Mirror selection" onClick={mirrorSelectedHorizontal}><FlipHorizontal2 size={15} /> Mirror</button>}
-              {!selectedDrawingLocked && selectedIds.length === 1 && (selectedDrawing?.symbol || selectedDrawing?.measurement) && <button title="Duplicate selection" onClick={duplicateSelected}><Copy size={15} /> Duplicate</button>}
+              {!selectedDrawingLocked && selectedIds.length === 1 && (selectedDrawing?.symbol || selectedDrawing?.measurement) && <button title="Copy this item and place it with the mouse" onClick={duplicateSelected}><Copy size={15} /> Copy & place</button>}
               {selectedSelectionHasEditable && <button className="danger" title="Delete selection" onClick={deleteSelected}><Trash2 size={15} /></button>}
               <button title="Clear selection" onClick={() => selectOnly(null)}><X size={15} /></button>
             </div>}
@@ -14758,11 +14953,27 @@ function HVACPlanStudioApp() {
               <div ref={pdfStageRef} className="pdf-stage">
                 <div ref={planSheetRef} className="plan-sheet" style={{ width: renderSize.width * zoom, height: renderSize.height * zoom }}>
                   <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} style={{ opacity: backgroundOpacity / 100 }} />
+                  {copyPlacement || fieldRedline.pendingCopy ? (
+                    <div className="copy-place-hud" data-canvas-ui role="status">
+                      <span>
+                        <strong>{fieldRedline.pendingCopy ? "Redline copy follows your mouse" : "Copy follows your mouse"}</strong>
+                        {fieldRedline.pendingCopy
+                          ? "Click to place again · Esc or right-click finishes"
+                          : "Click to place again · wheel rotates · Esc or right-click finishes"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={fieldRedline.pendingCopy
+                          ? fieldRedline.cancelCopyPlacement
+                          : finishCopyPlacement}
+                      >Done</button>
+                    </div>
+                  ) : null}
                   <svg
                     ref={planOverlayRef}
                     tabIndex={fieldRedline.open ? 0 : -1}
                     aria-label="Plan drawing canvas"
-                    className={`drawing-layer tool-${activeTool} ${fieldRedline.open ? `field-redline-active redline-tool-${fieldRedline.activeTool}` : ""}`}
+                    className={`drawing-layer tool-${activeTool} ${copyPlacement ? "copy-place-active" : ""} ${fieldRedline.open ? `field-redline-active redline-tool-${fieldRedline.activeTool}` : ""}`}
                     viewBox={`0 0 ${renderSize.width || 1} ${renderSize.height || 1}`}
                     onPointerDownCapture={fieldRedline.open ? undefined : handleRoomMarkupPlacementCapture}
                     onPointerDown={(event) => {
@@ -14800,19 +15011,44 @@ function HVACPlanStudioApp() {
                       }
                       endDrag(event, true);
                     }}
-                    onPointerLeave={() => { if (!dragRef.current) { setHoverPoint(null); setSnapMarker(null); setSnapInfo(null); setAlignmentGuides([]); setBranchPreview(null); setSymbolPreview(null); } }}
-                    onContextMenu={(event) => event.preventDefault()}
+                    onPointerLeave={() => {
+                      if (!dragRef.current) {
+                        setHoverPoint(null);
+                        setSnapMarker(null);
+                        setSnapInfo(null);
+                        setAlignmentGuides([]);
+                        setBranchPreview(null);
+                        setSymbolPreview(null);
+                        setCopyPlacement((current) => current
+                          ? { ...current, preview: null }
+                          : null);
+                      }
+                    }}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      if (fieldRedline.pendingCopy) {
+                        fieldRedline.cancelCopyPlacement();
+                      } else if (copyPlacement) {
+                        finishCopyPlacement();
+                      }
+                    }}
                   >
-                    {drawings.filter((drawing) => {
+                    {[...drawings, ...(copyPlacement?.preview ? [copyPlacement.preview] : [])].filter((drawing) => {
                       if (drawing.page !== pageNumber) return false;
                       const layer = drawingLayer(drawing);
                       return !layer || visibleLayers[layer];
                     }).map((drawing) => {
                       if (drawing.measurement) {
                         if (!showLengthLabels) return null;
+                        const isCopyPreview = drawing.id === "copy-place-preview";
                         const [a, b] = drawing.points;
                         const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-                        return <g key={drawing.id} className={`measurement ${isSelected(drawing.id) ? "selected-measurement" : ""}`} onPointerDown={(event) => {
+                        return <g
+                          key={drawing.id}
+                          className={`measurement ${isSelected(drawing.id) ? "selected-measurement" : ""} ${isCopyPreview ? "copy-place-preview" : ""}`}
+                          aria-hidden={isCopyPreview || undefined}
+                          style={isCopyPreview ? { pointerEvents: "none" } : undefined}
+                          onPointerDown={(event) => {
                           if (event.button !== 0 || panRef.current || activeTool !== "select" || drawingLocked(drawing)) return;
                           event.stopPropagation();
                           event.shiftKey ? toggleSelection(drawing.id) : selectOnly(drawing.id);
@@ -14824,7 +15060,15 @@ function HVACPlanStudioApp() {
                           <text x={middle.x} y={middle.y - 8} textAnchor="middle">{drawing.measurement.feet.toFixed(1)} FT</text>
                         </g>;
                       }
-                      if (drawing.symbol) return <g key={drawing.id}>{renderSymbol(drawing)}</g>;
+                      if (drawing.symbol) {
+                        const isCopyPreview = drawing.id === "copy-place-preview";
+                        return <g
+                          key={drawing.id}
+                          className={isCopyPreview ? "copy-place-preview" : undefined}
+                          aria-hidden={isCopyPreview || undefined}
+                          style={isCopyPreview ? { pointerEvents: "none" } : undefined}
+                        >{renderSymbol(drawing)}</g>;
+                      }
                       if (drawing.fitting) {
                         const center = drawing.points[0];
                         const axis = drawing.fitting.angle;
@@ -14962,7 +15206,7 @@ function HVACPlanStudioApp() {
                       </g>;
                     })}
                     {fieldRedline.renderedDocument && fieldRedline.binding && fieldRedline.activeLayer && <g
-                      className={`field-redline-layer-host ${fieldRedline.pendingDetail ? "is-detail-previewing" : ""}`}
+                      className={`field-redline-layer-host ${fieldRedline.pendingDetail ? "is-detail-previewing" : ""} ${fieldRedline.pendingCopy ? "is-copy-previewing" : ""}`}
                       data-export-role="field-redlines"
                       aria-hidden={!fieldRedline.open}
                       style={{ pointerEvents: fieldRedline.open ? "auto" : "none" }}
@@ -14983,8 +15227,12 @@ function HVACPlanStudioApp() {
                           layer={fieldRedline.activeLayer}
                           annotations={fieldRedline.renderedDocument.annotations}
                           selection={{
-                            annotationIds: fieldRedline.selection,
-                            bounds: fieldRedline.selectionBounds || undefined,
+                            annotationIds: fieldRedline.pendingCopy
+                              ? []
+                              : fieldRedline.selection,
+                            bounds: fieldRedline.pendingCopy
+                              ? undefined
+                              : fieldRedline.selectionBounds || undefined,
                           }}
                           transient={fieldRedline.transient}
                           interactive={

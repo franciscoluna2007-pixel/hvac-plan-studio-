@@ -23,9 +23,11 @@ import {
   type RedlineCanvasBounds,
   type RedlineCanvasPageSize,
 } from "./redlineVisualBounds";
+import { smoothRedlineStrokePath } from "./redlineStrokePath";
 
 export type RedlineCanvasTransient =
   | { kind: "annotation"; annotation: RedlineAnnotation }
+  | { kind: "annotations"; annotations: readonly RedlineAnnotation[] }
   | { kind: "lasso"; points: readonly RedlinePoint[] }
   | { kind: "selection-box"; start: RedlinePoint; end: RedlinePoint };
 
@@ -84,12 +86,9 @@ function pointsPath(
   points: readonly RedlinePoint[],
   size: RedlineCanvasPageSize,
 ) {
-  return points
-    .map((point, index) => {
-      const safePoint = redlineCanvasPoint(point, size);
-      return `${index === 0 ? "M" : "L"} ${safePoint.x} ${safePoint.y}`;
-    })
-    .join(" ");
+  return smoothRedlineStrokePath(
+    points.map((point) => redlineCanvasPoint(point, size)),
+  );
 }
 
 function annotationLabel(annotation: RedlineAnnotation) {
@@ -500,6 +499,21 @@ export default function RedlineCanvasLayer({
           aria-hidden="true"
         >
           {renderAnnotationShape(transientAnnotation, size)}
+        </g>
+      ) : null}
+
+      {transient?.kind === "annotations" ? (
+        <g
+          className="redline-transient-copy"
+          data-field-redline-transient-role="in-progress-strokes"
+          pointerEvents="none"
+          aria-hidden="true"
+        >
+          {transient.annotations.map((annotation) => (
+            <g key={annotation.id}>
+              {renderAnnotationShape(annotation, size)}
+            </g>
+          ))}
         </g>
       ) : null}
 

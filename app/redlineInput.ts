@@ -164,7 +164,7 @@ export function normalizeCoalescedRedlineSamples(
     .filter((sample) => !previous || !(
       sample.pointerId === previous.pointerId &&
       (previous.t || 0) > 0 &&
-      (sample.t || 0) <= (previous.t || 0)
+      (sample.t || 0) < (previous.t || 0)
     ));
 
   const result: RedlinePointerSample[] = [];

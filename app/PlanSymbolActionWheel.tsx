@@ -209,8 +209,8 @@ function actionsFor(props: PlanActionWheelProps): WheelAction[] {
     },
     {
       id: "duplicate",
-      label: "Duplicate icon",
-      shortLabel: "Copy",
+      label: "Copy icon and place it with the mouse",
+      shortLabel: "Copy & place",
       icon: Copy,
       run: props.onDuplicate,
     },

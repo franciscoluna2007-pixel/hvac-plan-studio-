@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -111,6 +112,11 @@ type ActiveRedlinePointer =
 type PendingText = {
   start: RedlinePoint;
   end: RedlinePoint;
+};
+
+type PendingRedlineCopy = {
+  annotationIds: string[];
+  bounds: NonNullable<ReturnType<typeof redlineSelectionBounds>>;
 };
 
 export type FieldRedlineIssueDraft = {
@@ -315,7 +321,7 @@ export function useFieldRedlineController({
     normalizeRedlineStyle("ink", {}),
   );
   const [stylePanelOpen, setStylePanelOpen] = useState(false);
-  const [markSize, setMarkSize] = useState<RedlineMarkSize>("medium");
+  const [markSize, setMarkSize] = useState<RedlineMarkSize>(0.025);
   const [dialog, setDialogState] =
     useState<RedlineStudioDialogState | null>(null);
   const [transient, setTransient] =
@@ -324,8 +330,39 @@ export function useFieldRedlineController({
     useState<RedlineDocument | null>(null);
   const [pendingDetail, setPendingDetail] =
     useState<RedlineMyDetail | null>(null);
+  const [pendingCopy, setPendingCopy] =
+    useState<PendingRedlineCopy | null>(null);
   const [pendingText, setPendingText] = useState<PendingText | null>(null);
   const activePointerRef = useRef<ActiveRedlinePointer | null>(null);
+  const transientFrameRef = useRef<number | null>(null);
+  const queuedTransientRef = useRef<RedlineCanvasTransient | null>(null);
+
+  const clearScheduledTransient = useCallback(() => {
+    if (transientFrameRef.current !== null) {
+      window.cancelAnimationFrame(transientFrameRef.current);
+      transientFrameRef.current = null;
+    }
+    queuedTransientRef.current = null;
+  }, []);
+
+  const scheduleTransient = useCallback(
+    (next: RedlineCanvasTransient | null) => {
+      queuedTransientRef.current = next;
+      if (transientFrameRef.current !== null) return;
+      transientFrameRef.current = window.requestAnimationFrame(() => {
+        transientFrameRef.current = null;
+        const queued = queuedTransientRef.current;
+        queuedTransientRef.current = null;
+        setTransient(queued);
+      });
+    },
+    [],
+  );
+
+  useEffect(
+    () => () => clearScheduledTransient(),
+    [clearScheduledTransient],
+  );
 
   const document = history?.present || null;
   const activeLayer =
@@ -397,14 +434,16 @@ export function useFieldRedlineController({
       setHistory(nextHistory);
       setQuarantinedSnapshot(null);
       setPreviewDocument(null);
+      clearScheduledTransient();
       setTransient(null);
       setPendingDetail(null);
+      setPendingCopy(null);
       setPendingText(null);
       setDialogState(null);
       setActiveTool("select");
       activePointerRef.current = null;
     },
-    [],
+    [clearScheduledTransient],
   );
 
   const restoreSnapshot = useCallback(
@@ -427,8 +466,10 @@ export function useFieldRedlineController({
         setHistory(emptyHistory);
         setQuarantinedSnapshot(snapshot);
         setPreviewDocument(null);
+        clearScheduledTransient();
         setTransient(null);
         setPendingDetail(null);
+        setPendingCopy(null);
         setPendingText(null);
         setDialogState(null);
         setActiveTool("select");
@@ -443,8 +484,10 @@ export function useFieldRedlineController({
       setHistory(nextHistory);
       setQuarantinedSnapshot(preservedQuarantine ?? null);
       setPreviewDocument(null);
+      clearScheduledTransient();
       setTransient(null);
       setPendingDetail(null);
+      setPendingCopy(null);
       setPendingText(null);
       setDialogState(null);
       setActiveTool("select");
@@ -454,7 +497,7 @@ export function useFieldRedlineController({
       }
       return "restored";
     },
-    [message, resetForSource],
+    [clearScheduledTransient, message, resetForSource],
   );
 
   const runCommand = useCallback(
@@ -479,9 +522,10 @@ export function useFieldRedlineController({
       setHistory(nextHistory);
       if (transition.reason) message(transition.reason);
       setPreviewDocument(null);
+      clearScheduledTransient();
       setTransient(null);
     },
-    [message],
+    [clearScheduledTransient, message],
   );
 
   const select = useCallback((annotationIds: readonly string[]) => {
@@ -497,21 +541,24 @@ export function useFieldRedlineController({
 
   const resetPageInteraction = useCallback(() => {
     activePointerRef.current = null;
+    clearScheduledTransient();
     setTransient(null);
     setPreviewDocument(null);
     setPendingDetail(null);
+    setPendingCopy(null);
     const current = historyRef.current;
     if (!current || !current.selection.length) return;
     const nextHistory = replaceRedlineHistorySelection(current, []);
     historyRef.current = nextHistory;
     setHistory(nextHistory);
-  }, []);
+  }, [clearScheduledTransient]);
 
   const setDialog = useCallback(
     (next: RedlineStudioDialogState | null) => {
       if (!next) {
         setPendingText(null);
       }
+      if (next) setPendingCopy(null);
       setDialogState(next);
     },
     [],
@@ -532,10 +579,17 @@ export function useFieldRedlineController({
         ));
     }
     setPendingDetail(null);
+    setPendingCopy(null);
+    clearScheduledTransient();
     setTransient(null);
     setPreviewDocument(null);
     activePointerRef.current = null;
-  }, []);
+    if (tool === "pen") {
+      message("Draw freehand · press, drag, and release for one smooth stroke");
+    } else if (isRedlineMarkTool(tool)) {
+      message("Press and drag to draw the exact size · very small circles and squares are supported");
+    }
+  }, [clearScheduledTransient, message]);
 
   const updateLayer = useCallback(
     (layer: RedlineLayer) => {
@@ -551,6 +605,7 @@ export function useFieldRedlineController({
         },
       });
       if (layer.locked || !layer.visible) setActiveTool("select");
+      if (layer.locked || !layer.visible) setPendingCopy(null);
     },
     [runCommand],
   );
@@ -629,6 +684,24 @@ export function useFieldRedlineController({
       }
       const point = normalizedPointFromEvent(event);
       if (!point) return false;
+      if (pendingCopy) {
+        const center = {
+          x: (pendingCopy.bounds.left + pendingCopy.bounds.right) / 2,
+          y: (pendingCopy.bounds.top + pendingCopy.bounds.bottom) / 2,
+        };
+        event.preventDefault();
+        event.stopPropagation();
+        runCommand({
+          type: "duplicate-selection",
+          annotationIds: pendingCopy.annotationIds,
+          offset: {
+            x: point.x - center.x,
+            y: point.y - center.y,
+          },
+        });
+        message("Redline copy placed · move and click again · Esc or Done finishes");
+        return true;
+      }
       if (pendingDetail) {
         event.preventDefault();
         event.stopPropagation();
@@ -735,8 +808,10 @@ export function useFieldRedlineController({
       history,
       open,
       pendingDetail,
+      pendingCopy,
       pageAspectRatio,
       markSize,
+      message,
       runCommand,
       select,
       style,
@@ -749,6 +824,7 @@ export function useFieldRedlineController({
       event: ReactPointerEvent<SVGGElement>,
     ) => {
       if (!open || !history || !activeLayer || activeLayer.locked) return false;
+      if (pendingCopy) return false;
       if (
         !redlinePointerCanDraw(event.nativeEvent, {
           allowTouch: activeTool === "select" || activeTool === "erase",
@@ -798,12 +874,42 @@ export function useFieldRedlineController({
       event.stopPropagation();
       return true;
     },
-    [activeLayer, activeTool, history, open, runCommand, select],
+    [activeLayer, activeTool, history, open, pendingCopy, runCommand, select],
   );
 
   const handlePointerMove = useCallback(
     (event: ReactPointerEvent<SVGSVGElement>) => {
       const active = activePointerRef.current;
+      if (
+        !active &&
+        open &&
+        pendingCopy &&
+        history
+      ) {
+        const point = normalizedPointFromEvent(event);
+        if (!point) return false;
+        const center = {
+          x: (pendingCopy.bounds.left + pendingCopy.bounds.right) / 2,
+          y: (pendingCopy.bounds.top + pendingCopy.bounds.bottom) / 2,
+        };
+        const preview = applyRedlineCommand(history.present, {
+          type: "duplicate-selection",
+          annotationIds: pendingCopy.annotationIds,
+          offset: {
+            x: point.x - center.x,
+            y: point.y - center.y,
+          },
+        });
+        const previewIds = new Set(preview.selection);
+        setTransient({
+          kind: "annotations",
+          annotations: preview.document.annotations.filter((annotation) =>
+            previewIds.has(annotation.id)),
+        });
+        event.preventDefault();
+        event.stopPropagation();
+        return true;
+      }
       if (
         !active &&
         open &&
@@ -852,7 +958,7 @@ export function useFieldRedlineController({
           pageAspectRatio,
           markSize,
         );
-        setTransient(
+        scheduleTransient(
           annotation ? { kind: "annotation", annotation } : null,
         );
       } else if (active.kind === "callout") {
@@ -915,7 +1021,9 @@ export function useFieldRedlineController({
       open,
       pageAspectRatio,
       pendingDetail,
+      pendingCopy,
       style,
+      scheduleTransient,
     ],
   );
 
@@ -955,6 +1063,7 @@ export function useFieldRedlineController({
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
+      clearScheduledTransient();
       setTransient(null);
       setPreviewDocument(null);
       if (cancelled || !history || !activeLayer || !binding) return true;
@@ -1080,6 +1189,7 @@ export function useFieldRedlineController({
       runCommand,
       select,
       style,
+      clearScheduledTransient,
     ],
   );
 
@@ -1181,10 +1291,23 @@ export function useFieldRedlineController({
     ) => {
       if (!annotationIds.length) return;
       if (action === "duplicate") {
-        runCommand({
-          type: "duplicate-selection",
+        const current = historyRef.current;
+        const bounds = current
+          ? redlineSelectionBounds(current.present, annotationIds)
+          : null;
+        if (!bounds) {
+          message("Select redlines from one PDF sheet before using Copy & place");
+          return;
+        }
+        setPendingCopy({
           annotationIds: [...annotationIds],
+          bounds,
         });
+        setActiveTool("select");
+        clearScheduledTransient();
+        setTransient(null);
+        setPreviewDocument(null);
+        message("Redline copy follows your mouse · click to place it again · Esc or Done finishes");
       } else if (action === "scale-down" || action === "scale-up") {
         runCommand({
           type: "scale-selection",
@@ -1267,8 +1390,16 @@ export function useFieldRedlineController({
         });
       }
     },
-    [pageAspectRatio, runCommand],
+    [clearScheduledTransient, message, pageAspectRatio, runCommand],
   );
+
+  const cancelCopyPlacement = useCallback(() => {
+    setPendingCopy(null);
+    clearScheduledTransient();
+    setTransient(null);
+    setPreviewDocument(null);
+    message("Redline Copy & place finished");
+  }, [clearScheduledTransient, message]);
 
   const applyStyleToSelection = useCallback(
     (nextStyle: RedlineStyle) => {
@@ -1340,6 +1471,8 @@ export function useFieldRedlineController({
     setDialog,
     transient,
     pendingDetail,
+    pendingCopy,
+    cancelCopyPlacement,
     resetPageInteraction,
     resetForSource,
     restoreSnapshot,

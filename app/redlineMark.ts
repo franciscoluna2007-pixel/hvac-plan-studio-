@@ -10,6 +10,8 @@ export const REDLINE_MARK_TOOLS = [
 ] as const;
 
 export const REDLINE_MARK_SIZES = [
+  "micro",
+  "tiny",
   "small",
   "medium",
   "large",
@@ -17,9 +19,13 @@ export const REDLINE_MARK_SIZES = [
 ] as const;
 
 export type RedlineMarkTool = typeof REDLINE_MARK_TOOLS[number];
-export type RedlineMarkSize = typeof REDLINE_MARK_SIZES[number];
+export type RedlineMarkSize =
+  | typeof REDLINE_MARK_SIZES[number]
+  | number;
 
-const MARK_RADIUS_BY_SIZE: Record<RedlineMarkSize, number> = {
+const MARK_RADIUS_BY_SIZE: Record<typeof REDLINE_MARK_SIZES[number], number> = {
+  micro: 0.0025,
+  tiny: 0.0075,
   small: 0.015,
   medium: 0.025,
   large: 0.04,
@@ -61,6 +67,13 @@ export function redlineOutlineStyle(style: RedlineStyle): RedlineStyle {
   return outlineStyle;
 }
 
+export function redlineMarkRadius(size: RedlineMarkSize = "medium") {
+  if (typeof size === "number") {
+    return clamp(finite(size, MARK_RADIUS_BY_SIZE.medium), 0.0005, 0.15);
+  }
+  return MARK_RADIUS_BY_SIZE[size] || MARK_RADIUS_BY_SIZE.medium;
+}
+
 export function redlineMarkBounds(input: {
   center: RedlinePoint;
   pointer: RedlinePoint;
@@ -84,8 +97,8 @@ export function redlineMarkBounds(input: {
     Math.abs(pointer.x - center.x),
     Math.abs(pointer.y - center.y) / aspectRatio,
   );
-  const presetRadius = MARK_RADIUS_BY_SIZE[input.size || "medium"];
-  const requestedRadius = dragRadius >= 0.006 ? dragRadius : presetRadius;
+  const presetRadius = redlineMarkRadius(input.size);
+  const requestedRadius = dragRadius >= 0.00025 ? dragRadius : presetRadius;
   const radiusX = Math.min(
     requestedRadius,
     0.5,
@@ -124,6 +137,6 @@ export function redlineMarkBounds(input: {
       x: rounded(clamp(right)),
       y: rounded(clamp(bottom)),
     },
-    usedPreset: dragRadius < 0.006,
+    usedPreset: dragRadius < 0.00025,
   };
 }
