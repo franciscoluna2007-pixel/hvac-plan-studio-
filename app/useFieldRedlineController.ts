@@ -57,7 +57,6 @@ import {
   redlineMarkAnnotationKind,
   redlineMarkBounds,
   redlineMarkStyle,
-  redlineOutlineStyle,
   type RedlineMarkSize,
   type RedlineMarkTool,
 } from "./redlineMark";
@@ -68,6 +67,12 @@ import type {
   RedlineSelectionAction,
 } from "./RedlineActionWheel";
 import { shouldCancelStaleRedlinePointerMove } from "./pointerLifecycle";
+import {
+  loadRedlineEraserSize,
+  normalizeRedlineEraserSize,
+  redlineEraserHitIds,
+  saveRedlineEraserSize,
+} from "./redlineEraser";
 
 type ActiveRedlinePointer =
   | {
@@ -118,6 +123,14 @@ type ActiveRedlinePointer =
       startDistance: number;
       originalTextScale: number;
       currentTextScale: number;
+      sourceDocument: RedlineDocument;
+    }
+  | {
+      kind: "erase";
+      pointerId: number;
+      current: RedlinePoint;
+      size: number;
+      annotationIds: Set<string>;
       sourceDocument: RedlineDocument;
     };
 
@@ -183,6 +196,10 @@ function isRedlineDragShapeTool(
   return tool === "rectangle" || tool === "circle";
 }
 
+function redlineDragShapeStyle(style: RedlineStyle): RedlineStyle {
+  return style.fillColor ? redlineMarkStyle(style) : style;
+}
+
 function textScaleFromResizePointer(
   active: Extract<ActiveRedlinePointer, { kind: "resize-text" }>,
   clientX: number,
@@ -243,6 +260,27 @@ function selectionForAnnotation(
     candidate.annotationIds.includes(annotationId),
   );
   return group ? [...group.annotationIds] : [annotationId];
+}
+
+function addEraserAnnotationIds(
+  document: RedlineDocument,
+  target: Set<string>,
+  annotationIds: readonly string[],
+  binding: RedlinePageBinding,
+  layerId: string,
+) {
+  const scopedIds = new Set(
+    document.annotations
+      .filter((annotation) =>
+        annotation.layerId === layerId &&
+        bindingMatches(annotation, binding))
+      .map((annotation) => annotation.id),
+  );
+  annotationIds.forEach((annotationId) => {
+    selectionForAnnotation(document, annotationId).forEach((candidateId) => {
+      if (scopedIds.has(candidateId)) target.add(candidateId);
+    });
+  });
 }
 
 function rectangleSelection(
@@ -330,6 +368,11 @@ function transientAnnotation(
       pageAspectRatio,
     })
     : null;
+  const annotationStyle = isRedlineMarkTool(active.tool)
+    ? redlineMarkStyle(style)
+    : isRedlineDragShapeTool(active.tool)
+      ? redlineDragShapeStyle(style)
+      : style;
   if (isRedlineDragShapeTool(active.tool) && !dragShapeBounds) return null;
   return {
     id: "redline-transient",
@@ -338,7 +381,7 @@ function transientAnnotation(
     binding,
     style: normalizeRedlineStyle(
       annotationKind,
-      isRedlineMarkTool(active.tool) ? redlineMarkStyle(style) : style,
+      annotationStyle,
     ),
     start: markBounds?.start || dragShapeBounds?.start || active.start,
     end: markBounds?.end || dragShapeBounds?.end || active.current,
@@ -364,6 +407,7 @@ export function useFieldRedlineController({
   );
   const [stylePanelOpen, setStylePanelOpen] = useState(false);
   const [markSize, setMarkSize] = useState<RedlineMarkSize>(0.025);
+  const [eraserSize, setEraserSizeState] = useState(loadRedlineEraserSize);
   const [dialog, setDialogState] =
     useState<RedlineStudioDialogState | null>(null);
   const [transient, setTransient] =
@@ -474,6 +518,10 @@ export function useFieldRedlineController({
     () => () => cancelActivePointerInteraction(),
     [cancelActivePointerInteraction],
   );
+
+  useEffect(() => {
+    saveRedlineEraserSize(eraserSize);
+  }, [eraserSize]);
 
   const document = history?.present || null;
   const activeLayer =
@@ -655,6 +703,92 @@ export function useFieldRedlineController({
     setHistory(nextHistory);
   }, []);
 
+  const setEraserSize = useCallback((value: number) => {
+    setEraserSizeState(normalizeRedlineEraserSize(value));
+  }, []);
+
+  const refreshEraserPreview = useCallback(
+    (active: Extract<ActiveRedlinePointer, { kind: "erase" }>) => {
+      setTransient({
+        kind: "eraser",
+        point: active.current,
+        size: active.size,
+      });
+      if (!active.annotationIds.size) {
+        setPreviewDocument(null);
+        return;
+      }
+      const preview = applyRedlineCommand(active.sourceDocument, {
+        type: "delete-selection",
+        annotationIds: [...active.annotationIds],
+      });
+      setPreviewDocument(
+        preview.changed ? preview.document : active.sourceDocument,
+      );
+    },
+    [],
+  );
+
+  const collectEraserHits = useCallback(
+    (
+      active: Extract<ActiveRedlinePointer, { kind: "erase" }>,
+      from: RedlinePoint,
+      to: RedlinePoint,
+      refresh = true,
+    ) => {
+      if (!binding || !activeLayer) return;
+      const hitIds = redlineEraserHitIds({
+        annotations: active.sourceDocument.annotations,
+        binding,
+        layerId: activeLayer.id,
+        from,
+        to,
+        size: active.size,
+        pageAspectRatio,
+      });
+      addEraserAnnotationIds(
+        active.sourceDocument,
+        active.annotationIds,
+        hitIds,
+        binding,
+        activeLayer.id,
+      );
+      active.current = { x: to.x, y: to.y };
+      if (refresh) refreshEraserPreview(active);
+    },
+    [activeLayer, binding, pageAspectRatio, refreshEraserPreview],
+  );
+
+  const beginEraserGesture = useCallback(
+    (
+      pointerId: number,
+      point: RedlinePoint,
+      svg: SVGSVGElement,
+      sourceDocument: RedlineDocument,
+    ) => {
+      if (!binding || !activeLayer) return false;
+      const active: Extract<ActiveRedlinePointer, { kind: "erase" }> = {
+        kind: "erase",
+        pointerId,
+        current: { x: point.x, y: point.y },
+        size: normalizeRedlineEraserSize(eraserSize),
+        annotationIds: new Set<string>(),
+        sourceDocument,
+      };
+      activePointerRef.current = active;
+      collectEraserHits(active, point, point);
+      captureActivePointer(svg, pointerId);
+      return true;
+    },
+    [
+      activeLayer,
+      binding,
+      captureActivePointer,
+      collectEraserHits,
+      eraserSize,
+    ],
+  );
+
   const resetPageInteraction = useCallback(() => {
     cancelActivePointerInteraction();
     setPendingDetail(null);
@@ -688,9 +822,9 @@ export function useFieldRedlineController({
           kind,
           isRedlineMarkTool(tool)
             ? redlineMarkStyle(current)
-            : tool === "rectangle" || tool === "circle"
-              ? redlineOutlineStyle(current)
-              : current,
+            : isRedlineDragShapeTool(tool)
+              ? redlineDragShapeStyle(current)
+              : redlineOutlineStyle(current),
         ));
     }
     setPendingDetail(null);
@@ -699,6 +833,9 @@ export function useFieldRedlineController({
       message("Draw freehand · press, drag, and release for one smooth stroke");
     } else if (tool === "highlight") {
       message("Highlight anywhere on the PDF - press, drag, and release");
+    } else if (tool === "erase") {
+      setStylePanelOpen(true);
+      message("Drag across redlines to erase - one drag is one Undo");
     } else if (isRedlineDragShapeTool(tool)) {
       message("Press and drag from one corner to draw the exact size");
     } else if (isRedlineMarkTool(tool)) {
@@ -719,11 +856,13 @@ export function useFieldRedlineController({
           order: layer.order,
         },
       });
-      if (layer.locked || !layer.visible) {
+      if (layer.locked || !layer.visible || layer.opacity <= 0) {
         cancelActivePointerInteraction();
         setActiveTool("select");
       }
-      if (layer.locked || !layer.visible) setPendingCopy(null);
+      if (layer.locked || !layer.visible || layer.opacity <= 0) {
+        setPendingCopy(null);
+      }
     },
     [cancelActivePointerInteraction, runCommand],
   );
@@ -791,6 +930,7 @@ export function useFieldRedlineController({
       if (
         activeLayer.locked ||
         !activeLayer.visible ||
+        activeLayer.opacity <= 0 ||
         !redlinePointerCanDraw(event.nativeEvent, {
           allowTouch: true,
         })
@@ -832,6 +972,16 @@ export function useFieldRedlineController({
         return true;
       }
       if (activeTool === "erase") {
+        if (
+          !beginEraserGesture(
+            event.pointerId,
+            point,
+            event.currentTarget,
+            history.present,
+          )
+        ) {
+          return false;
+        }
         event.preventDefault();
         event.stopPropagation();
         return true;
@@ -919,6 +1069,7 @@ export function useFieldRedlineController({
     [
       activeLayer,
       activeTool,
+      beginEraserGesture,
       binding,
       history,
       open,
@@ -939,7 +1090,16 @@ export function useFieldRedlineController({
       annotationId: string,
       event: ReactPointerEvent<SVGGElement>,
     ) => {
-      if (!open || !history || !activeLayer || activeLayer.locked) return false;
+      if (
+        !open ||
+        !history ||
+        !activeLayer ||
+        activeLayer.locked ||
+        !activeLayer.visible ||
+        activeLayer.opacity <= 0
+      ) {
+        return false;
+      }
       if (pendingCopy) return false;
       if (
         !redlinePointerCanDraw(event.nativeEvent, {
@@ -949,15 +1109,22 @@ export function useFieldRedlineController({
         return false;
       }
       if (activeTool === "erase") {
+        const point = normalizedPointFromEvent(event);
+        const svg = event.currentTarget.ownerSVGElement;
+        if (
+          !point ||
+          !svg ||
+          !beginEraserGesture(
+            event.pointerId,
+            point,
+            svg,
+            history.present,
+          )
+        ) {
+          return false;
+        }
         event.preventDefault();
         event.stopPropagation();
-        runCommand({
-          type: "delete-selection",
-          annotationIds: selectionForAnnotation(
-            history.present,
-            annotationId,
-          ),
-        });
         return true;
       }
       if (activeTool !== "select") return false;
@@ -993,11 +1160,11 @@ export function useFieldRedlineController({
     [
       activeLayer,
       activeTool,
+      beginEraserGesture,
       captureActivePointer,
       history,
       open,
       pendingCopy,
-      runCommand,
       select,
     ],
   );
@@ -1167,7 +1334,23 @@ export function useFieldRedlineController({
       }
       const point = normalizedPointFromEvent(event);
       if (!point) return false;
-      if (active.kind === "stroke") {
+      if (active.kind === "erase") {
+        const samples = normalizeCoalescedRedlineSamples(
+          event.nativeEvent,
+          viewportForSvg(event.currentTarget),
+        );
+        const points = samples.length ? samples : [point];
+        let previous = active.current;
+        points.forEach((sample, index) => {
+          collectEraserHits(
+            active,
+            previous,
+            sample,
+            index === points.length - 1,
+          );
+          previous = sample;
+        });
+      } else if (active.kind === "stroke") {
         const remaining = Math.max(
           0,
           REDLINE_POLICY_LIMITS.maxPointsPerStroke - active.samples.length,
@@ -1247,6 +1430,7 @@ export function useFieldRedlineController({
       activeLayer,
       binding,
       cancelActivePointerInteraction,
+      collectEraserHits,
       history,
       markSize,
       open,
@@ -1289,6 +1473,22 @@ export function useFieldRedlineController({
                 active.samples.at(-1),
               ).slice(0, remaining),
             );
+          } else if (point && active.kind === "erase") {
+            const samples = normalizeCoalescedRedlineSamples(
+              event.nativeEvent,
+              viewportForSvg(event.currentTarget),
+            );
+            const points = samples.length ? samples : [point];
+            let previous = active.current;
+            points.forEach((sample, index) => {
+              collectEraserHits(
+                active,
+                previous,
+                sample,
+                index === points.length - 1,
+              );
+              previous = sample;
+            });
           } else if (point && (
             active.kind === "callout" ||
             active.kind === "selection-box" ||
@@ -1301,7 +1501,23 @@ export function useFieldRedlineController({
       cancelActivePointerInteraction();
       if (cancelled || !history || !activeLayer || !binding) return true;
 
-      if (active.kind === "stroke") {
+      if (active.kind === "erase") {
+        const annotationIds = [...active.annotationIds];
+        if (annotationIds.length) {
+          runCommand({
+            type: "delete-selection",
+            annotationIds,
+          });
+          select([]);
+          message(
+            `${annotationIds.length} redline${
+              annotationIds.length === 1 ? "" : "s"
+            } erased - Undo restores this drag`,
+          );
+        } else {
+          message("No redlines touched - increase Eraser size if needed");
+        }
+      } else if (active.kind === "stroke") {
         const kind = active.tool === "pen" ? "ink" : "highlighter";
         const draft = createRedlineStrokeDraft({
           kind,
@@ -1355,7 +1571,7 @@ export function useFieldRedlineController({
               kind: annotationKind,
               page,
               layerId: activeLayer.id,
-              style: redlineOutlineStyle(style),
+              style: redlineDragShapeStyle(style),
               start: bounds.start,
               end: bounds.end,
             },
@@ -1453,6 +1669,7 @@ export function useFieldRedlineController({
     [
       activeLayer,
       binding,
+      collectEraserHits,
       history,
       markSize,
       message,
@@ -1744,6 +1961,8 @@ export function useFieldRedlineController({
     setStyle,
     markSize,
     setMarkSize,
+    eraserSize,
+    setEraserSize,
     stylePanelOpen,
     setStylePanelOpen,
     dialog,

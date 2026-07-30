@@ -29,7 +29,8 @@ export type RedlineCanvasTransient =
   | { kind: "annotation"; annotation: RedlineAnnotation }
   | { kind: "annotations"; annotations: readonly RedlineAnnotation[] }
   | { kind: "lasso"; points: readonly RedlinePoint[] }
-  | { kind: "selection-box"; start: RedlinePoint; end: RedlinePoint };
+  | { kind: "selection-box"; start: RedlinePoint; end: RedlinePoint }
+  | { kind: "eraser"; point: RedlinePoint; size: number };
 
 export type RedlineCanvasSelection = {
   annotationIds: readonly string[];
@@ -375,9 +376,10 @@ export default function RedlineCanvasLayer({
   onAnnotationFocus,
   onAnnotationActivate,
 }: RedlineCanvasLayerProps) {
-  if (!layer.visible || layer.opacity <= 0) return null;
+  if (!layer.visible) return null;
 
   const size = redlineCanvasPageSize(width, height);
+  const layerOpacity = Math.max(0, Math.min(1, finite(layer.opacity, 1)));
   const pageAnnotations = annotations.filter(
     (annotation) =>
       annotation.layerId === layer.id && bindingMatches(annotation, binding),
@@ -412,7 +414,6 @@ export default function RedlineCanvasLayer({
       data-redline-page={binding.page}
       data-redline-source={binding.sourceFingerprint}
       aria-label={`${layer.name} redline layer`}
-      opacity={Math.max(0, Math.min(1, finite(layer.opacity, 1)))}
       style={{
         pointerEvents: interactive && !layer.locked ? "auto" : "none",
       }}
@@ -420,6 +421,7 @@ export default function RedlineCanvasLayer({
       <g
         className="redline-canvas-committed"
         data-field-redline-export-role="field-redlines"
+        opacity={layerOpacity}
       >
         {pageAnnotations.map((annotation, index) => {
           const selected = selectedIds.has(annotation.id);
@@ -530,6 +532,7 @@ export default function RedlineCanvasLayer({
           data-field-redline-transient-role="in-progress-strokes"
           pointerEvents="none"
           aria-hidden="true"
+          opacity={layerOpacity}
         >
           {renderAnnotationShape(transientAnnotation, size)}
         </g>
@@ -541,6 +544,7 @@ export default function RedlineCanvasLayer({
           data-field-redline-transient-role="in-progress-strokes"
           pointerEvents="none"
           aria-hidden="true"
+          opacity={layerOpacity}
         >
           {transient.annotations.map((annotation) => (
             <g key={annotation.id}>
@@ -581,6 +585,19 @@ export default function RedlineCanvasLayer({
             zoom={zoom}
           />
         </g>
+      ) : null}
+
+      {transient?.kind === "eraser" ? (
+        <circle
+          className="redline-transient-eraser"
+          data-field-redline-transient-role="active-cursors"
+          cx={redlineCanvasPoint(transient.point, size).x}
+          cy={redlineCanvasPoint(transient.point, size).y}
+          r={Math.max(1, transient.size * size.shortSide / 2)}
+          vectorEffect="non-scaling-stroke"
+          pointerEvents="none"
+          aria-hidden="true"
+        />
       ) : null}
 
       {selectedBounds ? (

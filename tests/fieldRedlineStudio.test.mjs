@@ -73,18 +73,69 @@ test("the dock progressively reveals style and controls layer visibility, lock, 
   assert.match(studio, /min=\{0\.0005\}/);
   assert.match(studio, /max=\{0\.15\}/);
   assert.match(studio, /Drag on the plan for any exact size\./);
-  assert.match(studio, /markTool \? \{ fillColor: color \} : \{\}/);
+  assert.match(
+    studio,
+    /markTool \|\| solidShape \? \{ fillColor: color \} : \{\}/,
+  );
   assert.match(studio, /Line width/);
   assert.match(studio, /min=\{0\.00025\}/);
   assert.match(studio, /max=\{0\.04\}/);
   assert.match(studio, /step=\{0\.00025\}/);
   assert.match(studio, /Opacity/);
+  assert.match(studio, /aria-label="Eraser size"/);
+  assert.match(studio, /REDLINE_ERASER_MIN_SIZE/);
+  assert.match(studio, /REDLINE_ERASER_MAX_SIZE/);
+  assert.match(studio, /REDLINE_ERASER_SIZE_STEP/);
+  assert.match(studio, /aria-valuetext=\{`\$\{eraserSizePercent\}% brush diameter`\}/);
+  assert.match(studio, /role="group"[\s\S]*aria-label="Eraser size presets"/);
+  assert.match(studio, /Drag across redlines\. One drag is one Undo\./);
+  assert.match(studio, /\["Large", 0\.08\]/);
   assert.match(studio, /Show or hide redline layer/);
   assert.match(studio, /Lock or unlock redline layer/);
   assert.match(studio, /Layer opacity/);
   assert.match(studio, /My Details/);
   assert.match(studio, />\s*Export\s*</);
   assert.match(studio, />\s*Done\s*</);
+});
+
+test("square and circle expose one accessible persistent Solid or Outline mode", async () => {
+  const { studio } = await sources();
+
+  assert.match(
+    studio,
+    /const shapeTool = activeTool === "rectangle" \|\| activeTool === "circle"/,
+  );
+  assert.match(
+    studio,
+    /const solidShape = shapeTool && Boolean\(style\.fillColor\)/,
+  );
+  assert.match(
+    studio,
+    /role="group" aria-label="Shape fill mode"/,
+  );
+  assert.match(
+    studio,
+    /aria-pressed=\{solidShape\}[\s\S]*?redlineMarkStyle\(style\)[\s\S]*?>\s*Solid\s*</,
+  );
+  assert.match(
+    studio,
+    /aria-pressed=\{!solidShape\}[\s\S]*?redlineOutlineStyle\(style\)[\s\S]*?>\s*Outline\s*</,
+  );
+  assert.match(studio, /Solid uses the selected line color\./);
+  assert.doesNotMatch(studio, />\s*Fill color\s*</);
+});
+
+test("the eraser uses an active brush cursor instead of a blocked cursor", async () => {
+  const styles = await readFile(stylesPath, "utf8");
+  assert.match(
+    styles,
+    /\.drawing-layer\.field-redline-active\.redline-tool-erase\s*\{\s*cursor: crosshair;/,
+  );
+  assert.match(styles, /\.redline-transient-eraser\s*\{/);
+  assert.doesNotMatch(
+    styles,
+    /\.redline-tool-erase \.redline-annotation\s*\{\s*cursor: not-allowed;/,
+  );
 });
 
 test("compact and short-height docks keep Style controls inside the scroll flow", async () => {
@@ -238,10 +289,13 @@ test("the canvas overlay is SVG-only, page-bound, and renders committed plus tra
   assert.match(canvas, /redline-transient-draft/);
   assert.match(canvas, /redline-transient-lasso/);
   assert.match(canvas, /redline-transient-selection-box/);
+  assert.match(canvas, /redline-transient-eraser/);
+  assert.match(canvas, /data-field-redline-transient-role="active-cursors"/);
   assert.match(canvas, /redlineCanvasCalloutBounds\(\s*transient\.start,\s*transient\.end,\s*size,/);
   assert.doesNotMatch(canvas, /\bpageBounds\(/);
   assert.match(canvas, /redline-selection-overlay/);
-  assert.match(canvas, /if \(!layer\.visible \|\| layer\.opacity <= 0\) return null/);
+  assert.match(canvas, /if \(!layer\.visible\) return null/);
+  assert.match(canvas, /data-field-redline-export-role="field-redlines"[\s\S]*opacity=\{layerOpacity\}/);
   assert.match(
     canvas,
     /pointerEvents: interactive && !layer\.locked \? "auto" : "none"/,

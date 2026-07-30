@@ -18,6 +18,16 @@ import RedlineActionWheel from "./RedlineActionWheel";
 import RedlineCanvasLayer from "./RedlineCanvasLayer";
 import { redlineSelectionVisualBounds } from "./redlineVisualBounds";
 import { trackProductEvent } from "./productAnalytics";
+import { compactTerminalPlanLabel } from "./terminalPlanLabel";
+import {
+  FITTING_HIT_STROKE_PX,
+  fittingOverlayScale,
+} from "./fittingInteractionGeometry";
+import {
+  branchLeavesTrunkAtClearAngle,
+  commitPort3Branch,
+  type Port3BranchDraftState,
+} from "./port3BranchDraft";
 import SystemBalanceStudio from "./SystemBalanceStudio";
 import MarkupAssistantStudio, {
   type FixPlanIssueAnswer,
@@ -1044,6 +1054,10 @@ type TouchGestureState = {
   latestCamera: ScreenPoint;
   frameId: number | null;
 };
+type DirectTouchPointer = {
+  pointerId: number;
+  point: ScreenPoint;
+};
 
 type BranchPreview = {
   center: Point;
@@ -1052,6 +1066,7 @@ type BranchPreview = {
   side: 1 | -1;
   style?: "wye45" | "tee90";
   parentSize: string;
+  portSizes: [string, string, string];
   valid: boolean;
   matchedExisting?: boolean;
   mainRunId?: string;
@@ -1074,6 +1089,7 @@ type EditTransactionSnapshot = {
   selectedIds: string[];
   continuingRunId: string | null;
   pendingBranchFittingId: string | null;
+  port3BranchDraft: Port3BranchDraftState | null;
   branchPlacementResult: { fittingId: string; message: string } | null;
   queuedBranchRunId: string | null;
   branchPreview: BranchPreview | null;
@@ -1571,6 +1587,7 @@ function HVACPlanStudioApp() {
   const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuide[]>([]);
   const [branchPreview, setBranchPreview] = useState<BranchPreview | null>(null);
   const [pendingBranchFittingId, setPendingBranchFittingId] = useState<string | null>(null);
+  const [port3BranchDraft, setPort3BranchDraft] = useState<Port3BranchDraftState | null>(null);
   const [symbolPreview, setSymbolPreview] = useState<{ kind: SymbolKind; point: Point } | null>(null);
   const [copyPlacement, setCopyPlacement] = useState<{
     template: StandalonePlanCopyTemplate<Drawing>;
@@ -1832,6 +1849,12 @@ function HVACPlanStudioApp() {
     cancelPlanPointerInteraction();
     canvasPointerOwnersRef.current.clear();
     resetFieldRedlinePageInteraction();
+    if (port3BranchDraft && !port3BranchResolvedRef.current) finishDrawing();
+    port3BranchResolvedRef.current = true;
+    setPort3BranchDraft(null);
+    setPendingBranchFittingId(null);
+    setDraft([]);
+    setContinuingRunId(null);
     setPageNumber(nextPage);
   }
 
@@ -1868,6 +1891,9 @@ function HVACPlanStudioApp() {
 
   function activatePlanTool(tool: string) {
     leaveFieldRedlineForPlanEditing();
+    if (port3BranchDraft && tool !== "supply") {
+      if (!port3BranchResolvedRef.current) finishDrawing();
+    }
     setActiveTool(tool);
   }
 
@@ -1882,6 +1908,7 @@ function HVACPlanStudioApp() {
     setActiveTool(preset.kind);
     selectOnly(null);
     setPendingBranchFittingId(null);
+    setPort3BranchDraft(null);
     setQueuedBranchRunId(null);
     setBranchHoverRunId(null);
     setBranchPreview(null);
@@ -1954,9 +1981,11 @@ function HVACPlanStudioApp() {
   const panRef = useRef<PanState | null>(null);
   const touchPointersRef = useRef(new Map<number, ScreenPoint>());
   const touchGestureRef = useRef<TouchGestureState | null>(null);
+  const directTouchPointerRef = useRef<DirectTouchPointer | null>(null);
   const activeEditPointerIdRef = useRef<number | null>(null);
   const completedEditPointerIdsRef = useRef(new Set<number>());
   const editTransactionRef = useRef<EditTransactionSnapshot | null>(null);
+  const port3BranchResolvedRef = useRef(true);
   const activePenPointerIdRef = useRef<number | null>(null);
   const lastPenActivityRef = useRef(Number.NEGATIVE_INFINITY);
   const pdfRenderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
@@ -2198,13 +2227,17 @@ function HVACPlanStudioApp() {
   }, [drawings, selectedId]);
 
   useEffect(() => {
-    if (activeTool === "branch") return;
+    if (
+      activeTool === "branch" ||
+      (activeTool === "supply" && port3BranchDraft)
+    ) return;
     setPendingBranchFittingId(null);
+    setPort3BranchDraft(null);
     setBranchPreview(null);
     setBranchPlacementResult(null);
     setQueuedBranchRunId(null);
     setBranchHoverRunId(null);
-  }, [activeTool]);
+  }, [activeTool, port3BranchDraft]);
 
   useEffect(() => {
     if (!branchPlacementResult) return;
@@ -3432,18 +3465,19 @@ function HVACPlanStudioApp() {
   }
 
   function releasePlanPointerCapture(pointerId: number) {
-    const viewport = canvasViewportRef.current;
-    if (!viewport) return;
-    try {
-      if (viewport.hasPointerCapture(pointerId)) {
-        viewport.releasePointerCapture(pointerId);
+    [planOverlayRef.current, canvasViewportRef.current].forEach((target) => {
+      if (!target) return;
+      try {
+        if (target.hasPointerCapture(pointerId)) {
+          target.releasePointerCapture(pointerId);
+        }
+      } catch {
+        // A browser can drop capture before React receives the matching cleanup.
       }
-    } catch {
-      // A browser can drop capture before React receives the matching cleanup.
-    }
+    });
   }
 
-  function capturePlanPointer(target: HTMLDivElement, pointerId: number) {
+  function capturePlanPointer(target: Element, pointerId: number) {
     try {
       if (!target.hasPointerCapture(pointerId)) {
         target.setPointerCapture(pointerId);
@@ -3460,6 +3494,9 @@ function HVACPlanStudioApp() {
       releasePlanPointerCapture(pointerId);
       releaseCanvasPointerOwner(canvasPointerOwnersRef.current, pointerId);
       completedEditPointerIdsRef.current.delete(pointerId);
+      if (directTouchPointerRef.current?.pointerId === pointerId) {
+        directTouchPointerRef.current = null;
+      }
     }
     dragRef.current = null;
     activeEditPointerIdRef.current = null;
@@ -3491,6 +3528,7 @@ function HVACPlanStudioApp() {
         selectedIds,
         continuingRunId,
         pendingBranchFittingId,
+        port3BranchDraft,
         branchPlacementResult,
         queuedBranchRunId,
         branchPreview,
@@ -3520,6 +3558,8 @@ function HVACPlanStudioApp() {
       setSelectedIds(snapshot.selectedIds);
       setContinuingRunId(snapshot.continuingRunId);
       setPendingBranchFittingId(snapshot.pendingBranchFittingId);
+      setPort3BranchDraft(snapshot.port3BranchDraft);
+      port3BranchResolvedRef.current = !snapshot.port3BranchDraft;
       setBranchPlacementResult(snapshot.branchPlacementResult);
       setQueuedBranchRunId(snapshot.queuedBranchRunId);
       setBranchPreview(snapshot.branchPreview);
@@ -3579,7 +3619,7 @@ function HVACPlanStudioApp() {
     }
     const redlineDrawsWithOneTouch =
       redlineOwnsCanvas &&
-      !["select", "erase"].includes(fieldRedline.activeTool);
+      fieldRedline.activeTool !== "select";
     const directTouchEdit = event.pointerType === "touch"
       && (
         Boolean(
@@ -3601,6 +3641,42 @@ function HVACPlanStudioApp() {
       );
     if (event.pointerType === "touch") {
       if (!pdf) return;
+      const directTouchPointer = directTouchPointerRef.current;
+      if (
+        directTouchPointer &&
+        directTouchPointer.pointerId !== event.pointerId
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        directTouchPointerRef.current = null;
+        cancelPlanPointerInteraction(directTouchPointer.pointerId);
+        touchPointersRef.current.set(
+          directTouchPointer.pointerId,
+          directTouchPointer.point,
+        );
+        touchPointersRef.current.set(event.pointerId, {
+          x: event.clientX,
+          y: event.clientY,
+        });
+        capturePlanPointer(
+          event.currentTarget,
+          directTouchPointer.pointerId,
+        );
+        capturePlanPointer(event.currentTarget, event.pointerId);
+        beginTouchGesture();
+        return;
+      }
+      if (touchPointersRef.current.size === 1) {
+        event.preventDefault();
+        event.stopPropagation();
+        touchPointersRef.current.set(event.pointerId, {
+          x: event.clientX,
+          y: event.clientY,
+        });
+        capturePlanPointer(event.currentTarget, event.pointerId);
+        if (touchPointersRef.current.size === 2) beginTouchGesture();
+        return;
+      }
       if (pendingRoomMarkupCandidateId) {
         event.preventDefault();
         cancelTouchNavigation(event.currentTarget);
@@ -3617,7 +3693,16 @@ function HVACPlanStudioApp() {
           !beginEditTransaction(event.pointerId)
         ) {
           event.stopPropagation();
+          return;
         }
+        capturePlanPointer(
+          planOverlayRef.current || event.currentTarget,
+          event.pointerId,
+        );
+        directTouchPointerRef.current = {
+          pointerId: event.pointerId,
+          point: { x: event.clientX, y: event.clientY },
+        };
         return;
       }
       event.preventDefault();
@@ -3671,6 +3756,13 @@ function HVACPlanStudioApp() {
 
   function handleViewportPointerMoveCapture(event: PointerEvent<HTMLDivElement>) {
     if (event.pointerType === "touch") {
+      if (directTouchPointerRef.current?.pointerId === event.pointerId) {
+        directTouchPointerRef.current.point = {
+          x: event.clientX,
+          y: event.clientY,
+        };
+        return;
+      }
       if (!touchPointersRef.current.has(event.pointerId)) return;
       event.preventDefault();
       event.stopPropagation();
@@ -3698,6 +3790,9 @@ function HVACPlanStudioApp() {
 
   function handleViewportPointerUpCapture(event: PointerEvent<HTMLDivElement>) {
     if (event.pointerType === "touch") {
+      if (directTouchPointerRef.current?.pointerId === event.pointerId) {
+        directTouchPointerRef.current = null;
+      }
       if (!touchPointersRef.current.has(event.pointerId)) {
         if (activeEditPointerIdRef.current === event.pointerId && !dragRef.current) {
           activeEditPointerIdRef.current = null;
@@ -3742,6 +3837,9 @@ function HVACPlanStudioApp() {
   function handleViewportPointerCancelCapture(event: PointerEvent<HTMLDivElement>) {
     completedEditPointerIdsRef.current.delete(event.pointerId);
     if (event.pointerType === "touch") {
+      if (directTouchPointerRef.current?.pointerId === event.pointerId) {
+        directTouchPointerRef.current = null;
+      }
       if (!touchPointersRef.current.has(event.pointerId)) {
         if (activeEditPointerIdRef.current === event.pointerId) {
           restoreEditTransaction(event.pointerId);
@@ -3768,6 +3866,15 @@ function HVACPlanStudioApp() {
   }
 
   function handleViewportLostPointerCapture(event: PointerEvent<HTMLDivElement>) {
+    if (event.target !== event.currentTarget) {
+      if (directTouchPointerRef.current?.pointerId === event.pointerId) {
+        directTouchPointerRef.current = null;
+        if (activeEditPointerIdRef.current === event.pointerId) {
+          restoreEditTransaction(event.pointerId);
+        }
+      }
+      return;
+    }
     if (completedEditPointerIdsRef.current.delete(event.pointerId)) return;
     handleViewportPointerCancelCapture(event);
   }
@@ -4195,6 +4302,7 @@ function HVACPlanStudioApp() {
     activatePlanTool("branch");
     setSelectedId(null);
     setPendingBranchFittingId(null);
+    setPort3BranchDraft(null);
     setBranchPlacementResult(null);
     setQueuedBranchRunId(branchWorkflow === "run-first" ? opportunity.branchRunId : null);
     setBranchHoverRunId(null);
@@ -4205,6 +4313,12 @@ function HVACPlanStudioApp() {
       side: opportunity.side,
       style: opportunity.style,
       parentSize: opportunity.parentSize,
+      portSizes: [
+        opportunity.parentSize,
+        steppedSize(opportunity.parentSize, 1),
+        drawings.find((drawing) => drawing.id === opportunity.branchRunId)?.size
+          || steppedSize(opportunity.parentSize, 2),
+      ],
       valid: true,
       matchedExisting: true,
       mainRunId: opportunity.mainRunId,
@@ -4278,6 +4392,13 @@ function HVACPlanStudioApp() {
       setBranchMessage("Click directly on the blue run you want connected to the open branch port");
       return true;
     }
+    if (!branchLeavesTrunkAtClearAngle(
+      fitting.fitting.angle,
+      candidate.angle,
+    )) {
+      setBranchMessage("Choose a branch run that leaves the trunk at a clear angle");
+      return true;
+    }
     const resolvedStyle = branchStyle === "auto"
       ? automaticBranchStyle(fitting.fitting.angle, candidate.angle)
       : branchStyle;
@@ -4307,6 +4428,7 @@ function HVACPlanStudioApp() {
     setHistory(connectedDrawings);
     setSelectedId(updatedFitting.id);
     setPendingBranchFittingId(null);
+    setPort3BranchDraft(null);
     setQueuedBranchRunId(null);
     setBranchHoverRunId(null);
     setBranchPreview(null);
@@ -4585,6 +4707,10 @@ function HVACPlanStudioApp() {
   function reattachSelectedFitting() {
     const selected = drawings.find((drawing) => drawing.id === selectedId && drawing.fitting);
     if (!selected) return;
+    if (port3BranchDraft?.fittingId === selected.id) {
+      setBranchMessage("Finish or keep the Port 3 branch open before repairing this fitting");
+      return;
+    }
     const repaired = reattachFittingIn(drawings, selected.id);
     setHistory(repaired.drawings);
     setBranchMessage(repaired.connected === 3
@@ -8919,6 +9045,78 @@ function HVACPlanStudioApp() {
     }, pageNumber);
   }
 
+  function beginPort3BranchDraft(fitting: Drawing) {
+    if (!fitting.fitting || drawingLocked(fitting)) {
+      setBranchMessage("Unlock the supply layer before drawing the Port 3 branch");
+      return;
+    }
+    const branchPort = fittingPortPoints(fitting)[2];
+    const branchSize = fitting.fitting.branchSize;
+    const systemId = drawingSystem(fitting);
+    port3BranchResolvedRef.current = false;
+    setPendingBranchFittingId(null);
+    setPort3BranchDraft({
+      fittingId: fitting.id,
+      branchSize,
+      page: fitting.page,
+      systemId,
+      anchor: branchPort,
+    });
+    setContinuingRunId(null);
+    setDuctSize(branchSize);
+    setActiveSystem(systemId);
+    setSelectedId(fitting.id);
+    setDraft([branchPort]);
+    setHoverPoint(branchPort);
+    activatePlanTool("supply");
+    setBranchPlacementResult(null);
+    setBranchMessage(
+      `Port 3 ready · draw the ${branchSize}" branch and right-click to finish`,
+    );
+  }
+
+  function leavePort3BranchOpen() {
+    const fittingId = port3BranchDraft?.fittingId || pendingBranchFittingId;
+    port3BranchResolvedRef.current = true;
+    setPort3BranchDraft(null);
+    setPendingBranchFittingId(null);
+    setContinuingRunId(null);
+    setDraft([]);
+    setHoverPoint(null);
+    setSnapMarker(null);
+    setBranchPreview(null);
+    activatePlanTool("branch");
+    if (fittingId) setSelectedId(fittingId);
+    setBranchMessage("Fitting kept with Port 3 open · select it later to finish or attach a run");
+  }
+
+  function attachExistingPort3RunInstead(fittingIdOverride?: string) {
+    const fittingId = port3BranchDraft?.fittingId || fittingIdOverride;
+    if (!fittingId) return;
+    port3BranchResolvedRef.current = true;
+    const fitting = drawings.find((drawing) =>
+      drawing.id === fittingId &&
+      drawing.fitting &&
+      drawing.page === pageNumber
+    );
+    setPort3BranchDraft(null);
+    setContinuingRunId(null);
+    setDraft([]);
+    setHoverPoint(null);
+    setSnapMarker(null);
+    setBranchPreview(null);
+    activatePlanTool("branch");
+    if (!fitting?.fitting) {
+      setPendingBranchFittingId(null);
+      setPort3BranchDraft(null);
+      setBranchMessage("That fitting is no longer available");
+      return;
+    }
+    setSelectedId(fitting.id);
+    setPendingBranchFittingId(fitting.id);
+    setBranchMessage("Attach existing run · click the blue supply run for Port 3");
+  }
+
   function placeSmartBranch(point: Point) {
     setBranchPlacementResult(null);
     if (attachPendingBranchRun(point)) return;
@@ -9071,15 +9269,17 @@ function HVACPlanStudioApp() {
       setBranchMessage(completionMessage);
       setBranchPlacementResult({ fittingId, message: completionMessage });
     } else {
-      setPendingBranchFittingId(fittingId);
-      setBranchPlacementResult(null);
-      setBranchMessage("Trunk split and fitting placed · now click any blue branch run to attach Port 3");
+      beginPort3BranchDraft(fitting);
     }
   }
 
   function updateFittingPortSize(port: 0 | 1 | 2, size: string) {
     const fitting = drawings.find((drawing) => drawing.id === selectedId && drawing.fitting);
     if (!fitting?.fitting) return;
+    if (port3BranchDraft?.fittingId === fitting.id) {
+      setBranchMessage("Finish or keep the Port 3 branch open before changing fitting sizes");
+      return;
+    }
     const keys = ["upstreamSize", "downstreamSize", "branchSize"] as const;
     const connectedId = fitting.fitting.connectedIds[port];
     const updatedMeta = { ...fitting.fitting, [keys[port]]: size };
@@ -9101,6 +9301,10 @@ function HVACPlanStudioApp() {
     const fitting = drawings.find((drawing) => drawing.id === selectedId && drawing.fitting);
     const run = drawings.find((drawing) => drawing.id === runId && drawing.type === "supply" && !drawing.fitting);
     if (!fitting?.fitting || !run) return;
+    if (port3BranchDraft?.fittingId === fitting.id) {
+      setBranchMessage("Finish or keep the Port 3 branch open before reconnecting fitting ports");
+      return;
+    }
     if (fitting.fitting.connectedIds.some((connectedId, index) => index !== port && connectedId === runId)) {
       setBranchMessage("That run is already assigned to another fitting port");
       return;
@@ -9152,6 +9356,10 @@ function HVACPlanStudioApp() {
   function reshapeSelectedFitting(nextStyle: "wye45" | "tee90", nextSide?: 1 | -1) {
     const fitting = drawings.find((drawing) => drawing.id === selectedId && drawing.fitting);
     if (!fitting?.fitting) return;
+    if (port3BranchDraft?.fittingId === fitting.id) {
+      setBranchMessage("Finish or keep the Port 3 branch open before changing fitting geometry");
+      return;
+    }
     const side = nextSide || fitting.fitting.side;
     const oldStyle = fitting.fitting.style || "wye45";
     const oldAxis = fitting.fitting.branchAngle ?? fitting.fitting.angle + fitting.fitting.side * (oldStyle === "tee90" ? Math.PI / 2 : Math.PI / 4);
@@ -9378,6 +9586,92 @@ function HVACPlanStudioApp() {
   }
 
   function finishDrawing() {
+    if (port3BranchDraft) {
+      if (port3BranchResolvedRef.current) return;
+      port3BranchResolvedRef.current = true;
+      const fitting = drawings.find((drawing) =>
+        drawing.id === port3BranchDraft.fittingId &&
+        drawing.fitting &&
+        drawing.page === port3BranchDraft.page &&
+        drawingSystem(drawing) === port3BranchDraft.systemId
+      );
+      const branchPoints = cleanPoints(draft);
+      const port3IsOpen = !fitting?.fitting?.connectedIds[2];
+      const currentBranchPort = fitting?.fitting
+        ? fittingPortPoints(fitting)[2]
+        : port3BranchDraft.anchor;
+      const livePort3Draft = {
+        ...port3BranchDraft,
+        anchor: currentBranchPort,
+        branchSize: fitting?.fitting?.branchSize || port3BranchDraft.branchSize,
+      };
+      const routeStartsAtCurrentPort = Boolean(
+        branchPoints[0] &&
+        Math.hypot(
+          branchPoints[0].x - currentBranchPort.x,
+          branchPoints[0].y - currentBranchPort.y,
+        ) <= 0.5
+      );
+      if (
+        fitting?.fitting &&
+        port3IsOpen &&
+        !drawingLocked(fitting) &&
+        activeTool === "supply" &&
+        routeStartsAtCurrentPort &&
+        branchPoints.length > 1
+      ) {
+        const drawingId = crypto.randomUUID();
+        const drawing: Drawing = {
+          id: drawingId,
+          type: "supply",
+          points: branchPoints,
+          size: livePort3Draft.branchSize,
+          lineWeight: runLineWeights.supply,
+          page: port3BranchDraft.page,
+          cfm: 0,
+          cfmSource: "planning-seed",
+          systemId: port3BranchDraft.systemId,
+          elevation: fitting.elevation || "",
+          sizeReviewed: false,
+        };
+        const connected = addJunctionPoints(drawings, [branchPoints[branchPoints.length - 1]]);
+        const commit = commitPort3Branch({
+          drawings: connected,
+          draft: livePort3Draft,
+          run: drawing,
+        });
+        if (commit.ok) {
+          setHistory(
+            linkRunToMatchingEquipmentPlenum(
+              commit.drawings,
+              drawingId,
+            ),
+          );
+          const completionMessage = `${fitting.fitting.style === "tee90" ? "90° tee" : "45° wye"} complete · Port 3 branch drawn and connected`;
+          setSelectedId(fitting.id);
+          setBranchMessage(completionMessage);
+          setBranchPlacementResult({
+            fittingId: fitting.id,
+            message: completionMessage,
+          });
+          setActiveTool("branch");
+        } else {
+          setBranchMessage("The Port 3 branch was not saved because its route no longer starts at the fitting");
+        }
+      } else if (branchPoints.length > 1) {
+        setBranchMessage("The Port 3 branch was not saved because its fitting is unavailable or locked");
+      } else {
+        setBranchMessage("Fitting kept with Port 3 open · no branch stub was saved");
+        setActiveTool("branch");
+      }
+      setPort3BranchDraft(null);
+      setPendingBranchFittingId(null);
+      setContinuingRunId(null);
+      setDraft([]);
+      setHoverPoint(null);
+      setSnapMarker(null);
+      return;
+    }
     if (draft.length > 1 && ["supply", "return", "fresh"].includes(activeTool)) {
       const continuing = continuingRunId ? drawings.find((drawing) => drawing.id === continuingRunId) : null;
       if (continuing) {
@@ -9558,6 +9852,10 @@ function HVACPlanStudioApp() {
   function continueFittingOutlet(port: 1 | 2) {
     const fitting = drawings.find((drawing) => drawing.id === selectedId && drawing.fitting);
     if (!fitting?.fitting) return;
+    if (port3BranchDraft?.fittingId === fitting.id) {
+      setBranchMessage("Finish or keep the Port 3 branch open before extending another outlet");
+      return;
+    }
     const run = drawings.find((drawing) => drawing.id === fitting.fitting!.connectedIds[port]);
     if (!run) return;
     const portPoint = fittingPortPoints(fitting)[port];
@@ -10170,6 +10468,10 @@ function HVACPlanStudioApp() {
 
   function undo() {
     if (draft.length) {
+      if (port3BranchDraft && draft.length === 1) {
+        leavePort3BranchOpen();
+        return;
+      }
       setDraft((points) => points.slice(0, -1));
       return;
     }
@@ -10195,12 +10497,17 @@ function HVACPlanStudioApp() {
     setDrawings(previous);
     setUndoStack((stack) => stack.slice(0, -1));
     setPendingBranchFittingId(null);
+    setPort3BranchDraft(null);
     setBranchPreview(null);
     setBranchPlacementResult(null);
     setSelectedId(null);
   }
 
   function redo() {
+    if (draft.length || port3BranchDraft) {
+      setBranchMessage("Finish or keep the current route open before redoing another change");
+      return;
+    }
     const next = redoStack.at(-1);
     if (!next) return;
     const currentFingerprint = systemDrawingSignatureFor(drawings, activeSystem);
@@ -10235,6 +10542,7 @@ function HVACPlanStudioApp() {
     setDrawings(next);
     setRedoStack((stack) => stack.slice(0, -1));
     setPendingBranchFittingId(null);
+    setPort3BranchDraft(null);
     setBranchPreview(null);
     setBranchPlacementResult(null);
   }
@@ -10286,12 +10594,25 @@ function HVACPlanStudioApp() {
     if (continuingRunId && deleted.has(continuingRunId)) setContinuingRunId(null);
     if (queuedBranchRunId && deleted.has(queuedBranchRunId)) setQueuedBranchRunId(null);
     if (pendingBranchFittingId && deleted.has(pendingBranchFittingId)) setPendingBranchFittingId(null);
+    if (port3BranchDraft && deleted.has(port3BranchDraft.fittingId)) {
+      port3BranchResolvedRef.current = true;
+      setPort3BranchDraft(null);
+      setDraft([]);
+    }
     if (branchPlacementResult && deleted.has(branchPlacementResult.fittingId)) setBranchPlacementResult(null);
     if (branchHoverRunId && deleted.has(branchHoverRunId)) setBranchHoverRunId(null);
   }
 
   function deleteSelected() {
     if (!selectedId) return;
+    const deletionSelection = selectedIds.length ? selectedIds : [selectedId];
+    if (
+      port3BranchDraft &&
+      connectedSelection(deletionSelection).includes(port3BranchDraft.fittingId)
+    ) {
+      setBranchMessage("Finish or keep the Port 3 branch open before deleting this fitting network");
+      return;
+    }
     if (selectedIds.length > 1) {
       const ids = connectedSelection(selectedIds).filter((id) => !drawingLocked(drawings.find((drawing) => drawing.id === id)));
       if (!ids.length) {
@@ -10323,6 +10644,10 @@ function HVACPlanStudioApp() {
 
   function removeFittingAndHeal(fitting: Drawing) {
     if (!fitting.fitting) return;
+    if (port3BranchDraft?.fittingId === fitting.id) {
+      setBranchMessage("Finish or keep the Port 3 branch open before removing this fitting");
+      return;
+    }
     const [inletPort, outletPort] = fittingPortPoints(fitting);
     const [upstreamId, downstreamId] = fitting.fitting.connectedIds;
     const upstream = drawings.find((drawing) => drawing.id === upstreamId);
@@ -11141,6 +11466,13 @@ function HVACPlanStudioApp() {
 
   function nudgeSelection(dx: number, dy: number) {
     if (!selectedIds.length) return;
+    if (
+      port3BranchDraft &&
+      connectedSelection(selectedIds).includes(port3BranchDraft.fittingId)
+    ) {
+      setBranchMessage("Finish or keep the Port 3 branch open before moving this fitting network");
+      return;
+    }
     const fittingSelected = selectedIds.some((id) => drawings.find((drawing) => drawing.id === id)?.fitting);
     const ids = fittingSelected ? connectedSelection(selectedIds) : selectedIds;
     const movable = ids.filter((id) => !drawingLocked(drawings.find((drawing) => drawing.id === id)));
@@ -11300,6 +11632,11 @@ function HVACPlanStudioApp() {
 
   function startFittingDrag(event: PointerEvent<SVGGElement>, drawing: Drawing) {
     if (activeTool !== "select" || !drawing.fitting || event.button !== 0 || drawingLocked(drawing)) return;
+    if (port3BranchDraft?.fittingId === drawing.id) {
+      event.stopPropagation();
+      setBranchMessage("Finish or keep the Port 3 branch open before moving this fitting");
+      return;
+    }
     event.stopPropagation();
     if (event.shiftKey) {
       toggleSelection(drawing.id);
@@ -11351,10 +11688,6 @@ function HVACPlanStudioApp() {
   function displayedSymbolLabel(drawing: Drawing) {
     if (!drawing.symbol) return "";
     const { kind, label, variant } = drawing.symbol;
-    const formattedSize = drawing.size.replace(/x/g, "×");
-    const defaultTerminalLabel = kind === "returnGrille"
-      ? `${formattedSize} RETURN`
-      : `${formattedSize} SUPPLY`;
     const usesCatalogLabel =
       ["diffuser", "returnGrille"].includes(kind) &&
       symbolPresets.some((preset) =>
@@ -11362,11 +11695,12 @@ function HVACPlanStudioApp() {
         preset.variant === variant &&
         preset.label === label
       );
-    return ["diffuser", "returnGrille"].includes(kind)
-      ? usesCatalogLabel
-        ? defaultTerminalLabel
-        : label.trim() || defaultTerminalLabel
-      : label;
+    return compactTerminalPlanLabel({
+      kind,
+      size: drawing.size,
+      label,
+      usesCatalogLabel,
+    });
   }
 
   function symbolLabelBaseY(drawing: Drawing) {
@@ -11479,6 +11813,11 @@ function HVACPlanStudioApp() {
 
   function startGroupDrag(event: PointerEvent<SVGElement>, drawingId: string) {
     const ids = connectedSelection(selectedIds);
+    if (port3BranchDraft && ids.includes(port3BranchDraft.fittingId)) {
+      event.stopPropagation();
+      setBranchMessage("Finish or keep the Port 3 branch open before moving this fitting network");
+      return;
+    }
     const originals = Object.fromEntries(
       drawings.filter((drawing) => ids.includes(drawing.id)).map((drawing) => [
         drawing.id,
@@ -11683,6 +12022,11 @@ function HVACPlanStudioApp() {
           side,
           style,
           parentSize: fitting.fitting.upstreamSize,
+          portSizes: [
+            fitting.fitting.upstreamSize,
+            fitting.fitting.downstreamSize,
+            candidateReady ? candidate!.drawing.size : fitting.fitting.branchSize,
+          ],
           valid: candidateReady,
           matchedExisting: candidateReady,
           mainRunId: fitting.fitting.connectedIds[0],
@@ -11726,6 +12070,9 @@ function HVACPlanStudioApp() {
           side: threeRunMatch.side,
           style: threeRunMatch.style,
           parentSize: threeRunMatch.ports[0].drawing.size,
+          portSizes: threeRunMatch.ports.map(
+            (match) => match.drawing.size
+          ) as [string, string, string],
           valid: true,
           matchedExisting: true,
           mainRunId: runIds[0],
@@ -11764,6 +12111,11 @@ function HVACPlanStudioApp() {
           side: matchedRoute?.side || target.side,
           style: previewStyle,
           parentSize: target.drawing.size,
+          portSizes: [
+            target.drawing.size,
+            steppedSize(target.drawing.size, 1),
+            matchedRoute?.drawing.size || steppedSize(target.drawing.size, 2),
+          ],
           valid: true,
           matchedExisting: Boolean(matchedRoute),
           mainRunId: target.drawing.id,
@@ -11938,6 +12290,7 @@ function HVACPlanStudioApp() {
     if (variant !== "__legacy") return <g
       className={artworkClass}
       transform={`translate(${center.x} ${center.y})`}
+      data-plan-edit-control={preview ? undefined : "hvac"}
       onPointerDown={preview ? undefined : (event) => startSymbolDrag(event, drawing)}
     >
       <g transform={`rotate(${rotation})`}>
@@ -12062,6 +12415,7 @@ function HVACPlanStudioApp() {
     return <g
       className={`hvac-symbol symbol-${kind} ${drawing.symbol.connectedRunId ? "terminal-linked" : ""} ${activeTraceSymbolIds.has(drawing.id) ? "traced-symbol" : ""} ${preview ? "symbol-preview" : ""} ${selected ? "selected-symbol" : ""}`}
       transform={`translate(${center.x} ${center.y}) rotate(${rotation})`}
+      data-plan-edit-control={preview ? undefined : "hvac"}
       onPointerDown={preview ? undefined : (event) => startSymbolDrag(event, drawing)}
     >
       <circle className="symbol-hit" cx="0" cy="0" r="24" />
@@ -12325,10 +12679,16 @@ function HVACPlanStudioApp() {
           cancelPlanScaleCalibration();
           return;
         }
+        if (port3BranchDraft) {
+          event.preventDefault();
+          leavePort3BranchOpen();
+          return;
+        }
         setShowCommandPalette(false);
         setDraft([]);
         setContinuingRunId(null);
         setPendingBranchFittingId(null);
+        setPort3BranchDraft(null);
         setQueuedBranchRunId(null);
         setBranchHoverRunId(null);
         setBranchPreview(null);
@@ -12421,7 +12781,14 @@ function HVACPlanStudioApp() {
   });
 
   const selectedDrawing = drawings.find((drawing) => drawing.id === selectedId);
-  const selectedDrawingLocked = Boolean(selectedDrawing && drawingLocked(selectedDrawing));
+  const selectedPort3FittingLocked = Boolean(
+    port3BranchDraft &&
+    selectedDrawing?.id === port3BranchDraft.fittingId
+  );
+  const selectedDrawingLocked = Boolean(
+    selectedDrawing &&
+    (drawingLocked(selectedDrawing) || selectedPort3FittingLocked)
+  );
   const selectedSelectionHasEditable = selectedIds.some((id) => {
     const drawing = drawings.find((item) => item.id === id);
     return Boolean(drawing && !drawingLocked(drawing));
@@ -13730,6 +14097,7 @@ function HVACPlanStudioApp() {
     selectOnly(null);
     setActiveReviewIssueId("");
     setPendingBranchFittingId(null);
+    setPort3BranchDraft(null);
     setQueuedBranchRunId(null);
     setBranchHoverRunId(null);
     setBranchPreview(null);
@@ -14080,18 +14448,20 @@ function HVACPlanStudioApp() {
                   setBranchMessage("Branch selection cleared · click another completed diffuser run");
                 }}>Change branch run</button>
               </div>}
+              {port3BranchDraft && <div className="branch-link-step">
+                <b>PORT 3 · DRAW THE BRANCH</b>
+                <span>The {port3BranchDraft.branchSize}&quot; run starts at the fitting. Draw its route, then right-click to connect it.</span>
+                <button onClick={() => attachExistingPort3RunInstead()}>Attach an existing run instead</button>
+                <button onClick={leavePort3BranchOpen}>Keep Port 3 open</button>
+              </div>}
               {pendingBranchFittingId && <div className="branch-link-step">
                 <b>STEP 2 · PICK THE BRANCH RUN</b>
                 <span>Click anywhere on the blue run that should connect to Port 3.</span>
-                <button onClick={() => {
-                  setPendingBranchFittingId(null);
-                  setBranchPreview(null);
-                  setBranchMessage("Fitting kept with Port 3 open · select it later to reattach");
-                }}>Leave Port 3 open for now</button>
+                <button onClick={leavePort3BranchOpen}>Leave Port 3 open for now</button>
               </div>}
               <small>{branchWorkflow === "run-first"
                 ? "Your workflow: draw all diffuser runs first → click a completed branch run → click the trunk location. The app splits the trunk, rotates the fitting, moves the closest branch endpoint and keeps all three ports connected."
-                : "Manual fallback: click anywhere on a blue trunk to split it. If Port 3 stays open, click any blue branch run next—no perfect crossing required."}</small>
+                : "Click a blue trunk to split it. Port 3 immediately starts a correctly sized branch; you can draw it or attach an existing blue run instead."}</small>
             </div>
             <div className="symbol-library">
               <div className="library-title"><Sparkles size={14} /><span>HVAC SYMBOL LIBRARY</span><b>{symbolPresets.length}+ presets</b></div>
@@ -14380,6 +14750,11 @@ function HVACPlanStudioApp() {
               </div>}
             </> : selectedDrawing?.fitting ? <div className="fitting-properties">
               <div className="fitting-property-title"><DraftingCompass size={14} /><span>3-RUN FITTING</span><b>{drawings.find((drawing) => drawing.id === selectedId)?.fitting?.style === "tee90" ? "90° TEE" : "45° WYE"}</b></div>
+              {selectedPort3FittingLocked && <div className="port3-edit-lock" role="status">
+                <strong>PORT 3 BRANCH IN PROGRESS</strong>
+                <span>Finish the route, keep the port open, or attach an existing run before editing this fitting.</span>
+              </div>}
+              <fieldset className="fitting-edit-fieldset" disabled={selectedPort3FittingLocked}>
               <div className="network-trace-summary">
                 <span>CONNECTED NETWORK</span>
                 <strong>{branchTrace.runCount} runs · {branchTrace.fittingCount} T/Y · {Math.round(branchTrace.totalCfm)} CFM</strong>
@@ -14432,13 +14807,14 @@ function HVACPlanStudioApp() {
                 <button onClick={openSystemBalanceStudio}>Review system balance</button>
                 <button className="network-size-action" onClick={openSystemSizingWorkflow}>Review connected sizes</button>
                 <button className="reattach-action" onClick={reattachSelectedFitting}>Reattach nearby runs</button>
+                {!selectedDrawing.fitting.connectedIds[2] && <button
+                  className="reattach-action"
+                  onClick={() => beginPort3BranchDraft(selectedDrawing)}
+                >Draw Port 3 branch</button>}
                 <button className="reattach-action" onClick={() => {
                   const fitting = drawings.find((drawing) => drawing.id === selectedId && drawing.fitting);
                   if (!fitting) return;
-                  setPendingBranchFittingId(fitting.id);
-                  activatePlanTool("branch");
-                  setBranchPreview(null);
-                  setBranchMessage("Click anywhere on the blue run you want attached to Port 3");
+                  attachExistingPort3RunInstead(fitting.id);
                 }}>Pick Port 3 run on plan</button>
                 <button
                   className="remove-fitting-action"
@@ -14487,6 +14863,7 @@ function HVACPlanStudioApp() {
                   </span>;
                 })}
               </div>
+              </fieldset>
             </div> : selectedDrawing?.measurement ? <div className="engineering-card">
               <span>MEASURED DISTANCE</span>
               <strong>{drawings.find((drawing) => drawing.id === selectedId)?.measurement?.feet.toFixed(1)} FT</strong>
@@ -14803,7 +15180,7 @@ function HVACPlanStudioApp() {
             }}
           >
             {selectedId && planSelectionActionsVisible && !selectedContextWheelVisible && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
-              <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T/Y FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : "DUCT RUN"}{selectedDrawingLocked ? " · LAYER LOCKED" : ""}</strong>
+              <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T/Y FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : "DUCT RUN"}{selectedDrawingLocked ? selectedPort3FittingLocked ? " · FINISH PORT 3 FIRST" : " · LAYER LOCKED" : ""}</strong>
               {!selectedDrawingLocked && selectedIds.length === 1 && !selectedDrawing?.symbol && !selectedDrawing?.measurement && <select
                 aria-label="Quick duct size"
                 value={selectedDrawing?.fitting?.upstreamSize || selectedDrawing?.size || ductSize}
@@ -14933,10 +15310,16 @@ function HVACPlanStudioApp() {
                 </>}
             </div>}
             {draft.length > 0 && ["supply", "return", "fresh"].includes(activeTool) && <div className="live-draft-hud" data-canvas-ui>
-              <span>LIVE RUN</span>
+              <span>{port3BranchDraft ? "PORT 3 BRANCH" : "LIVE RUN"}</span>
               <strong>{ductSize}&quot; · {liveDraftFeet.toFixed(1)} LF</strong>
               <b>{liveDraftCfm} CFM · {liveDraftVelocity} FPM</b>
-              <small>Left-click direction · Shift locks angle · Right-click finishes</small>
+              <small>{port3BranchDraft
+                ? "Draw from the fitting · right-click finishes and connects Port 3"
+                : "Left-click direction · Shift locks angle · Right-click finishes"}</small>
+              {port3BranchDraft && <div className="branch-workflow-actions">
+                <button type="button" onClick={() => attachExistingPort3RunInstead()}>Attach existing run instead</button>
+                <button type="button" onClick={leavePort3BranchOpen}>Keep Port 3 open</button>
+              </div>}
             </div>}
             {pdf && activeTool === "branch" && <div className={`branch-workflow-hud ${pendingBranchFittingId ? "awaiting-branch" : ""} ${queuedBranchRunId ? "run-armed" : ""} ${branchPlacementResult ? "complete" : ""}`} aria-live="polite" data-canvas-ui>
               <div className="branch-workflow-heading">
@@ -14957,7 +15340,7 @@ function HVACPlanStudioApp() {
                 ] : [
                   { number: 1, label: "Pick trunk", state: pendingBranchFittingId || branchPlacementResult ? "done" : "active" },
                   { number: 2, label: "Split + place", state: pendingBranchFittingId || branchPlacementResult ? "done" : branchPreview?.mainRunId ? "active" : "next" },
-                  { number: 3, label: "Attach Port 3", state: branchPlacementResult ? "done" : pendingBranchFittingId ? "active" : "next" },
+                  { number: 3, label: "Draw Port 3", state: branchPlacementResult ? "done" : pendingBranchFittingId ? "active" : "next" },
                 ]).map((step) => <div className={`branch-workflow-step ${step.state}`} key={step.number}>
                   <i>{step.state === "done" ? <CheckCircle2 size={13} /> : step.number}</i>
                   <span>{step.label}</span>
@@ -15012,11 +15395,7 @@ function HVACPlanStudioApp() {
                 </>}
               </div>}
               {pendingBranchFittingId && <div className="branch-workflow-actions">
-                <button onClick={() => {
-                  setPendingBranchFittingId(null);
-                  setBranchPreview(null);
-                  setBranchMessage("Fitting kept with Port 3 open · select it later to reattach");
-                }}>Leave Port 3 open</button>
+                <button onClick={leavePort3BranchOpen}>Leave Port 3 open</button>
                 <button className="danger" onClick={undo}><Undo2 size={13} /> Undo fitting</button>
               </div>}
               {branchPlacementResult && <div className="branch-workflow-actions">
@@ -15216,6 +15595,7 @@ function HVACPlanStudioApp() {
                         return <g
                           key={drawing.id}
                           className={`measurement ${isSelected(drawing.id) ? "selected-measurement" : ""} ${isCopyPreview ? "copy-place-preview" : ""}`}
+                          data-plan-edit-control={isCopyPreview ? undefined : "hvac"}
                           aria-hidden={isCopyPreview || undefined}
                           style={isCopyPreview ? { pointerEvents: "none" } : undefined}
                           onPointerDown={(event) => {
@@ -15260,41 +15640,68 @@ function HVACPlanStudioApp() {
                         const portSizes = portVisuals.map((visual) => visual.size);
                         const portStates = ([0, 1, 2] as const).map((port) => fittingPortState(drawing, port));
                         const fittingFullyConnected = portStates.every((state) => state.connected);
-                        const showPortGuides = pendingBranchFittingId === drawing.id;
+                        const showPortGuides =
+                          pendingBranchFittingId === drawing.id ||
+                          port3BranchDraft?.fittingId === drawing.id;
+                        const fittingChromeScale = fittingOverlayScale(zoom);
                         const labelAngle = axis - drawing.fitting.side * Math.PI / 2;
                         const fittingLabelPoint = {
-                          x: center.x + Math.cos(labelAngle) * 15,
-                          y: center.y + Math.sin(labelAngle) * 15,
+                          x: center.x + Math.cos(labelAngle) * 18 * fittingChromeScale,
+                          y: center.y + Math.sin(labelAngle) * 18 * fittingChromeScale,
                         };
                         return <g
                           key={drawing.id}
                           className={`branch-fitting ${fittingFullyConnected ? "complete-fitting" : "open-fitting"} ${showPortGuides ? "showing-port-guides" : ""} ${activeTrace.fittingIds.has(drawing.id) ? "traced-fitting" : ""} ${isSelected(drawing.id) ? "selected-fitting" : ""} ${branchPlacementResult?.fittingId === drawing.id ? "connection-confirmed" : ""}`}
+                          data-plan-edit-control="hvac"
                           onPointerDown={(event) => startFittingDrag(event, drawing)}
                         >
-                          <circle className="fitting-hit" cx={center.x} cy={center.y} r="22" />
-                          <path className={`fitting-leg ${portStates[0].overloaded ? "overloaded" : ""}`} style={{ strokeWidth: portVisuals[0].strokeWidth }} d={`M ${inlet.x} ${inlet.y} L ${center.x} ${center.y}`} />
-                          <path className={`fitting-leg ${portStates[1].overloaded ? "overloaded" : ""}`} style={{ strokeWidth: portVisuals[1].strokeWidth }} d={`M ${center.x} ${center.y} L ${outlet.x} ${outlet.y}`} />
-                          <path className={`fitting-leg ${portStates[2].overloaded ? "overloaded" : ""}`} style={{ strokeWidth: portVisuals[2].strokeWidth }} d={`M ${shoulderA.x} ${shoulderA.y} Q ${center.x} ${center.y} ${shoulderB.x} ${shoulderB.y} L ${branchPort.x} ${branchPort.y}`} />
+                          <path
+                            className="fitting-hit"
+                            d={`M ${inlet.x} ${inlet.y} L ${center.x} ${center.y} L ${outlet.x} ${outlet.y}`}
+                            vectorEffect="non-scaling-stroke"
+                            style={{ strokeWidth: FITTING_HIT_STROKE_PX }}
+                          />
+                          <path
+                            className="fitting-hit"
+                            d={`M ${center.x} ${center.y} L ${branchPort.x} ${branchPort.y}`}
+                            vectorEffect="non-scaling-stroke"
+                            style={{ strokeWidth: FITTING_HIT_STROKE_PX }}
+                          />
+                          <path className={`fitting-leg ${portStates[0].overloaded ? "overloaded" : ""}`} vectorEffect="non-scaling-stroke" style={{ strokeWidth: portVisuals[0].strokeWidth }} d={`M ${inlet.x} ${inlet.y} L ${center.x} ${center.y}`} />
+                          <path className={`fitting-leg ${portStates[1].overloaded ? "overloaded" : ""}`} vectorEffect="non-scaling-stroke" style={{ strokeWidth: portVisuals[1].strokeWidth }} d={`M ${center.x} ${center.y} L ${outlet.x} ${outlet.y}`} />
+                          <path className={`fitting-leg ${portStates[2].overloaded ? "overloaded" : ""}`} vectorEffect="non-scaling-stroke" style={{ strokeWidth: portVisuals[2].strokeWidth }} d={`M ${shoulderA.x} ${shoulderA.y} Q ${center.x} ${center.y} ${shoulderB.x} ${shoulderB.y} L ${branchPort.x} ${branchPort.y}`} />
                           {[outletArrow, branchArrow].map((arrow, index) => <path
                             className="fitting-flow-arrow"
+                            vectorEffect="non-scaling-stroke"
                             key={`flow-${index}`}
                             d={`M ${arrow.left.x} ${arrow.left.y} L ${arrow.tip.x} ${arrow.tip.y} L ${arrow.right.x} ${arrow.right.y}`}
                           />)}
-                          {showPortGuides && [inlet, outlet, branchPort].map((port, index) => <g className={`${portStates[index].connected ? "connected-port" : "disconnected-port"} ${portStates[index].overloaded ? "overloaded-port" : ""}`} key={index}>
-                            <circle className="fitting-port" cx={port.x} cy={port.y} r="5.8" />
-                            <text className="port-number" x={port.x} y={port.y + 2.7} textAnchor="middle">{index + 1}</text>
-                            <text className="fitting-port-size" x={port.x} y={port.y - 9} textAnchor="middle">{portSizes[index]}&quot;</text>
-                            {showCfmLabels && <text className="fitting-port-cfm" x={port.x} y={port.y + 14} textAnchor="middle">{portStates[index].cfm} CFM</text>}
-                            <text className="port-role" x={port.x} y={port.y + (showCfmLabels ? 23 : 15)} textAnchor="middle">{["IN", "OUT", "BRANCH"][index]}</text>
+                          {showPortGuides && [inlet, outlet, branchPort].map((port, index) => <g
+                            className={`${portStates[index].connected ? "connected-port" : "disconnected-port"} ${portStates[index].overloaded ? "overloaded-port" : ""}`}
+                            key={index}
+                            transform={`translate(${port.x} ${port.y}) scale(${fittingChromeScale})`}
+                          >
+                            <circle className="fitting-port" cx="0" cy="0" r="5" />
+                            <text className="port-number" x="0" y="2.7" textAnchor="middle">{index + 1}</text>
+                            <text className="fitting-port-size" x="0" y="-9" textAnchor="middle">{portSizes[index]}&quot;</text>
+                            {showCfmLabels && <text className="fitting-port-cfm" x="0" y="14" textAnchor="middle">{portStates[index].cfm} CFM</text>}
+                            <text className="port-role" x="0" y={showCfmLabels ? 23 : 15} textAnchor="middle">{["IN", "OUT", "BRANCH"][index]}</text>
                           </g>)}
                           {showFittingLabels && <text
                             className="fitting-label"
-                            x={fittingLabelPoint.x}
-                            y={fittingLabelPoint.y}
+                            x="0"
+                            y="0"
                             textAnchor="middle"
+                            transform={`translate(${fittingLabelPoint.x} ${fittingLabelPoint.y}) scale(${fittingChromeScale})`}
                           >{drawing.fitting.style === "tee90" ? "TEE" : "WYE"} {portSizes.join("×")}{drawing.elevation ? ` · EL ${drawing.elevation}` : ""}</text>
                           }
-                          {branchPlacementResult?.fittingId === drawing.id && <text className="connection-confirmed-label" x={center.x} y={center.y - 30} textAnchor="middle">✓ 3 / 3 CONNECTED</text>}
+                          {branchPlacementResult?.fittingId === drawing.id && <text
+                            className="connection-confirmed-label"
+                            x="0"
+                            y="0"
+                            textAnchor="middle"
+                            transform={`translate(${center.x} ${center.y - 30 * fittingChromeScale}) scale(${fittingChromeScale})`}
+                          >✓ 3 / 3 CONNECTED</text>}
                         </g>;
                       }
                       const path = drawing.points.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
@@ -15332,7 +15739,7 @@ function HVACPlanStudioApp() {
                         drawing.elevation ? `EL ${drawing.elevation}` : "",
                       ].filter(Boolean).join(" · ");
                       const runLabelScale = normalizedDuctLabelScale(drawing.labelScale);
-                      return <g key={drawing.id} className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${runSelected ? "selected-drawing" : ""} ${branchCandidateClass} ${assistantPreviewClass}`.trim()} onPointerDown={(event) => {
+                      return <g key={drawing.id} data-plan-edit-control="hvac" className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${runSelected ? "selected-drawing" : ""} ${branchCandidateClass} ${assistantPreviewClass}`.trim()} onPointerDown={(event) => {
                         if (event.button !== 0 || panRef.current || activeTool !== "select" || drawingLocked(drawing)) return;
                         event.stopPropagation();
                         event.shiftKey ? toggleSelection(drawing.id) : selectOnly(drawing.id);
@@ -15595,40 +16002,57 @@ function HVACPlanStudioApp() {
                     {branchPreview && (() => {
                       const center = branchPreview.center;
                       const previewStyle = branchPreview.style || "wye45";
-                      const branchAxis = branchPreview.branchAngle ?? branchPreview.angle + branchPreview.side * (previewStyle === "tee90" ? Math.PI / 2 : Math.PI / 4);
-                      const inlet = { x: center.x - Math.cos(branchPreview.angle) * 13, y: center.y - Math.sin(branchPreview.angle) * 13 };
-                      const outlet = { x: center.x + Math.cos(branchPreview.angle) * 13, y: center.y + Math.sin(branchPreview.angle) * 13 };
-                      const branchPort = { x: center.x + Math.cos(branchAxis) * 18, y: center.y + Math.sin(branchAxis) * 18 };
+                      const previewScale = fittingOverlayScale(zoom);
+                      const previewFitting: Drawing = {
+                        id: "branch-port-preview-render",
+                        type: "branch",
+                        points: [center],
+                        size: branchPreview.portSizes.join("×"),
+                        page: pageNumber,
+                        systemId: activeSystem,
+                        fitting: {
+                          kind: "ty",
+                          style: previewStyle,
+                          angle: branchPreview.angle,
+                          branchAngle: branchPreview.branchAngle,
+                          side: branchPreview.side,
+                          upstreamSize: branchPreview.portSizes[0],
+                          downstreamSize: branchPreview.portSizes[1],
+                          branchSize: branchPreview.portSizes[2],
+                          connectedIds: [],
+                        },
+                      };
+                      const [inlet, outlet, branchPort] = fittingPortPoints(previewFitting);
                       return <g className={`branch-preview ${branchPreview.valid ? "" : "invalid"}`}>
                         {branchPreview.mode === "attach-run" && branchPreview.candidateEndpoint && <>
                           <path className="candidate-endpoint-guide" d={`M ${branchPreview.candidateEndpoint.x} ${branchPreview.candidateEndpoint.y} L ${branchPort.x} ${branchPort.y}`} />
-                          <circle className="candidate-endpoint" cx={branchPreview.candidateEndpoint.x} cy={branchPreview.candidateEndpoint.y} r="7" />
-                          <text className="candidate-endpoint-label" x={branchPreview.candidateEndpoint.x + 10} y={branchPreview.candidateEndpoint.y - 9}>
+                          <circle className="candidate-endpoint" cx={branchPreview.candidateEndpoint.x} cy={branchPreview.candidateEndpoint.y} r={7 * previewScale} />
+                          <text className="candidate-endpoint-label" x={branchPreview.candidateEndpoint.x + 10 * previewScale} y={branchPreview.candidateEndpoint.y - 9 * previewScale} style={{ fontSize: `${8 * previewScale}px` }}>
                             THIS END MOVES TO PORT 3{branchPreview.candidateEndpointDistance ? ` · ${(branchPreview.candidateEndpointDistance * scaleFeetPerUnit).toFixed(1)} FT` : ""}
                           </text>
                         </>}
-                        <circle cx={center.x} cy={center.y} r="22" />
+                        <circle cx={center.x} cy={center.y} r={12 * previewScale} />
                         <path d={`M ${inlet.x} ${inlet.y} L ${center.x} ${center.y} L ${outlet.x} ${outlet.y} M ${center.x} ${center.y} L ${branchPort.x} ${branchPort.y}`} />
                         {[inlet, outlet, branchPort].map((port, index) => <g key={index}>
                           <circle
                             className={`preview-port ${index < 2 || branchPreview.matchedExisting ? "ready" : "missing"}`}
                             cx={port.x}
                             cy={port.y}
-                            r="6"
+                            r={4.5 * previewScale}
                           />
-                          <text className="preview-port-number" x={port.x} y={port.y + 2.8} textAnchor="middle">{index + 1}</text>
-                          <text className="preview-port-role" x={port.x} y={port.y + 16} textAnchor="middle">{["IN", "OUT", "BRANCH"][index]}</text>
+                          <text className="preview-port-number" x={port.x} y={port.y + 2.8 * previewScale} textAnchor="middle" style={{ fontSize: `${6 * previewScale}px` }}>{index + 1}</text>
+                          <text className="preview-port-role" x={port.x} y={port.y + 14 * previewScale} textAnchor="middle" style={{ fontSize: `${6 * previewScale}px` }}>{["IN", "OUT", "BRANCH"][index]}</text>
                         </g>)}
-                        {branchPreview.mode === "split-trunk" && <text className="preview-trunk-label" x={center.x} y={center.y - 29} textAnchor="middle">TRUNK TO SPLIT</text>}
-                        {branchPreview.mode === "attach-run" && branchPreview.branchRunId && branchPreview.candidateProjected && <text className="preview-run-label" x={branchPreview.candidateProjected.x} y={branchPreview.candidateProjected.y - 13} textAnchor="middle">BRANCH RUN SELECTED</text>}
-                        <text x={branchPort.x + 7} y={branchPort.y - 6}>
+                        {branchPreview.mode === "split-trunk" && <text className="preview-trunk-label" x={center.x} y={center.y - 20 * previewScale} textAnchor="middle" style={{ fontSize: `${8 * previewScale}px` }}>TRUNK TO SPLIT</text>}
+                        {branchPreview.mode === "attach-run" && branchPreview.branchRunId && branchPreview.candidateProjected && <text className="preview-run-label" x={branchPreview.candidateProjected.x} y={branchPreview.candidateProjected.y - 13 * previewScale} textAnchor="middle" style={{ fontSize: `${8 * previewScale}px` }}>BRANCH RUN SELECTED</text>}
+                        <text x={branchPort.x + 7 * previewScale} y={branchPort.y - 6 * previewScale} style={{ fontSize: `${8 * previewScale}px` }}>
                           {branchPreview.mode === "attach-run"
                             ? branchPreview.matchedExisting
                               ? `CLICK TO ATTACH · ${previewStyle === "tee90" ? "TEE" : "WYE"}`
                               : "SELECT ANY BLUE BRANCH RUN"
                             : branchPreview.matchedExisting
                               ? `READY · ${previewStyle === "tee90" ? "TEE" : "WYE"} · ${branchPreview.mode === "three-runs" ? "3 SEPARATE RUNS" : "TRUNK + BRANCH"}`
-                              : "PLACE HERE · PORT 3 STAYS OPEN"} · {branchPreview.parentSize}×{steppedSize(branchPreview.parentSize, 1)}×{steppedSize(branchPreview.parentSize, 2)}
+                              : "PLACE HERE · DRAW PORT 3 NEXT"} · {branchPreview.portSizes.join("×")}
                         </text>
                       </g>;
                     })()}
@@ -16843,6 +17267,7 @@ function HVACPlanStudioApp() {
         activeTool={fieldRedline.activeTool}
         style={fieldRedline.style}
         markSize={fieldRedline.markSize}
+        eraserSize={fieldRedline.eraserSize}
         layer={fieldRedline.activeLayer}
         favorites={fieldRedline.document?.favorites || []}
         myDetails={fieldRedline.document?.myDetails || []}
@@ -16855,6 +17280,7 @@ function HVACPlanStudioApp() {
         onToolChange={fieldRedline.setTool}
         onStyleChange={fieldRedline.setStyle}
         onMarkSizeChange={fieldRedline.setMarkSize}
+        onEraserSizeChange={fieldRedline.setEraserSize}
         onApplyStyleToSelection={fieldRedline.applyStyleToSelection}
         onLayerChange={fieldRedline.updateLayer}
         onStylePanelOpenChange={fieldRedline.setStylePanelOpen}
@@ -17344,6 +17770,12 @@ function HVACPlanStudioApp() {
             side: opportunity.side,
             style: opportunity.style,
             parentSize: opportunity.parentSize,
+            portSizes: [
+              opportunity.parentSize,
+              steppedSize(opportunity.parentSize, 1),
+              drawings.find((drawing) => drawing.id === opportunity.branchRunId)?.size
+                || steppedSize(opportunity.parentSize, 2),
+            ],
             valid: true,
             matchedExisting: true,
             mainRunId: opportunity.mainRunId,
