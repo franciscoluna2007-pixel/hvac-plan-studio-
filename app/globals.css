@@ -15592,9 +15592,14 @@ textarea:focus-visible,
 .redline-tool-strip {
   grid-area: tools;
   display: grid;
-  grid-template-columns: repeat(10, minmax(44px, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(54px, 1fr);
   gap: 4px;
   min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
 }
 
 .field-redline-studio .redline-tool {
@@ -15602,6 +15607,7 @@ textarea:focus-visible,
   padding: 5px 2px;
   flex-direction: column;
   gap: 2px;
+  scroll-snap-align: start;
 }
 
 .redline-tool small {
@@ -15827,6 +15833,8 @@ textarea:focus-visible,
 
 .drawing-layer.field-redline-active.redline-tool-pen,
 .drawing-layer.field-redline-active.redline-tool-highlight,
+.drawing-layer.field-redline-active.redline-tool-round-mark,
+.drawing-layer.field-redline-active.redline-tool-square-mark,
 .drawing-layer.field-redline-active.redline-tool-arrow,
 .drawing-layer.field-redline-active.redline-tool-rectangle,
 .drawing-layer.field-redline-active.redline-tool-circle,
@@ -15855,6 +15863,8 @@ textarea:focus-visible,
 
 .redline-tool-pen .redline-annotation,
 .redline-tool-highlight .redline-annotation,
+.redline-tool-round-mark .redline-annotation,
+.redline-tool-square-mark .redline-annotation,
 .redline-tool-arrow .redline-annotation,
 .redline-tool-rectangle .redline-annotation,
 .redline-tool-circle .redline-annotation,
