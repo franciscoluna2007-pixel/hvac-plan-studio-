@@ -164,39 +164,23 @@ export function redlineDragShapeBounds(input: {
   const yScale = aspectRatio >= 1 ? 1 : 1 / aspectRatio;
   const rawX = pointer.x - start.x;
   const rawY = pointer.y - start.y;
+  const physicalWidth = Math.abs(rawX) * xScale;
+  const physicalHeight = Math.abs(rawY) * yScale;
   const requestedPhysicalSize = Math.max(
-    Math.abs(rawX) * xScale,
-    Math.abs(rawY) * yScale,
+    physicalWidth,
+    physicalHeight,
   );
   const minimumPhysicalSize = clamp(
     finite(input.minimumPhysicalSize ?? 0.00025, 0.00025),
     0.00001,
     0.05,
   );
-  if (requestedPhysicalSize < minimumPhysicalSize) return null;
-
-  const directionX = rawX < 0
-    ? -1
-    : rawX > 0
-      ? 1
-      : start.x <= 0.5
-        ? 1
-        : -1;
-  const directionY = rawY < 0
-    ? -1
-    : rawY > 0
-      ? 1
-      : start.y <= 0.5
-        ? 1
-        : -1;
-  const availableX = (directionX > 0 ? 1 - start.x : start.x) * xScale;
-  const availableY = (directionY > 0 ? 1 - start.y : start.y) * yScale;
-  const physicalSize = Math.min(
-    requestedPhysicalSize,
-    availableX,
-    availableY,
-  );
-  if (physicalSize < minimumPhysicalSize) return null;
+  if (
+    physicalWidth < minimumPhysicalSize ||
+    physicalHeight < minimumPhysicalSize
+  ) {
+    return null;
+  }
 
   return {
     start: {
@@ -204,9 +188,11 @@ export function redlineDragShapeBounds(input: {
       y: rounded(start.y),
     },
     end: {
-      x: rounded(clamp(start.x + directionX * physicalSize / xScale)),
-      y: rounded(clamp(start.y + directionY * physicalSize / yScale)),
+      x: rounded(pointer.x),
+      y: rounded(pointer.y),
     },
-    physicalSize: rounded(physicalSize),
+    physicalWidth: rounded(physicalWidth),
+    physicalHeight: rounded(physicalHeight),
+    physicalSize: rounded(requestedPhysicalSize),
   };
 }

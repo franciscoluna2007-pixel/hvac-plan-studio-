@@ -759,7 +759,7 @@ test("Redline drawing, shape, and text-edit lifecycles stay direct and unclutter
   );
   assert.match(
     finishPointer,
-    /if \(!bounds\) \{[\s\S]*?Press and drag to draw a circle or square[\s\S]*?return true;/,
+    /if \(!bounds\) \{[\s\S]*?Keep the pen down and drag to draw the shape[\s\S]*?return true;/,
   );
 
   const textConfirm = sourceBlock(

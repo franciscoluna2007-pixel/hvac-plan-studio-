@@ -838,7 +838,7 @@ export function useFieldRedlineController({
       setStylePanelOpen(true);
       message("Drag across redlines to erase - one drag is one Undo");
     } else if (isRedlineDragShapeTool(tool)) {
-      message("Press and drag from one corner to draw the exact size");
+      message("Press, drag, and release - the opposite corner stays under your pen");
     } else if (isRedlineMarkTool(tool)) {
       message("Press and drag to draw the exact size · very small circles and squares are supported");
     }
@@ -1563,7 +1563,7 @@ export function useFieldRedlineController({
             pageAspectRatio,
           });
           if (!bounds) {
-            message("Press and drag to draw a circle or square");
+            message("Keep the pen down and drag to draw the shape");
             return true;
           }
           runCommand({
