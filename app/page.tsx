@@ -20,7 +20,12 @@ import { redlineSelectionVisualBounds } from "./redlineVisualBounds";
 import { trackProductEvent } from "./productAnalytics";
 import { compactTerminalPlanLabel } from "./terminalPlanLabel";
 import {
+  BRANCH_ATTACH_RADIUS_PX,
+  BRANCH_AUTO_MATCH_RADIUS_PX,
+  BRANCH_PICK_RADIUS_PX,
+  BRANCH_THREE_RUN_RADIUS_PX,
   FITTING_HIT_STROKE_PX,
+  fittingPortReach,
   fittingOverlayScale,
 } from "./fittingInteractionGeometry";
 import {
@@ -922,6 +927,7 @@ type MeasurementMeta = {
 };
 type FittingMeta = {
   kind: "ty";
+  geometryVersion?: 2;
   style?: "wye45" | "tee90";
   angle: number;
   branchAngle?: number;
@@ -4201,7 +4207,7 @@ function HVACPlanStudioApp() {
 
   function armRunFirstBranch(point: Point) {
     const candidate = nearestSupplySegment(point);
-    if (!candidate || candidate.distance > 42 / zoom) {
+    if (!candidate || candidate.distance > BRANCH_PICK_RADIUS_PX / zoom) {
       setBranchMessage("Step 1 · click directly on the completed blue run going to the diffuser");
       return false;
     }
@@ -4244,7 +4250,7 @@ function HVACPlanStudioApp() {
         const amount = Math.max(0, Math.min(1, ((center.x - a.x) * dx + (center.y - a.y) * dy) / lengthSquared));
         const projected = { x: a.x + amount * dx, y: a.y + amount * dy };
         const distance = Math.hypot(center.x - projected.x, center.y - projected.y);
-        if (distance > 40 / zoom) continue;
+        if (distance > BRANCH_AUTO_MATCH_RADIUS_PX / zoom) continue;
 
         const towardEnd = cleanPoints([center, projected, ...drawing.points.slice(index + 1)]);
         const towardStart = cleanPoints([center, projected, ...drawing.points.slice(0, index + 1).reverse()]);
@@ -4449,7 +4455,7 @@ function HVACPlanStudioApp() {
     if (!pendingBranchFittingId) return false;
     const fitting = drawings.find((drawing) => drawing.id === pendingBranchFittingId && drawing.fitting);
     const candidate = nearestAttachableSupplySegment(point, pendingBranchFittingId);
-    if (!fitting?.fitting || !candidate || candidate.distance > 48 / zoom) {
+    if (!fitting?.fitting || !candidate || candidate.distance > BRANCH_ATTACH_RADIUS_PX / zoom) {
       setBranchMessage("Click directly on the blue run you want connected to the open branch port");
       return true;
     }
@@ -4501,7 +4507,7 @@ function HVACPlanStudioApp() {
   }
 
   function existingThreeRunJunction(point: Point): ThreeRunBranchMatch | null {
-    const radius = 62 / zoom;
+    const radius = BRANCH_THREE_RUN_RADIUS_PX / zoom;
     const endpoints = drawings
       .filter((drawing) =>
         drawing.page === pageNumber &&
@@ -4603,10 +4609,10 @@ function HVACPlanStudioApp() {
     if (!fitting.fitting) return [center, center, center];
     const axis = fitting.fitting.angle;
     const branchAxis = fitting.fitting.branchAngle ?? axis + fitting.fitting.side * (fitting.fitting.style === "tee90" ? Math.PI / 2 : Math.PI / 4);
-    const reach = (size: string, base: number) => Math.max(14, Math.min(27, base + (Number(size) || 8) * .38));
-    const inletReach = reach(fitting.fitting.upstreamSize, 12);
-    const outletReach = reach(fitting.fitting.downstreamSize, 13);
-    const branchReach = reach(fitting.fitting.branchSize, 16);
+    const compact = fitting.fitting.geometryVersion === 2;
+    const inletReach = fittingPortReach(fitting.fitting.upstreamSize, 0, compact);
+    const outletReach = fittingPortReach(fitting.fitting.downstreamSize, 1, compact);
+    const branchReach = fittingPortReach(fitting.fitting.branchSize, 2, compact);
     return [
       { x: center.x - Math.cos(axis) * inletReach, y: center.y - Math.sin(axis) * inletReach },
       { x: center.x + Math.cos(axis) * outletReach, y: center.y + Math.sin(axis) * outletReach },
@@ -9199,6 +9205,7 @@ function HVACPlanStudioApp() {
         elevation: upstreamMatch.drawing.elevation,
         fitting: {
           kind: "ty",
+          geometryVersion: 2,
           style: threeRunMatch.style,
           angle: threeRunMatch.angle,
           branchAngle: threeRunMatch.branchAngle,
@@ -9232,7 +9239,7 @@ function HVACPlanStudioApp() {
     }
 
     const rawTarget = nearestSupplySegment(point);
-    if (!rawTarget || rawTarget.distance > 42 / zoom) {
+    if (!rawTarget || rawTarget.distance > BRANCH_PICK_RADIUS_PX / zoom) {
       setBranchMessage("Move closer to a blue supply run");
       return;
     }
@@ -9263,6 +9270,7 @@ function HVACPlanStudioApp() {
       page: pageNumber,
       fitting: {
         kind: "ty",
+        geometryVersion: 2,
         style: resolvedStyle,
         angle: target.angle,
         branchAngle,
@@ -9304,6 +9312,7 @@ function HVACPlanStudioApp() {
       elevation: target.drawing.elevation,
       fitting: {
         kind: "ty",
+        geometryVersion: 2,
         style: resolvedStyle,
         angle: target.angle,
         branchAngle,
@@ -12070,7 +12079,7 @@ function HVACPlanStudioApp() {
           setBranchPreview(null);
           return;
         }
-        const candidateReady = Boolean(candidate && candidate.distance <= 48 / zoom);
+        const candidateReady = Boolean(candidate && candidate.distance <= BRANCH_ATTACH_RADIUS_PX / zoom);
         const branchAngle = candidateReady ? candidate!.angle : fitting.fitting.branchAngle;
         const side = candidateReady ? candidate!.side : fitting.fitting.side;
         const style = candidateReady && branchStyle === "auto"
@@ -12111,7 +12120,7 @@ function HVACPlanStudioApp() {
       }
       if (branchWorkflow === "run-first" && !queuedBranchRunId) {
         const candidate = nearestSupplySegment(raw);
-        const candidateReady = Boolean(candidate && candidate.distance <= 42 / zoom);
+        const candidateReady = Boolean(candidate && candidate.distance <= BRANCH_PICK_RADIUS_PX / zoom);
         setBranchHoverRunId(candidateReady ? candidate!.drawing.id : null);
         setBranchPreview(null);
         setSnapMarker(candidateReady ? candidate!.point : null);
@@ -12146,7 +12155,7 @@ function HVACPlanStudioApp() {
         return;
       }
       const rawTarget = nearestSupplySegment(raw);
-      if (rawTarget && rawTarget.distance <= 42 / zoom) {
+      if (rawTarget && rawTarget.distance <= BRANCH_PICK_RADIUS_PX / zoom) {
         if (queuedBranchRunId && rawTarget.drawing.id === queuedBranchRunId) {
           setBranchPreview(null);
           setSnapMarker(rawTarget.point);
@@ -14479,29 +14488,12 @@ function HVACPlanStudioApp() {
             </div>
             <div className={`branch-designer ${activeTool === "branch" ? "active" : ""}`}>
               <div className="library-title"><DraftingCompass size={14} /><span>RUN-FIRST BRANCH PASS</span><b>DRAW RUNS · THEN SPLIT</b></div>
-              <div className="branch-mode-toggle" role="group" aria-label="T/Y placement workflow">
-                <button className={branchWorkflow === "run-first" ? "active" : ""} onClick={() => {
-                  finishDrawing();
-                  activatePlanTool("branch");
-                  setBranchWorkflow("run-first");
-                  setPendingBranchFittingId(null);
-                  setQueuedBranchRunId(null);
-                  setBranchHoverRunId(null);
-                  setBranchPreview(null);
-                  setBranchPlacementResult(null);
-                  setBranchMessage("Step 1 · click the completed blue run going to the diffuser");
-                }}>Run first</button>
-                <button className={branchWorkflow === "place-first" ? "active" : ""} onClick={() => {
-                  finishDrawing();
-                  activatePlanTool("branch");
-                  setBranchWorkflow("place-first");
-                  setPendingBranchFittingId(null);
-                  setQueuedBranchRunId(null);
-                  setBranchHoverRunId(null);
-                  setBranchPreview(null);
-                  setBranchPlacementResult(null);
-                  setBranchMessage("Click any blue trunk to split it and place a T/Y");
-                }}>Place first</button>
+              <div className="branch-safe-mode" role="status">
+                <CheckCircle2 size={15} />
+                <span>
+                  <b>Safe placement</b>
+                  <small>Pick the branch run, then the trunk. Only your selected run can connect to Port 3.</small>
+                </span>
               </div>
               <label>Fitting style
                 <select value={branchStyle} onChange={(event) => setBranchStyle(event.target.value as "auto" | "wye45" | "tee90")}>
@@ -15507,7 +15499,6 @@ function HVACPlanStudioApp() {
                 <button onClick={() => {
                   const fitting = drawings.find((drawing) => drawing.id === branchPlacementResult.fittingId && drawing.fitting);
                   if (!fitting) return;
-                  setBranchWorkflow("place-first");
                   setQueuedBranchRunId(null);
                   setPendingBranchFittingId(fitting.id);
                   setSelectedId(fitting.id);
@@ -16121,6 +16112,7 @@ function HVACPlanStudioApp() {
                         systemId: activeSystem,
                         fitting: {
                           kind: "ty",
+                          geometryVersion: 2,
                           style: previewStyle,
                           angle: branchPreview.angle,
                           branchAngle: branchPreview.branchAngle,
