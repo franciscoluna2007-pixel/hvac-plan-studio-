@@ -105,3 +105,56 @@ test("valid drags and unrelated pointers are never cancelled", () => {
     );
   }
 });
+
+test("a missed plan release completes instead of rolling placed work back", () => {
+  for (const pointerType of ["mouse", "pen"]) {
+    assert.equal(
+      lifecycle.shouldCompleteStalePlanPointerMove({
+        activeEditPointerId: 12,
+        eventPointerId: 12,
+        pointerType,
+        buttons: 0,
+        pressure: 0,
+      }),
+      true,
+    );
+  }
+});
+
+test("active, touch, and unrelated plan pointers are never auto-completed", () => {
+  for (const input of [
+    {
+      activeEditPointerId: 12,
+      eventPointerId: 12,
+      pointerType: "mouse",
+      buttons: 1,
+      pressure: 0,
+    },
+    {
+      activeEditPointerId: 12,
+      eventPointerId: 12,
+      pointerType: "pen",
+      buttons: 0,
+      pressure: 0.4,
+    },
+    {
+      activeEditPointerId: 12,
+      eventPointerId: 12,
+      pointerType: "touch",
+      buttons: 0,
+      pressure: 0,
+    },
+    {
+      activeEditPointerId: 12,
+      eventPointerId: 13,
+      pointerType: "mouse",
+      buttons: 0,
+      pressure: 0,
+    },
+  ]) {
+    assert.equal(
+      lifecycle.shouldCompleteStalePlanPointerMove(input),
+      false,
+    );
+  }
+});
