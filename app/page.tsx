@@ -159,6 +159,7 @@ import {
   latchCanvasPointerOwner,
   releaseCanvasPointerOwner,
   releaseCanvasPointersByOwner,
+  shouldCompleteStalePlanPointerMove,
   type CanvasPointerOwner,
 } from "./pointerLifecycle";
 import type { RedlineSnapshotV1 } from "./redlineDomain";
@@ -3525,6 +3526,28 @@ function HVACPlanStudioApp() {
     setSymbolPreview(null);
   }
 
+  function completeStalePlanPointerInteraction(
+    event: PointerEvent<HTMLDivElement>,
+  ) {
+    completedEditPointerIdsRef.current.add(event.pointerId);
+    if (event.pointerType === "pen") {
+      lastPenActivityRef.current = performance.now();
+      if (activePenPointerIdRef.current === event.pointerId) {
+        activePenPointerIdRef.current = null;
+      }
+    }
+    endDrag(event as unknown as PointerEvent<SVGSVGElement>);
+    releasePlanPointerCapture(event.pointerId);
+    releaseCanvasPointerOwner(
+      canvasPointerOwnersRef.current,
+      event.pointerId,
+    );
+    window.setTimeout(
+      () => completedEditPointerIdsRef.current.delete(event.pointerId),
+      0,
+    );
+  }
+
   function beginEditTransaction(pointerId: number) {
     const owner = activeEditPointerIdRef.current;
     if (owner !== null && owner !== pointerId) {
@@ -3786,12 +3809,14 @@ function HVACPlanStudioApp() {
       scheduleTouchGestureUpdate();
       return;
     }
-    if (
-      activeEditPointerIdRef.current === event.pointerId &&
-      event.buttons === 0 &&
-      event.pressure <= 0
-    ) {
-      cancelPlanPointerInteraction(event.pointerId);
+    if (shouldCompleteStalePlanPointerMove({
+      activeEditPointerId: activeEditPointerIdRef.current,
+      eventPointerId: event.pointerId,
+      pointerType: event.pointerType,
+      buttons: event.buttons,
+      pressure: event.pressure,
+    })) {
+      completeStalePlanPointerInteraction(event);
       return;
     }
     if (
@@ -15761,15 +15786,27 @@ function HVACPlanStudioApp() {
                       }}>
                         <path className="hit-line" d={path} onPointerDown={(event) => startLineDrag(event, drawing)} />
                         <path className="duct-line" d={path} stroke={drawingColors[drawing.type as DrawType]} style={{ strokeWidth: runStrokeWidth(drawing.lineWeight) }} />
-                        {showRunNodeHandles && drawing.points.map((point, index) => <circle
-                          className={runSelected ? `edit-handle ${index === 0 || index === drawing.points.length - 1 ? "endpoint-grip" : "vertex-grip"}` : "branch-candidate-node"}
-                          key={index}
-                          cx={point.x}
-                          cy={point.y}
-                          r={runSelected ? 6 : 3.5}
-                          fill={drawingColors[drawing.type as DrawType]}
-                          onPointerDown={(event) => startPointDrag(event, drawing.id, index)}
-                        />)}
+                        {showRunNodeHandles && drawing.points.map((point, index) => {
+                          const endpoint = index === 0 || index === drawing.points.length - 1;
+                          return <g key={index}>
+                            {runSelected && <circle
+                              className="edit-handle-hit"
+                              cx={point.x}
+                              cy={point.y}
+                              r="10"
+                              onPointerDown={(event) => startPointDrag(event, drawing.id, index)}
+                            />}
+                            <circle
+                              className={runSelected ? `edit-handle ${endpoint ? "endpoint-grip" : "vertex-grip"}` : "branch-candidate-node"}
+                              cx={point.x}
+                              cy={point.y}
+                              r={runSelected ? endpoint ? 4 : 3 : 2.5}
+                              fill={drawingColors[drawing.type as DrawType]}
+                              pointerEvents={runSelected ? "none" : undefined}
+                              onPointerDown={runSelected ? undefined : (event) => startPointDrag(event, drawing.id, index)}
+                            />
+                          </g>;
+                        })}
                         {runSelected && drawing.points.slice(0, -1).map((point, index) => {
                           const next = drawing.points[index + 1];
                           return <circle
@@ -16001,7 +16038,14 @@ function HVACPlanStudioApp() {
                           ),
                         }}
                       />
-                      {draft.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="4" fill={drawingColors[activeTool as DrawType]} />)}
+                      {draft.map((point, index) => <circle
+                        className="draft-point"
+                        key={index}
+                        cx={point.x}
+                        cy={point.y}
+                        r="2.5"
+                        fill={drawingColors[activeTool as DrawType] || drawingColors.supply}
+                      />)}
                     </g>}
                     {measureDraft.length > 0 && hoverPoint && <g className="measure-preview">
                       <path d={`M ${measureDraft[0].x} ${measureDraft[0].y} L ${hoverPoint.x} ${hoverPoint.y}`} />

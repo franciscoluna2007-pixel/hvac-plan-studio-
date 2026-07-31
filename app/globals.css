@@ -478,6 +478,9 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .branch-candidate-main circle { fill: #20c7f4 !important; }
 .branch-candidate-route circle { fill: #39d98a !important; }
 .selected-drawing circle { stroke: white; stroke-width: 2; }
+.selected-drawing circle.edit-handle-hit { fill: transparent; stroke: transparent; stroke-width: 0; }
+.edit-handle-hit { fill: transparent; stroke: transparent; cursor: grab; pointer-events: all; }
+.edit-handle-hit:active { cursor: grabbing; }
 .edit-handle { cursor: grab; vector-effect: non-scaling-stroke; }
 .edit-handle:active { cursor: grabbing; }
 .edit-handle.endpoint-grip { stroke-width: 3; }
@@ -2155,7 +2158,7 @@ footer span { display: flex; align-items: center; gap: 5px; }
   .review-decision-card input, .review-decision-card textarea, .release-approval-fields input, .release-approval-fields textarea, .rfi-form input, .rfi-form select, .rfi-form textarea, .punch-form input, .punch-form select, .punch-form textarea, .commissioning-fields input, .commissioning-notes textarea { min-height: 44px; font-size: 14px; }
   .review-queue-row, .field-run-list button, .command-system-list button { min-height: 60px; }
   .hit-line { stroke-width: 26; }
-  .edit-handle { r: 8px; }
+  .edit-handle-hit { r: 12px; }
   .canvas.has-plan { padding: 0; }
 }
 
@@ -5317,6 +5320,7 @@ footer span { display: flex; align-items: center; gap: 5px; }
   .symbol-resize-hit,
   .symbol-resize-outline,
   .rotation-ring,
+  .edit-handle-hit,
   .edit-handle,
   .midpoint-grip,
   .review-issue-marker,

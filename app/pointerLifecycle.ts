@@ -51,3 +51,18 @@ export function shouldCancelStaleRedlinePointerMove(input: {
     input.pressure <= 0
   );
 }
+
+export function shouldCompleteStalePlanPointerMove(input: {
+  activeEditPointerId: number | null;
+  eventPointerId: number;
+  pointerType: string;
+  buttons: number;
+  pressure: number;
+}) {
+  return (
+    input.activeEditPointerId === input.eventPointerId &&
+    input.pointerType !== "touch" &&
+    input.buttons === 0 &&
+    input.pressure <= 0
+  );
+}

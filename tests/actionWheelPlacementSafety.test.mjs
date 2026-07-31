@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const [page, canvas] = await Promise.all([
+const [page, canvas, styles] = await Promise.all([
   readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/RedlineCanvasLayer.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
 ]);
 
 test("HVAC action wheels and the fallback toolbar are limited to safe Select mode", () => {
@@ -41,6 +42,43 @@ test("symbol placement stays armed and does not auto-open selection actions", ()
   assert.match(placement, /setLeftPanelView\("symbols"\)/);
   assert.match(placement, /placement stays active for the next icon/);
   assert.doesNotMatch(placement, /selectOnly\(symbol\.id\)/);
+});
+
+test("missed plan releases commit icon and run placement instead of restoring the pointer-down snapshot", () => {
+  const completion = page.slice(
+    page.indexOf("function completeStalePlanPointerInteraction"),
+    page.indexOf("function beginEditTransaction"),
+  );
+  assert.match(completion, /completedEditPointerIdsRef\.current\.add\(event\.pointerId\)/);
+  assert.match(completion, /endDrag\(event as unknown as PointerEvent<SVGSVGElement>\)/);
+  assert.match(completion, /releasePlanPointerCapture\(event\.pointerId\)/);
+  assert.match(completion, /releaseCanvasPointerOwner\(/);
+  assert.doesNotMatch(completion, /restoreEditTransaction|cancelPlanPointerInteraction/);
+
+  const pointerMoveCapture = page.slice(
+    page.indexOf("function handleViewportPointerMoveCapture"),
+    page.indexOf("function handleViewportPointerUpCapture"),
+  );
+  assert.match(pointerMoveCapture, /shouldCompleteStalePlanPointerMove\(\{/);
+  assert.match(pointerMoveCapture, /completeStalePlanPointerInteraction\(event\)/);
+  assert.doesNotMatch(pointerMoveCapture, /cancelPlanPointerInteraction|restoreEditTransaction/);
+
+  const placement = page.slice(
+    page.indexOf("function handleDrawingClick"),
+    page.indexOf("function undoableAssistantRepairRecord"),
+  );
+  assert.match(placement, /placeSymbol\(activeTool as SymbolKind, rawPoint\)/);
+  assert.match(placement, /setDraft\(\(points\) => \[\.\.\.points, point\]\)/);
+});
+
+test("supply-run dots are visually smaller without shrinking their edit target", () => {
+  assert.match(page, /className="edit-handle-hit"[\s\S]*?r="10"/);
+  assert.match(page, /r=\{runSelected \? endpoint \? 4 : 3 : 2\.5\}/);
+  assert.match(page, /className="draft-point"[\s\S]*?r="2\.5"/);
+  assert.match(page, /fill=\{drawingColors\[activeTool as DrawType\] \|\| drawingColors\.supply\}/);
+  assert.match(styles, /\.edit-handle-hit \{[^}]*fill: transparent;[^}]*pointer-events: all;/);
+  assert.match(styles, /@media \(pointer: coarse\)[\s\S]*?\.edit-handle-hit \{ r: 12px; \}/);
+  assert.doesNotMatch(styles, /@media \(pointer: coarse\)[\s\S]*?\.edit-handle \{ r: 8px; \}/);
 });
 
 test("redline actions disappear while drawing, editing dialogs, or placing copies and details", () => {
