@@ -29,11 +29,18 @@ export const metadata: Metadata = {
     title: "HVAC Plan Studio · Field Command Console",
     description: "Plan, route, review, redline, and issue controlled HVAC work directly over the source PDF.",
     type: "website",
+    images: [{
+      url: "/og.png",
+      width: 1728,
+      height: 908,
+      alt: "HVAC Plan Studio Field Command Console framing a mechanical source plan",
+    }],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "HVAC Plan Studio · Field Command Console",
     description: "Plan, route, review, redline, and issue controlled HVAC work directly over the source PDF.",
+    images: ["/og.png"],
   },
 };
 

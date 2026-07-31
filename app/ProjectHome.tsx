@@ -215,7 +215,7 @@ export default function ProjectHome({
           <span><Wind size={22} strokeWidth={2.4} /></span>
           <div>
             <strong>HVAC Plan Studio</strong>
-            <small>Jobs · plans · materials</small>
+            <small>Field Command Console</small>
           </div>
         </button>
 
@@ -236,12 +236,12 @@ export default function ProjectHome({
         <main className="project-home-content">
           <section className="project-home-hero">
             <div className="project-home-hero-copy">
-              <span className="home-eyebrow">YOUR JOBS</span>
-              <h1>{hasPlan ? "Ready to keep working?" : "Start with the plan."}</h1>
+              <span className="home-eyebrow">FIELD COMMAND</span>
+              <h1>{hasPlan ? "Your plan is ready." : "Open the plan. Run the job."}</h1>
               <p>
                 {hasPlan
-                  ? "Continue the plan already open. Everything else stays close when you need it."
-                  : "Open a PDF and start drawing. Setup help is available, but it never gets in your way."}
+                  ? "Return to the source plan with your tools, review state, and field controls exactly where you left them."
+                  : "Bring in the source PDF, draw directly over it, and move from routing through field release in one controlled workspace."}
               </p>
 
               <div className="project-home-primary-actions" aria-label="Job actions">
@@ -359,6 +359,34 @@ export default function ProjectHome({
                 </div>
               )}
             </div>
+
+            <aside className="home-command-preview" aria-label="Field command workflow">
+              <header>
+                <div>
+                  <small>COMMAND DECK</small>
+                  <strong>{hasPlan ? currentProjectName : "Ready for source plan"}</strong>
+                </div>
+                <span className={hasPlan ? "ready" : "standby"}>{hasPlan ? "LIVE" : "STANDBY"}</span>
+              </header>
+              <ol>
+                <li className={hasPlan ? "complete" : "active"}>
+                  <b>01</b><span><strong>Source plan</strong><small>{hasPlan ? "Loaded and authoritative" : "Open the construction PDF"}</small></span>
+                </li>
+                <li className={hasPlan ? "active" : ""}>
+                  <b>02</b><span><strong>Draw &amp; detail</strong><small>Routes, symbols, and T/Y branches</small></span>
+                </li>
+                <li>
+                  <b>03</b><span><strong>Review systems</strong><small>Airflow, sizing, layers, and Fix Plan</small></span>
+                </li>
+                <li>
+                  <b>04</b><span><strong>Issue field work</strong><small>Materials, checks, and controlled output</small></span>
+                </li>
+              </ol>
+              <footer>
+                <span><i /> Plan-first workspace</span>
+                <strong>Nothing changes without approval</strong>
+              </footer>
+            </aside>
           </section>
 
           {(busy || notice) && (

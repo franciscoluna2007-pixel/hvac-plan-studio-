@@ -17,6 +17,8 @@ test("the product shell identifies HVAC Plan Studio as the Field Command Console
   assert.match(layout, /default: "HVAC Plan Studio · Field Command Console"/);
   assert.match(layout, /Plan, route, review, redline, and issue controlled HVAC work directly over the source PDF\./);
   assert.doesNotMatch(layout, /default: "HVAC Plan Studio · Field Redline Studio"/);
+  assert.match(layout, /summary_large_image/);
+  assert.match(layout, /url: "\/og\.png"/);
 });
 
 test("the interface exposes the approved operational color language", () => {
@@ -42,10 +44,24 @@ test("raised instruments stay selective and field controls remain touch-safe", (
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?transition: none !important/);
 });
 
+test("the command deck gives the plan a dedicated rail and inset work surface", () => {
+  assert.match(page, /data-layout="command-deck"/);
+  assert.match(page, /className="command-rail"/);
+  assert.match(page, /aria-label="Field command rail"/);
+  assert.match(styles, /grid-template-areas: "rail tools canvas inspector"/);
+  assert.match(styles, /--deck-rail: 64px/);
+  assert.match(styles, /--deck-tools: 280px/);
+  assert.match(styles, /--deck-inspector: 336px/);
+  assert.match(styles, /grid-template-rows: 72px 72px minmax\(0, 1fr\) 30px/);
+  assert.match(styles, /@media \(max-width: 899px\), \(orientation: portrait\) and \(pointer: coarse\)[\s\S]*?\.command-rail \{[\s\S]*?position: fixed/);
+});
+
 test("the durable design artifacts match the shipped interface system", () => {
   assert.match(design, /# HVAC Plan Studio — Field Command Console/);
   assert.match(design, /never gaming software or generic office software/);
   assert.equal(sidecar.schemaVersion, 2);
   assert.equal(sidecar.title, "HVAC Plan Studio — Field Command Console");
-  assert.equal(sidecar.components.length, 8);
+  assert.match(design, /The desktop shell is a \*\*Command Deck\*\*/);
+  assert.equal(sidecar.extensions.layout.desktopDeck, "64px command rail, 280px tool dock, fluid plan canvas, 336px inspector");
+  assert.equal(sidecar.components.length, 9);
 });

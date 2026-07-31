@@ -114,13 +114,17 @@ Uppercase labels use deliberate tracking around `0.5px–1.25px`. Avoid long upp
 
 ## Layout
 
-The desktop shell is an operating console around a plan-first center:
+The desktop shell is a **Command Deck** built around a plan-first center:
 
-- A 68px top bar holds project identity and global actions.
-- A 228px left panel holds tools and symbol choices.
-- The plan canvas occupies the flexible center and never shrinks below a practical working width when space allows.
-- A 252px right panel holds properties; focused review work may expand it to 360px.
-- A 28px status area communicates source, scale, save, and readiness state without obscuring the plan.
+- A 72px global bar holds product identity, current job, active HVAC system, save state, search, and saved jobs.
+- A 72px mission strip shows the active operation, overall progress, the five job stages, and one clear Continue action.
+- A 64px command rail keeps Job, Draw, Symbols, Selected, Review, Layers, Redline, and Display within one predictable reach.
+- A 280px inset tool dock holds drawing tools, symbols, and selected-object properties without competing with the source plan.
+- The framed plan canvas occupies the flexible center and remains the largest visual surface.
+- A 336px inset inspector holds current-step guidance, layers, airflow, and materials; focused review work may expand it to 420px.
+- A 30px status deck communicates source, scale, save, and readiness without obscuring the plan.
+
+The command rail is navigation, not another tool palette. It opens the correct dock while the dock contains the detailed choices. Tool and inspector docks use restrained elevation and rounded structural edges so the plan reads as the physical work surface rather than as another dashboard card.
 
 Use a 4px base spacing unit. Dense controls typically use 8–12px internal spacing, panels use 16px, and major sections use 24px. Keep related action and evidence close together. Preserve clear separation between choosing a tool, placing work, editing properties, and approving consequential changes.
 
@@ -147,6 +151,10 @@ The shape language is technical and tactile, not soft or playful.
 Borders are structural, typically one pixel. Active states may add a two-pixel inset marker rather than increasing the whole control’s size. Icons are clear line symbols with consistent optical weight. Plan symbols, supply runs, T/Y fittings, and tool icons must render above Redline so operational geometry never disappears into markup.
 
 ## Components
+
+### Command rail
+
+A narrow, persistent navigation instrument for switching between the job, drawing tools, symbols, selected-object properties, review, layers, Redline, and display controls. The active destination combines an icon, text label, raised navy surface, and cyan leading marker. On small touch screens it becomes a horizontally scrollable bottom instrument bar with 48px minimum targets. It never changes plan geometry by itself.
 
 ### Primary action
 

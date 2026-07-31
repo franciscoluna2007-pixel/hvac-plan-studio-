@@ -43,9 +43,22 @@
       "compactWorkspace": "980px",
       "wideWorkspace": "1350px",
       "largePlanDisplay": "1920px"
+    },
+    "layout": {
+      "shell": "72px global bar, 72px mission strip, flexible work deck, 30px status deck",
+      "desktopDeck": "64px command rail, 280px tool dock, fluid plan canvas, 336px inspector",
+      "focusedInspector": "420px inspector while preserving a practical plan width",
+      "tablet": "Persistent command rail with overlay tool and inspector docks",
+      "mobile": "Horizontal bottom command rail, scrollable mission stages, and touch-safe overlay docks"
     }
   },
   "components": [
+    {
+      "name": "Command Rail",
+      "description": "Persistent workspace navigation that opens the correct instrument dock without changing plan geometry.",
+      "html": "<nav class=\"ds-command-rail\" aria-label=\"Field command rail\"><button type=\"button\" aria-pressed=\"true\"><span aria-hidden=\"true\">╱</span><span>Draw</span></button><button type=\"button\"><span aria-hidden=\"true\">▦</span><span>Symbols</span></button></nav>",
+      "css": ":host{font-family:Geist Sans,system-ui,sans-serif}.ds-command-rail{box-sizing:border-box;width:64px;padding:6px;display:grid;gap:5px;border:1px solid #294762;border-radius:12px;background:linear-gradient(180deg,#0e2033,#091827);box-shadow:0 18px 44px rgba(1,7,17,.44),inset 0 1px rgba(255,255,255,.03)}.ds-command-rail button{min-height:50px;padding:5px 2px;display:grid;place-items:center;gap:4px;border:1px solid transparent;border-radius:7px;color:#8299ad;background:transparent;font:750 8px inherit}.ds-command-rail button[aria-pressed=true]{color:#eafaff;border-color:#347089;background:linear-gradient(180deg,#183a51,#102a3f);box-shadow:inset 3px 0 #2ccce4}.ds-command-rail button:focus-visible{outline:2px solid #2ccce4;outline-offset:2px}"
+    },
     {
       "name": "Primary Action",
       "description": "A compact cyan control for the single preferred next action.",
