@@ -24,8 +24,8 @@ test("Field Redline Studio keeps the compact tool order and HVAC safety boundary
     '"select"',
     '"pen"',
     '"highlight"',
-    '"rectangle"',
-    '"circle"',
+    '"square-mark"',
+    '"round-mark"',
     '"erase"',
     '"arrow"',
     '"cloud"',
@@ -40,14 +40,14 @@ test("Field Redline Studio keeps the compact tool order and HVAC safety boundary
   }
 
   assert.match(studio, /Field Redline Studio/);
-  assert.match(studio, /\{ id: "rectangle", label: "Draw square"/);
-  assert.match(studio, /\{ id: "circle", label: "Draw circle"/);
+  assert.match(studio, /\{ id: "square-mark", label: "Square pen"/);
+  assert.match(studio, /\{ id: "round-mark", label: "Circle pen"/);
   assert.equal(
-    (studio.match(/\{ id: "rectangle", label:/g) || []).length,
+    (studio.match(/\{ id: "square-mark", label:/g) || []).length,
     1,
   );
   assert.equal(
-    (studio.match(/\{ id: "circle", label:/g) || []).length,
+    (studio.match(/\{ id: "round-mark", label:/g) || []).length,
     1,
   );
   assert.doesNotMatch(studio, /Notebook(?: Pro|-style| style)/i);
@@ -68,14 +68,13 @@ test("the dock progressively reveals style and controls layer visibility, lock, 
   assert.match(studio, /aria-expanded=\{stylePanelOpen\}/);
   assert.match(studio, /id="redline-style-panel"/);
   assert.match(studio, /Line color/);
-  assert.match(studio, /Mark color/);
-  assert.match(studio, /Mark size/);
-  assert.match(studio, /min=\{0\.0005\}/);
-  assert.match(studio, /max=\{0\.15\}/);
-  assert.match(studio, /Drag on the plan for any exact size\./);
+  assert.match(studio, /Pen color/);
+  assert.match(studio, /Tip size/);
+  assert.match(studio, /min=\{0\.001\}/);
+  assert.match(studio, /max=\{0\.04\}/);
   assert.match(
     studio,
-    /markTool \|\| solidShape \? \{ fillColor: color \} : \{\}/,
+    /Drag to paint a continuous trail\. One drag is one Undo\./,
   );
   assert.match(studio, /Line width/);
   assert.match(studio, /min=\{0\.00025\}/);
@@ -98,30 +97,16 @@ test("the dock progressively reveals style and controls layer visibility, lock, 
   assert.match(studio, />\s*Done\s*</);
 });
 
-test("square and circle expose one accessible persistent Solid or Outline mode", async () => {
+test("square and circle are direct filled pen tips without shape sizing controls", async () => {
   const { studio } = await sources();
 
-  assert.match(
-    studio,
-    /const shapeTool = activeTool === "rectangle" \|\| activeTool === "circle"/,
-  );
-  assert.match(
-    studio,
-    /const solidShape = shapeTool && Boolean\(style\.fillColor\)/,
-  );
-  assert.match(
-    studio,
-    /role="group" aria-label="Shape fill mode"/,
-  );
-  assert.match(
-    studio,
-    /aria-pressed=\{solidShape\}[\s\S]*?redlineMarkStyle\(style\)[\s\S]*?>\s*Solid\s*</,
-  );
-  assert.match(
-    studio,
-    /aria-pressed=\{!solidShape\}[\s\S]*?redlineOutlineStyle\(style\)[\s\S]*?>\s*Outline\s*</,
-  );
-  assert.match(studio, /Solid uses the selected line color\./);
+  assert.match(studio, /const markTool = isRedlineMarkTool\(activeTool\)/);
+  assert.match(studio, /\{ id: "square-mark", label: "Square pen"/);
+  assert.match(studio, /\{ id: "round-mark", label: "Circle pen"/);
+  assert.doesNotMatch(studio, /Shape fill/);
+  assert.doesNotMatch(studio, /Shape fill mode/);
+  assert.doesNotMatch(studio, />\s*Solid\s*</);
+  assert.doesNotMatch(studio, />\s*Outline\s*</);
   assert.doesNotMatch(studio, />\s*Fill color\s*</);
 });
 

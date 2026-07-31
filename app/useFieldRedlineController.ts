@@ -20,6 +20,7 @@ import {
   visibleRedlineAnnotations,
   type RedlineAnnotation,
   type RedlineAnnotationKind,
+  type RedlineBrushTip,
   type RedlineCommand,
   type RedlineDocument,
   type RedlineFavorite,
@@ -45,6 +46,7 @@ import {
   normalizeCoalescedRedlineSamples,
   normalizeRedlinePointerSample,
   redlinePointerCanDraw,
+  redlineStrokePointsFromSamples,
   type RedlinePointerSample,
 } from "./redlineInput";
 import type {
@@ -55,7 +57,7 @@ import {
   isRedlineMarkTool,
   redlineDragShapeBounds,
   redlineMarkAnnotationKind,
-  redlineMarkBounds,
+  redlineMarkRadius,
   redlineMarkStyle,
   redlineOutlineStyle,
   type RedlineMarkSize,
@@ -79,7 +81,7 @@ type ActiveRedlinePointer =
   | {
       kind: "stroke";
       pointerId: number;
-      tool: "pen" | "highlight";
+      tool: "pen" | "highlight" | RedlineMarkTool;
       samples: RedlinePointerSample[];
     }
   | {
@@ -90,8 +92,7 @@ type ActiveRedlinePointer =
         | "rectangle"
         | "circle"
         | "cloud"
-        | "text"
-        | RedlineMarkTool;
+        | "text";
       start: RedlinePoint;
       current: RedlinePoint;
     }
@@ -199,6 +200,30 @@ function isRedlineDragShapeTool(
 
 function redlineDragShapeStyle(style: RedlineStyle): RedlineStyle {
   return style.fillColor ? redlineMarkStyle(style) : style;
+}
+
+function redlineBrushTipForTool(tool: RedlineMarkTool): RedlineBrushTip {
+  return tool === "round-mark" ? "circle" : "square";
+}
+
+function redlineStrokeToolStyle(
+  tool: "pen" | "highlight" | RedlineMarkTool,
+  style: RedlineStyle,
+  markSize: RedlineMarkSize,
+) {
+  if (!isRedlineMarkTool(tool)) return style;
+  return {
+    ...redlineOutlineStyle(style),
+    strokeWidth: redlineMarkRadius(markSize) * 2,
+  };
+}
+
+function favoriteTool(favorite: RedlineFavorite): FieldRedlineTool {
+  if (favorite.kind === "ink") return "pen";
+  if (favorite.kind === "highlighter") return "highlight";
+  if (favorite.kind === "circle") return "round-mark";
+  if (favorite.kind === "rectangle") return "square-mark";
+  return favorite.kind;
 }
 
 function textScaleFromResizePointer(
@@ -334,34 +359,36 @@ function transientAnnotation(
   markSize: RedlineMarkSize,
 ): RedlineAnnotation | null {
   if (active.kind === "stroke") {
-    const kind = active.tool === "pen" ? "ink" : "highlighter";
+    const kind = active.tool === "highlight" ? "highlighter" : "ink";
     if (!active.samples.length) return null;
+    const brushTip = isRedlineMarkTool(active.tool)
+      ? redlineBrushTipForTool(active.tool)
+      : undefined;
+    const points = brushTip
+      ? redlineStrokePointsFromSamples(active.samples)
+      : active.samples.map(({ x, y, pressure, t }) => ({
+        x,
+        y,
+        pressure,
+        t,
+      }));
     return {
       id: "redline-transient",
       kind,
       layerId: layer.id,
       binding,
-      style: normalizeRedlineStyle(kind, style),
-      points: active.samples.map(({ x, y, pressure, t }) => ({
-        x,
-        y,
-        pressure,
-        t,
-      })),
+      style: normalizeRedlineStyle(
+        kind,
+        redlineStrokeToolStyle(active.tool, style, markSize),
+      ),
+      ...(brushTip ? { brushTip } : {}),
+      points,
     };
   }
   const annotationKind = annotationKindForTool(active.tool);
   if (!annotationKind || annotationKind === "ink" || annotationKind === "highlighter") {
     return null;
   }
-  const markBounds = isRedlineMarkTool(active.tool)
-    ? redlineMarkBounds({
-      center: active.start,
-      pointer: active.current,
-      pageAspectRatio,
-      size: markSize,
-    })
-    : null;
   const dragShapeBounds = isRedlineDragShapeTool(active.tool)
     ? redlineDragShapeBounds({
       start: active.start,
@@ -369,9 +396,7 @@ function transientAnnotation(
       pageAspectRatio,
     })
     : null;
-  const annotationStyle = isRedlineMarkTool(active.tool)
-    ? redlineMarkStyle(style)
-    : isRedlineDragShapeTool(active.tool)
+  const annotationStyle = isRedlineDragShapeTool(active.tool)
       ? redlineDragShapeStyle(style)
       : style;
   if (isRedlineDragShapeTool(active.tool) && !dragShapeBounds) return null;
@@ -384,8 +409,8 @@ function transientAnnotation(
       annotationKind,
       annotationStyle,
     ),
-    start: markBounds?.start || dragShapeBounds?.start || active.start,
-    end: markBounds?.end || dragShapeBounds?.end || active.current,
+    start: dragShapeBounds?.start || active.start,
+    end: dragShapeBounds?.end || active.current,
     ...(active.tool === "text" ? { text: "Text" } : {}),
   };
 }
@@ -407,7 +432,7 @@ export function useFieldRedlineController({
     normalizeRedlineStyle("ink", {}),
   );
   const [stylePanelOpen, setStylePanelOpen] = useState(false);
-  const [markSize, setMarkSize] = useState<RedlineMarkSize>(0.025);
+  const [markSize, setMarkSizeState] = useState<RedlineMarkSize>(0.01);
   const [eraserSize, setEraserSizeState] = useState(loadRedlineEraserSize);
   const [dialog, setDialogState] =
     useState<RedlineStudioDialogState | null>(null);
@@ -430,7 +455,8 @@ export function useFieldRedlineController({
     pointerCancel: (event: globalThis.PointerEvent) => void;
   } | null>(null);
   const transientFrameRef = useRef<number | null>(null);
-  const queuedTransientRef = useRef<RedlineCanvasTransient | null>(null);
+  const queuedTransientRef =
+    useRef<(() => RedlineCanvasTransient | null) | null>(null);
 
   const clearScheduledTransient = useCallback(() => {
     if (transientFrameRef.current !== null) {
@@ -502,14 +528,14 @@ export function useFieldRedlineController({
   }, [cancelActivePointerInteraction, detachWindowPointerRelease]);
 
   const scheduleTransient = useCallback(
-    (next: RedlineCanvasTransient | null) => {
-      queuedTransientRef.current = next;
+    (factory: () => RedlineCanvasTransient | null) => {
+      queuedTransientRef.current = factory;
       if (transientFrameRef.current !== null) return;
       transientFrameRef.current = window.requestAnimationFrame(() => {
         transientFrameRef.current = null;
-        const queued = queuedTransientRef.current;
+        const queuedFactory = queuedTransientRef.current;
         queuedTransientRef.current = null;
-        setTransient(queued);
+        setTransient(queuedFactory?.() ?? null);
       });
     },
     [],
@@ -708,6 +734,10 @@ export function useFieldRedlineController({
     setEraserSizeState(normalizeRedlineEraserSize(value));
   }, []);
 
+  const setMarkSize = useCallback((value: RedlineMarkSize) => {
+    setMarkSizeState(redlineMarkRadius(value));
+  }, []);
+
   const refreshEraserPreview = useCallback(
     (active: Extract<ActiveRedlinePointer, { kind: "erase" }>) => {
       setTransient({
@@ -820,9 +850,9 @@ export function useFieldRedlineController({
     if (kind) {
       setStyle((current) =>
         normalizeRedlineStyle(
-          kind,
+          isRedlineMarkTool(tool) ? "ink" : kind,
           isRedlineMarkTool(tool)
-            ? redlineMarkStyle(current)
+            ? redlineOutlineStyle(current)
             : isRedlineDragShapeTool(tool)
               ? redlineDragShapeStyle(current)
               : redlineOutlineStyle(current),
@@ -837,10 +867,14 @@ export function useFieldRedlineController({
     } else if (tool === "erase") {
       setStylePanelOpen(true);
       message("Drag across redlines to erase - one drag is one Undo");
+    } else if (isRedlineMarkTool(tool)) {
+      message(
+        `Drag to draw with a ${
+          tool === "round-mark" ? "circle" : "square"
+        } pen tip - one drag is one Undo`,
+      );
     } else if (isRedlineDragShapeTool(tool)) {
       message("Press, drag, and release - the opposite corner stays under your pen");
-    } else if (isRedlineMarkTool(tool)) {
-      message("Press and drag to draw the exact size · very small circles and squares are supported");
     }
   }, [cancelActivePointerInteraction, message, select]);
 
@@ -869,14 +903,20 @@ export function useFieldRedlineController({
   );
 
   const useFavorite = useCallback((favorite: RedlineFavorite) => {
-    setStyle(favorite.style);
-    setTool(
-      favorite.kind === "ink"
-        ? "pen"
-        : favorite.kind === "highlighter"
-          ? "highlight"
-          : favorite.kind,
-    );
+    const tool = favoriteTool(favorite);
+    setTool(tool);
+    if (isRedlineMarkTool(tool)) {
+      const radius = redlineMarkRadius(favorite.style.strokeWidth / 2);
+      setMarkSizeState(radius);
+      setStyle((current) =>
+        normalizeRedlineStyle("ink", {
+          ...redlineOutlineStyle(favorite.style),
+          strokeWidth: current.strokeWidth,
+        }),
+      );
+    } else {
+      setStyle(favorite.style);
+    }
   }, [setTool]);
 
   const setDetailPreview = useCallback(
@@ -916,13 +956,13 @@ export function useFieldRedlineController({
           style: normalizeRedlineStyle(
             kind,
             isRedlineMarkTool(tool)
-              ? redlineMarkStyle(favoriteStyle)
+              ? redlineStrokeToolStyle(tool, favoriteStyle, markSize)
               : favoriteStyle,
           ),
         },
       });
     },
-    [runCommand],
+    [markSize, runCommand],
   );
 
   const handlePointerDown = useCallback(
@@ -1011,7 +1051,11 @@ export function useFieldRedlineController({
         };
         activePointerRef.current = active;
         setTransient({ kind: "lasso", points: active.points });
-      } else if (activeTool === "pen" || activeTool === "highlight") {
+      } else if (
+        activeTool === "pen" ||
+        activeTool === "highlight" ||
+        isRedlineMarkTool(activeTool)
+      ) {
         const samples = normalizeCoalescedRedlineSamples(
           event.nativeEvent,
           viewportForSvg(event.currentTarget),
@@ -1038,13 +1082,10 @@ export function useFieldRedlineController({
       } else {
         const kind = annotationKindForTool(activeTool);
         if (!kind || kind === "ink" || kind === "highlighter") return false;
-        const calloutTool = isRedlineMarkTool(activeTool)
-          ? activeTool
-          : kind;
         const active: ActiveRedlinePointer = {
           kind: "callout",
           pointerId: event.pointerId,
-          tool: calloutTool,
+          tool: kind,
           start: { x: point.x, y: point.y },
           current: { x: point.x, y: point.y },
         };
@@ -1363,18 +1404,18 @@ export function useFieldRedlineController({
             active.samples.at(-1),
           ).slice(0, remaining),
         );
-        const annotation = transientAnnotation(
-          history.present,
-          activeLayer,
-          binding,
-          active,
-          style,
-          pageAspectRatio,
-          markSize,
-        );
-        scheduleTransient(
-          annotation ? { kind: "annotation", annotation } : null,
-        );
+        scheduleTransient(() => {
+          const annotation = transientAnnotation(
+            history.present,
+            activeLayer,
+            binding,
+            active,
+            style,
+            pageAspectRatio,
+            markSize,
+          );
+          return annotation ? { kind: "annotation", annotation } : null;
+        });
       } else if (active.kind === "callout") {
         active.current = { x: point.x, y: point.y };
         const annotation = transientAnnotation(
@@ -1519,13 +1560,17 @@ export function useFieldRedlineController({
           message("No redlines touched - increase Eraser size if needed");
         }
       } else if (active.kind === "stroke") {
-        const kind = active.tool === "pen" ? "ink" : "highlighter";
+        const kind = active.tool === "highlight" ? "highlighter" : "ink";
+        const brushTip = isRedlineMarkTool(active.tool)
+          ? redlineBrushTipForTool(active.tool)
+          : undefined;
         const draft = createRedlineStrokeDraft({
           kind,
           page,
           samples: active.samples,
           layerId: activeLayer.id,
-          style,
+          style: redlineStrokeToolStyle(active.tool, style, markSize),
+          ...(brushTip ? { brushTip } : {}),
         });
         if (draft) {
           runCommand({ type: "add-annotation", draft });
@@ -1534,26 +1579,6 @@ export function useFieldRedlineController({
       } else if (active.kind === "callout") {
         const annotationKind = annotationKindForTool(active.tool);
         if (!annotationKind || annotationKind === "ink" || annotationKind === "highlighter") {
-          return true;
-        }
-        if (isRedlineMarkTool(active.tool)) {
-          const bounds = redlineMarkBounds({
-            center: active.start,
-            pointer: active.current,
-            pageAspectRatio,
-            size: markSize,
-          });
-          runCommand({
-            type: "add-annotation",
-            draft: {
-              kind: annotationKind,
-              page,
-              layerId: activeLayer.id,
-              style: redlineMarkStyle(style),
-              start: bounds.start,
-              end: bounds.end,
-            },
-          });
           return true;
         }
         if (isRedlineDragShapeTool(active.tool)) {

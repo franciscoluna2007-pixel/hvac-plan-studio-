@@ -178,6 +178,56 @@ test("v1 snapshots restore only on the exact PDF and quarantine unsafe data", ()
   );
 });
 
+test("shape-tip pen strokes persist through snapshots and My Details", () => {
+  const added = add(fresh(), {
+    kind: "ink",
+    brushTip: "square",
+    page: 1,
+    style: {
+      color: "#dc2626",
+      strokeWidth: 0.02,
+      opacity: 0.8,
+    },
+    points: [
+      { x: 0.1, y: 0.2 },
+      { x: 0.7, y: 0.6 },
+    ],
+  });
+  const document = added.document;
+  const original = document.annotations[0];
+  assert.equal(original.brushTip, "square");
+
+  const restored = parseRedlineSnapshot(
+    serializeRedlineSnapshot(document, "2026-07-30T20:00:00Z"),
+    document.binding,
+  );
+  assert.equal(restored.status, "ready");
+  assert.equal(restored.document.annotations[0].brushTip, "square");
+  assert.equal(
+    restored.fingerprint,
+    redlineDocumentFingerprint(document),
+  );
+
+  const saved = saveRedlineMyDetail(
+    document,
+    [original.id],
+    "Square pen trail",
+  );
+  assert.equal(saved.changed, true, saved.reason);
+  assert.equal(
+    saved.document.myDetails[0].annotations[0].brushTip,
+    "square",
+  );
+  const placed = placeRedlineMyDetail(
+    saved.document,
+    saved.document.myDetails[0].id,
+    { sourceFingerprint: "pdf-fingerprint-a", page: 2 },
+    { x: 0.1, y: 0.1 },
+  );
+  assert.equal(placed.changed, true, placed.reason);
+  assert.equal(placed.document.annotations.at(-1).brushTip, "square");
+});
+
 test("sanitization applies hard policy caps and strips unknown presentation data", () => {
   const document = fresh();
   document.favorites = Array.from(

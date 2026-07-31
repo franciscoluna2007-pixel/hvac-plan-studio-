@@ -147,6 +147,42 @@ test("one eraser drag can delete many redlines and Undo restores them together",
   );
 });
 
+test("one shape-pen drag commits and undoes as one stroke", () => {
+  const original = document();
+  const history = createRedlineHistory(original);
+  const drawn = executeRedlineCommand(history, {
+    type: "add-annotation",
+    draft: {
+      kind: "ink",
+      brushTip: "circle",
+      page: 1,
+      style: {
+        color: "#dc2626",
+        strokeWidth: 0.02,
+        opacity: 1,
+      },
+      points: [
+        { x: 0.1, y: 0.2 },
+        { x: 0.4, y: 0.3 },
+        { x: 0.8, y: 0.7 },
+      ],
+    },
+  });
+
+  assert.equal(drawn.changed, true, drawn.reason);
+  assert.equal(drawn.history.present.annotations.length, 1);
+  assert.equal(drawn.history.present.annotations[0].brushTip, "circle");
+  assert.equal(drawn.history.past.length, 1);
+
+  const undone = undoRedlineHistory(drawn.history);
+  assert.equal(undone.changed, true);
+  assert.equal(undone.history.present.annotations.length, 0);
+  assert.equal(
+    redlineDocumentFingerprint(undone.history.present),
+    redlineDocumentFingerprint(original),
+  );
+});
+
 test("caps retained snapshot bytes in addition to command count", () => {
   const probe = executeRedlineCommand(
     createRedlineHistory(document()),

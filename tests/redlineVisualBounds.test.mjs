@@ -107,6 +107,34 @@ test("stroke bounds include visible line thickness", () => {
   assert.ok(visual.height > 70);
 });
 
+test("shape-tip brush bounds keep their document-relative tip size while zoomed", () => {
+  const visual = redlineAnnotationVisualBounds(
+    annotation({
+      kind: "ink",
+      brushTip: "circle",
+      points: [
+        { x: 0.1, y: 0.1 },
+        { x: 0.3, y: 0.2 },
+      ],
+      style: {
+        color: "#ff7a00",
+        strokeWidth: 0.02,
+        opacity: 1,
+      },
+    }),
+    1000,
+    700,
+    2,
+  );
+
+  assert.deepEqual(visual, {
+    x: 93,
+    y: 63,
+    width: 214,
+    height: 84,
+  });
+});
+
 test("rectangle, circle, and cloud bounds include the rendered callout stroke radius", () => {
   for (const kind of ["rectangle", "circle", "cloud"]) {
     const visual = redlineAnnotationVisualBounds(

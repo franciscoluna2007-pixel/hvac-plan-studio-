@@ -143,7 +143,7 @@ test("selection-box preview renders without replacing the PDF workspace", async 
         binding,
         width: 1_200,
         height: 800,
-        zoom: 1,
+        zoom: 2,
         interactive: false,
         layer: {
           id: "field-redlines",
@@ -169,6 +169,30 @@ test("selection-box preview renders without replacing the PDF workspace", async 
           style: outlineStyle,
           start: { x: 0.3, y: 0.1 },
           end: { x: 0.4, y: 0.2 },
+        }, {
+          id: "square-pen",
+          kind: "ink",
+          brushTip: "square",
+          layerId: "field-redlines",
+          binding,
+          style: {
+            color: "#dc2626",
+            strokeWidth: 0.02,
+            opacity: 1,
+          },
+          points: [{ x: 0.1, y: 0.5 }, { x: 0.2, y: 0.5 }],
+        }, {
+          id: "circle-pen",
+          kind: "ink",
+          brushTip: "circle",
+          layerId: "field-redlines",
+          binding,
+          style: {
+            color: "#2563eb",
+            strokeWidth: 0.02,
+            opacity: 1,
+          },
+          points: [{ x: 0.3, y: 0.5 }],
         }],
         transient: {
           kind: "annotations",
@@ -203,6 +227,20 @@ test("selection-box preview renders without replacing the PDF workspace", async 
     assert.match(
       shapeMarkup,
       /redline-transient-copy[\s\S]*?<ellipse[^>]*fill="#0ea5e9"[\s\S]*?<rect[^>]*fill="none"/,
+    );
+    assert.match(shapeMarkup, /aria-label="Square pen redline"/);
+    assert.match(
+      shapeMarkup,
+      /stroke="#dc2626" stroke-width="16" stroke-linecap="square" stroke-linejoin="round" stroke-dasharray="0 8\.8"/,
+    );
+    assert.match(
+      shapeMarkup,
+      /<rect x="112" y="392" width="16" height="16" fill="#dc2626"/,
+    );
+    assert.match(shapeMarkup, /aria-label="Circle pen redline"/);
+    assert.match(
+      shapeMarkup,
+      /<circle cx="360" cy="400" r="8" fill="#2563eb"/,
     );
   } finally {
     await vite.close();

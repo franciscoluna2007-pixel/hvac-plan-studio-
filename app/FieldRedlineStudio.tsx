@@ -43,8 +43,6 @@ import type {
 import {
   isRedlineMarkTool,
   redlineMarkRadius,
-  redlineMarkStyle,
-  redlineOutlineStyle,
   type RedlineMarkSize,
 } from "./redlineMark";
 import {
@@ -150,8 +148,8 @@ const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   { id: "select", label: "Select", icon: MousePointer2 },
   { id: "pen", label: "Draw", icon: Pencil },
   { id: "highlight", label: "Highlight", icon: Highlighter },
-  { id: "rectangle", label: "Draw square", icon: Square },
-  { id: "circle", label: "Draw circle", icon: Circle },
+  { id: "square-mark", label: "Square pen", icon: Square },
+  { id: "round-mark", label: "Circle pen", icon: Circle },
   { id: "erase", label: "Erase", icon: Eraser },
   { id: "arrow", label: "Arrow", icon: ArrowRight },
   { id: "cloud", label: "Cloud", icon: Cloud },
@@ -183,6 +181,8 @@ function isDrawableTool(tool: FieldRedlineTool) {
 function favoriteTool(favorite: RedlineFavorite): FieldRedlineTool {
   if (favorite.kind === "ink") return "pen";
   if (favorite.kind === "highlighter") return "highlight";
+  if (favorite.kind === "rectangle") return "square-mark";
+  if (favorite.kind === "circle") return "round-mark";
   return favorite.kind;
 }
 
@@ -732,8 +732,6 @@ export default function FieldRedlineStudio({
     Math.max(0, Math.min(1, layer.opacity)) * 100,
   );
   const markTool = isRedlineMarkTool(activeTool);
-  const shapeTool = activeTool === "rectangle" || activeTool === "circle";
-  const solidShape = shapeTool && Boolean(style.fillColor);
   const eraserTool = activeTool === "erase";
   const eraserSizePercent = Math.round(eraserSize * 200) / 2;
 
@@ -950,7 +948,7 @@ export default function FieldRedlineStudio({
               ) : (
                 <>
                   <label>
-                {markTool ? "Mark color" : "Line color"}
+                {markTool ? "Pen color" : "Line color"}
                 <input
                   type="color"
                   value={style.color}
@@ -959,7 +957,6 @@ export default function FieldRedlineStudio({
                     onStyleChange({
                       ...style,
                       color,
-                      ...(markTool || solidShape ? { fillColor: color } : {}),
                     });
                   }}
                   style={CONTROL_TARGET_STYLE}
@@ -967,11 +964,11 @@ export default function FieldRedlineStudio({
               </label>
               {markTool ? (
                 <label>
-                  Mark size for quick click
+                  Tip size
                   <input
                     type="range"
-                    min={0.0005}
-                    max={0.15}
+                    min={0.001}
+                    max={0.04}
                     step={0.0005}
                     value={redlineMarkRadius(markSize)}
                     onChange={(event) =>
@@ -983,7 +980,7 @@ export default function FieldRedlineStudio({
                     {(redlineMarkRadius(markSize) * 200).toFixed(1)}%
                   </output>
                   <small className="redline-size-help">
-                    Drag on the plan for any exact size.
+                    Drag to paint a continuous trail. One drag is one Undo.
                   </small>
                 </label>
               ) : (
@@ -1008,34 +1005,6 @@ export default function FieldRedlineStudio({
                   </output>
                 </label>
               )}
-              {shapeTool ? (
-                <fieldset className="redline-shape-fill-controls">
-                  <legend>Shape fill</legend>
-                  <div role="group" aria-label="Shape fill mode">
-                    <button
-                      type="button"
-                      aria-pressed={solidShape}
-                      onClick={() => onStyleChange(redlineMarkStyle(style))}
-                      style={CONTROL_TARGET_STYLE}
-                    >
-                      Solid
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={!solidShape}
-                      onClick={() => onStyleChange(redlineOutlineStyle(style))}
-                      style={CONTROL_TARGET_STYLE}
-                    >
-                      Outline
-                    </button>
-                  </div>
-                  <small className="redline-size-help">
-                    {solidShape
-                      ? "Solid uses the selected line color."
-                      : "Outline keeps the plan visible inside the shape."}
-                  </small>
-                </fieldset>
-              ) : null}
               <label>
                 Opacity
                 <input

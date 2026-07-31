@@ -1,5 +1,6 @@
 import {
   REDLINE_POLICY_LIMITS,
+  type RedlineBrushTip,
   type RedlineStrokeDraft,
   type RedlineStrokeKind,
   type RedlineStrokePoint,
@@ -359,6 +360,7 @@ export function createRedlineStrokeDraft(input: {
   samples: readonly RedlinePointerSample[];
   layerId?: string;
   style?: Partial<RedlineStyle>;
+  brushTip?: RedlineBrushTip;
   simplify?: number | RedlineStrokeSimplifyOptions;
 }): RedlineStrokeDraft | null {
   if (
@@ -378,6 +380,9 @@ export function createRedlineStrokeDraft(input: {
     page: input.page,
     ...(input.layerId ? { layerId: input.layerId } : {}),
     ...(input.style ? { style: { ...input.style } } : {}),
+    ...(input.kind === "ink" && input.brushTip
+      ? { brushTip: input.brushTip }
+      : {}),
     points,
   };
 }
