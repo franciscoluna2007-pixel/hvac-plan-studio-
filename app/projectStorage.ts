@@ -9,9 +9,36 @@ export type ProjectRestoreDecision<T extends StoredPdfProject> =
   | { status: "source-mismatch"; project: null }
   | { status: "restored"; project: T };
 
+export type ProjectSaveState = "saved" | "saving" | "limited" | "error";
+
+type ProjectStorageWriter = {
+  setItem(key: string, value: string): void;
+};
+
 export function projectStorageKey(name: string, sourceFingerprint?: string) {
   const baseKey = `${STORAGE_PREFIX}${name.toLowerCase()}`;
   return sourceFingerprint ? `${baseKey}:${sourceFingerprint}` : baseKey;
+}
+
+export function persistProjectSnapshot<T extends object>(
+  storage: ProjectStorageWriter,
+  storageKey: string,
+  project: T,
+): Exclude<ProjectSaveState, "saving"> {
+  try {
+    storage.setItem(storageKey, JSON.stringify(project));
+    return "saved";
+  } catch {
+    try {
+      storage.setItem(
+        storageKey,
+        JSON.stringify({ ...project, activePlanAnalysis: null }),
+      );
+      return "limited";
+    } catch {
+      return "error";
+    }
+  }
 }
 
 export function resolveProjectRestore<T extends StoredPdfProject>(

@@ -3263,6 +3263,18 @@ footer span { display: flex; align-items: center; gap: 5px; }
   background: #f7b733;
   box-shadow: 0 0 0 4px #f7b73312, 0 0 10px #f7b73355;
 }
+.studio-save-state.limited { color: #ffd37a; }
+.studio-save-state.limited i {
+  background: #f7b733;
+  box-shadow: 0 0 0 4px #f7b73320, 0 0 10px #f7b73370;
+}
+.studio-save-state.error { color: #ffb4b1; }
+.studio-save-state.error i {
+  background: #ff5c5c;
+  box-shadow: 0 0 0 4px #ff5c5c22, 0 0 12px #ff5c5c88;
+}
+.footer-right.save-limited { color: #d6aa57; }
+.footer-right.save-error { color: #ff9f9b; font-weight: 800; }
 .top-actions { min-width: 0; gap: 6px; }
 .top-actions > button {
   min-height: 36px;
@@ -4305,8 +4317,12 @@ footer span { display: flex; align-items: center; gap: 5px; }
   .canvas-panel { min-width: 0; }
   .topbar { grid-template-columns: auto minmax(0, 1fr); padding-inline: 9px; }
   .brand > div:last-child,
-  .project-name,
-  .studio-save-state { display: none; }
+  .project-name { display: none; }
+  .studio-save-state {
+    max-width: 94px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .brand-mark { width: 36px; height: 36px; }
   .top-actions .command-button,
   .top-actions .cloud-button,
