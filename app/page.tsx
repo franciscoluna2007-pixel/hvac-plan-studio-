@@ -14326,7 +14326,7 @@ function HVACPlanStudioApp() {
           <div className="brand-mark"><Wind size={23} strokeWidth={2.4} /></div>
           <div>
             <strong>HVAC Plan Studio</strong>
-            <span>Plans · markup · materials</span>
+            <span>Field Command Console</span>
           </div>
         </button>
 
