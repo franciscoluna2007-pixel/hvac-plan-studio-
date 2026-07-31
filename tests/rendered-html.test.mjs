@@ -21,7 +21,7 @@ async function loadConnectionRepairModule() {
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
 
-test("renders production v133 text metadata without generated image metadata or the development preview marker", async () => {
+test("renders Field Command Console metadata without generated image metadata or the development preview marker", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -47,8 +47,8 @@ test("renders production v133 text metadata without generated image metadata or 
     /^text\/html\b/i,
   );
   const html = await response.text();
-  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Field Redline Studio"\/>/i);
-  assert.match(html, /<meta property="og:description" content="Draw source-bound field redlines, organize review notes, and export a clear marked-up plan without changing the approved HVAC design\."\/>/i);
+  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Field Command Console"\/>/i);
+  assert.match(html, /<meta property="og:description" content="Plan, route, review, redline, and issue controlled HVAC work directly over the source PDF\."\/>/i);
   assert.doesNotMatch(html, /(?:property|name)="(?:og:image|twitter:image)"/i);
   assert.doesNotMatch(html, /summary_large_image|og-v\d+\.png/i);
   assert.doesNotMatch(html, developmentPreviewMeta);
@@ -199,7 +199,7 @@ test("leads solo HVAC operators through four job steps and keeps Field Redline s
   assert.match(styles, /\.project-home-hero-visual,[\s\S]*display: none !important/);
   assert.match(styles, /\.left-panel-tabs/);
   assert.doesNotMatch(layout, /\/og-v\d+\.png|summary_large_image|images\s*:/);
-  assert.match(layout, /Field Redline Studio/);
+  assert.match(layout, /HVAC Plan Studio · Field Command Console/);
 });
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
@@ -2109,7 +2109,7 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(styles, /\.builder-current-step-summary/);
   assert.match(styles, /\.app-shell\.tablet-layout \.left-panel,[\s\S]*?padding-bottom: calc\(92px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(styles, /\.assistant-more-tools \{[\s\S]*?overflow-x: auto;/);
-  assert.match(layout, /HVAC Plan Studio · Field Redline Studio/);
+  assert.match(layout, /HVAC Plan Studio · Field Command Console/);
   assert.doesNotMatch(layout, /\/og-v\d+\.png|summary_large_image|images\s*:/);
 
   assert.match(page, /function applyDetectedPlanScale\(candidate: PlanScaleCandidate, page: number\)/);
