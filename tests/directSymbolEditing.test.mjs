@@ -76,13 +76,13 @@ test("v126 applies explicit size defaults to new symbols and placement previews"
   assert.match(preview, /labelScale: defaultSymbolLabelScale\(symbolPreview\.kind\)/);
 });
 
-test("v126 metadata and documentation prohibit generated promotional mock imagery", async () => {
-  assert.doesNotMatch(layout, /\bimages\s*:/);
-  assert.doesNotMatch(layout, /summary_large_image/);
-  assert.doesNotMatch(layout, /\/(?:og(?:-v\d+)?|hvac-plan-studio-solo-operator-social)\.png/);
+test("v150 metadata uses one reviewed command-deck social card without legacy mock imagery", async () => {
+  assert.match(layout, /\bimages\s*:/);
+  assert.match(layout, /summary_large_image/);
+  assert.match(layout, /\/og\.png/);
+  await access(new URL("../public/og.png", import.meta.url));
 
   const generatedPromotionalImages = [
-    "../public/og.png",
     "../public/og-v121.png",
     "../public/og-v122.png",
     "../public/og-v123.png",
@@ -93,7 +93,7 @@ test("v126 metadata and documentation prohibit generated promotional mock imager
     await assert.rejects(
       access(new URL(relativePath, import.meta.url)),
       (error) => error?.code === "ENOENT",
-      `${relativePath} should not exist`,
+      `${relativePath} legacy preview should not exist`,
     );
   }
 

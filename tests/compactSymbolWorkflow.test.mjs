@@ -59,11 +59,12 @@ test("v127 removes SIZE LATER and leaves unconfirmed supply and return runs unla
   assert.match(page, /\{runLabelText\}/);
 });
 
-test("current release metadata stays image-free and identifies Field Redline Studio", () => {
-  assert.match(layout, /HVAC Plan Studio · Field Redline Studio/);
-  assert.match(layout, /Draw source-bound field redlines/);
-  assert.doesNotMatch(layout, /\bimages\s*:/);
-  assert.doesNotMatch(layout, /summary_large_image/);
+test("current release metadata identifies the Field Command Console", () => {
+  assert.match(layout, /HVAC Plan Studio · Field Command Console/);
+  assert.match(layout, /Plan, route, review, redline, and issue controlled HVAC work directly over the source PDF/);
+  assert.match(layout, /images: \[\{/);
+  assert.match(layout, /url: "\/og\.png"/);
+  assert.match(layout, /summary_large_image/);
   assert.match(analytics, /app_version: "133"/);
   assert.match(readme, /Current release\s+[—-]\s+v133/i);
   assert.match(readme, /v133\s+[—-]\s+Field Redline Studio/i);

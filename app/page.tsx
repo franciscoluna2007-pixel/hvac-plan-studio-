@@ -14312,7 +14312,7 @@ function HVACPlanStudioApp() {
           : `Saved locally${lastSavedTime ? ` at ${lastSavedTime}` : ""}`;
 
   return (
-    <main className={`app-shell field-first-workspace layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showFinishJobStudio ? "finish-job-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${packagePrintReleased ? "package-print-released" : "package-print-draft"}`}>
+    <main data-layout="command-deck" className={`app-shell field-first-workspace layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${fieldRedline.open ? "redline-open" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showFinishJobStudio ? "finish-job-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${packagePrintReleased ? "package-print-released" : "package-print-draft"}`}>
       <input
         ref={inputRef}
         className="file-input"
@@ -14366,8 +14366,10 @@ function HVACPlanStudioApp() {
 
       <section className="field-first-guide" aria-label="Job steps" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
         <div className="field-first-next">
-          <small>NEXT STEP</small>
-          <strong>{fieldFirstActiveStep.detail}</strong>
+          <div><small>ACTIVE OPERATION</small><b>{fieldFirstProgress}%</b></div>
+          <strong>{fieldFirstActiveStep.label}</strong>
+          <span>{fieldFirstActiveStep.detail}</span>
+          <i aria-hidden="true"><i style={{ width: `${fieldFirstProgress}%` }} /></i>
         </div>
         <nav aria-label="Plan setup and four job steps">
           <button
@@ -14406,7 +14408,7 @@ function HVACPlanStudioApp() {
           </button>)}
         </nav>
         <button className="field-first-primary" onClick={fieldFirstActiveStep.run}>
-          Continue <ArrowRight size={16} />
+          Continue <span>{fieldFirstActiveStep.label}</span> <ArrowRight size={16} />
         </button>
       </section>
 
@@ -14429,6 +14431,83 @@ function HVACPlanStudioApp() {
           aria-label="Close open workspace drawer"
           onClick={() => { setLeftPanelOpen(false); setRightPanelOpen(false); }}
         />}
+        <nav className="command-rail" aria-label="Field command rail" data-command-rail>
+          <div className="command-rail-group command-rail-main">
+            <button type="button" onClick={() => setShowProjectHome(true)} title="Open current job">
+              <HomeIcon size={18} /><span>Job</span>
+            </button>
+            <button
+              type="button"
+              className={leftPanelOpen && leftPanelView === "draw" ? "active" : ""}
+              aria-pressed={leftPanelOpen && leftPanelView === "draw"}
+              onClick={() => { setLeftPanelView("draw"); openToolsPanel(); }}
+              title="Open drawing tools"
+            >
+              <Route size={18} /><span>Draw</span>
+            </button>
+            <button
+              type="button"
+              className={leftPanelOpen && leftPanelView === "symbols" ? "active" : ""}
+              aria-pressed={leftPanelOpen && leftPanelView === "symbols"}
+              onClick={() => { setLeftPanelView("symbols"); openToolsPanel(); }}
+              title="Open HVAC symbols"
+            >
+              <Grid3X3 size={18} /><span>Symbols</span>
+            </button>
+            <button
+              type="button"
+              className={leftPanelOpen && leftPanelView === "properties" ? "active" : ""}
+              aria-pressed={leftPanelOpen && leftPanelView === "properties"}
+              disabled={!selectedId}
+              onClick={() => { setLeftPanelView("properties"); openToolsPanel(); }}
+              title="Edit the selected object"
+            >
+              <MousePointer2 size={18} /><span>Selected</span>
+            </button>
+          </div>
+          <div className="command-rail-group command-rail-review">
+            <button
+              type="button"
+              className={rightPanelOpen && rightTab === "builder" ? "active" : ""}
+              aria-pressed={rightPanelOpen && rightTab === "builder"}
+              onClick={() => { setRightTab("builder"); openInspectorPanel(); }}
+              title="Open current job step"
+            >
+              <ShieldAlert size={18} /><span>Review</span>
+            </button>
+            <button
+              type="button"
+              className={rightPanelOpen && rightTab === "layers" ? "active" : ""}
+              aria-pressed={rightPanelOpen && rightTab === "layers"}
+              onClick={() => { setRightTab("layers"); openInspectorPanel(); }}
+              title="Open plan layers"
+            >
+              <PanelTop size={18} /><span>Layers</span>
+            </button>
+            <button
+              type="button"
+              className={fieldRedline.open ? "active redline" : ""}
+              aria-pressed={fieldRedline.open}
+              disabled={!pdf}
+              onClick={() => {
+                if (fieldRedline.open) closeFieldRedlineStudio();
+                else openFieldRedlineStudio();
+              }}
+              title="Open Field Redline"
+            >
+              <StickyNote size={18} /><span>Redline</span>
+            </button>
+          </div>
+          <button
+            type="button"
+            className={`command-rail-settings ${showDisplaySettings ? "active" : ""}`}
+            aria-pressed={showDisplaySettings}
+            onClick={() => setShowDisplaySettings((visible) => !visible)}
+            title="Display and input settings"
+          >
+            <SlidersHorizontal size={18} /><span>Display</span>
+          </button>
+        </nav>
         <aside id="workspace-tools-panel" className={`left-panel view-${leftPanelView}`} aria-label="HVAC plan tools">
           <div className="panel-heading">
             <div><span>PLAN TOOLS</span><small>CHOOSE ONE GROUP</small></div>

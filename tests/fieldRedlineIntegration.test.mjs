@@ -858,12 +858,12 @@ test("Redline drawing, shape, and text-edit lifecycles stay direct and unclutter
   );
 });
 
-test("V133 metadata and user-facing naming publish Field Redline Studio with Area select", () => {
+test("the current shell metadata keeps Field Redline Studio as a workspace with Area select", () => {
   assert.match(analytics, /app_version: "133"/);
-  assert.match(layout, /HVAC Plan Studio · Field Redline Studio/);
+  assert.match(layout, /HVAC Plan Studio · Field Command Console/);
   assert.match(
     layout,
-    /Draw source-bound field redlines[\s\S]*?without changing the approved HVAC design\./,
+    /Plan, route, review, redline, and issue controlled HVAC work directly over the source PDF\./,
   );
   assert.match(studio, /Field Redline Studio/);
   assert.match(studio, /\{ id: "lasso", label: "Area select", icon: Lasso \}/);
