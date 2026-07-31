@@ -690,10 +690,7 @@ test("Eraser size drives a swept drag preview that commits as one Undo step", ()
   );
 });
 
-test("square and circle preview and commit the same persistent fill style", () => {
-  const redlineMarkImport = controller.match(
-    /import\s*\{([^}]*)\}\s*from "\.\/redlineMark";/,
-  )?.[1];
+test("square and circle use the coalesced pen-stroke lifecycle", () => {
   const transient = sourceBlock(
     controller,
     "function transientAnnotation(",
@@ -709,30 +706,90 @@ test("square and circle preview and commit the same persistent fill style", () =
     "const finishPointer = useCallback",
     "const handleDialogConfirm = useCallback",
   );
+  const pointerDown = sourceBlock(
+    controller,
+    "const handlePointerDown = useCallback",
+    "const handleAnnotationPointerDown = useCallback",
+  );
 
-  assert.ok(redlineMarkImport, "missing the Redline mark helper import");
-  assert.match(redlineMarkImport, /\bredlineOutlineStyle\b/);
   assert.match(
     controller,
-    /function redlineDragShapeStyle\(style: RedlineStyle\)[\s\S]*?return style\.fillColor \? redlineMarkStyle\(style\) : style/,
+    /function redlineBrushTipForTool\(tool: RedlineMarkTool\)[\s\S]*?round-mark" \? "circle" : "square"/,
   );
   assert.match(
     transient,
-    /const annotationStyle = isRedlineMarkTool\(active\.tool\)[\s\S]*?isRedlineDragShapeTool\(active\.tool\)[\s\S]*?redlineDragShapeStyle\(style\)[\s\S]*?style: normalizeRedlineStyle\(\s*annotationKind,\s*annotationStyle,/,
+    /if \(active\.kind === "stroke"\)[\s\S]*?isRedlineMarkTool\(active\.tool\)[\s\S]*?brushTip[\s\S]*?redlineStrokePointsFromSamples\(active\.samples\)[\s\S]*?points,/,
   );
   assert.match(
     setTool,
-    /isRedlineMarkTool\(tool\)[\s\S]*?\? redlineMarkStyle\(current\)[\s\S]*?isRedlineDragShapeTool\(tool\)[\s\S]*?\? redlineDragShapeStyle\(current\)/,
+    /isRedlineMarkTool\(tool\) \? "ink" : kind[\s\S]*?isRedlineMarkTool\(tool\)\s*\? redlineOutlineStyle\(current\)/,
   );
+  assert.doesNotMatch(setTool, /redlineStrokeToolStyle/);
   assert.match(
-    setTool,
-    /isRedlineDragShapeTool\(tool\)[\s\S]*?\? redlineDragShapeStyle\(current\)[\s\S]*?: redlineOutlineStyle\(current\)/,
+    pointerDown,
+    /activeTool === "pen"[\s\S]*?activeTool === "highlight"[\s\S]*?isRedlineMarkTool\(activeTool\)[\s\S]*?normalizeCoalescedRedlineSamples/,
   );
   assert.match(
     finishPointer,
-    /isRedlineDragShapeTool\(active\.tool\)[\s\S]*?draft: \{[\s\S]*?style: redlineDragShapeStyle\(style\),\s*start: bounds\.start,\s*end: bounds\.end/,
+    /active\.kind === "stroke"[\s\S]*?isRedlineMarkTool\(active\.tool\)[\s\S]*?createRedlineStrokeDraft\(\{[\s\S]*?brushTip[\s\S]*?runCommand\(\{ type: "add-annotation", draft \}\)/,
   );
-  assert.doesNotMatch(finishPointer, /style: redlineOutlineStyle/);
+  assert.doesNotMatch(
+    finishPointer,
+    /isRedlineMarkTool\(active\.tool\)[\s\S]*?redlineMarkBounds/,
+  );
+});
+
+test("shape-tip previews are frame-throttled and keep the normal pen width separate", () => {
+  const scheduleTransient = sourceBlock(
+    controller,
+    "const scheduleTransient = useCallback",
+    "useEffect(",
+  );
+  const pointerMove = sourceBlock(
+    controller,
+    "const handlePointerMove = useCallback",
+    "const finishPointer = useCallback",
+  );
+  const strokeMove = sourceBlock(
+    pointerMove,
+    '} else if (active.kind === "stroke") {',
+    '} else if (active.kind === "callout") {',
+  );
+  const setMarkSize = sourceBlock(
+    controller,
+    "const setMarkSize = useCallback",
+    "const refreshEraserPreview = useCallback",
+  );
+  const setTool = sourceBlock(
+    controller,
+    "const setTool = useCallback",
+    "const updateLayer = useCallback",
+  );
+  const useFavorite = sourceBlock(
+    controller,
+    "const useFavorite = useCallback",
+    "const setDetailPreview = useCallback",
+  );
+
+  assert.match(
+    controller,
+    /useRef<\(\(\) => RedlineCanvasTransient \| null\) \| null>/,
+  );
+  assert.match(
+    scheduleTransient,
+    /factory: \(\) => RedlineCanvasTransient \| null[\s\S]*?queuedTransientRef\.current = factory[\s\S]*?requestAnimationFrame[\s\S]*?queuedFactory\?\.\(\)/,
+  );
+  assert.match(
+    strokeMove,
+    /scheduleTransient\(\(\) => \{[\s\S]*?const annotation = transientAnnotation\(/,
+  );
+  assert.match(
+    setMarkSize,
+    /setMarkSizeState\(redlineMarkRadius\(value\)\)/,
+  );
+  assert.doesNotMatch(setMarkSize, /setStyle/);
+  assert.doesNotMatch(setTool, /redlineStrokeToolStyle/);
+  assert.match(useFavorite, /strokeWidth: current\.strokeWidth/);
 });
 
 test("Redline drawing, shape, and text-edit lifecycles stay direct and uncluttered", () => {
@@ -742,7 +799,10 @@ test("Redline drawing, shape, and text-edit lifecycles stay direct and unclutter
     "const updateLayer = useCallback",
   );
   assert.match(setTool, /if \(tool !== "select"\) select\(\[\]\)/);
-  assert.match(setTool, /isRedlineDragShapeTool\(tool\)/);
+  assert.match(
+    setTool,
+    /Drag to draw with a \$\{[\s\S]*?"circle" : "square"[\s\S]*?\} pen tip - one drag is one Undo/,
+  );
 
   const finishPointer = sourceBlock(
     controller,
@@ -755,11 +815,7 @@ test("Redline drawing, shape, and text-edit lifecycles stay direct and unclutter
   );
   assert.match(
     finishPointer,
-    /isRedlineDragShapeTool\(active\.tool\)[\s\S]*?redlineDragShapeBounds/,
-  );
-  assert.match(
-    finishPointer,
-    /if \(!bounds\) \{[\s\S]*?Press and drag to draw a circle or square[\s\S]*?return true;/,
+    /const kind = active\.tool === "highlight" \? "highlighter" : "ink"[\s\S]*?brushTip/,
   );
 
   const textConfirm = sourceBlock(

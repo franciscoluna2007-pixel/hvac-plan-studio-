@@ -391,6 +391,46 @@ function sweepIntersectsPolygon(
     ) <= padding);
 }
 
+function squareBrushSegmentPolygon(
+  start: PhysicalPoint,
+  end: PhysicalPoint,
+  halfSide: number,
+) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= Number.EPSILON) {
+    return [
+      { x: start.x - halfSide, y: start.y - halfSide },
+      { x: start.x + halfSide, y: start.y - halfSide },
+      { x: start.x + halfSide, y: start.y + halfSide },
+      { x: start.x - halfSide, y: start.y + halfSide },
+    ];
+  }
+  const tangentX = dx / length * halfSide;
+  const tangentY = dy / length * halfSide;
+  const normalX = -dy / length * halfSide;
+  const normalY = dx / length * halfSide;
+  return [
+    {
+      x: start.x - tangentX + normalX,
+      y: start.y - tangentY + normalY,
+    },
+    {
+      x: end.x + tangentX + normalX,
+      y: end.y + tangentY + normalY,
+    },
+    {
+      x: end.x + tangentX - normalX,
+      y: end.y + tangentY - normalY,
+    },
+    {
+      x: start.x - tangentX - normalX,
+      y: start.y - tangentY - normalY,
+    },
+  ];
+}
+
 function annotationIntersectsEraser(
   annotation: RedlineAnnotation,
   sweepStart: PhysicalPoint,
@@ -407,6 +447,31 @@ function annotationIntersectsEraser(
     const points = annotation.points.map((point) =>
       physicalPoint(point, aspectRatio));
     if (!points.length) return false;
+    if (annotation.kind === "ink" && annotation.brushTip === "square") {
+      if (points.length === 1) {
+        return sweepIntersectsPolygon(
+          sweepStart,
+          sweepEnd,
+          squareBrushSegmentPolygon(
+            points[0],
+            points[0],
+            strokePadding,
+          ),
+          eraserRadius,
+        );
+      }
+      return points.slice(1).some((point, index) =>
+        sweepIntersectsPolygon(
+          sweepStart,
+          sweepEnd,
+          squareBrushSegmentPolygon(
+            points[index],
+            point,
+            strokePadding,
+          ),
+          eraserRadius,
+        ));
+    }
     if (points.length === 1) {
       return pointToSegmentDistance(points[0], sweepStart, sweepEnd) <= hitRadius;
     }

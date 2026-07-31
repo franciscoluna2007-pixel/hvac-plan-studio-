@@ -106,14 +106,14 @@ test("draw-circle and draw-square geometry starts only after a real drag", () =>
 
   const tiny = marks.redlineDragShapeBounds({
     start: { x: 0.5, y: 0.5 },
-    pointer: { x: 0.5003, y: 0.5001 },
+    pointer: { x: 0.5004, y: 0.5003 },
     pageAspectRatio: 1,
   });
   assert.ok(tiny);
   assert.ok(tiny.physicalSize < 0.001);
 });
 
-test("drag shapes follow every quadrant and stay square in screen pixels", () => {
+test("drag shapes follow the pen endpoint in every quadrant", () => {
   for (const pointer of [
     { x: 0.7, y: 0.7 },
     { x: 0.3, y: 0.7 },
@@ -126,30 +126,57 @@ test("drag shapes follow every quadrant and stay square in screen pixels", () =>
       pageAspectRatio: 1.5,
     });
     assert.ok(bounds);
-    const pixelWidth = Math.abs(bounds.end.x - bounds.start.x) * 1_200;
-    const pixelHeight = Math.abs(bounds.end.y - bounds.start.y) * 800;
-    assert.ok(Math.abs(pixelWidth - pixelHeight) < 0.0001);
-    assert.equal(
-      Math.sign(bounds.end.x - bounds.start.x),
-      Math.sign(pointer.x - 0.5),
-    );
-    assert.equal(
-      Math.sign(bounds.end.y - bounds.start.y),
-      Math.sign(pointer.y - 0.5),
-    );
+    assert.deepEqual(bounds.start, { x: 0.5, y: 0.5 });
+    assert.deepEqual(bounds.end, pointer);
   }
 });
 
-test("drag shapes shrink at sheet edges without crossing the PDF", () => {
+test("nearly one-axis pen movement does not invent growth on the other axis", () => {
+  const almostHorizontal = marks.redlineDragShapeBounds({
+    start: { x: 0.2, y: 0.4 },
+    pointer: { x: 0.7, y: 0.401 },
+    pageAspectRatio: 1.25,
+  });
+  const almostVertical = marks.redlineDragShapeBounds({
+    start: { x: 0.2, y: 0.4 },
+    pointer: { x: 0.201, y: 0.8 },
+    pageAspectRatio: 1.25,
+  });
+
+  assert.ok(almostHorizontal);
+  assert.deepEqual(almostHorizontal.end, { x: 0.7, y: 0.401 });
+  assert.equal(almostHorizontal.physicalHeight, 0.001);
+  assert.ok(almostVertical);
+  assert.deepEqual(almostVertical.end, { x: 0.201, y: 0.8 });
+  assert.equal(almostVertical.physicalWidth, 0.00125);
+});
+
+test("zero-area pen movement does not create a collapsed shape", () => {
+  assert.equal(
+    marks.redlineDragShapeBounds({
+      start: { x: 0.2, y: 0.4 },
+      pointer: { x: 0.7, y: 0.4 },
+      pageAspectRatio: 1.25,
+    }),
+    null,
+  );
+  assert.equal(
+    marks.redlineDragShapeBounds({
+      start: { x: 0.2, y: 0.4 },
+      pointer: { x: 0.2, y: 0.8 },
+      pageAspectRatio: 1.25,
+    }),
+    null,
+  );
+});
+
+test("drag shapes clamp only the actual pen endpoint at sheet edges", () => {
   const bounds = marks.redlineDragShapeBounds({
     start: { x: 0.96, y: 0.94 },
-    pointer: { x: 1, y: 1 },
+    pointer: { x: 1.04, y: 0.97 },
     pageAspectRatio: 1.25,
   });
   assert.ok(bounds);
-  assert.ok(bounds.end.x <= 1);
-  assert.ok(bounds.end.y <= 1);
-  const pixelWidth = Math.abs(bounds.end.x - bounds.start.x) * 1_000;
-  const pixelHeight = Math.abs(bounds.end.y - bounds.start.y) * 800;
-  assert.ok(Math.abs(pixelWidth - pixelHeight) < 0.0001);
+  assert.deepEqual(bounds.start, { x: 0.96, y: 0.94 });
+  assert.deepEqual(bounds.end, { x: 1, y: 0.97 });
 });

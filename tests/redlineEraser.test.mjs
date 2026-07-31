@@ -103,6 +103,68 @@ test("a swept eraser catches skipped-over strokes without touching distant work"
   );
 });
 
+test("square pen-tip corners erase as painted while circle corners stay empty", () => {
+  const style = {
+    color: "#dc2626",
+    strokeWidth: 0.1,
+    opacity: 1,
+  };
+  const common = {
+    binding,
+    layerId: "field-redlines",
+    from: { x: 0.55, y: 0.55 },
+    to: { x: 0.55, y: 0.55 },
+    size: 0.01,
+    pageAspectRatio: 1,
+  };
+  const square = ink(
+    "square-tip",
+    [{ x: 0.5, y: 0.5 }],
+    { brushTip: "square", style },
+  );
+  const circle = ink(
+    "circle-tip",
+    [{ x: 0.5, y: 0.5 }],
+    { brushTip: "circle", style },
+  );
+
+  assert.deepEqual(
+    eraser.redlineEraserHitIds({
+      ...common,
+      annotations: [square, circle],
+    }),
+    ["square-tip"],
+  );
+});
+
+test("square pen-tip erasing stays outside an unpainted side gap", () => {
+  const square = ink(
+    "square-tip",
+    [{ x: 0.5, y: 0.5 }],
+    {
+      brushTip: "square",
+      style: {
+        color: "#dc2626",
+        strokeWidth: 0.1,
+        opacity: 1,
+      },
+    },
+  );
+
+  assert.deepEqual(
+    eraser.redlineEraserHitIds({
+      annotations: [square],
+      binding,
+      layerId: "field-redlines",
+      from: { x: 0.57, y: 0.5 },
+      to: { x: 0.57, y: 0.5 },
+      size: 0.01,
+      pageAspectRatio: 1,
+    }),
+    [],
+  );
+});
+
 test("larger eraser sizes reach nearby marks and respect page and layer scope", () => {
   const nearby = ink("nearby", [
     { x: 0.55, y: 0.46 },

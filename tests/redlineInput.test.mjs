@@ -263,4 +263,31 @@ test("builds an ink/highlighter draft without retaining pointer identity", () =>
     page: 0,
     samples: [],
   }), null);
+
+  const shapePen = createRedlineStrokeDraft({
+    kind: "ink",
+    brushTip: "circle",
+    page: 1,
+    samples: [{
+      x: 0.25,
+      y: 0.4,
+      pointerId: 8,
+      pointerType: "pen",
+    }],
+  });
+  assert.equal(shapePen.brushTip, "circle");
+  assert.equal(shapePen.points.length, 1);
+
+  const highlighter = createRedlineStrokeDraft({
+    kind: "highlighter",
+    brushTip: "square",
+    page: 1,
+    samples: [{
+      x: 0.2,
+      y: 0.3,
+      pointerId: 8,
+      pointerType: "pen",
+    }],
+  });
+  assert.equal("brushTip" in highlighter, false);
 });

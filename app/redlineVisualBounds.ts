@@ -230,8 +230,13 @@ function redlineStrokeVisualBounds(
   }
 
   const strokePadding =
-    redlineCanvasStrokeWidth(annotation, size) /
-    (2 * redlineVisualZoom(zoom));
+    redlineCanvasStrokeWidth(annotation, size) *
+    (
+      annotation.brushTip === "square"
+        ? Math.SQRT2
+        : 1
+    ) /
+    (2 * (annotation.brushTip ? 1 : redlineVisualZoom(zoom)));
   return {
     x: minX - strokePadding,
     y: minY - strokePadding,

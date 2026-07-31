@@ -98,7 +98,11 @@ function pointsPath(
 }
 
 function annotationLabel(annotation: RedlineAnnotation) {
-  if (annotation.kind === "ink") return "Pen redline";
+  if (annotation.kind === "ink") {
+    if (annotation.brushTip === "circle") return "Circle pen redline";
+    if (annotation.brushTip === "square") return "Square pen redline";
+    return "Pen redline";
+  }
   if (annotation.kind === "highlighter") return "Highlighted redline";
   if (annotation.kind === "arrow") return "Arrow redline";
   if (annotation.kind === "rectangle") {
@@ -151,6 +155,62 @@ function renderStroke(
   size: RedlineCanvasPageSize,
 ) {
   const strokeWidth = redlineCanvasStrokeWidth(annotation, size);
+  const canvasPoints = annotation.points.map((point) =>
+    redlineCanvasPoint(point, size));
+  if (annotation.brushTip) {
+    const endpointStamp = (point: RedlinePoint, key: string) => {
+      const radius = strokeWidth / 2;
+      return annotation.brushTip === "square" ? (
+        <rect
+          key={key}
+          x={point.x - radius}
+          y={point.y - radius}
+          width={strokeWidth}
+          height={strokeWidth}
+          fill={annotation.style.color}
+          pointerEvents="visiblePainted"
+        />
+      ) : (
+        <circle
+          key={key}
+          cx={point.x}
+          cy={point.y}
+          r={radius}
+          fill={annotation.style.color}
+          pointerEvents="visiblePainted"
+        />
+      );
+    };
+    if (canvasPoints.length <= 1) {
+      return canvasPoints[0]
+        ? (
+          <g opacity={finite(annotation.style.opacity, 1)}>
+            {endpointStamp(canvasPoints[0], "tap")}
+          </g>
+        )
+        : null;
+    }
+    const first = canvasPoints[0];
+    const last = canvasPoints.at(-1)!;
+    return (
+      <g opacity={finite(annotation.style.opacity, 1)}>
+        <path
+          d={smoothRedlineStrokePath(canvasPoints)}
+          fill="none"
+          stroke={annotation.style.color}
+          strokeWidth={strokeWidth}
+          strokeLinecap={
+            annotation.brushTip === "circle" ? "round" : "square"
+          }
+          strokeLinejoin="round"
+          strokeDasharray={`0 ${strokeWidth * 0.55}`}
+          pointerEvents="visiblePainted"
+        />
+        {endpointStamp(first, "start")}
+        {endpointStamp(last, "end")}
+      </g>
+    );
+  }
   return (
     <path
       d={pointsPath(annotation.points, size)}

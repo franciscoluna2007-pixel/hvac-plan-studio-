@@ -40,6 +40,7 @@ export const REDLINE_CALLOUT_KINDS = [
 export type RedlineAnnotationKind = typeof REDLINE_ANNOTATION_KINDS[number];
 export type RedlineStrokeKind = "ink" | "highlighter";
 export type RedlineCalloutKind = typeof REDLINE_CALLOUT_KINDS[number];
+export type RedlineBrushTip = "circle" | "square";
 
 export type RedlinePoint = {
   x: number;
@@ -78,6 +79,7 @@ type RedlineAnnotationBase = {
 
 export type RedlineStrokeAnnotation = RedlineAnnotationBase & {
   kind: RedlineStrokeKind;
+  brushTip?: RedlineBrushTip;
   points: RedlineStrokePoint[];
 };
 
@@ -127,6 +129,7 @@ type RedlineTemplateBase = {
 
 export type RedlineStrokeTemplate = RedlineTemplateBase & {
   kind: RedlineStrokeKind;
+  brushTip?: RedlineBrushTip;
   points: RedlineStrokePoint[];
 };
 
@@ -240,6 +243,7 @@ export type RedlineStrokeDraft = {
   page: number;
   layerId?: string;
   style?: Partial<RedlineStyle>;
+  brushTip?: RedlineBrushTip;
   points: RedlineStrokePoint[];
 };
 
@@ -517,6 +521,10 @@ function normalizedStrokePoint(
   };
 }
 
+function redlineBrushTipFromUnknown(value: unknown): RedlineBrushTip | undefined {
+  return value === "circle" || value === "square" ? value : undefined;
+}
+
 function bindingFromUnknown(
   value: unknown,
   documentBinding: RedlineDocumentBinding,
@@ -566,7 +574,18 @@ function annotationFromUnknown(
       });
     }
     if (!points.length) return null;
-    return { id, kind, layerId, binding, style, points };
+    const brushTip = kind === "ink"
+      ? redlineBrushTipFromUnknown(value.brushTip)
+      : undefined;
+    return {
+      id,
+      kind,
+      layerId,
+      binding,
+      style,
+      ...(brushTip ? { brushTip } : {}),
+      points,
+    };
   }
   const start = normalizedPoint(value.start, `${path}.start`, issues);
   const end = normalizedPoint(value.end, `${path}.end`, issues);
@@ -605,7 +624,16 @@ function templateAnnotationFromUnknown(
         normalizedStrokePoint(point, `${path}.points[${index}]`, issues))
       .filter((point): point is RedlineStrokePoint => Boolean(point));
     if (!points.length) return null;
-    return { localId, kind, style, points };
+    const brushTip = kind === "ink"
+      ? redlineBrushTipFromUnknown(value.brushTip)
+      : undefined;
+    return {
+      localId,
+      kind,
+      style,
+      ...(brushTip ? { brushTip } : {}),
+      points,
+    };
   }
   const start = normalizedPoint(value.start, `${path}.start`, issues);
   const end = normalizedPoint(value.end, `${path}.end`, issues);
@@ -1941,6 +1969,7 @@ export function saveRedlineMyDetail(
         localId,
         kind: annotation.kind,
         style: { ...annotation.style },
+        ...(annotation.brushTip ? { brushTip: annotation.brushTip } : {}),
         points: annotation.points.map((point) => localPoint(point, bounds)),
       } satisfies RedlineStrokeTemplate;
     }
@@ -2058,6 +2087,7 @@ export function placeRedlineMyDetail(
       return {
         ...base,
         kind: template.kind,
+        ...(template.brushTip ? { brushTip: template.brushTip } : {}),
         points: template.points.map((point) =>
           placedPoint(point, safeOrigin, safeExtent)),
       };
@@ -2127,6 +2157,7 @@ function addRedlineAnnotation(
       binding,
       kind: draft.kind,
       style: normalizeRedlineStyle(draft.kind, draft.style),
+      ...(draft.brushTip ? { brushTip: draft.brushTip } : {}),
       points: draft.points,
     }
     : {
