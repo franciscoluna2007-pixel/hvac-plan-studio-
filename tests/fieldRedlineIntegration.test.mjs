@@ -394,6 +394,26 @@ test("raw redlines stay outside HVAC geometry, takeoff, and release fingerprints
   );
 });
 
+test("Redline paints below every HVAC run, fitting, icon, grille, and label", () => {
+  const redlineLayerIndex = page.indexOf(
+    "SVG paint order is intentional: Redline stays below every HVAC object.",
+  );
+  const hvacDrawingLayerIndex = page.indexOf(
+    "{[...drawings, ...(copyPlacement?.preview ? [copyPlacement.preview] : [])]",
+  );
+  const assistantOverlayIndex = page.indexOf(
+    '{showAssistantSuggestionLayer && roomMarkupPlan.overlayCandidates.length > 0 && <g',
+  );
+
+  assert.ok(redlineLayerIndex >= 0);
+  assert.ok(hvacDrawingLayerIndex > redlineLayerIndex);
+  assert.ok(assistantOverlayIndex > hvacDrawingLayerIndex);
+  assert.match(
+    page,
+    /className={`field-redline-layer-host[\s\S]*?style=\{\{ pointerEvents: redlineOwnsCanvas \? "auto" : "none" \}\}/,
+  );
+});
+
 test("redline export blocks a stale rendered sheet and renders the PDF crop at output resolution", () => {
   const exportBridge = sourceBlock(
     page,

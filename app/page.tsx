@@ -15671,6 +15671,59 @@ function HVACPlanStudioApp() {
                       }
                     }}
                   >
+                    {/* SVG paint order is intentional: Redline stays below every HVAC object. */}
+                    {fieldRedline.renderedDocument && fieldRedline.binding && fieldRedline.activeLayer && <g
+                      className={`field-redline-layer-host ${fieldRedline.pendingDetail ? "is-detail-previewing" : ""} ${fieldRedline.pendingCopy ? "is-copy-previewing" : ""}`}
+                      data-export-role="field-redlines"
+                      aria-hidden={!redlineOwnsCanvas}
+                      style={{ pointerEvents: redlineOwnsCanvas ? "auto" : "none" }}
+                    >
+                      <RedlineCanvasErrorBoundary
+                        key={`${pdfFingerprint}:${pageNumber}:${fieldRedline.open}:${fieldRedline.activeTool}`}
+                        onError={() => {
+                          setFieldRedlineMessage(
+                            "A redline action was stopped safely. The PDF stayed open; close and reopen Redline to continue.",
+                          );
+                        }}
+                      >
+                        <RedlineCanvasLayer
+                          binding={fieldRedline.binding}
+                          width={renderSize.width || 1}
+                          height={renderSize.height || 1}
+                          zoom={zoom}
+                          layer={fieldRedline.activeLayer}
+                          annotations={fieldRedline.renderedDocument.annotations}
+                          selection={{
+                            annotationIds: fieldRedline.pendingCopy ||
+                                fieldRedline.activeTool !== "select"
+                              ? []
+                              : fieldRedline.selection,
+                            bounds: fieldRedline.pendingCopy ||
+                                fieldRedline.activeTool !== "select"
+                              ? undefined
+                              : fieldRedline.selectionBounds || undefined,
+                          }}
+                          transient={fieldRedline.transient}
+                          interactive={
+                            redlineOwnsCanvas && !fieldRedline.pendingDetail
+                          }
+                          onAnnotationPointerDown={(annotationId, event) => {
+                            setRedlineWheelKeyboardOpen(false);
+                            fieldRedline.handleAnnotationPointerDown(annotationId, event);
+                          }}
+                          onTextResizePointerDown={(annotationId, origin, event) => {
+                            setRedlineWheelKeyboardOpen(false);
+                            fieldRedline.handleTextResizePointerDown(
+                              annotationId,
+                              origin,
+                              event,
+                            );
+                          }}
+                          onAnnotationFocus={(annotationId) => fieldRedline.select([annotationId])}
+                          onAnnotationActivate={openRedlineSelectionWheelFromKeyboard}
+                        />
+                      </RedlineCanvasErrorBoundary>
+                    </g>}
                     {[...drawings, ...(copyPlacement?.preview ? [copyPlacement.preview] : [])].filter((drawing) => {
                       if (drawing.page !== pageNumber) return false;
                       const layer = drawingLayer(drawing);
@@ -15883,58 +15936,6 @@ function HVACPlanStudioApp() {
                         </text>}
                       </g>;
                     })}
-                    {fieldRedline.renderedDocument && fieldRedline.binding && fieldRedline.activeLayer && <g
-                      className={`field-redline-layer-host ${fieldRedline.pendingDetail ? "is-detail-previewing" : ""} ${fieldRedline.pendingCopy ? "is-copy-previewing" : ""}`}
-                      data-export-role="field-redlines"
-                      aria-hidden={!redlineOwnsCanvas}
-                      style={{ pointerEvents: redlineOwnsCanvas ? "auto" : "none" }}
-                    >
-                      <RedlineCanvasErrorBoundary
-                        key={`${pdfFingerprint}:${pageNumber}:${fieldRedline.open}:${fieldRedline.activeTool}`}
-                        onError={() => {
-                          setFieldRedlineMessage(
-                            "A redline action was stopped safely. The PDF stayed open; close and reopen Redline to continue.",
-                          );
-                        }}
-                      >
-                        <RedlineCanvasLayer
-                          binding={fieldRedline.binding}
-                          width={renderSize.width || 1}
-                          height={renderSize.height || 1}
-                          zoom={zoom}
-                          layer={fieldRedline.activeLayer}
-                          annotations={fieldRedline.renderedDocument.annotations}
-                          selection={{
-                            annotationIds: fieldRedline.pendingCopy ||
-                                fieldRedline.activeTool !== "select"
-                              ? []
-                              : fieldRedline.selection,
-                            bounds: fieldRedline.pendingCopy ||
-                                fieldRedline.activeTool !== "select"
-                              ? undefined
-                              : fieldRedline.selectionBounds || undefined,
-                          }}
-                          transient={fieldRedline.transient}
-                          interactive={
-                            redlineOwnsCanvas && !fieldRedline.pendingDetail
-                          }
-                          onAnnotationPointerDown={(annotationId, event) => {
-                            setRedlineWheelKeyboardOpen(false);
-                            fieldRedline.handleAnnotationPointerDown(annotationId, event);
-                          }}
-                          onTextResizePointerDown={(annotationId, origin, event) => {
-                            setRedlineWheelKeyboardOpen(false);
-                            fieldRedline.handleTextResizePointerDown(
-                              annotationId,
-                              origin,
-                              event,
-                            );
-                          }}
-                          onAnnotationFocus={(annotationId) => fieldRedline.select([annotationId])}
-                          onAnnotationActivate={openRedlineSelectionWheelFromKeyboard}
-                        />
-                      </RedlineCanvasErrorBoundary>
-                    </g>}
                     {showAssistantSuggestionLayer && roomMarkupPlan.overlayCandidates.length > 0 && <g
                       id="assistant-suggestion-layer"
                       className="assistant-suggestion-layer"
