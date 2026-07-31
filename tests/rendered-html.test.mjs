@@ -456,9 +456,22 @@ test("uses nominal icon sizes, accurate equipment identities, and selected place
   assert.ok(mark.byteLength > 500);
 });
 
-test("places T/Y fittings anywhere on a trunk and starts a correctly sized Port 3 branch", async () => {
+test("places new T/Y fittings only as complete one-click junctions", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
+  assert.doesNotMatch(source, /branchWorkflow/);
+  assert.match(source, /if \(!matchedRoute\) \{[\s\S]*?Move to the point where a completed branch run meets the trunk/);
+  assert.match(source, /const branchRun: Drawing = \{/);
+  assert.match(source, /connectedIds: \[upstream\.id, downstream\.id, branchRun\.id\]/);
+  assert.match(source, /all three runs connected/);
+  assert.match(source, /assignedRuns\.has\(drawing\.id\)/);
+  assert.match(source, /competingRun\.distance - best\.distance < 6 \/ zoom/);
+  assert.match(source, /function automaticBranchOpportunity\(point: Point\)/);
+  assert.match(source, /nearestSupplySegment\(targetPoint, automaticOpportunity\?\.mainRunId\)/);
+  assert.match(source, /automaticOpportunity\.branchRunId/);
+  assert.doesNotMatch(source, /connectedIds: \[upstream\.id, downstream\.id, branchRun\?\.id \|\| ""\]/);
+
+  // Existing incomplete fittings still keep their explicit repair controls.
   assert.match(source, /const \[pendingBranchFittingId, setPendingBranchFittingId\]/);
   assert.match(source, /const \[port3BranchDraft, setPort3BranchDraft\]/);
   assert.match(source, /function attachPendingBranchRun\(point: Point\)/);
@@ -466,27 +479,21 @@ test("places T/Y fittings anywhere on a trunk and starts a correctly sized Port 
   assert.match(source, /const branchSize = fitting\.fitting\.branchSize/);
   assert.match(source, /anchor: branchPort/);
   assert.match(source, /commitPort3Branch\(\{/);
-  assert.match(source, /connectedIds: \[upstream\.id, downstream\.id, branchRun\?\.id \|\| ""\]/);
   assert.match(source, /Port 3 ready · draw the \$\{branchSize\}"/);
   assert.match(source, /Attach existing run instead/);
   assert.match(source, /no branch stub was saved/);
   assert.match(source, /Pick Port 3 run on plan/);
-  assert.match(source, /Place fitting on any supply run/);
   assert.doesNotMatch(source, /No crossing route found · move the fitting closer to both existing runs/);
 });
 
-test("guides T/Y placement with numbered ports, endpoint previews, and recovery actions", async () => {
+test("keeps numbered-port repair controls for existing incomplete fittings", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
   assert.match(source, /className={`branch-workflow-hud/);
-  assert.match(source, /Pick trunk/);
-  assert.match(source, /Split \+ place/);
-  assert.match(source, /Draw Port 3/);
   assert.match(source, /candidateEndpoint:/);
   assert.match(source, /THIS END MOVES TO PORT 3/);
   assert.match(source, /BRANCH RUN SELECTED/);
-  assert.match(source, /Change Port 3/);
   assert.match(source, /Undo connection/);
   assert.match(source, /connection-confirmed-label/);
   assert.match(styles, /\.branch-fitting \.connected-port \.fitting-port/);
@@ -511,44 +518,31 @@ test("keeps completed T/Y fittings readable and reveals numbered ports only whil
   assert.match(source, /className="fitting-hit"[\s\S]*?vectorEffect="non-scaling-stroke"/);
 });
 
-test("supports a continuous branch pass with manual junction suggestions", async () => {
+test("keeps deterministic junction suggestions available to the assistant", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
   assert.match(source, /type BranchOpportunity =/);
   assert.match(source, /function branchOpportunities\(\): BranchOpportunity\[\]/);
   assert.match(source, /function focusNextBranchOpportunity\(opportunities = branchOpportunities\(\)\)/);
-  assert.match(source, /Find next suggested T\/Y/);
-  assert.match(source, /Next suggested T\/Y/);
-  assert.match(source, /Suggestions only highlight likely junctions\. You confirm every fitting\./);
   assert.match(source, /className="branch-opportunity-marker"/);
   assert.match(source, /SUGGESTED T\/Y/);
-  assert.match(source, /Branch pass continues/);
-  assert.match(styles, /\.branch-pass-summary/);
   assert.match(styles, /\.branch-opportunity-marker circle/);
 });
 
-test("supports the field run-first T/Y workflow", async () => {
+test("makes T/Y placement a one-click complete connection", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  assert.match(source, /const \[branchWorkflow, setBranchWorkflow\] = useState<"run-first" \| "place-first">\("run-first"\)/);
-  assert.match(source, /const \[queuedBranchRunId, setQueuedBranchRunId\]/);
-  assert.match(source, /function armRunFirstBranch\(point: Point\)/);
-  assert.match(source, /function queuedBranchRoute\(center: Point, mainId: string, mainAngle: number\)/);
-  assert.match(source, /if \(branchWorkflow === "run-first" && !queuedBranchRunId\)/);
-  assert.match(source, /Branch run armed · click this trunk location to split, rotate, size and connect the T\/Y/);
-  assert.match(source, /PORT 3 RUN ARMED/);
-  assert.match(source, /Safe placement/);
-  assert.match(source, /Only your selected run can connect to Port 3/);
-  assert.doesNotMatch(source, />Place first<\/button>/);
-  assert.doesNotMatch(source, /setBranchWorkflow\("place-first"\)/);
-  assert.match(source, /Pick next diffuser run/);
-  assert.match(source, /The closest end of this run will move to Port 3/);
+  assert.match(source, /ONE-CLICK T\/Y/);
+  assert.match(source, /Click the junction/);
+  assert.match(source, /The fitting snaps, rotates, sizes, and connects itself/);
+  assert.match(source, /Junction found · click once to connect all three runs/);
+  assert.match(source, /Redline places only a complete 3-way connection/);
+  assert.doesNotMatch(source, /RUN-FIRST T\/Y PASS/);
+  assert.doesNotMatch(source, /Pick next diffuser run/);
+  assert.doesNotMatch(source, /PORT 3 RUN ARMED/);
   assert.match(styles, /\.branch-safe-mode/);
-  assert.match(styles, /\.branch-run-armed-card/);
-  assert.match(styles, /\.branch-run-armed \.duct-line/);
-  assert.match(styles, /\.branch-run-pick \.duct-line/);
 });
 
 test("builds a deterministic STEP 1 plan with type, sheet, system, and endpoint safeguards", async () => {

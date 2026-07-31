@@ -1611,7 +1611,6 @@ function HVACPlanStudioApp() {
   const [branchMessage, setBranchMessage] = useState("");
   const [branchPlacementResult, setBranchPlacementResult] = useState<{ fittingId: string; message: string } | null>(null);
   const [branchOpportunityCursor, setBranchOpportunityCursor] = useState(0);
-  const [branchWorkflow, setBranchWorkflow] = useState<"run-first" | "place-first">("run-first");
   const [queuedBranchRunId, setQueuedBranchRunId] = useState<string | null>(null);
   const [branchHoverRunId, setBranchHoverRunId] = useState<string | null>(null);
   const [branchStyle, setBranchStyle] = useState<"auto" | "wye45" | "tee90">("auto");
@@ -2260,13 +2259,11 @@ function HVACPlanStudioApp() {
     const timer = window.setTimeout(() => {
       setBranchPlacementResult(null);
       if (activeTool === "branch") {
-        setBranchMessage(branchWorkflow === "run-first"
-          ? "Run-first branch pass continues · click the next completed diffuser run"
-          : "Branch pass continues · choose another trunk or jump to the next suggested junction");
+        setBranchMessage("Ready for the next junction · click where a branch meets the trunk");
       }
     }, 4500);
     return () => window.clearTimeout(timer);
-  }, [activeTool, branchPlacementResult, branchWorkflow]);
+  }, [activeTool, branchPlacementResult]);
 
   useEffect(() => {
     zoomRef.current = zoom;
@@ -4122,10 +4119,15 @@ function HVACPlanStudioApp() {
     return best;
   }
 
-  function nearestSupplySegment(point: Point) {
+  function nearestSupplySegment(point: Point, onlyDrawingId?: string) {
     let best: { point: Point; drawing: Drawing; segmentIndex: number; distance: number; angle: number; side: 1 | -1 } | null = null;
     for (const drawing of drawings) {
-      if (drawing.page !== pageNumber || drawing.type !== "supply" || drawing.fitting) continue;
+      if (
+        drawing.page !== pageNumber ||
+        drawing.type !== "supply" ||
+        drawing.fitting ||
+        (onlyDrawingId && drawing.id !== onlyDrawingId)
+      ) continue;
       for (let index = 0; index < drawing.points.length - 1; index++) {
         const a = drawing.points[index];
         const b = drawing.points[index + 1];
@@ -4171,9 +4173,9 @@ function HVACPlanStudioApp() {
     };
   }
 
-  function queuedBranchRoute(center: Point, mainId: string, mainAngle: number) {
+  function queuedBranchRoute(center: Point, mainId: string, mainAngle: number, branchRunId = queuedBranchRunId) {
     const drawing = drawings.find((candidate) =>
-      candidate.id === queuedBranchRunId &&
+      candidate.id === branchRunId &&
       candidate.id !== mainId &&
       candidate.page === pageNumber &&
       candidate.type === "supply" &&
@@ -4205,35 +4207,17 @@ function HVACPlanStudioApp() {
     };
   }
 
-  function armRunFirstBranch(point: Point) {
-    const candidate = nearestSupplySegment(point);
-    if (!candidate || candidate.distance > BRANCH_PICK_RADIUS_PX / zoom) {
-      setBranchMessage("Step 1 · click directly on the completed blue run going to the diffuser");
-      return false;
-    }
-    const alreadyAssigned = drawings.some((drawing) =>
-      drawing.fitting?.connectedIds.includes(candidate.drawing.id)
-    );
-    if (alreadyAssigned) {
-      setBranchMessage("That run is already attached to a T/Y · choose an unconnected diffuser run");
-      return false;
-    }
-    setQueuedBranchRunId(candidate.drawing.id);
-    setBranchHoverRunId(null);
-    setBranchPreview(null);
-    setSnapMarker(candidate.point);
-    setActiveSystem(drawingSystem(candidate.drawing));
-    setBranchMessage(`${candidate.drawing.size}″ branch run armed for Port 3 · now click anywhere on the blue trunk`);
-    return true;
-  }
-
   function existingBranchRoute(center: Point, mainId: string, mainAngle: number) {
-    let best: { drawing: Drawing; points: Point[]; angle: number; side: 1 | -1; distance: number } | null = null;
+    const routeCandidates: { drawing: Drawing; points: Point[]; angle: number; side: 1 | -1; distance: number }[] = [];
     const main = drawings.find((drawing) => drawing.id === mainId);
     const mainSystem = main ? drawingSystem(main) : activeSystem;
+    const assignedRuns = new Set(drawings
+      .filter((drawing) => drawing.fitting)
+      .flatMap((drawing) => drawing.fitting?.connectedIds.filter(Boolean) || []));
     for (const drawing of drawings) {
       if (
         drawing.id === mainId ||
+        assignedRuns.has(drawing.id) ||
         drawing.page !== pageNumber ||
         drawing.type !== "supply" ||
         drawing.fitting ||
@@ -4254,8 +4238,8 @@ function HVACPlanStudioApp() {
 
         const towardEnd = cleanPoints([center, projected, ...drawing.points.slice(index + 1)]);
         const towardStart = cleanPoints([center, projected, ...drawing.points.slice(0, index + 1).reverse()]);
-        const candidates = [towardEnd, towardStart].filter((points) => points.length >= 2);
-        for (const points of candidates) {
+        const routes = [towardEnd, towardStart].filter((points) => points.length >= 2);
+        for (const points of routes) {
           const vector = points.find((point) => Math.hypot(point.x - center.x, point.y - center.y) > 2);
           if (!vector) continue;
           const angle = Math.atan2(vector.y - center.y, vector.x - center.x);
@@ -4264,10 +4248,15 @@ function HVACPlanStudioApp() {
           const cross = Math.cos(mainAngle) * Math.sin(angle) - Math.sin(mainAngle) * Math.cos(angle);
           const side: 1 | -1 = cross >= 0 ? 1 : -1;
           const score = distance - divergence * 8;
-          if (!best || score < best.distance) best = { drawing, points, angle, side, distance: score };
+          routeCandidates.push({ drawing, points, angle, side, distance: score });
         }
       }
     }
+    routeCandidates.sort((left, right) => left.distance - right.distance);
+    const best = routeCandidates[0] || null;
+    if (!best) return null;
+    const competingRun = routeCandidates.find((candidate) => candidate.drawing.id !== best.drawing.id);
+    if (competingRun && competingRun.distance - best.distance < 6 / zoom) return null;
     return best;
   }
 
@@ -4358,6 +4347,19 @@ function HVACPlanStudioApp() {
       .slice(0, 24);
   }
 
+  function automaticBranchOpportunity(point: Point) {
+    const nearby = branchOpportunities()
+      .map((opportunity) => ({
+        opportunity,
+        pointerDistance: Math.hypot(opportunity.center.x - point.x, opportunity.center.y - point.y),
+      }))
+      .filter((candidate) => candidate.pointerDistance <= BRANCH_PICK_RADIUS_PX / zoom)
+      .sort((left, right) => left.pointerDistance - right.pointerDistance);
+    if (!nearby.length) return null;
+    if (nearby[1] && nearby[1].pointerDistance - nearby[0].pointerDistance < 6 / zoom) return null;
+    return nearby[0].opportunity;
+  }
+
   function focusNextBranchOpportunity(opportunities = branchOpportunities()) {
     if (!opportunities.length) {
       setBranchMessage("No obvious unconnected junctions found · you can still click any blue trunk manually");
@@ -4371,7 +4373,7 @@ function HVACPlanStudioApp() {
     setPendingBranchFittingId(null);
     setPort3BranchDraft(null);
     setBranchPlacementResult(null);
-    setQueuedBranchRunId(branchWorkflow === "run-first" ? opportunity.branchRunId : null);
+    setQueuedBranchRunId(null);
     setBranchHoverRunId(null);
     setBranchPreview({
       center: opportunity.center,
@@ -4394,9 +4396,7 @@ function HVACPlanStudioApp() {
       mode: "split-trunk",
     });
     setSnapMarker(opportunity.center);
-    setBranchMessage(branchWorkflow === "run-first"
-      ? `Branch run armed · suggested trunk location ${index + 1} of ${opportunities.length} · click the highlighted T/Y to confirm`
-      : `Suggested junction ${index + 1} of ${opportunities.length} · click the highlighted T/Y to confirm`);
+    setBranchMessage(`Suggested junction ${index + 1} of ${opportunities.length} · click the highlighted T/Y to confirm`);
     const viewport = canvasViewportRef.current;
     if (viewport) updateCamera({
       x: viewport.clientWidth / 2 - opportunity.center.x * zoomRef.current,
@@ -9187,10 +9187,6 @@ function HVACPlanStudioApp() {
   function placeSmartBranch(point: Point) {
     setBranchPlacementResult(null);
     if (attachPendingBranchRun(point)) return;
-    if (branchWorkflow === "run-first" && !queuedBranchRunId) {
-      armRunFirstBranch(point);
-      return;
-    }
     const threeRunMatch = queuedBranchRunId ? null : existingThreeRunJunction(point);
     if (threeRunMatch) {
       const [upstreamMatch, downstreamMatch, branchMatch] = threeRunMatch.ports;
@@ -9238,7 +9234,9 @@ function HVACPlanStudioApp() {
       return;
     }
 
-    const rawTarget = nearestSupplySegment(point);
+    const automaticOpportunity = queuedBranchRunId ? null : automaticBranchOpportunity(point);
+    const targetPoint = automaticOpportunity?.center || point;
+    const rawTarget = nearestSupplySegment(targetPoint, automaticOpportunity?.mainRunId);
     if (!rawTarget || rawTarget.distance > BRANCH_PICK_RADIUS_PX / zoom) {
       setBranchMessage("Move closer to a blue supply run");
       return;
@@ -9249,11 +9247,17 @@ function HVACPlanStudioApp() {
     }
     const target = orientMainTowardAirflow(rawTarget);
 
-    const center = target.point;
+    const center = automaticOpportunity?.center || target.point;
     const matchedRoute = queuedBranchRunId
       ? queuedBranchRoute(center, target.drawing.id, target.angle)
-      : existingBranchRoute(center, target.drawing.id, target.angle);
+      : automaticOpportunity
+        ? queuedBranchRoute(center, target.drawing.id, target.angle, automaticOpportunity.branchRunId)
+        : existingBranchRoute(center, target.drawing.id, target.angle);
     if (queuedBranchRunId && !matchedRoute) return;
+    if (!matchedRoute) {
+      setBranchMessage("Move to the point where a completed branch run meets the trunk");
+      return;
+    }
     const downstreamSize = steppedSize(target.drawing.size, 1);
     const branchSize = matchedRoute?.drawing.size || steppedSize(target.drawing.size, 2);
     const downstreamId = crypto.randomUUID();
@@ -9298,10 +9302,10 @@ function HVACPlanStudioApp() {
       cfm: target.drawing.cfm,
       cfmSource: target.drawing.cfmSource,
     };
-    const branchRun: Drawing | null = matchedRoute ? {
+    const branchRun: Drawing = {
       ...matchedRoute.drawing,
       points: cleanPoints([branchPort, ...matchedRoute.points.slice(1)]),
-    } : null;
+    };
     const fitting: Drawing = {
       id: fittingId,
       type: "branch",
@@ -9320,27 +9324,23 @@ function HVACPlanStudioApp() {
         upstreamSize: target.drawing.size,
         downstreamSize,
         branchSize,
-        connectedIds: [upstream.id, downstream.id, branchRun?.id || ""],
+        connectedIds: [upstream.id, downstream.id, branchRun.id],
       },
     };
     setHistory([
       ...drawings.filter((drawing) => drawing.id !== target.drawing.id && drawing.id !== matchedRoute?.drawing.id),
       upstream,
       downstream,
-      ...(branchRun ? [branchRun] : []),
+      branchRun,
       fitting,
     ]);
     setActiveSystem(drawingSystem(target.drawing));
     setSelectedId(fittingId);
-    if (branchRun) {
-      setQueuedBranchRunId(null);
-      setBranchHoverRunId(null);
-      const completionMessage = `${resolvedStyle === "tee90" ? "90° tee" : "45° wye"} complete · trunk split and 3 of 3 ports attached`;
-      setBranchMessage(completionMessage);
-      setBranchPlacementResult({ fittingId, message: completionMessage });
-    } else {
-      beginPort3BranchDraft(fitting);
-    }
+    setQueuedBranchRunId(null);
+    setBranchHoverRunId(null);
+    const completionMessage = `${resolvedStyle === "tee90" ? "90° tee" : "45° wye"} placed · all three runs connected`;
+    setBranchMessage(completionMessage);
+    setBranchPlacementResult({ fittingId, message: completionMessage });
   }
 
   function updateFittingPortSize(port: 0 | 1 | 2, size: string) {
@@ -12118,17 +12118,6 @@ function HVACPlanStudioApp() {
           : "Fitting placed · click directly on any blue branch run to finish");
         return;
       }
-      if (branchWorkflow === "run-first" && !queuedBranchRunId) {
-        const candidate = nearestSupplySegment(raw);
-        const candidateReady = Boolean(candidate && candidate.distance <= BRANCH_PICK_RADIUS_PX / zoom);
-        setBranchHoverRunId(candidateReady ? candidate!.drawing.id : null);
-        setBranchPreview(null);
-        setSnapMarker(candidateReady ? candidate!.point : null);
-        setBranchMessage(candidateReady
-          ? `Click this ${candidate!.drawing.size}″ run to arm it for Port 3`
-          : "Step 1 · move over the completed blue run going to the diffuser");
-        return;
-      }
       setBranchHoverRunId(null);
       const threeRunMatch = queuedBranchRunId ? null : existingThreeRunJunction(raw);
       if (threeRunMatch) {
@@ -12154,7 +12143,9 @@ function HVACPlanStudioApp() {
         setBranchMessage("3 separate run endpoints found · click to connect Ports 1, 2 and 3");
         return;
       }
-      const rawTarget = nearestSupplySegment(raw);
+      const automaticOpportunity = queuedBranchRunId ? null : automaticBranchOpportunity(raw);
+      const targetPoint = automaticOpportunity?.center || raw;
+      const rawTarget = nearestSupplySegment(targetPoint, automaticOpportunity?.mainRunId);
       if (rawTarget && rawTarget.distance <= BRANCH_PICK_RADIUS_PX / zoom) {
         if (queuedBranchRunId && rawTarget.drawing.id === queuedBranchRunId) {
           setBranchPreview(null);
@@ -12163,19 +12154,28 @@ function HVACPlanStudioApp() {
           return;
         }
         const target = orientMainTowardAirflow(rawTarget);
+        const previewCenter = automaticOpportunity?.center || target.point;
         const matchedRoute = queuedBranchRunId
-          ? queuedBranchRoute(target.point, target.drawing.id, target.angle)
-          : existingBranchRoute(target.point, target.drawing.id, target.angle);
+          ? queuedBranchRoute(previewCenter, target.drawing.id, target.angle)
+          : automaticOpportunity
+            ? queuedBranchRoute(previewCenter, target.drawing.id, target.angle, automaticOpportunity.branchRunId)
+            : existingBranchRoute(previewCenter, target.drawing.id, target.angle);
         if (queuedBranchRunId && !matchedRoute) {
           setBranchPreview(null);
-          setSnapMarker(target.point);
+          setSnapMarker(previewCenter);
+          return;
+        }
+        if (!matchedRoute) {
+          setBranchPreview(null);
+          setSnapMarker(previewCenter);
+          setBranchMessage("Move to the point where a completed branch run meets the trunk");
           return;
         }
         const previewStyle = matchedRoute
           ? branchStyle === "auto" ? automaticBranchStyle(target.angle, matchedRoute.angle) : branchStyle
           : branchStyle === "tee90" ? "tee90" : "wye45";
         setBranchPreview({
-          center: target.point,
+          center: previewCenter,
           angle: target.angle,
           branchAngle: matchedRoute?.angle,
           side: matchedRoute?.side || target.side,
@@ -12193,12 +12193,8 @@ function HVACPlanStudioApp() {
           runIds: [target.drawing.id, ...(matchedRoute ? [matchedRoute.drawing.id] : [])],
           mode: "split-trunk",
         });
-        setSnapMarker(target.point);
-        setBranchMessage(queuedBranchRunId && matchedRoute
-          ? "Branch run armed · click this trunk location to split, rotate, size and connect the T/Y"
-          : matchedRoute
-            ? "3-run connection found · click to insert fitting"
-            : "Main run found · click to split it and place the fitting anywhere");
+        setSnapMarker(previewCenter);
+        setBranchMessage("Junction found · click once to connect all three runs");
       } else {
         setBranchPreview(null);
         setSnapMarker(null);
@@ -13200,27 +13196,6 @@ function HVACPlanStudioApp() {
     !releaseIssuing
   );
   const branchOpportunityList = activeTool === "branch" ? branchOpportunities() : [];
-  const pageBranchFittings = drawings.filter((drawing) => drawing.page === pageNumber && drawing.fitting);
-  const assignedBranchRunIds = new Set(pageBranchFittings.flatMap((fitting) => fitting.fitting?.connectedIds.filter(Boolean) || []));
-  const diffuserTerminalRunIds = new Set(drawings
-    .filter((drawing) =>
-      drawing.page === pageNumber &&
-      drawingSystem(drawing) === activeSystem &&
-      drawing.symbol?.kind === "diffuser" &&
-      drawing.symbol.connectedRunId
-    )
-    .map((drawing) => drawing.symbol!.connectedRunId!));
-  const runFirstCandidateRuns = drawings.filter((drawing) =>
-    drawing.page === pageNumber &&
-    drawingSystem(drawing) === activeSystem &&
-    drawing.type === "supply" &&
-    !drawing.fitting &&
-    diffuserTerminalRunIds.has(drawing.id) &&
-    !assignedBranchRunIds.has(drawing.id)
-  );
-  const queuedBranchRun = drawings.find((drawing) => drawing.id === queuedBranchRunId);
-  const openBranchPorts = pageBranchFittings.reduce((total, fitting) =>
-    total + Math.max(0, 3 - (fitting.fitting?.connectedIds.filter(Boolean).length || 0)), 0);
   const liveDraftPoints = [...draft, ...(hoverPoint ? [hoverPoint] : [])];
   const liveDraftFeet = liveDraftPoints.length > 1
     ? liveDraftPoints.slice(1).reduce((total, point, index) => total + Math.hypot(point.x - liveDraftPoints[index].x, point.y - liveDraftPoints[index].y), 0) * scaleFeetPerUnit
@@ -14246,11 +14221,11 @@ function HVACPlanStudioApp() {
     },
     {
       id: "branch-pass",
-      label: "Start the run-first T/Y branch pass",
-      detail: "Draw routes first, then split and attach each reviewed fitting",
+      label: "Place a T/Y fitting",
+      detail: "Click once where a completed branch meets its trunk",
       group: "Draw",
       shortcut: "B",
-      run: () => { finishDrawing(); setBranchWorkflow("run-first"); activatePlanTool("branch"); },
+      run: () => { finishDrawing(); activatePlanTool("branch"); },
     },
     {
       id: "markup-assistant",
@@ -14487,48 +14462,29 @@ function HVACPlanStudioApp() {
               <small>{selectedRun ? "Selected runs update immediately." : "Draw first. New supply and return runs stay unlabeled until you confirm a size."}</small>
             </div>
             <div className={`branch-designer ${activeTool === "branch" ? "active" : ""}`}>
-              <div className="library-title"><DraftingCompass size={14} /><span>RUN-FIRST BRANCH PASS</span><b>DRAW RUNS · THEN SPLIT</b></div>
+              <div className="library-title"><DraftingCompass size={14} /><span>ONE-CLICK T/Y</span><b>REDLINE CONNECTS IT</b></div>
               <div className="branch-safe-mode" role="status">
                 <CheckCircle2 size={15} />
                 <span>
-                  <b>Safe placement</b>
-                  <small>Pick the branch run, then the trunk. Only your selected run can connect to Port 3.</small>
+                  <b>Click the junction</b>
+                  <small>Point where the completed branch meets the trunk. The fitting snaps, rotates, sizes, and connects itself.</small>
                 </span>
               </div>
-              <label>Fitting style
-                <select value={branchStyle} onChange={(event) => setBranchStyle(event.target.value as "auto" | "wye45" | "tee90")}>
-                  <option value="auto">Auto-select from run angle</option>
-                  <option value="wye45">45° Wye / lateral branch</option>
-                  <option value="tee90">90° Tee branch</option>
-                </select>
-              </label>
               <button className="branch-arm" onClick={() => {
                 finishDrawing();
+                setBranchStyle("auto");
                 activatePlanTool("branch");
                 setSelectedId(null);
                 setPendingBranchFittingId(null);
+                setQueuedBranchRunId(null);
                 setBranchHoverRunId(null);
                 setBranchPreview(null);
                 setBranchPlacementResult(null);
-                if (branchWorkflow === "run-first") {
-                  setQueuedBranchRunId(null);
-                  setBranchMessage("Step 1 · click the completed blue run going to the diffuser");
-                } else {
-                  setBranchMessage("Click any blue trunk to split it and place a T/Y");
-                }
+                setBranchMessage("Click where a completed branch run meets the blue trunk");
               }}>
-                <span className={`mini-fitting ${branchStyle === "auto" ? "wye45" : branchStyle}`}><i /><i /><i /></span>
-                {branchWorkflow === "run-first" ? "Start run-first branch pass" : "Place fitting on any supply run"}
+                <span className="mini-fitting wye45"><i /><i /><i /></span>
+                Place T/Y
               </button>
-              {branchWorkflow === "run-first" && queuedBranchRun && <div className="branch-run-armed-card">
-                <div><b>PORT 3 RUN ARMED</b><strong>{queuedBranchRun.size}&quot; · {drawingLengthFeet(queuedBranchRun).toFixed(1)} LF</strong></div>
-                <span>Click the main blue trunk exactly where the T/Y belongs. The closest end of this run will move to Port 3.</span>
-                <button onClick={() => {
-                  setQueuedBranchRunId(null);
-                  setBranchPreview(null);
-                  setBranchMessage("Branch selection cleared · click another completed diffuser run");
-                }}>Change branch run</button>
-              </div>}
               {port3BranchDraft && <div className="branch-link-step">
                 <b>PORT 3 · DRAW THE BRANCH</b>
                 <span>The {port3BranchDraft.branchSize}&quot; run starts at the fitting. Draw its route, then right-click to connect it.</span>
@@ -14540,9 +14496,7 @@ function HVACPlanStudioApp() {
                 <span>Click anywhere on the blue run that should connect to Port 3.</span>
                 <button onClick={leavePort3BranchOpen}>Leave Port 3 open for now</button>
               </div>}
-              <small>{branchWorkflow === "run-first"
-                ? "Your workflow: draw all diffuser runs first → click a completed branch run → click the trunk location. The app splits the trunk, rotates the fitting, moves the closest branch endpoint and keeps all three ports connected."
-                : "Click a blue trunk to split it. Port 3 immediately starts a correctly sized branch; you can draw it or attach an existing blue run instead."}</small>
+              <small>Redline places only a complete 3-way connection. If the preview does not appear, move closer to the point where the two runs meet.</small>
             </div>
             <div className="symbol-library">
               <div className="library-title"><Sparkles size={14} /><span>HVAC SYMBOL LIBRARY</span><b>{symbolPresets.length}+ presets</b></div>
@@ -15404,108 +15358,20 @@ function HVACPlanStudioApp() {
             </div>}
             {pdf && activeTool === "branch" && <div className={`branch-workflow-hud ${pendingBranchFittingId ? "awaiting-branch" : ""} ${queuedBranchRunId ? "run-armed" : ""} ${branchPlacementResult ? "complete" : ""}`} aria-live="polite" data-canvas-ui>
               <div className="branch-workflow-heading">
-                <span><DraftingCompass size={14} /> {branchWorkflow === "run-first" ? "RUN-FIRST T/Y PASS" : "SMART T/Y"}</span>
+                <span><DraftingCompass size={14} /> ONE-CLICK T/Y</span>
                 <b>{branchPlacementResult
-                  ? "3 / 3 CONNECTED"
+                  ? "CONNECTED"
                   : pendingBranchFittingId
-                    ? "PORT 3 OPEN"
-                    : queuedBranchRunId
-                      ? "BRANCH ARMED"
-                      : branchWorkflow === "run-first" ? "PICK BRANCH" : "READY"}</b>
+                    ? "REPAIRING OLD FITTING"
+                    : branchPreview?.matchedExisting ? "JUNCTION FOUND" : "READY"}</b>
               </div>
-              <div className="branch-workflow-steps">
-                {(branchWorkflow === "run-first" ? [
-                  { number: 1, label: "Pick branch run", state: queuedBranchRunId || branchPlacementResult ? "done" : "active" },
-                  { number: 2, label: "Click trunk", state: branchPlacementResult ? "done" : queuedBranchRunId ? "active" : "next" },
-                  { number: 3, label: "Auto-connect", state: branchPlacementResult ? "done" : "next" },
-                ] : [
-                  { number: 1, label: "Pick trunk", state: pendingBranchFittingId || branchPlacementResult ? "done" : "active" },
-                  { number: 2, label: "Split + place", state: pendingBranchFittingId || branchPlacementResult ? "done" : branchPreview?.mainRunId ? "active" : "next" },
-                  { number: 3, label: "Draw Port 3", state: branchPlacementResult ? "done" : pendingBranchFittingId ? "active" : "next" },
-                ]).map((step) => <div className={`branch-workflow-step ${step.state}`} key={step.number}>
-                  <i>{step.state === "done" ? <CheckCircle2 size={13} /> : step.number}</i>
-                  <span>{step.label}</span>
-                </div>)}
-              </div>
-              <div className="branch-pass-summary">
-                <span><b>{pageBranchFittings.length}</b> fittings on sheet</span>
-                <span className={openBranchPorts ? "warning" : ""}><b>{openBranchPorts}</b> open Port 3</span>
-                <span className={(branchWorkflow === "run-first" ? runFirstCandidateRuns.length : branchOpportunityList.length) ? "ready" : ""}>
-                  <b>{branchWorkflow === "run-first" ? runFirstCandidateRuns.length : branchOpportunityList.length}</b> {branchWorkflow === "run-first" ? "diffuser runs ready" : "suggested next"}
-                </span>
-              </div>
-              <strong className="branch-workflow-message">{branchPlacementResult?.message || branchMessage || (branchWorkflow === "run-first"
-                ? "Step 1 · click the completed blue run going to the diffuser."
-                : "Move over a blue supply trunk, then click where the fitting belongs.")}</strong>
-              {!pendingBranchFittingId && !branchPlacementResult && <div className="branch-workflow-actions">
-                {branchWorkflow === "run-first" ? <>
-                  {!queuedBranchRunId && <button
-                    className="primary"
-                    disabled={!runFirstCandidateRuns.length}
-                    onClick={() => {
-                      const run = runFirstCandidateRuns[0];
-                      if (!run) return;
-                      setQueuedBranchRunId(run.id);
-                      setBranchHoverRunId(null);
-                      setBranchPreview(null);
-                      setBranchMessage(`${run.size}″ diffuser run armed for Port 3 · click any blue trunk where the T/Y belongs`);
-                      const viewport = canvasViewportRef.current;
-                      const terminal = drawings.find((drawing) => drawing.symbol?.connectedRunId === run.id);
-                      const point = terminal?.points[0] || run.points[run.points.length - 1];
-                      if (viewport) updateCamera({
-                        x: viewport.clientWidth / 2 - point.x * zoomRef.current,
-                        y: viewport.clientHeight / 2 - point.y * zoomRef.current,
-                      });
-                    }}
-                  >Pick next diffuser run</button>}
-                  {queuedBranchRunId && <button onClick={() => {
-                    setQueuedBranchRunId(null);
-                    setBranchPreview(null);
-                    setBranchMessage("Branch selection cleared · click another completed diffuser run");
-                  }}>Change selected branch</button>}
-                  <small>{queuedBranchRunId
-                    ? "Branch is locked for Port 3. Click the main trunk to complete all three connections."
-                    : "Click any blue branch manually, or jump to the next diffuser-linked run."}</small>
-                </> : <>
-                  <button
-                    className="primary"
-                    disabled={!branchOpportunityList.length}
-                    onClick={() => focusNextBranchOpportunity(branchOpportunityList)}
-                  >Find next suggested T/Y</button>
-                  <small>Suggestions only highlight likely junctions. You confirm every fitting.</small>
-                </>}
-              </div>}
+              <strong className="branch-workflow-message">{branchPlacementResult?.message || branchMessage || "Click where a completed branch run meets the trunk"}</strong>
+              {!pendingBranchFittingId && !branchPlacementResult && <small>When the clean fitting preview appears, one click completes everything.</small>}
               {pendingBranchFittingId && <div className="branch-workflow-actions">
                 <button onClick={leavePort3BranchOpen}>Leave Port 3 open</button>
                 <button className="danger" onClick={undo}><Undo2 size={13} /> Undo fitting</button>
               </div>}
               {branchPlacementResult && <div className="branch-workflow-actions">
-                <button
-                  className="primary"
-                  disabled={branchWorkflow === "run-first" ? !runFirstCandidateRuns.length : !branchOpportunityList.length}
-                  onClick={() => {
-                    if (branchWorkflow === "run-first") {
-                      const run = runFirstCandidateRuns[0];
-                      if (!run) return;
-                      setBranchPlacementResult(null);
-                      setQueuedBranchRunId(run.id);
-                      setBranchPreview(null);
-                      setBranchMessage(`${run.size}″ diffuser run armed for Port 3 · click any blue trunk where the T/Y belongs`);
-                    } else {
-                      focusNextBranchOpportunity(branchOpportunityList);
-                    }
-                  }}
-                >{branchWorkflow === "run-first" ? "Pick next branch run" : "Next suggested T/Y"}</button>
-                <button onClick={() => {
-                  const fitting = drawings.find((drawing) => drawing.id === branchPlacementResult.fittingId && drawing.fitting);
-                  if (!fitting) return;
-                  setQueuedBranchRunId(null);
-                  setPendingBranchFittingId(fitting.id);
-                  setSelectedId(fitting.id);
-                  setBranchPlacementResult(null);
-                  setBranchPreview(null);
-                  setBranchMessage("Choose a different blue run · the selected endpoint will move to Port 3");
-                }}>Change Port 3</button>
                 <button className="danger" onClick={undo}><Undo2 size={13} /> Undo connection</button>
               </div>}
             </div>}
@@ -15911,7 +15777,7 @@ function HVACPlanStudioApp() {
                             onPointerDown={(event) => startMidpointStretch(event, drawing.id, index)}
                           />;
                         })}
-                        {queuedBranchRunId === drawing.id && <text className="branch-run-armed-label" x={middle.x + 8} y={middle.y - 24}>PORT 3 RUN ARMED</text>}
+                        {queuedBranchRunId === drawing.id && <text className="branch-run-armed-label" x={middle.x + 8} y={middle.y - 24}>BRANCH MATCHED</text>}
                         {runLabelText && <text
                           className={`run-label ${drawing.labelOffset ? "custom-position" : ""}`}
                           x={runLabelPoint.x}
@@ -17357,7 +17223,7 @@ function HVACPlanStudioApp() {
             <div className="takeoff-note">Design-intent review only. Engineering objects and scheduled values govern. Field verify before fabrication and final balance.</div>
             </>}
           </div>}
-          <div className="status-card"><span className="pulse" /><div><strong>{splitMode ? "Split run mode" : calibrating && pdf ? "Scale calibration" : activeTool === "measure" && pdf ? "Measurement tool" : symbolTools.includes(activeTool as SymbolKind) && pdf ? "HVAC symbol placement" : activeTool === "branch" && pdf ? pendingBranchFittingId ? "Choose branch run" : queuedBranchRunId ? "Run-first branch armed" : branchWorkflow === "run-first" ? "Pick completed branch run" : "Smart T/Y placement" : continuingRunId ? "Extending connected branch run" : draft.length ? "Drawing in progress" : pdf ? "Construction plan loaded" : "Drawing engine ready"}</strong><small>{splitMode ? "Click the duct centerline where you want two editable sections · Esc cancels" : calibrating && pdf ? `Pick two points exactly ${referenceFeet} ft apart` : activeTool === "measure" && pdf ? "Pick two points to place a field dimension" : symbolTools.includes(activeTool as SymbolKind) && pdf ? `Wheel rotates preview · Shift+wheel 45° · ${placementRotation}° · click places` : activeTool === "branch" && pdf ? branchMessage || (branchWorkflow === "run-first" ? "Click a completed diffuser run, then click its main trunk location" : "Click anywhere on a blue supply run · trunk splits automatically") : continuingRunId ? "Left-click: add route points · Shift: lock 45°/90° · Right-click: finish on the same run" : draft.length ? "Left-click: add point · Shift: lock 45°/90° · Right-click: finish · Esc: cancel" : pdf ? `${pdf.numPages} page PDF · ${drawings.length} drawing objects` : "Upload a plan to start drafting"}</small></div></div>
+          <div className="status-card"><span className="pulse" /><div><strong>{splitMode ? "Split run mode" : calibrating && pdf ? "Scale calibration" : activeTool === "measure" && pdf ? "Measurement tool" : symbolTools.includes(activeTool as SymbolKind) && pdf ? "HVAC symbol placement" : activeTool === "branch" && pdf ? pendingBranchFittingId ? "Choose branch run" : queuedBranchRunId ? "Branch matched" : "One-click T/Y placement" : continuingRunId ? "Extending connected branch run" : draft.length ? "Drawing in progress" : pdf ? "Construction plan loaded" : "Drawing engine ready"}</strong><small>{splitMode ? "Click the duct centerline where you want two editable sections · Esc cancels" : calibrating && pdf ? `Pick two points exactly ${referenceFeet} ft apart` : activeTool === "measure" && pdf ? "Pick two points to place a field dimension" : symbolTools.includes(activeTool as SymbolKind) && pdf ? `Wheel rotates preview · Shift+wheel 45° · ${placementRotation}° · click places` : activeTool === "branch" && pdf ? branchMessage || "Click where a completed branch run meets the trunk" : continuingRunId ? "Left-click: add route points · Shift: lock 45°/90° · Right-click: finish on the same run" : draft.length ? "Left-click: add point · Shift: lock 45°/90° · Right-click: finish · Esc: cancel" : pdf ? `${pdf.numPages} page PDF · ${drawings.length} drawing objects` : "Upload a plan to start drafting"}</small></div></div>
         </aside>
       </section>
 
@@ -17863,7 +17729,6 @@ function HVACPlanStudioApp() {
           setShowMarkupAssistant(false);
           setActiveMarkupRecommendation(undefined);
           finishDrawing();
-          setBranchWorkflow("run-first");
           setQueuedBranchRunId(opportunity.branchRunId);
           activatePlanTool("branch");
           setBranchPreview({
