@@ -112,7 +112,12 @@ import {
   savePdfStartPreference,
   type PdfStartMode,
 } from "./pdfStartPreference";
-import { projectStorageKey, resolveProjectRestore } from "./projectStorage";
+import {
+  persistProjectSnapshot,
+  projectStorageKey,
+  resolveProjectRestore,
+  type ProjectSaveState,
+} from "./projectStorage";
 import {
   DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
   positionSymbolActionWheel,
@@ -1535,6 +1540,7 @@ function HVACPlanStudioApp() {
   const pdfOpenRequestRef = useRef(0);
   const releaseIssueLockRef = useRef(false);
   const finishApprovalFingerprintRef = useRef("");
+  const saveProjectRef = useRef<(() => void) | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasViewportRef = useRef<HTMLDivElement>(null);
   const pdfStageRef = useRef<HTMLDivElement>(null);
@@ -1621,7 +1627,8 @@ function HVACPlanStudioApp() {
   const [rightTab, setRightTab] = useState<"builder" | "layers" | "rooms" | "network" | "takeoff" | "field" | "checks">("builder");
   const [leftPanelView, setLeftPanelView] = useState<"draw" | "symbols" | "properties">("draw");
   const [balanceView, setBalanceView] = useState<"system" | "rooms" | "runs">("system");
-  const [saveState, setSaveState] = useState<"saved" | "saving">("saved");
+  const [saveState, setSaveState] = useState<ProjectSaveState>("saved");
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [showCloudProjects, setShowCloudProjects] = useState(false);
   const [cloudInitialProjectId, setCloudInitialProjectId] = useState<string | null>(null);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -2606,6 +2613,8 @@ function HVACPlanStudioApp() {
     setActiveReviewIssueId(null);
     setUndoStack([]);
     setRedoStack([]);
+    setSaveState("saved");
+    setLastSavedAt(project.savedAt);
   }
 
   function resetForNewSource(
@@ -2620,6 +2629,8 @@ function HVACPlanStudioApp() {
     resetProjectWorkflowState();
     setUndoStack([]);
     setRedoStack([]);
+    setSaveState("saved");
+    setLastSavedAt(null);
     if (sourceFingerprint && sourcePageCount) {
       fieldRedline.resetForSource(
         sourceFingerprint,
@@ -4042,23 +4053,19 @@ function HVACPlanStudioApp() {
     if (!pdf) return;
     const project = buildProjectSnapshot();
     const storageKey = projectStorageKey(fileName, pdfFingerprint);
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(project));
-      setSaveState("saved");
-    } catch {
-      try {
-        localStorage.setItem(
-          storageKey,
-          JSON.stringify({ ...project, activePlanAnalysis: null }),
-        );
-        setSaveState("saved");
-        setBranchMessage("The drawing was saved. Detailed plan setup information exceeded browser storage and can be read again from the PDF.");
-      } catch {
-        setSaveState("saving");
-        setBranchMessage("Browser storage is full. Export or save a cloud revision before closing this plan.");
-      }
+    const result = persistProjectSnapshot(localStorage, storageKey, project);
+    setSaveState(result);
+    if (result !== "error") setLastSavedAt(project.savedAt);
+    if (result === "limited") {
+      setBranchMessage("The drawing was saved. Detailed plan setup information exceeded browser storage and can be read again from the PDF.");
+    } else if (result === "error") {
+      setBranchMessage("Browser storage is full. Export or save a cloud revision before closing this plan.");
     }
   }, [buildProjectSnapshot, fileName, pdf, pdfFingerprint]);
+
+  useEffect(() => {
+    saveProjectRef.current = saveProject;
+  }, [saveProject]);
 
   useEffect(() => {
     if (!pdf) return;
@@ -4066,6 +4073,20 @@ function HVACPlanStudioApp() {
     const timer = window.setTimeout(saveProject, 650);
     return () => window.clearTimeout(timer);
   }, [drawings, fileName, pdf, saveProject]);
+
+  useEffect(() => {
+    if (!pdf) return;
+    const flushPendingSave = () => saveProjectRef.current?.();
+    const flushWhenHidden = () => {
+      if (document.visibilityState === "hidden") flushPendingSave();
+    };
+    window.addEventListener("pagehide", flushPendingSave);
+    document.addEventListener("visibilitychange", flushWhenHidden);
+    return () => {
+      window.removeEventListener("pagehide", flushPendingSave);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
+    };
+  }, [pdf]);
 
   function setHistory(next: Drawing[]) {
     const availableIds = new Set(next.map((drawing) => drawing.id));
@@ -14283,6 +14304,29 @@ function HVACPlanStudioApp() {
     })),
   ];
 
+  const lastSavedTime = lastSavedAt
+    ? new Date(lastSavedAt).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
+  const saveStatusLabel =
+    saveState === "saving"
+      ? "Saving…"
+      : saveState === "limited"
+        ? "Saved · limited"
+        : saveState === "error"
+          ? "Save blocked"
+          : "Saved";
+  const saveStatusDetail =
+    saveState === "saving"
+      ? "Saving changes on this device"
+      : saveState === "limited"
+        ? `Drawing saved locally${lastSavedTime ? ` at ${lastSavedTime}` : ""}; detailed plan setup will refresh from the PDF`
+        : saveState === "error"
+          ? "Changes are not saved. Browser storage is full; export or save a cloud revision before closing."
+          : `Saved locally${lastSavedTime ? ` at ${lastSavedTime}` : ""}`;
+
   return (
     <main className={`app-shell field-first-workspace layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showFinishJobStudio ? "finish-job-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${packagePrintReleased ? "package-print-released" : "package-print-draft"}`}>
       <input
@@ -14319,8 +14363,13 @@ function HVACPlanStudioApp() {
         </div>
 
         <nav className="top-actions" aria-label="Project actions">
-          <span className={`studio-save-state ${saveState}`}>
-            <i /> {saveState === "saving" ? "Saving…" : "Saved"}
+          <span
+            className={`studio-save-state ${saveState}`}
+            role="status"
+            aria-live="polite"
+            title={saveStatusDetail}
+          >
+            <i /> {saveStatusLabel}
           </span>
           <button className="command-button" onClick={() => setShowCommandPalette(true)} title="Search tools · Ctrl/⌘ K">
             <Search size={16} /> <span>Find a tool</span><kbd>⌘K</kbd>
@@ -17549,7 +17598,9 @@ function HVACPlanStudioApp() {
         <span><i className="online" /> Ready</span>
         <span>{selectedIds.length ? `${selectedIds.length} selected · Arrow nudge · Shift+Arrow 10× · midpoint grips stretch` : "Right-click drag pans anywhere · left-click selects/draws · wheel zooms at cursor · two-finger touch navigates · stylus draws"}</span>
         <span><Ruler size={11} /> {scaleLabel}</span>
-        <span className="footer-right">{saveState === "saving" ? "Autosaving…" : "All changes saved"} · Nothing changes without your approval</span>
+        <span className={`footer-right save-${saveState}`}>
+          {saveStatusDetail} · Nothing changes without your approval
+        </span>
       </footer>
       <ProjectHome
         open={showProjectHome && !showProjectSetup}
