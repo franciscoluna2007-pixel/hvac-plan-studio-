@@ -75,6 +75,21 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .branch-mode-toggle { margin-top: 8px; padding: 3px; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; border: 1px solid #4a3f1d; border-radius: 6px; background: #0d0d08; }
 .branch-mode-toggle button { min-height: 29px; color: #8e835c; border: 1px solid transparent; border-radius: 4px; background: transparent; font-size: 7px; font-weight: 900; text-transform: uppercase; letter-spacing: .4px; }
 .branch-mode-toggle button.active { color: #251b00; border-color: #f7d45f; background: linear-gradient(180deg, #ffe783, #d3a41e); box-shadow: 0 0 12px #f5c5431f; }
+.branch-safe-mode {
+  margin-top: 8px;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  color: #b8f1d2;
+  border: 1px solid #2d7150;
+  border-radius: 6px;
+  background: #0d2118;
+}
+.branch-safe-mode > svg { margin-top: 1px; }
+.branch-safe-mode b { display: block; font-size: 8px; text-transform: uppercase; letter-spacing: .5px; }
+.branch-safe-mode small { margin-top: 3px; color: #7fbf9e; }
 .branch-arm { width: 100%; min-height: 36px; margin-top: 8px; padding: 6px; display: flex; align-items: center; justify-content: center; gap: 9px; color: #221900; border-radius: 5px; background: linear-gradient(180deg, #ffe06c, #d7a91f); font-size: 8px; font-weight: 800; text-transform: uppercase; }
 .branch-designer small { display: block; margin-top: 7px; color: #716640; font-size: 7px; line-height: 1.35; }
 .branch-run-armed-card { margin-top: 8px; padding: 8px; display: grid; gap: 6px; border: 1px solid #39d98a; border-radius: 6px; background: linear-gradient(145deg, #0b2a1d, #10170d); box-shadow: inset 3px 0 #39d98a, 0 0 18px #39d98a17; }

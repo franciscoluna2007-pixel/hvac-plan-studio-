@@ -539,11 +539,13 @@ test("supports the field run-first T/Y workflow", async () => {
   assert.match(source, /if \(branchWorkflow === "run-first" && !queuedBranchRunId\)/);
   assert.match(source, /Branch run armed · click this trunk location to split, rotate, size and connect the T\/Y/);
   assert.match(source, /PORT 3 RUN ARMED/);
-  assert.match(source, /Run first/);
-  assert.match(source, /Place first/);
+  assert.match(source, /Safe placement/);
+  assert.match(source, /Only your selected run can connect to Port 3/);
+  assert.doesNotMatch(source, />Place first<\/button>/);
+  assert.doesNotMatch(source, /setBranchWorkflow\("place-first"\)/);
   assert.match(source, /Pick next diffuser run/);
   assert.match(source, /The closest end of this run will move to Port 3/);
-  assert.match(styles, /\.branch-mode-toggle/);
+  assert.match(styles, /\.branch-safe-mode/);
   assert.match(styles, /\.branch-run-armed-card/);
   assert.match(styles, /\.branch-run-armed \.duct-line/);
   assert.match(styles, /\.branch-run-pick \.duct-line/);
