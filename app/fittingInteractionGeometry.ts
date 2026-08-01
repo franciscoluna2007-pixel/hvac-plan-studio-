@@ -19,6 +19,19 @@ export function fittingPortReach(
   return Math.max(9, Math.min(16, compactBase + numericSize * .25));
 }
 
+export function fittingPortReachForVersion(
+  size: string,
+  port: 0 | 1 | 2,
+  geometryVersion?: 2 | 3,
+) {
+  if (geometryVersion !== 3) {
+    return fittingPortReach(size, port, geometryVersion === 2);
+  }
+  const numericSize = Number(size) || 8;
+  const directPlacementBase = [4.5, 5, 5.5][port];
+  return Math.max(6, Math.min(10, directPlacementBase + numericSize * .125));
+}
+
 export function fittingOverlayScale(zoom: number) {
   const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
   return 1 / Math.max(0.25, Math.min(8, safeZoom));

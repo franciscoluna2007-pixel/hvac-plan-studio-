@@ -547,9 +547,9 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .branch-fitting.connection-confirmed .fitting-leg { stroke: #26b978; filter: drop-shadow(0 0 3px #39d98a); }
 .branch-fitting .connection-confirmed-label { fill: #087346; stroke: white; stroke-width: 3px; font: 900 8px var(--font-geist-sans); letter-spacing: .6px; }
 .branch-opportunity-marker { pointer-events: none; }
-.branch-opportunity-marker circle { fill: #39d98a24; stroke: #0b9e61; stroke-width: 2; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 4px #39d98a); }
-.branch-opportunity-marker text { fill: #087346; stroke: white; stroke-width: 2.5px; font: 900 7px var(--font-geist-sans); }
-.branch-opportunity-marker .branch-opportunity-label { fill: #087346; stroke-width: 3px; font-size: 7px; letter-spacing: .7px; }
+.branch-opportunity-marker circle { fill: #39d98a1a; stroke: #0b8b57; stroke-width: 1.25; stroke-dasharray: 2 2; vector-effect: non-scaling-stroke; }
+.branch-opportunity-marker text { fill: #087346; stroke: white; stroke-width: 1.5px; paint-order: stroke; font: 900 7px var(--font-geist-sans); }
+.branch-opportunity-marker .branch-opportunity-label { fill: #087346; stroke-width: 1.5px; font-size: 7px; letter-spacing: .35px; }
 .branch-preview { pointer-events: none; }
 .branch-preview > circle { fill: #f5c5431a; stroke: var(--yellow); stroke-width: 1.5; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
 .branch-preview > path { fill: none; stroke: var(--yellow); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; opacity: .88; }
@@ -16866,6 +16866,56 @@ footer {
   .workspace-drawer-scrim { inset: max(56px, env(safe-area-inset-top)) 0 max(24px, env(safe-area-inset-bottom)); }
 }
 
+/* Desktop drafting dock: readable at arm's length without crowding the plan. */
+@media (min-width: 1101px) {
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .left-panel-tabs button {
+    font-size: 12px;
+    line-height: 15px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .left-panel.view-draw .tool kbd {
+    font-size: 11px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .run-size-default span,
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .library-title {
+    font-size: 12px;
+    line-height: 15px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .run-size-default b,
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .library-title b {
+    font-size: 10px;
+    line-height: 13px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .run-size-default small,
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .branch-designer small,
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .branch-link-step span {
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .branch-safe-mode b,
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .branch-link-step b {
+    font-size: 11px;
+    line-height: 14px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .branch-arm,
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .branch-link-step button {
+    min-height: 40px;
+    font-size: 12px;
+    line-height: 15px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .symbol-library label,
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .symbol-library :is(select, input) {
+    font-size: 12px;
+    line-height: 15px;
+  }
+}
+
 @media (pointer: coarse) {
   .tool { min-height: 48px; }
 }
@@ -19561,7 +19611,7 @@ footer {
 /* Desktop: horizontal destination rail above the working row. */
 @media (min-width: 1101px) {
   .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) {
-    --deck-tools: 208px;
+    --deck-tools: 280px;
   }
 
   .app-shell[data-presentation="galvanized-daylight"]:not(.field-mode):not(.tablet-layout) > .workspace {
@@ -19733,14 +19783,14 @@ footer {
 }
 
 .app-shell[data-presentation="galvanized-daylight"] .left-panel .panel-heading span {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: .055em;
 }
 
 .app-shell[data-presentation="galvanized-daylight"] .left-panel .panel-heading small {
   color: #f3f5f2a8;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .app-shell[data-presentation="galvanized-daylight"] .left-panel .panel-heading button,
@@ -19765,7 +19815,7 @@ footer {
 }
 
 .app-shell[data-presentation="galvanized-daylight"] .left-panel.view-draw .tool {
-  min-height: 48px;
+  min-height: 52px;
   height: auto;
   padding: 6px 8px;
   display: grid;
@@ -19778,9 +19828,9 @@ footer {
   border-radius: 2px;
   background: var(--gd-graphite);
   box-shadow: inset 0 1px #ffffff16, inset 0 -2px #00000045;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
-  line-height: 13px;
+  line-height: 16px;
   text-align: left;
   text-transform: uppercase;
 }
@@ -20642,7 +20692,7 @@ footer {
 /* Compact desktop */
 @media (max-width: 1500px) and (min-width: 1101px) {
   .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) {
-    --deck-tools: 192px;
+    --deck-tools: 240px;
     --deck-inspector: 272px;
   }
 
@@ -20654,11 +20704,12 @@ footer {
   }
 
   .app-shell[data-presentation="galvanized-daylight"] .left-panel.view-draw .tool {
-    min-height: 44px;
-    grid-template-columns: 21px minmax(0, 1fr) auto;
-    padding-inline: 6px;
-    gap: 5px;
-    font-size: 10px;
+    min-height: 48px;
+    grid-template-columns: 23px minmax(0, 1fr) auto;
+    padding-inline: 8px;
+    gap: 7px;
+    font-size: 12px;
+    line-height: 15px;
   }
 
   .app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button small {

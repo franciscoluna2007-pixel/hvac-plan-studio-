@@ -13,6 +13,10 @@ const {
   new URL("../app/directBranchPlacement.ts", import.meta.url),
 );
 
+const { fittingPortReachForVersion } = await loadTypescriptModule(
+  new URL("../app/fittingInteractionGeometry.ts", import.meta.url),
+);
+
 test("direct placement projects to the exact requested station without a hidden end margin", () => {
   const projection = projectDirectBranchStation(
     { x: 3, y: 5 },
@@ -40,6 +44,30 @@ test("direct placement projects to the exact requested station without a hidden 
     outletPort: { x: 46, y: 0 },
   });
   assert.equal(valid.valid, true);
+});
+
+test("smaller v3 geometry accepts a clear station that oversized v2 geometry rejected", () => {
+  const center = { x: 8, y: 0 };
+  const v2InletReach = fittingPortReachForVersion("12", 0, 2);
+  const v2OutletReach = fittingPortReachForVersion("12", 1, 2);
+  const v3InletReach = fittingPortReachForVersion("12", 0, 3);
+  const v3OutletReach = fittingPortReachForVersion("12", 1, 3);
+  const station = {
+    segmentStart: { x: 0, y: 0 },
+    segmentEnd: { x: 100, y: 0 },
+    center,
+  };
+
+  assert.equal(directBranchStationClearance({
+    ...station,
+    inletPort: { x: center.x - v2InletReach, y: 0 },
+    outletPort: { x: center.x + v2OutletReach, y: 0 },
+  }).valid, false);
+  assert.equal(directBranchStationClearance({
+    ...station,
+    inletPort: { x: center.x - v3InletReach, y: 0 },
+    outletPort: { x: center.x + v3OutletReach, y: 0 },
+  }).valid, true);
 });
 
 test("direct placement preserves the clicked station and creates an open Port 3", () => {

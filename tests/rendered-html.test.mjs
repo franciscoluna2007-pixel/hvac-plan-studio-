@@ -488,8 +488,8 @@ test("places a T/Y at the clicked trunk and auto-connects only one safe local br
   assert.match(placement, /const placement = resolveDirectBranchPlacement\(target\)/);
   assert.doesNotMatch(placement, /automaticBranchOpportunity\(point\)/);
   assert.doesNotMatch(preview, /automaticBranchOpportunity\(raw\)/);
-  assert.match(placement, /existingThreeRunJunction\(point, rawTarget\.drawing\.id\)/);
-  assert.match(preview, /existingThreeRunJunction\(raw, rawTarget\.drawing\.id\)/);
+  assert.match(placement, /existingThreeRunJunction\(rawTarget\.point, rawTarget\.drawing\.id\)/);
+  assert.match(preview, /existingThreeRunJunction\(rawTarget\.point, rawTarget\.drawing\.id\)/);
   assert.match(placement, /buildDirectBranchGeometry\(\{/);
   assert.match(placement, /connectedIds: geometry\.connectedIds/);
   assert.match(placement, /beginPort3BranchDraft\(fitting, "direct-placement"\)/);
@@ -571,8 +571,14 @@ test("keeps deterministic junction suggestions available to the assistant", asyn
   assert.match(source, /function branchOpportunities\(\): BranchOpportunity\[\]/);
   assert.match(source, /function focusNextBranchOpportunity\(opportunities = branchOpportunities\(\)\)/);
   assert.match(source, /className="branch-opportunity-marker"/);
-  assert.match(source, /SUGGESTED T\/Y/);
+  assert.match(source, /!branchPreview && branchOpportunityList\.slice\(0, 3\)/);
+  assert.match(source, /scale\(\$\{fittingOverlayScale\(zoom\)\}\)/);
+  assert.match(source, /<circle cx="0" cy="0" r="6"/);
+  assert.match(source, /OPTIONAL T\/Y/);
   assert.match(styles, /\.branch-opportunity-marker circle/);
+  assert.match(styles, /\.branch-opportunity-marker \{ pointer-events: none; \}/);
+  assert.doesNotMatch(styles, /\.branch-opportunity-marker circle \{[^}]*drop-shadow/);
+  assert.match(source, /existingThreeRunJunction\(rawTarget\.point, rawTarget\.drawing\.id\)/);
 });
 
 test("explains direct T/Y placement and the open Port 3 fallback", async () => {
@@ -594,8 +600,13 @@ test("explains direct T/Y placement and the open Port 3 fallback", async () => {
 test("widens the desktop tool task dock without changing tablet or mobile drawers", async () => {
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  assert.match(styles, /@media \(min-width: 1101px\)[\s\S]*?\.app-shell\[data-presentation="galvanized-daylight"\]:not\(\.tablet-layout\)[\s\S]*?--deck-tools: 208px/);
-  assert.match(styles, /@media \(max-width: 1500px\) and \(min-width: 1101px\)[\s\S]*?\.app-shell\[data-presentation="galvanized-daylight"\]:not\(\.tablet-layout\)[\s\S]*?--deck-tools: 192px/);
+  assert.match(styles, /@media \(min-width: 1101px\)[\s\S]*?\.app-shell\[data-presentation="galvanized-daylight"\]:not\(\.tablet-layout\)[\s\S]*?--deck-tools: 280px/);
+  assert.match(styles, /@media \(max-width: 1500px\) and \(min-width: 1101px\)[\s\S]*?\.app-shell\[data-presentation="galvanized-daylight"\]:not\(\.tablet-layout\)[\s\S]*?--deck-tools: 240px/);
+  assert.match(styles, /\.left-panel\.view-draw \.tool \{[^}]*font-size: 13px;[^}]*line-height: 16px;/);
+  assert.match(styles, /\.left-panel \.panel-heading span \{[^}]*font-size: 14px;/);
+  assert.match(styles, /\.left-panel \.panel-heading small \{[^}]*font-size: 11px;/);
+  assert.match(styles, /:not\(\.tablet-layout\) \.branch-safe-mode b,[\s\S]*?font-size: 11px;/);
+  assert.match(styles, /:not\(\.tablet-layout\) \.branch-arm,[\s\S]*?font-size: 12px;/);
   assert.match(styles, /width: min\(380px, 88vw\)/);
   assert.match(styles, /width: min\(390px, 94vw\)/);
 });
