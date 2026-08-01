@@ -21,7 +21,7 @@ async function loadConnectionRepairModule() {
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
 
-test("renders Field Command Console metadata with its reviewed social card and no development preview marker", async () => {
+test("renders Draw & Detail metadata with its reviewed social card and no development preview marker", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -47,7 +47,7 @@ test("renders Field Command Console metadata with its reviewed social card and n
     /^text\/html\b/i,
   );
   const html = await response.text();
-  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Field Command Console"\/>/i);
+  assert.match(html, /<meta property="og:title" content="HVAC Plan Studio · Draw (?:&|&amp;) Detail"\/>/i);
   assert.match(html, /<meta property="og:description" content="Plan, route, review, redline, and issue controlled HVAC work directly over the source PDF\."\/>/i);
   assert.match(html, /<meta property="og:image" content="[^"]*\/og\.png"\/>/i);
   assert.match(html, /<meta name="twitter:card" content="summary_large_image"\/>/i);
@@ -141,7 +141,7 @@ test("builds v106 Project Home, guided setup, and an RLS-safe cloud summary", as
   assert.match(page, /const modalWorkspaceActive = showProjectHome \|\| showProjectSetup \|\| showPlanIntelligence \|\| showFieldPackageComposer \|\| showFinishJobStudio \|\| showSystemBalanceStudio/);
   assert.match(page, /inert=\{modalWorkspaceActive \? true : undefined\}/);
   assert.match(home, /Bring in the source PDF, draw directly over it, and move from routing through field release in one controlled workspace/);
-  assert.match(home, /Field Command Console/);
+  assert.match(home, /Draw &amp; Detail/);
   assert.doesNotMatch(home, /FIELD PRODUCTION|Field-first workflow|Installer-ready/);
   assert.match(home, /Continue current job/);
   assert.doesNotMatch(home, /PLAN REVIEW QUEUE|PROFESSIONAL · COMING SOON/);
@@ -189,7 +189,7 @@ test("leads solo HVAC operators through four job steps and keeps Field Redline s
   assert.match(page, /function openToolsPanel\(\) \{\s*setLeftPanelOpen\(true\);\s*setRightPanelOpen\(false\)/);
   assert.match(page, /function openInspectorPanel\(\) \{\s*setRightPanelOpen\(true\);\s*setLeftPanelOpen\(false\)/);
   assert.match(page, /left-panel-tabs/);
-  assert.match(home, /FIELD COMMAND/);
+  assert.match(home, /JOB TRAVELER/);
   assert.match(home, /className="home-command-preview"/);
   assert.match(home, /Continue current job/);
   assert.match(home, /> Open a plan\s*</);
@@ -204,7 +204,7 @@ test("leads solo HVAC operators through four job steps and keeps Field Redline s
   assert.match(layout, /summary_large_image/);
   assert.match(layout, /images\s*:/);
   assert.match(layout, /\/og\.png/);
-  assert.match(layout, /HVAC Plan Studio · Field Command Console/);
+  assert.match(layout, /HVAC Plan Studio · Draw & Detail/);
 });
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
@@ -2114,7 +2114,7 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(styles, /\.builder-current-step-summary/);
   assert.match(styles, /\.app-shell\.tablet-layout \.left-panel,[\s\S]*?padding-bottom: calc\(92px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(styles, /\.assistant-more-tools \{[\s\S]*?overflow-x: auto;/);
-  assert.match(layout, /HVAC Plan Studio · Field Command Console/);
+  assert.match(layout, /HVAC Plan Studio · Draw & Detail/);
   assert.match(layout, /summary_large_image/);
   assert.match(layout, /images\s*:/);
   assert.match(layout, /\/og\.png/);

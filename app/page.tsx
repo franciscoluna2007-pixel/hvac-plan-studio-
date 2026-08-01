@@ -14311,8 +14311,16 @@ function HVACPlanStudioApp() {
           ? "Changes are not saved. Browser storage is full; export or save a cloud revision before closing."
           : `Saved locally${lastSavedTime ? ` at ${lastSavedTime}` : ""}`;
 
+  /*
+   * THESIS: Patternmaker's Layout Table makes the source plan the open work surface and refuses dashboard chrome.
+   * OWN-WORLD: Pale kraft, chalk paper, graphite, Prussian blue, brick red, zinc trays, steel rules, and squared instruments.
+   * STORY: Open the authoritative plan, draw and inspect HVAC work, then advance the job through one measured traveler.
+   * FIRST VIEWPORT: Kraft identity plate, zinc rule and tool trays, dominant white plan, ledger inspector, bottom workflow deck.
+   * FORM: User-pinned Patternmaker's Layout Table, approved through decision key ef99ff31.
+   * FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+   */
   return (
-    <main data-layout="command-deck" className={`app-shell field-first-workspace layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${fieldRedline.open ? "redline-open" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showFinishJobStudio ? "finish-job-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${packagePrintReleased ? "package-print-released" : "package-print-draft"}`}>
+    <main data-layout="command-deck" data-visual-world="patternmakers-layout-table" className={`app-shell field-first-workspace layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${fieldRedline.open ? "redline-open" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showFinishJobStudio ? "finish-job-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${packagePrintReleased ? "package-print-released" : "package-print-draft"}`}>
       <input
         ref={inputRef}
         className="file-input"
@@ -14323,10 +14331,10 @@ function HVACPlanStudioApp() {
       />
       <header className="topbar" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
         <button className="brand" onClick={() => setShowProjectHome(true)} aria-label="Open Project Home">
-          <div className="brand-mark"><Wind size={23} strokeWidth={2.4} /></div>
+          <div className="brand-mark"><DraftingCompass size={23} strokeWidth={2.3} /></div>
           <div>
             <strong>HVAC Plan Studio</strong>
-            <span>Field Command Console</span>
+            <span>Draw &amp; Detail</span>
           </div>
         </button>
 
@@ -14363,54 +14371,6 @@ function HVACPlanStudioApp() {
           </button>
         </nav>
       </header>
-
-      <section className="field-first-guide" aria-label="Job steps" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
-        <div className="field-first-next">
-          <div><small>ACTIVE OPERATION</small><b>{fieldFirstProgress}%</b></div>
-          <strong>{fieldFirstActiveStep.label}</strong>
-          <span>{fieldFirstActiveStep.detail}</span>
-          <i aria-hidden="true"><i style={{ width: `${fieldFirstProgress}%` }} /></i>
-        </div>
-        <nav aria-label="Plan setup and four job steps">
-          <button
-            className={`field-first-setup ${planSetupComplete ? "complete" : "active"}`}
-            aria-current={!planSetupComplete ? "step" : undefined}
-            onClick={() => {
-              if (!pdf) {
-                setShowProjectHome(true);
-                return;
-              }
-              openAIPlanReader("setup");
-            }}
-          >
-            <b>{planSetupComplete ? <CheckCircle2 size={14} /> : <ScanSearch size={14} />}</b>
-            <span>
-              <strong>Plan setup</strong>
-              <small>{!pdf
-                ? "Open a plan"
-                : !activePlanAnalysis
-                  ? "Reading plan information"
-                  : !scaleVerified
-                    ? "Confirm the drawing scale"
-                    : activeSmartPlanSetup?.counts.reviewItems
-                      ? `${activeSmartPlanSetup.counts.reviewItems} detail${activeSmartPlanSetup.counts.reviewItems === 1 ? "" : "s"} can be reviewed later`
-                      : "Plan information ready"}</small>
-            </span>
-          </button>
-          {fieldFirstSteps.map((step, index) => <button
-            key={step.id}
-            className={`${planSetupComplete && fieldFirstStep === step.id ? "active" : ""} ${step.complete ? "complete" : ""}`}
-            aria-current={planSetupComplete && fieldFirstStep === step.id ? "step" : undefined}
-            onClick={step.run}
-          >
-            <b>{step.complete ? <CheckCircle2 size={14} /> : index + 1}</b>
-            <span><strong>{step.label}</strong><small>{step.detail}</small></span>
-          </button>)}
-        </nav>
-        <button className="field-first-primary" onClick={fieldFirstActiveStep.run}>
-          Continue <span>{fieldFirstActiveStep.label}</span> <ArrowRight size={16} />
-        </button>
-      </section>
 
       <div className="print-package-watermark" aria-hidden="true">DRAFT · NOT ISSUED FOR FIELD</div>
       <section className="print-header" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
@@ -17475,6 +17435,54 @@ function HVACPlanStudioApp() {
             </tbody>
           </table>
         </>}
+      </section>
+
+      <section className="field-first-guide" aria-label="Job steps" inert={modalWorkspaceActive ? true : undefined} aria-hidden={modalWorkspaceActive}>
+        <div className="field-first-next">
+          <div><small>ACTIVE OPERATION</small><b>{fieldFirstProgress}%</b></div>
+          <strong>{fieldFirstActiveStep.label}</strong>
+          <span>{fieldFirstActiveStep.detail}</span>
+          <i aria-hidden="true"><i style={{ width: `${fieldFirstProgress}%` }} /></i>
+        </div>
+        <nav aria-label="Plan setup and four job steps">
+          <button
+            className={`field-first-setup ${planSetupComplete ? "complete" : "active"}`}
+            aria-current={!planSetupComplete ? "step" : undefined}
+            onClick={() => {
+              if (!pdf) {
+                setShowProjectHome(true);
+                return;
+              }
+              openAIPlanReader("setup");
+            }}
+          >
+            <b>{planSetupComplete ? <CheckCircle2 size={14} /> : <ScanSearch size={14} />}</b>
+            <span>
+              <strong>Plan setup</strong>
+              <small>{!pdf
+                ? "Open a plan"
+                : !activePlanAnalysis
+                  ? "Reading plan information"
+                  : !scaleVerified
+                    ? "Confirm the drawing scale"
+                    : activeSmartPlanSetup?.counts.reviewItems
+                      ? `${activeSmartPlanSetup.counts.reviewItems} detail${activeSmartPlanSetup.counts.reviewItems === 1 ? "" : "s"} can be reviewed later`
+                      : "Plan information ready"}</small>
+            </span>
+          </button>
+          {fieldFirstSteps.map((step, index) => <button
+            key={step.id}
+            className={`${planSetupComplete && fieldFirstStep === step.id ? "active" : ""} ${step.complete ? "complete" : ""}`}
+            aria-current={planSetupComplete && fieldFirstStep === step.id ? "step" : undefined}
+            onClick={step.run}
+          >
+            <b>{step.complete ? <CheckCircle2 size={14} /> : index + 1}</b>
+            <span><strong>{step.label}</strong><small>{step.detail}</small></span>
+          </button>)}
+        </nav>
+        <button className="field-first-primary" onClick={fieldFirstActiveStep.run}>
+          Continue <span>{fieldFirstActiveStep.label}</span> <ArrowRight size={16} />
+        </button>
       </section>
 
       {showDisplaySettings && <div className="display-settings-overlay" role="presentation">

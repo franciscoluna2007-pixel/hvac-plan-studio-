@@ -17953,3 +17953,1370 @@ footer {
 @media print {
   .home-command-preview { display: none !important; }
 }
+
+/* v151 — Patternmaker's Layout Table
+   A bright sheet-metal layout bench replaces the retired command-console
+   palette. The source PDF stays true white; chrome carries the material. */
+.app-shell[data-visual-world="patternmakers-layout-table"] {
+  --pattern-kraft: #d8c49a;
+  --pattern-kraft-light: #e7d7b4;
+  --pattern-paper: #f7f4ea;
+  --pattern-plan: #ffffff;
+  --pattern-ink: #2b2b28;
+  --pattern-blue: #28527a;
+  --pattern-blue-deep: #1d3f61;
+  --pattern-red: #a84537;
+  --pattern-red-deep: #783229;
+  --pattern-zinc: #aeb1aa;
+  --pattern-zinc-light: #c8cac4;
+  --pattern-line: #565850;
+  --pattern-line-soft: #2b2b2847;
+  --pattern-muted: #555850;
+  --pattern-success: #536b50;
+  --pattern-warning: #8a5e23;
+  --pattern-kraft-texture: url("/materials/pattern-kraft-fiber.webp");
+  --pattern-zinc-texture: url("/materials/pattern-aged-zinc.webp");
+  --pattern-paper-texture: url("/materials/pattern-ledger-paper.webp");
+  --pattern-inset: inset 0 1px #ffffffb8, inset 0 -1px #2b2b2838;
+  --pattern-raised: 0 2px 3px #2b2b2840, 0 6px 14px #2b2b2820, inset 0 1px #ffffffd4;
+  --pattern-deck-shadow: 0 8px 24px #2b2b2830, inset 0 1px #ffffffb0;
+
+  /* Compatibility aliases keep every existing workspace state legible. */
+  --panel: var(--pattern-zinc);
+  --panel-2: var(--pattern-paper);
+  --line: var(--pattern-line-soft);
+  --muted: var(--pattern-muted);
+  --cyan: var(--pattern-blue);
+  --blue: var(--pattern-blue);
+  --yellow: var(--pattern-red);
+  --red: var(--pattern-red);
+  --green: var(--pattern-success);
+  --orange: var(--pattern-warning);
+  --plan-navy: var(--pattern-zinc);
+  --control-navy: var(--pattern-zinc);
+  --raised-navy: var(--pattern-paper);
+  --structural-line: var(--pattern-line-soft);
+  --working-ink: var(--pattern-ink);
+  --muted-steel: var(--pattern-muted);
+  --signal-cyan: var(--pattern-blue);
+  --branch-gold: var(--pattern-red);
+  --critical-coral: var(--pattern-red);
+  --approval-green: var(--pattern-success);
+  --attention-orange: var(--pattern-warning);
+  --instrument-shadow: var(--pattern-raised);
+  --workspace-shadow: var(--pattern-deck-shadow);
+  --control-motion: 170ms cubic-bezier(.2, .8, .2, 1);
+  --deck-gap: 5px;
+  --deck-rail: 58px;
+  --deck-tools: 224px;
+  --deck-inspector: 304px;
+  --deck-radius: 3px;
+  --deck-edge: var(--pattern-line);
+  --deck-surface: var(--pattern-zinc);
+  --deck-raised: var(--pattern-paper);
+
+  color: var(--pattern-ink);
+  background-color: var(--pattern-zinc);
+  background-image: var(--pattern-zinc-texture);
+  background-size: 640px 640px;
+  background-repeat: repeat;
+  font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] ::selection {
+  color: #fff;
+  background: var(--pattern-blue);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] :is(button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--pattern-blue);
+  outline-offset: 2px;
+}
+
+.app-shell.field-first-workspace[data-visual-world="patternmakers-layout-table"]:not(.field-mode) {
+  grid-template-rows: 52px minmax(0, 1fr) 76px 34px;
+  background-color: var(--pattern-zinc);
+  background-image: var(--pattern-zinc-texture);
+  background-size: 640px 640px;
+  background-repeat: repeat;
+}
+
+/* Kraft identity plate */
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) > .topbar {
+  min-height: 52px;
+  grid-template-columns: minmax(214px, 252px) minmax(280px, 1fr) auto;
+  gap: 14px;
+  padding: 0 14px;
+  color: var(--pattern-ink);
+  border-bottom: 1px solid var(--pattern-line);
+  background:
+    linear-gradient(180deg, #ffffff2e, #2b2b2817),
+    var(--pattern-kraft-texture),
+    var(--pattern-kraft);
+  background-size: 100% 100%, 420px 420px, auto;
+  background-repeat: no-repeat, repeat, no-repeat;
+  box-shadow: 0 3px 8px #2b2b2830, inset 0 1px #ffffff9c;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .brand {
+  height: 42px;
+  gap: 9px;
+  padding-right: 12px;
+  color: var(--pattern-ink);
+  border-right: 1px solid var(--pattern-line-soft);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .brand-mark {
+  width: 34px;
+  height: 34px;
+  color: var(--pattern-paper);
+  border: 1px solid #151612;
+  border-radius: 2px;
+  background: var(--pattern-ink);
+  box-shadow: 0 2px 5px #2b2b2840, inset 0 1px #ffffff24;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .brand:hover .brand-mark {
+  border-color: #151612;
+  transform: translateY(-1px);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .brand strong {
+  color: var(--pattern-ink);
+  font: 800 17px/1.05 var(--font-pattern-condensed), "Arial Narrow", sans-serif;
+  letter-spacing: .01em;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .brand span {
+  margin-top: 3px;
+  color: #4a4d46;
+  font: 760 9px/1 var(--font-geist-sans), sans-serif;
+  letter-spacing: .13em;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-name,
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-breadcrumb,
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-breadcrumb strong,
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-context-row {
+  color: var(--pattern-ink);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-breadcrumb {
+  font-size: 11px;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-breadcrumb span,
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-readiness,
+.app-shell[data-visual-world="patternmakers-layout-table"] .studio-save-state {
+  color: #4f524c;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-readiness i,
+.app-shell[data-visual-world="patternmakers-layout-table"] .studio-save-state i {
+  background: var(--pattern-success);
+  box-shadow: 0 0 0 3px #536b5026;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .top-actions > button,
+.app-shell[data-visual-world="patternmakers-layout-table"] .system-switcher {
+  min-height: 32px;
+  color: var(--pattern-ink) !important;
+  border: 1px solid var(--pattern-line) !important;
+  border-radius: 2px !important;
+  background: var(--pattern-paper) !important;
+  box-shadow: var(--pattern-raised) !important;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .top-actions .cloud-button.active {
+  color: #fff !important;
+  border-color: var(--pattern-blue) !important;
+  background: var(--pattern-blue) !important;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .top-actions kbd {
+  color: #5e605a;
+  border-color: var(--pattern-line-soft);
+  background: #e4dfd2;
+}
+
+/* Zinc workbench and instrument frames */
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) > .workspace {
+  min-width: 0;
+  grid-template-areas: "rail tools canvas inspector";
+  grid-template-columns: var(--deck-rail) var(--deck-tools) minmax(520px, 1fr) var(--deck-inspector);
+  gap: var(--deck-gap);
+  padding: var(--deck-gap);
+  background:
+    linear-gradient(180deg, #ffffff28, #2b2b2817),
+    var(--pattern-zinc-texture),
+    var(--pattern-zinc);
+  background-size: 100% 100%, 640px 640px, auto;
+  background-repeat: no-repeat, repeat, no-repeat;
+  box-shadow: inset 0 1px #ffffffb0, inset 0 -1px #2b2b2835;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode).left-closed .workspace {
+  grid-template-areas: "rail canvas inspector";
+  grid-template-columns: var(--deck-rail) minmax(560px, 1fr) var(--deck-inspector);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode).right-closed .workspace {
+  grid-template-areas: "rail tools canvas";
+  grid-template-columns: var(--deck-rail) var(--deck-tools) minmax(560px, 1fr);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode).left-closed.right-closed .workspace {
+  grid-template-areas: "rail canvas";
+  grid-template-columns: var(--deck-rail) minmax(600px, 1fr);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode).wide-inspector .workspace {
+  grid-template-areas: "rail tools canvas inspector";
+  grid-template-columns: var(--deck-rail) var(--deck-tools) minmax(500px, 1fr) 390px;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode).wide-inspector.left-closed .workspace {
+  grid-template-areas: "rail canvas inspector";
+  grid-template-columns: var(--deck-rail) minmax(540px, 1fr) 390px;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .command-rail,
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .left-panel,
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .right-panel {
+  color: var(--pattern-ink);
+  border: 1px solid var(--pattern-line);
+  border-radius: 3px;
+  background:
+    linear-gradient(180deg, #ffffff20, #2b2b2810),
+    var(--pattern-zinc-texture),
+    var(--pattern-zinc);
+  background-size: 100% 100%, 640px 640px, auto;
+  background-repeat: no-repeat, repeat, no-repeat;
+  box-shadow: var(--pattern-deck-shadow);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .command-rail {
+  padding: 5px 4px;
+  gap: 5px;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .command-rail-review {
+  padding-top: 5px;
+  border-top-color: var(--pattern-line-soft);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .command-rail button {
+  min-height: 49px;
+  padding: 4px 2px;
+  color: var(--pattern-ink);
+  border: 1px solid var(--pattern-line);
+  border-radius: 2px;
+  background: var(--pattern-paper);
+  box-shadow: var(--pattern-raised);
+  font-size: 9px;
+  font-weight: 760;
+  font-family: var(--font-pattern-condensed), "Arial Narrow", sans-serif;
+  letter-spacing: .025em;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .command-rail button:hover:not(:disabled) {
+  color: var(--pattern-ink);
+  border-color: #373934;
+  background: #fffdf6;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .command-rail button.active {
+  color: #fff;
+  border-color: var(--pattern-blue-deep);
+  background: var(--pattern-blue);
+  box-shadow: 0 2px 4px #2b2b2850, inset 0 1px #ffffff42;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .command-rail button.active svg { color: #fff; }
+.app-shell[data-visual-world="patternmakers-layout-table"] .command-rail button.redline.active {
+  border-color: var(--pattern-red-deep);
+  background: var(--pattern-red);
+}
+
+/* Paper tool tray */
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .left-panel,
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .right-panel {
+  overflow: auto;
+  background-color: var(--pattern-paper);
+  background-image:
+    linear-gradient(#f7f4ea6b, #f7f4ea6b),
+    var(--pattern-paper-texture);
+  background-size: 100% 100%, 512px 512px;
+  background-repeat: no-repeat, repeat;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .panel-heading,
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .right-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  color: var(--pattern-ink);
+  border-bottom: 1px solid var(--pattern-line);
+  border-radius: 2px 2px 0 0;
+  background:
+    linear-gradient(180deg, #ffffff24, #2b2b2813),
+    var(--pattern-zinc-texture),
+    var(--pattern-zinc);
+  background-size: 100% 100%, 640px 640px, auto;
+  background-repeat: no-repeat, repeat, no-repeat;
+  box-shadow: 0 3px 7px #2b2b2828, inset 0 1px #ffffff9c;
+  backdrop-filter: none;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .panel-heading span,
+.app-shell[data-visual-world="patternmakers-layout-table"] .panel-heading small,
+.app-shell[data-visual-world="patternmakers-layout-table"] .right-tabs button {
+  color: var(--pattern-ink);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .panel-heading span,
+.app-shell[data-visual-world="patternmakers-layout-table"] .section-title,
+.app-shell[data-visual-world="patternmakers-layout-table"] .library-title span,
+.app-shell[data-visual-world="patternmakers-layout-table"] .run-size-default span {
+  font-family: var(--font-pattern-condensed), "Arial Narrow", sans-serif;
+  font-weight: 700;
+  letter-spacing: .1em;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .panel-heading button,
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel-tabs button,
+.app-shell[data-visual-world="patternmakers-layout-table"] .right-tabs button,
+.app-shell[data-visual-world="patternmakers-layout-table"] .canvas-toolbar button,
+.app-shell[data-visual-world="patternmakers-layout-table"] .canvas-edit-actions,
+.app-shell[data-visual-world="patternmakers-layout-table"] .panel-restore {
+  color: var(--pattern-ink);
+  border: 1px solid var(--pattern-line);
+  border-radius: 2px;
+  background: var(--pattern-paper);
+  box-shadow: var(--pattern-raised);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .left-panel-tabs {
+  top: 57px;
+  padding: 5px;
+  border-bottom-color: var(--pattern-line);
+  background: #e1ded4;
+  backdrop-filter: none;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel-tabs button,
+.app-shell[data-visual-world="patternmakers-layout-table"] .right-tabs button {
+  min-height: 34px;
+  font-size: 10px;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel-tabs button.active,
+.app-shell[data-visual-world="patternmakers-layout-table"] .right-tabs button.active,
+.app-shell[data-visual-world="patternmakers-layout-table"] .canvas-toolbar button.active {
+  color: #fff;
+  border-color: var(--pattern-blue-deep);
+  background: var(--pattern-blue);
+  box-shadow: 0 2px 4px #2b2b2850, inset 0 1px #ffffff42;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .right-tabs button.active::after {
+  height: 2px;
+  background: #fff;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel.view-draw .tool-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  padding: 7px;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel.view-draw .tool {
+  min-width: 0;
+  min-height: 61px;
+  height: auto;
+  padding: 6px 3px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  color: var(--pattern-ink);
+  border: 1px solid var(--pattern-line);
+  border-radius: 2px;
+  background: var(--pattern-paper);
+  box-shadow: var(--pattern-raised);
+  font-size: 9px;
+  font-weight: 720;
+  font-family: var(--font-pattern-condensed), "Arial Narrow", sans-serif;
+  letter-spacing: .02em;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel.view-draw .tool:hover {
+  color: var(--pattern-ink);
+  border-color: #373934;
+  background: #fffdf6;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel.view-draw .tool.active {
+  color: #fff;
+  border-color: var(--pattern-blue-deep);
+  background: var(--pattern-blue);
+  box-shadow: 0 2px 4px #2b2b2850, inset 0 1px #ffffff42;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel.view-draw .tool.active .tool-icon,
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel.view-draw .tool.active kbd { color: #fff; }
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel.view-draw .tool-icon {
+  width: auto;
+  color: var(--pattern-blue);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel.view-draw .tool-icon.red,
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel.view-draw .tool-icon.yellow { color: var(--pattern-red); }
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel.view-draw .tool-icon.green { color: var(--pattern-ink); }
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel.view-draw .tool kbd {
+  top: 4px;
+  right: 5px;
+  color: #65675f;
+  font-size: 8px;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .left-panel.view-draw :is(.run-size-default, .branch-designer, .symbol-library, .panel-section) {
+  grid-column: 1 / -1;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] :is(
+  .run-size-default,
+  .symbol-library,
+  .branch-designer,
+  .fitting-properties,
+  .status-card,
+  .builder-hero,
+  .smart-plan-preflight,
+  .run-connection-card,
+  .run-label-control,
+  .symbol-resize-control,
+  .smart-can-editor,
+  .network-trace-summary,
+  .duct-trace-summary,
+  .workspace-panel-hero,
+  .display-settings-panel
+) {
+  color: var(--pattern-ink);
+  border-color: var(--pattern-line);
+  border-radius: 2px;
+  background-color: var(--pattern-paper);
+  background-image:
+    linear-gradient(#f7f4ea8c, #f7f4ea8c),
+    var(--pattern-paper-texture);
+  background-size: 100% 100%, 512px 512px;
+  background-repeat: no-repeat, repeat;
+  box-shadow: none;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] :is(
+  .left-panel,
+  .right-panel,
+  .builder-hero,
+  .smart-plan-preflight,
+  .builder-action-card,
+  .panel-section,
+  .symbol-library,
+  .branch-designer,
+  .run-size-default,
+  .status-card
+) :is(strong, b, label, legend) {
+  color: var(--pattern-ink);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] :is(
+  .left-panel,
+  .right-panel,
+  .builder-hero,
+  .smart-plan-preflight,
+  .builder-action-card,
+  .panel-section,
+  .symbol-library,
+  .branch-designer,
+  .run-size-default,
+  .status-card
+) :is(small, p, dt) {
+  color: var(--pattern-muted);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] :is(
+  .property-input,
+  .panel-section input:not([type="checkbox"]):not([type="radio"]),
+  .panel-section select,
+  .symbol-library select,
+  .branch-designer select,
+  .run-size-default select,
+  .symbol-catalog-search,
+  .reference-input
+) {
+  color: var(--pattern-ink);
+  border-color: var(--pattern-line);
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: inset 0 1px 2px #2b2b2826;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] :is(input, textarea)::placeholder { color: #6a6c65; }
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .symbol-catalog-grid {
+  border-color: var(--pattern-line);
+  border-radius: 2px;
+  background: #dedbd1;
+  scrollbar-color: #73766e #dedbd1;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .symbol-catalog-card {
+  color: var(--pattern-ink);
+  border-color: var(--pattern-line);
+  border-radius: 2px;
+  background: var(--pattern-paper);
+  box-shadow: var(--pattern-raised);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .symbol-catalog-card:hover {
+  color: var(--pattern-ink);
+  border-color: #373934;
+  background: #fffdf6;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .symbol-catalog-card.selected {
+  color: #fff;
+  border-color: var(--pattern-blue-deep);
+  background: var(--pattern-blue);
+  box-shadow: 0 2px 4px #2b2b2850, inset 0 1px #ffffff42;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .symbol-catalog-card > small,
+.app-shell[data-visual-world="patternmakers-layout-table"] .symbol-catalog-card.selected > small { color: currentColor; }
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .branch-designer.active,
+.app-shell[data-visual-world="patternmakers-layout-table"] .branch-workflow-hud {
+  border-color: var(--pattern-red-deep);
+  background: #f3e7df;
+  box-shadow: inset 0 0 0 1px #a8453730, 0 6px 14px #2b2b2824;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .branch-designer.active :is(strong, span, small, label),
+.app-shell[data-visual-world="patternmakers-layout-table"] .branch-workflow-hud :is(strong, span, small) { color: var(--pattern-red-deep); }
+
+.app-shell[data-visual-world="patternmakers-layout-table"] :is(.branch-arm, .branch-mode-toggle button.active, .place-symbol, .primary-button, .builder-primary-action, .field-first-primary) {
+  color: #fff !important;
+  border: 1px solid var(--pattern-blue-deep) !important;
+  border-radius: 2px !important;
+  background: var(--pattern-blue) !important;
+  box-shadow: 0 3px 7px #2b2b2838, inset 0 1px #ffffff42 !important;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] :is(.branch-arm, .branch-mode-toggle button.active) {
+  border-color: var(--pattern-red-deep) !important;
+  background: var(--pattern-red) !important;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .builder-workflow {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--pattern-line);
+  border-radius: 2px;
+  background: var(--pattern-paper);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .builder-action-card {
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--pattern-line-soft);
+  border-radius: 0;
+  color: var(--pattern-ink);
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .builder-action-card.current {
+  background: #e7edf1;
+  box-shadow: inset 2px 0 var(--pattern-blue);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .builder-action-card.attention {
+  background: #f3e7df;
+  box-shadow: inset 1px 0 var(--pattern-red);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .builder-action-icon {
+  color: #fff;
+  border-radius: 2px;
+  background: var(--pattern-blue);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .panel-section,
+.app-shell[data-visual-world="patternmakers-layout-table"] .plan-summary {
+  border-top-color: var(--pattern-line-soft);
+  background: transparent;
+}
+
+/* Steel rule and authoritative plan bed */
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .canvas-area {
+  grid-area: canvas;
+  min-width: 0;
+  grid-template-rows: 56px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--pattern-line);
+  border-radius: 3px;
+  background-color: var(--pattern-zinc);
+  background-image:
+    linear-gradient(180deg, #ffffff18, #2b2b2812),
+    var(--pattern-zinc-texture);
+  background-size: 100% 100%, 640px 640px;
+  background-repeat: no-repeat, repeat;
+  box-shadow: inset 0 0 0 2px #2b2b2826, 0 7px 20px #2b2b2838;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .canvas-area:has(> .scale-calibration-guide) {
+  grid-template-rows: 56px auto minmax(0, 1fr);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .canvas-toolbar {
+  position: relative;
+  min-width: 0;
+  min-height: 56px;
+  padding: 6px 7px 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  color: var(--pattern-ink);
+  border-bottom: 1px solid var(--pattern-line);
+  background:
+    linear-gradient(180deg, #ffffff26, #2b2b2814),
+    var(--pattern-zinc-texture),
+    var(--pattern-zinc);
+  background-size: 100% 100%, 640px 640px, auto;
+  background-repeat: no-repeat, repeat, no-repeat;
+  box-shadow: 0 3px 8px #2b2b2828, inset 0 1px #ffffffa0;
+  scrollbar-color: #666960 transparent;
+  scrollbar-width: thin;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .canvas-toolbar::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  height: 8px;
+  pointer-events: none;
+  border-top: 1px solid var(--pattern-line-soft);
+  background:
+    repeating-linear-gradient(90deg, var(--pattern-ink) 0 1px, transparent 1px 8px),
+    linear-gradient(var(--pattern-zinc-light), var(--pattern-zinc));
+  background-size: auto 5px, auto;
+  background-position: left bottom;
+  background-repeat: repeat-x, no-repeat;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .canvas-toolbar > * {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .canvas-toolbar button {
+  min-height: 32px;
+  color: var(--pattern-ink);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .canvas-toolbar strong { color: var(--pattern-ink); }
+.app-shell[data-visual-world="patternmakers-layout-table"] .canvas-edit-actions { background: #dbd8ce; }
+
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .canvas {
+  border-radius: 0 0 2px 2px;
+  background-color: var(--pattern-zinc);
+  background-image:
+    linear-gradient(#2b2b2814 1px, transparent 1px),
+    linear-gradient(90deg, #2b2b2814 1px, transparent 1px),
+    var(--pattern-zinc-texture);
+  background-size: 16px 16px, 16px 16px, 640px 640px;
+  background-repeat: repeat, repeat, repeat;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .canvas.grid-hidden {
+  background-image: var(--pattern-zinc-texture);
+  background-size: 640px 640px;
+  background-repeat: repeat;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] :is(.plan-sheet, .pdf-stage canvas) {
+  background-color: var(--pattern-plan);
+  background-image: none;
+  background-blend-mode: normal;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .upload-zone {
+  color: var(--pattern-ink);
+  border-color: var(--pattern-line);
+  border-radius: 3px;
+  background-color: var(--pattern-paper);
+  background-image:
+    linear-gradient(#f7f4ea80, #f7f4ea80),
+    var(--pattern-paper-texture);
+  background-size: 100% 100%, 512px 512px;
+  background-repeat: no-repeat, repeat;
+  box-shadow: var(--pattern-deck-shadow);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-context-toolbar {
+  color: var(--pattern-ink);
+  border-color: var(--pattern-line);
+  border-radius: 3px;
+  background-color: var(--pattern-paper);
+  background-image:
+    linear-gradient(#f7f4eac7, #f7f4eac7),
+    var(--pattern-paper-texture);
+  background-size: 100% 100%, 512px 512px;
+  background-repeat: no-repeat, repeat;
+  box-shadow: 0 10px 28px #2b2b2840;
+  backdrop-filter: none;
+}
+
+/* Bottom traveler: the workflow is now downstream of the plan in DOM and view. */
+.app-shell[data-visual-world="patternmakers-layout-table"] > .field-first-guide {
+  z-index: 110;
+  min-height: 76px;
+  padding: 7px 10px;
+  grid-template-columns: minmax(208px, 252px) minmax(0, 1fr) 140px;
+  gap: 8px;
+  color: var(--pattern-ink);
+  border-top: 1px solid var(--pattern-line);
+  border-bottom: 1px solid var(--pattern-line);
+  background:
+    linear-gradient(180deg, #ffffff2b, #2b2b2818),
+    var(--pattern-zinc-texture),
+    var(--pattern-zinc);
+  background-size: 100% 100%, 640px 640px, auto;
+  background-repeat: no-repeat, repeat, no-repeat;
+  box-shadow: 0 -3px 9px #2b2b282b, inset 0 1px #ffffffa8;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-next,
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button {
+  color: var(--pattern-ink);
+  border: 1px solid var(--pattern-line);
+  border-radius: 2px;
+  background: var(--pattern-paper);
+  box-shadow: var(--pattern-raised);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-next {
+  padding: 7px 10px;
+  border-left-width: 1px;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-next > div small,
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-next > div b,
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-next > strong,
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-next > span {
+  color: var(--pattern-ink);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-next > div small {
+  font-family: var(--font-pattern-condensed), "Arial Narrow", sans-serif;
+  font-weight: 600;
+  letter-spacing: .1em;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-next > i { background: #c5c2b8; }
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-next > i > i { background: var(--pattern-blue); }
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav {
+  gap: 5px;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button {
+  min-height: 58px;
+  padding: 6px 7px;
+  grid-template-columns: 25px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button > b {
+  width: 25px;
+  height: 25px;
+  color: var(--pattern-ink);
+  border: 1px solid var(--pattern-line);
+  border-radius: 2px;
+  background: #dedbd1;
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button strong,
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button small {
+  color: var(--pattern-ink);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button strong {
+  font-family: var(--font-pattern-condensed), "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: .02em;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button small {
+  color: var(--pattern-muted);
+  font-size: 8px !important;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button.active {
+  color: #fff;
+  border-color: var(--pattern-blue-deep);
+  background: var(--pattern-blue);
+  box-shadow: 0 3px 7px #2b2b2845, inset 0 1px #ffffff42;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button.active :is(strong, small) { color: #fff; }
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button.active > b {
+  color: var(--pattern-blue-deep);
+  border-color: #fff;
+  background: #fff;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button.complete {
+  border-color: var(--pattern-success);
+  background: #e8ede4;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button.complete > b {
+  color: #fff;
+  border-color: var(--pattern-success);
+  background: var(--pattern-success);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .field-first-primary {
+  min-height: 58px;
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] > footer {
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  gap: 16px;
+  color: var(--pattern-ink);
+  border-top: 1px solid var(--pattern-line);
+  background:
+    linear-gradient(180deg, #ffffff1d, #2b2b281b),
+    var(--pattern-zinc-texture),
+    #9fa29b;
+  background-size: 100% 100%, 640px 640px, auto;
+  background-repeat: no-repeat, repeat, no-repeat;
+  box-shadow: inset 0 1px #ffffff8c;
+  font: 650 9px var(--font-geist-sans), sans-serif;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] > footer .online { background: var(--pattern-success); }
+.app-shell[data-visual-world="patternmakers-layout-table"] > footer .footer-right { color: #42443e; }
+
+/* Project Home is the same shop, not a navy island. */
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-overlay {
+  grid-template-rows: 60px minmax(0, 1fr);
+  color: var(--pattern-ink);
+  background:
+    linear-gradient(#2b2b280d 1px, transparent 1px),
+    linear-gradient(90deg, #2b2b280d 1px, transparent 1px),
+    var(--pattern-zinc-texture),
+    var(--pattern-zinc);
+  background-size: 20px 20px, 20px 20px, 640px 640px, auto;
+  background-repeat: repeat, repeat, repeat, no-repeat;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-header {
+  min-height: 60px;
+  color: var(--pattern-ink);
+  border-bottom: 1px solid var(--pattern-line);
+  background:
+    linear-gradient(180deg, #ffffff2e, #2b2b2817),
+    var(--pattern-kraft-texture),
+    var(--pattern-kraft);
+  background-size: 100% 100%, 420px 420px, auto;
+  background-repeat: no-repeat, repeat, no-repeat;
+  box-shadow: 0 3px 8px #2b2b2830, inset 0 1px #ffffff9c;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-brand > span {
+  color: var(--pattern-paper);
+  border: 1px solid #151612;
+  border-radius: 2px;
+  background: var(--pattern-ink);
+  box-shadow: 0 2px 5px #2b2b2840;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-brand :is(strong, small),
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-nav button,
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-header-actions button { color: var(--pattern-ink); }
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-nav button.active {
+  color: #fff;
+  border-color: var(--pattern-blue-deep);
+  border-radius: 2px;
+  background: var(--pattern-blue);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-scroll {
+  background: transparent;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-content {
+  width: min(1440px, calc(100% - 34px));
+  padding-top: 24px;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-hero {
+  color: var(--pattern-ink);
+  border: 1px solid var(--pattern-line);
+  border-radius: 3px;
+  background:
+    linear-gradient(#f7f4ea65, #f7f4ea65),
+    var(--pattern-paper-texture),
+    var(--pattern-paper);
+  background-size: 100% 100%, 512px 512px, auto;
+  background-repeat: no-repeat, repeat, no-repeat;
+  box-shadow: var(--pattern-deck-shadow);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-hero h1 {
+  color: var(--pattern-ink);
+  font-family: var(--font-pattern-condensed), "Arial Narrow", sans-serif;
+  font-weight: 800;
+  letter-spacing: -.025em;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-hero-copy > p { color: var(--pattern-muted); }
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-primary-actions button,
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-plan-sources button,
+.app-shell[data-visual-world="patternmakers-layout-table"] .home-close {
+  color: var(--pattern-ink);
+  border: 1px solid var(--pattern-line);
+  border-radius: 2px;
+  background: var(--pattern-paper);
+  box-shadow: var(--pattern-raised);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-primary-actions .home-primary {
+  color: #fff;
+  border-color: var(--pattern-blue-deep);
+  background: var(--pattern-blue);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .home-command-preview,
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-grid,
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-plan-sources {
+  color: var(--pattern-ink);
+  border: 1px solid var(--pattern-line);
+  border-radius: 3px;
+  background-color: var(--pattern-paper);
+  background-image:
+    linear-gradient(#f7f4ea8a, #f7f4ea8a),
+    var(--pattern-paper-texture);
+  background-size: 100% 100%, 512px 512px;
+  background-repeat: no-repeat, repeat;
+  box-shadow: none;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .home-command-preview li {
+  color: var(--pattern-ink);
+  border-color: var(--pattern-line-soft);
+  border-radius: 2px;
+  background: #e7e3d8;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .home-command-preview li :is(strong, small) { color: var(--pattern-ink); }
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .home-command-preview li.active {
+  color: #fff;
+  border-color: var(--pattern-blue-deep);
+  background: var(--pattern-blue);
+  box-shadow: none;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .home-command-preview li.active :is(strong, small) { color: #fff; }
+.app-shell[data-visual-world="patternmakers-layout-table"] .home-command-preview li.complete {
+  border-color: var(--pattern-success);
+  background: #e8ede4;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .home-command-preview > footer {
+  color: var(--pattern-ink);
+  border-top-color: var(--pattern-line-soft);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .home-command-preview > footer strong {
+  color: #4f6048;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .home-command-preview > header small,
+.app-shell[data-visual-world="patternmakers-layout-table"] .home-section-heading span {
+  color: var(--pattern-blue);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .home-command-preview > header strong,
+.app-shell[data-visual-world="patternmakers-layout-table"] .home-section-heading h2,
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-projects :is(h2, h3, strong),
+.app-shell[data-visual-world="patternmakers-layout-table"] .project-home-grid {
+  color: var(--pattern-ink);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .home-section-heading > button {
+  color: var(--pattern-blue);
+}
+
+/* Empty-plan state stays part of the layout table instead of returning to navy. */
+.app-shell[data-visual-world="patternmakers-layout-table"] .upload-card {
+  width: min(450px, calc(100% - 32px));
+  padding: 36px 40px 30px;
+  color: var(--pattern-ink);
+  border: 1px solid var(--pattern-line);
+  border-radius: 3px;
+  background:
+    linear-gradient(#f7f4ea68, #f7f4ea68),
+    var(--pattern-paper-texture),
+    var(--pattern-paper);
+  background-size: 100% 100%, 512px 512px, auto;
+  background-repeat: no-repeat, repeat, no-repeat;
+  box-shadow: var(--pattern-deck-shadow);
+  backdrop-filter: none;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .upload-icon {
+  color: #fff;
+  border: 1px solid var(--pattern-blue-deep);
+  border-radius: 2px;
+  background: var(--pattern-blue);
+  box-shadow: 0 3px 7px #2b2b2838, inset 0 1px #ffffff42;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .upload-card h1 { color: var(--pattern-ink); }
+.app-shell[data-visual-world="patternmakers-layout-table"] .upload-card p,
+.app-shell[data-visual-world="patternmakers-layout-table"] .upload-card > span,
+.app-shell[data-visual-world="patternmakers-layout-table"] .upload-card .file-note { color: var(--pattern-muted); }
+.app-shell[data-visual-world="patternmakers-layout-table"] .upload-card .drive-setup-note { color: var(--pattern-red-deep); }
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .upload-card .drive-upload-button {
+  color: var(--pattern-ink);
+  border: 1px solid var(--pattern-line);
+  border-radius: 2px;
+  background: var(--pattern-paper);
+  box-shadow: var(--pattern-raised);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .library-title {
+  color: var(--pattern-blue);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .library-title b {
+  color: var(--pattern-red-deep);
+  border: 1px solid #a8453760;
+  border-radius: 2px;
+  background: #f3e7df;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .branch-safe-mode,
+.app-shell[data-visual-world="patternmakers-layout-table"] .branch-run-armed-card {
+  color: var(--pattern-ink);
+  border-color: #28527a80;
+  border-radius: 2px;
+  background: #e7edf1;
+  box-shadow: inset 2px 0 var(--pattern-blue);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .branch-safe-mode :is(b, small),
+.app-shell[data-visual-world="patternmakers-layout-table"] .branch-run-armed-card :is(b, strong, span) {
+  color: var(--pattern-ink);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .branch-link-step {
+  color: var(--pattern-red-deep);
+  border-color: #a8453780;
+  border-radius: 2px;
+  background: #f3e7df;
+  box-shadow: inset 2px 0 var(--pattern-red);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .builder-hero-heading > span {
+  color: #fff;
+  border-radius: 2px;
+  background: var(--pattern-blue);
+  box-shadow: inset 0 1px #ffffff42;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .builder-hero-heading :is(strong, small) {
+  color: var(--pattern-ink);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .builder-hero-heading > b {
+  color: var(--pattern-ink);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .smart-plan-preflight {
+  box-shadow: inset 2px 0 var(--pattern-blue);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .smart-plan-preflight :is(header strong, .smart-plan-preflight-heading strong) {
+  color: var(--pattern-ink);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .smart-plan-preflight :is(header small, .smart-plan-preflight-heading small) {
+  color: var(--pattern-muted);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .smart-plan-preflight :is(.smart-plan-preflight-metrics > *, dl > div) {
+  color: var(--pattern-muted);
+  border-color: var(--pattern-line-soft);
+  border-radius: 2px;
+  background: #e7e3d8;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .smart-plan-preflight :is(.smart-plan-preflight-metrics strong, dl dd) {
+  color: var(--pattern-ink);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .smart-plan-preflight button {
+  color: #fff;
+  border: 1px solid var(--pattern-blue-deep);
+  border-radius: 2px;
+  background: var(--pattern-blue);
+  box-shadow: 0 3px 7px #2b2b2838, inset 0 1px #ffffff42;
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .smart-plan-preflight button.secondary {
+  color: var(--pattern-ink);
+  border-color: var(--pattern-line);
+  background: var(--pattern-paper);
+  box-shadow: var(--pattern-raised);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .builder-safety-note {
+  color: var(--pattern-muted);
+  border-color: var(--pattern-line);
+  border-radius: 2px;
+  background: #e7edf1;
+  box-shadow: inset 2px 0 var(--pattern-blue);
+}
+
+.app-shell[data-visual-world="patternmakers-layout-table"] .builder-safety-note svg { color: var(--pattern-blue); }
+.app-shell[data-visual-world="patternmakers-layout-table"] .builder-safety-note strong { color: var(--pattern-ink); }
+
+/* Compact desktop */
+@media (max-width: 1500px) and (min-width: 1101px) {
+  .app-shell[data-visual-world="patternmakers-layout-table"] {
+    --deck-rail: 54px;
+    --deck-tools: 202px;
+    --deck-inspector: 272px;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .workspace,
+  .app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode).wide-inspector .workspace {
+    grid-template-columns: var(--deck-rail) var(--deck-tools) minmax(440px, 1fr) var(--deck-inspector);
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode).left-closed .workspace,
+  .app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode).wide-inspector.left-closed .workspace {
+    grid-template-columns: var(--deck-rail) minmax(500px, 1fr) var(--deck-inspector);
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"] > .field-first-guide {
+    grid-template-columns: 214px minmax(0, 1fr) 118px;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button small,
+  .app-shell[data-visual-world="patternmakers-layout-table"] .field-first-primary span { display: none; }
+}
+
+/* Tablet drawers stay physical trays and keep the bottom traveler in DOM order. */
+@media (max-width: 1359px) {
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode) .workspace,
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode).left-closed .workspace,
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode).right-closed .workspace,
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode).left-closed.right-closed .workspace,
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode).wide-inspector .workspace {
+    grid-template-areas: "rail canvas";
+    grid-template-columns: 54px minmax(0, 1fr) !important;
+    gap: 4px;
+    padding: 4px;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode) .left-panel,
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode) .right-panel {
+    top: 52px;
+    bottom: 110px;
+    width: min(390px, 88vw);
+    border-radius: 0 3px 3px 0;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode) .right-panel {
+    border-radius: 3px 0 0 3px;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"] .workspace-drawer-scrim {
+    inset: 52px 0 110px;
+  }
+}
+
+@media (max-width: 899px), (orientation: portrait) and (pointer: coarse) {
+  .app-shell.field-first-workspace[data-visual-world="patternmakers-layout-table"]:not(.field-mode) {
+    grid-template-rows: 56px minmax(0, 1fr) 58px 24px;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) > .topbar {
+    min-height: 56px;
+    grid-template-columns: minmax(166px, 1fr) auto;
+    gap: 8px;
+    padding: 0 9px;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"] .brand {
+    height: 44px;
+    padding-right: 7px;
+    border-right: 0;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"] .brand-mark { width: 36px; height: 36px; }
+  .app-shell[data-visual-world="patternmakers-layout-table"] .brand strong { font-size: 14px; }
+  .app-shell[data-visual-world="patternmakers-layout-table"] .brand span,
+  .app-shell[data-visual-world="patternmakers-layout-table"] .project-name { display: none; }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"] > .field-first-guide {
+    min-height: 58px;
+    padding: 4px 6px;
+    grid-template-columns: minmax(0, 1fr) 48px;
+    gap: 5px;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"] .field-first-next { display: none; }
+  .app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav {
+    grid-template-columns: repeat(5, minmax(94px, 1fr));
+    gap: 4px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button {
+    min-height: 48px;
+    padding: 4px 5px;
+    grid-template-columns: 21px minmax(0, 1fr);
+    scroll-snap-align: start;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button > b {
+    width: 21px;
+    height: 21px;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"] .field-first-guide > nav > button small { display: none; }
+  .app-shell[data-visual-world="patternmakers-layout-table"] .field-first-primary {
+    position: static;
+    width: 48px;
+    min-width: 48px;
+    min-height: 48px;
+    padding: 0;
+    display: inline-flex;
+    font-size: 0;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"] .field-first-primary span { display: none; }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode) .workspace,
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode).left-closed .workspace,
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode).right-closed .workspace,
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode).left-closed.right-closed .workspace,
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode).wide-inspector .workspace {
+    grid-template-areas: "canvas";
+    grid-template-columns: minmax(0, 1fr) !important;
+    padding: 4px 4px 64px;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"] .command-rail {
+    right: max(7px, env(safe-area-inset-right));
+    bottom: calc(88px + env(safe-area-inset-bottom));
+    left: max(7px, env(safe-area-inset-left));
+    height: 56px;
+    min-height: 56px;
+    padding: 4px;
+    flex-direction: row;
+    gap: 4px;
+    border-radius: 3px;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"] .command-rail-group { flex-direction: row; gap: 4px; }
+  .app-shell[data-visual-world="patternmakers-layout-table"] .command-rail-review {
+    padding-top: 0;
+    padding-left: 4px;
+    border-top: 0;
+    border-left: 1px solid var(--pattern-line-soft);
+  }
+  .app-shell[data-visual-world="patternmakers-layout-table"] .command-rail button {
+    width: 49px;
+    min-width: 49px;
+    min-height: 46px;
+  }
+  .app-shell[data-visual-world="patternmakers-layout-table"] .command-rail-settings { margin-top: 0; margin-left: auto; }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode) .left-panel,
+  .app-shell[data-visual-world="patternmakers-layout-table"].tablet-layout:not(.field-mode) .right-panel {
+    top: max(56px, env(safe-area-inset-top));
+    bottom: calc(150px + env(safe-area-inset-bottom));
+    padding-bottom: 70px;
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"] .workspace-drawer-scrim {
+    inset: max(56px, env(safe-area-inset-top)) 0 calc(150px + env(safe-area-inset-bottom));
+  }
+
+  .app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .canvas-area { border-radius: 2px; }
+  .app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) .canvas { border-radius: 0 0 1px 1px; }
+  .app-shell[data-visual-world="patternmakers-layout-table"] > footer { min-height: 24px; gap: 9px; }
+  .app-shell[data-visual-world="patternmakers-layout-table"] > footer > span:nth-child(2),
+  .app-shell[data-visual-world="patternmakers-layout-table"] > footer .footer-right { display: none; }
+}
+
+@media (pointer: coarse) {
+  .app-shell[data-visual-world="patternmakers-layout-table"] .command-rail button,
+  .app-shell[data-visual-world="patternmakers-layout-table"] .left-panel-tabs button,
+  .app-shell[data-visual-world="patternmakers-layout-table"] .right-tabs button,
+  .app-shell[data-visual-world="patternmakers-layout-table"] .canvas-toolbar button {
+    min-height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-visual-world="patternmakers-layout-table"] *,
+  .app-shell[data-visual-world="patternmakers-layout-table"] *::before,
+  .app-shell[data-visual-world="patternmakers-layout-table"] *::after {
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  .app-shell[data-visual-world="patternmakers-layout-table"] {
+    color: #000;
+    background: #fff;
+  }
+  .app-shell[data-visual-world="patternmakers-layout-table"] .command-rail,
+  .app-shell[data-visual-world="patternmakers-layout-table"] > .field-first-guide { display: none !important; }
+  .app-shell[data-visual-world="patternmakers-layout-table"]:not(.field-mode) > .workspace {
+    display: block;
+    padding: 0;
+    background: #fff;
+    box-shadow: none;
+  }
+  .app-shell[data-visual-world="patternmakers-layout-table"] :is(.plan-sheet, .pdf-stage canvas) { background: #fff; }
+}

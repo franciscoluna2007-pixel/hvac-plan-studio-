@@ -59,8 +59,8 @@ test("v127 removes SIZE LATER and leaves unconfirmed supply and return runs unla
   assert.match(page, /\{runLabelText\}/);
 });
 
-test("current release metadata identifies the Field Command Console", () => {
-  assert.match(layout, /HVAC Plan Studio · Field Command Console/);
+test("current release metadata identifies Draw & Detail", () => {
+  assert.match(layout, /HVAC Plan Studio · Draw & Detail/);
   assert.match(layout, /Plan, route, review, redline, and issue controlled HVAC work directly over the source PDF/);
   assert.match(layout, /images: \[\{/);
   assert.match(layout, /url: "\/og\.png"/);

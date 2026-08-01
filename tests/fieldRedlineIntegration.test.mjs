@@ -860,7 +860,7 @@ test("Redline drawing, shape, and text-edit lifecycles stay direct and unclutter
 
 test("the current shell metadata keeps Field Redline Studio as a workspace with Area select", () => {
   assert.match(analytics, /app_version: "133"/);
-  assert.match(layout, /HVAC Plan Studio · Field Command Console/);
+  assert.match(layout, /HVAC Plan Studio · Draw & Detail/);
   assert.match(
     layout,
     /Plan, route, review, redline, and issue controlled HVAC work directly over the source PDF\./,

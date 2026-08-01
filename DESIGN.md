@@ -1,209 +1,221 @@
 ---
-name: HVAC Plan Studio Field Command Console
-description: A precise, calm, and operational interface for professional HVAC planning over source PDFs.
+name: "HVAC Plan Studio - Patternmaker's Layout Table"
+description: A plan-first drafting workspace shaped by a patternmaker's measured table, ledger sheets, kraft references, and aged metal tools.
 colors:
-  Plan Navy: "#07111f"
-  Control Navy: "#0d1b2d"
-  Raised Navy: "#12243a"
-  Structural Line: "#203752"
-  Working Ink: "#dbe6f5"
-  Muted Steel: "#708198"
-  Signal Cyan: "#2ccce4"
-  Branch Gold: "#f7b733"
-  Critical Coral: "#f0525a"
-  Approval Green: "#35c98b"
-  Attention Orange: "#ff8a3d"
+  Kraft: "#D8C49A"
+  Ledger Paper: "#F7F4EA"
+  Plan White: "#FFFFFF"
+  Graphite: "#2B2B28"
+  Prussian Blue: "#28527A"
+  Brick Red: "#A84537"
+  Aged Zinc: "#AEB1AA"
+  Success: "#536B50"
+  Warning: "#8A5E23"
 typography:
-  primary: Geist Sans
+  display: Barlow Condensed 600/700/800
+  body: Geist Sans
   technical: Geist Mono
+materials:
+  kraft: /materials/pattern-kraft-fiber.webp
+  zinc: /materials/pattern-aged-zinc.webp
+  ledger: /materials/pattern-ledger-paper.webp
 rounded:
-  compact: 5px
-  control: 6px
-  card: 8px
-  workspace: 16px
-  pill: 999px
+  control: 2px
+  panel: 3px
+  sheet: 2px
 spacing:
   unit: 4px
   compact: 8px
   control: 12px
   panel: 16px
   section: 24px
-components:
-  Primary Action:
-    backgroundColor: Signal Cyan
-    textColor: Plan Navy
-    typography: Geist Sans 700
-    rounded: 6px
-    padding: 8px 12px
-    height: 32px
-  Branch Action:
-    backgroundColor: Branch Gold
-    textColor: Plan Navy
-    typography: Geist Sans 800
-    rounded: 5px
-    padding: 8px 12px
-    height: 32px
-  Tool Row:
-    backgroundColor: Raised Navy
-    textColor: Working Ink
-    typography: Geist Sans 600
-    rounded: 6px
-    padding: 8px 10px
-    height: 41px
-  Property Input:
-    backgroundColor: Control Navy
-    textColor: Working Ink
-    typography: Geist Sans 500
-    rounded: 5px
-    padding: 6px 8px
-    height: 31px
-  Status Chip:
-    backgroundColor: Raised Navy
-    textColor: Working Ink
-    typography: Geist Sans 800
-    rounded: 999px
-    padding: 4px 8px
+motion:
+  standard: 170ms
 ---
 
-# HVAC Plan Studio — Field Command Console
+# HVAC Plan Studio - Patternmaker's Layout Table
 
-## Overview
+## North star
 
-HVAC Plan Studio is a **Field Command Console**: precise, calm, and operational. It should feel like dependable professional equipment placed beside the source plan—not a dashboard competing for attention and never gaming software or generic office software.
+HVAC Plan Studio should feel like a patternmaker's working layout table: measured, physical, quiet, and ready for exact drafting. Kraft references, ledger sheets, worn zinc edges, ruled marks, and graphite type create the surrounding instrument. They frame the work without becoming decoration.
 
-The visual system combines **Layered Control Surfaces** with selective **Raised Instrument Panels**. Everyday structure comes from deep navy tonal layers and crisp borders. Depth, glow, and tactile highlights are reserved for the active tool, the current decision, and temporary workspaces that sit above the plan. Components are compact and confident so experienced users can move quickly without losing clarity.
+The source plan is the authority. It stays pure white and visually untouched. Tool chrome may carry restrained material texture; the plan/PDF never receives a texture, paper grain, tint, blend mode, or warm color cast.
 
-The source PDF remains the visual authority. Interface chrome frames the work, HVAC geometry remains legible above Redline, and color communicates purpose rather than decoration. Signal Cyan identifies primary interaction, Branch Gold belongs to T/Y work, Critical Coral marks blockers, and Approval Green confirms safe completion.
+This is a visual-system change only. It does not change a workflow, gesture, placement rule, layer rule, or data model.
+
+## Product and workspace truth
+
+- The product name is HVAC Plan Studio.
+- The drafting workspace is Draw & Detail.
+- Redline is an internal workspace within HVAC Plan Studio, not the product title.
+- The source plan/PDF is the authoritative base layer and always renders on Plan White.
+- Redline markup renders above the source plan.
+- HVAC runs, symbols, and T/Y tools render above Redline.
+- Styling must not silently move, connect, resize, place, redraw, or reinterpret plan geometry.
+- Existing tool, selection, drawing, press-drag-release, placement, editing, save, layer, and review behavior stays unchanged.
 
 ## Colors
 
-### Core surfaces
+### Semantic palette
 
 | Token | Value | Use |
 | --- | --- | --- |
-| **Plan Navy** | `#07111f` | App background, deepest canvas-adjacent surface |
-| **Control Navy** | `#0d1b2d` | Side panels and standard control surfaces |
-| **Raised Navy** | `#12243a` | Active rows, elevated controls, selected regions |
-| **Structural Line** | `#203752` | Panel divisions, control borders, quiet structure |
-| **Working Ink** | `#dbe6f5` | Primary text and high-value labels |
-| **Muted Steel** | `#708198` | Secondary text, metadata, inactive tools |
+| Kraft | #D8C49A | Product identity bar, reference tabs, warm structural fields |
+| Ledger Paper | #F7F4EA | Tool tray, inspector sheets, traveler, menus, and readable chrome |
+| Plan White | #FFFFFF | Source plan/PDF surface only; never tint or texture it |
+| Graphite | #2B2B28 | Primary text, rules, icons, and working marks |
+| Prussian Blue | #28527A | Active tool, current workspace, primary action, links, and keyboard focus |
+| Brick Red | #A84537 | Redline identity, correction marks, and destructive emphasis |
+| Aged Zinc | #AEB1AA | Command rail, metal edges, dividers, inactive hardware |
+| Success | #536B50 | Saved, checked, connected, or ready states |
+| Warning | #8A5E23 | Needs-review and caution states |
 
-### Operational signals
+Kraft, ledger, and zinc establish material. Graphite carries information. Prussian Blue identifies the current working control. Brick Red belongs to markup and correction. Success and Warning report state.
 
-| Token | Value | Meaning |
-| --- | --- | --- |
-| **Signal Cyan** | `#2ccce4` | Primary action, active tool, keyboard focus |
-| **Branch Gold** | `#f7b733` | T/Y branch creation and branch-specific decisions |
-| **Critical Coral** | `#f0525a` | Errors, release blockers, destructive warnings |
-| **Approval Green** | `#35c98b` | Confirmed, connected, reviewed, or ready |
-| **Attention Orange** | `#ff8a3d` | Caution or unresolved attention that is not yet a blocker |
-
-Signal colors must carry a label, icon, pattern, or state change as well as hue. Never use Signal Cyan and Branch Gold interchangeably: cyan means general control; gold means branch work. Keep the source PDF neutral and readable beneath overlays.
+Color is never the only state cue. Every active, selected, warning, error, saved, or ready state also needs plain text plus a structural change such as an icon, label, border, underline, check, or position marker.
 
 ## Typography
 
-Use **Geist Sans** for the interface and **Geist Mono** for measurements, identifiers, coordinates, calculated values, and other data that benefits from fixed-width alignment.
+Self-host **Barlow Condensed** at weights 600, 700, and 800. Use it for the HVAC Plan Studio wordmark, workspace names, section headings, tool names, workflow labels, buttons, tabs, and short status stamps. Its condensed construction should make the interface feel labeled like physical drafting equipment.
 
-- Page and workspace titles: 17–25px, 700–800 weight, compact line height.
-- Panel headings: 10–12px, 700 weight.
-- Working labels and controls: 10–13px, 500–700 weight.
-- Metadata and dense technical labels: 8–10px, 600–800 weight, uppercase only when the label is short.
-- Hero or first-run messaging: may scale from 28–46px, but does not belong in daily plan controls.
+Use **Geist Sans** for instructions, help text, descriptions, form labels, notes, and other body copy. Use **Geist Mono** for dimensions, scale, coordinates, identifiers, counts, airflow values, and other technical data.
 
-Uppercase labels use deliberate tracking around `0.5px–1.25px`. Avoid long uppercase sentences. Favor plain field language: “Place branch,” “Needs review,” and “Ready to issue” over abstract product terminology.
+- Product identity: Barlow Condensed 800, 18-22px.
+- Workspace and panel headings: Barlow Condensed 700, 13-17px.
+- Tool, workflow, tab, and button labels: Barlow Condensed 600/700, 11-14px.
+- Body and field guidance: Geist Sans 400-600, 11-14px.
+- Measurements and technical metadata: Geist Mono 500-700, 10-13px.
+- Short equipment labels may use uppercase with 0.04em-0.08em tracking. Do not set instructions or sentences in uppercase.
 
-## Layout
+Use direct field language: "Draw supply run," "Place T/Y," "Check scale," "Needs review," and "Saved." Avoid abstract dashboard language.
 
-The desktop shell is a **Command Deck** built around a plan-first center:
+## Materials
 
-- A 72px global bar holds product identity, current job, active HVAC system, save state, search, and saved jobs.
-- A 72px mission strip shows the active operation, overall progress, the five job stages, and one clear Continue action.
-- A 64px command rail keeps Job, Draw, Symbols, Selected, Review, Layers, Redline, and Display within one predictable reach.
-- A 280px inset tool dock holds drawing tools, symbols, and selected-object properties without competing with the source plan.
-- The framed plan canvas occupies the flexible center and remains the largest visual surface.
-- A 336px inset inspector holds current-step guidance, layers, airflow, and materials; focused review work may expand it to 420px.
-- A 30px status deck communicates source, scale, save, and readiness without obscuring the plan.
+Use the supplied material assets only on interface chrome:
 
-The command rail is navigation, not another tool palette. It opens the correct dock while the dock contains the detailed choices. Tool and inspector docks use restrained elevation and rounded structural edges so the plan reads as the physical work surface rather than as another dashboard card.
+| Material | Asset | Approved surfaces |
+| --- | --- | --- |
+| Kraft fiber | /materials/pattern-kraft-fiber.webp | 52px identity bar, reference tabs, small label fields |
+| Aged zinc | /materials/pattern-aged-zinc.webp | Command rail, hardware edges, separators |
+| Ledger paper | /materials/pattern-ledger-paper.webp | Tool tray, inspector, bottom traveler, menus |
 
-Use a 4px base spacing unit. Dense controls typically use 8–12px internal spacing, panels use 16px, and major sections use 24px. Keep related action and evidence close together. Preserve clear separation between choosing a tool, placing work, editing properties, and approving consequential changes.
+Material texture must stay quiet enough that labels and rules remain crisp. Pair it with an opaque token color rather than relying on the image for contrast. Avoid material-on-material nesting; a ledger sheet can sit against a zinc edge, but it should not contain more floating faux-paper cards.
 
-At narrower widths, panels collapse before the plan becomes unusable. Field mode prioritizes a single canvas column, touch-safe targets, and the current action. Design for desktop, tablet, touch, and stylus; do not treat mobile as a shrunken desktop console.
+Never apply a material image, warm overlay, opacity wash, blend mode, filter, or off-white background to the source plan/PDF. Plan White is exact #FFFFFF.
 
-## Elevation & Depth
+## Desktop layout
 
-Default surfaces use **Layered Control Surfaces**: tonal navy steps, one-pixel structural borders, and subtle inset highlights. This keeps long work sessions calm and leaves the plan visually dominant.
+The desktop shell is a measured table around one flexible plan surface:
 
-Use **Raised Instrument Panels** selectively for active workflows, dialogs, command surfaces, and decisions that temporarily sit above the plan. Raised surfaces may use brighter edge highlights, a controlled gradient, and a shadow such as `0 24px 80px #0009`. Small active controls may use a restrained cyan or gold glow. Normal panels must not float unnecessarily.
+- A 52px kraft identity bar holds HVAC Plan Studio, Draw & Detail, current job context, and existing global actions.
+- The workspace row contains a 58px command rail, a 224px tool tray, the flexible plan, and a 304px inspector.
+- A 76px bottom traveler holds the existing workflow position and relevant next-step controls.
+- A 34px status strip reports source, scale, save, and readiness.
 
-Motion reinforces depth without spectacle. Use 160–250ms ease-out transitions for panel entry, selection, and progress. Continuous animation is reserved for genuine processing or a temporary placement preview. Respect `prefers-reduced-motion`; never make animation necessary to understand state.
+The desktop grid is therefore:
 
-## Shapes
+    rows: 52px minmax(0, 1fr) 76px 34px
+    workspace columns: 58px 224px minmax(0, 1fr) 304px
 
-The shape language is technical and tactile, not soft or playful.
+The plan remains the largest region. The rail chooses a workspace destination; the tray contains its tools; the inspector shows the current selection or task. The traveler communicates existing workflow progress without adding a new workflow.
 
-- Compact inputs and utility controls: 5px radius.
-- Buttons, tool rows, and toggles: 6px radius.
-- Cards and grouped instruments: 8px radius.
-- Major modal workspaces: 12–18px radius.
-- Status chips only: full pill radius.
+At compact desktop widths, reduce internal gaps and label density, then narrow supporting chrome before constraining the usable plan. A tray or inspector may become an on-demand drawer when both no longer fit. Opening or closing a drawer must not alter the current tool, selection, placement state, or plan viewport.
 
-Borders are structural, typically one pixel. Active states may add a two-pixel inset marker rather than increasing the whole control’s size. Icons are clear line symbols with consistent optical weight. Plan symbols, supply runs, T/Y fittings, and tool icons must render above Redline so operational geometry never disappears into markup.
+On tablet and mobile:
+
+- Keep the plan first and full-height whenever possible.
+- Put the tool tray and inspector in dismissible drawers.
+- Turn the command rail into a horizontal control with 49px minimum targets.
+- Preserve the same destinations, labels, order, active state, and workflow meaning.
+- Do not turn the mobile layout into a new or simplified data model.
+
+## Layer order and plan treatment
+
+The visible stack is explicit:
+
+1. Source plan/PDF on pure Plan White.
+2. Redline markup.
+3. HVAC runs, symbols, fitting previews, and T/Y tools.
+4. Selection handles and temporary interaction affordances already provided by the product.
+
+The Patternmaker material system belongs outside that stack. No texture or tint crosses the plan boundary. Raised chrome may overlap the plan only where the current responsive layout already uses drawers or temporary panels, and it must not obscure the active placement area without a clear dismiss action.
+
+## Edges, rules, and depth
+
+The shape language is squared and workmanlike:
+
+- Controls and tabs use a 2px radius.
+- Panels, drawers, and sheets use a 3px radius.
+- Avoid pills, soft cards, large bubbles, and rounded dashboard containers.
+- Use one-pixel graphite or zinc rules for structure.
+- Use a two-pixel inset Prussian Blue rule for the active item.
+
+Physical depth comes from inset and raised edges, not soft floating shadows. Good patterns include a light inset top edge, a graphite lower edge, a one-pixel zinc seam, and a short 1-2px raised offset. Large blurred shadows are reserved for modal or drawer separation and should remain restrained.
+
+Measured rules and ticks may appear on the identity bar, tray edge, traveler, or inspector header. They are orientation devices, not decoration. Keep marks regular, low contrast, and outside the source plan.
+
+## Motion and focus
+
+Use a restrained **170ms** transition for hover, press, selection, drawer entry, and state changes. Prefer opacity, color, border, and 1px translation. Do not use bounce, spring, sweeping light, ambient motion, or animation that suggests a geometry change.
+
+Every interactive control needs a visible keyboard focus treatment: a two-pixel Prussian Blue outline with a two-pixel offset, supplemented by a text label and control shape. Focus must remain visible on kraft, ledger, zinc, and white surfaces.
+
+Honor prefers-reduced-motion by removing nonessential transition and animation. State must remain fully legible when motion is removed.
 
 ## Components
 
+### Kraft identity bar
+
+A 52px product bar with the restrained kraft-fiber material, a graphite lower rule, HVAC Plan Studio identity, Draw & Detail workspace label, job context, and existing global actions. The product and workspace names remain distinct. The bar is not a marketing header.
+
 ### Command rail
 
-A narrow, persistent navigation instrument for switching between the job, drawing tools, symbols, selected-object properties, review, layers, Redline, and display controls. The active destination combines an icon, text label, raised navy surface, and cyan leading marker. On small touch screens it becomes a horizontally scrollable bottom instrument bar with 48px minimum targets. It never changes plan geometry by itself.
+A 58px aged-zinc navigation rail for existing workspace destinations. Each control carries an icon and a short Barlow Condensed label. The active destination includes aria-pressed or aria-current, a text label, a Prussian Blue inset rule, and stronger graphite contrast. On tablet/mobile it becomes horizontal with 49px minimum targets.
 
-### Primary action
+### Tool tray
 
-A compact cyan control for the single preferred next action. Use dark navy text, 700 weight, a 6px radius, and a subtle downward gradient. Hover brightens the surface; keyboard focus uses a two-pixel Signal Cyan outline with a two-pixel offset. Only one primary action should dominate a local decision area.
+A 224px ledger-paper sheet holding the current destination's tools. Tool rows are compact, squared, and separated by measured rules. The selected tool retains its icon and label and gains a Prussian Blue inset edge; selection never relies on a blue fill alone.
 
-### Secondary and toolbar action
+### Plan frame
 
-A dark navy control with a structural border and Working Ink or muted text. Hover lifts it one tonal step. Use for reversible utilities, view controls, and adjacent alternatives. Disabled state reduces contrast but retains a readable label.
+The flexible center surface. Its outer zinc edge may carry an inset seam, but the inner source-plan surface is exact Plan White with no image, tint, or paper effect. The frame must preserve the established plan layer order.
 
-### Branch action
+### Inspector sheet
 
-A Branch Gold control reserved for T/Y creation, branch orientation, and branch confirmation. It uses dark ink, strong weight, and a restrained gold highlight so users recognize branch mode instantly. Never use gold for unrelated promotion or decoration.
+A 304px ledger sheet for the current selection, layer visibility, or task guidance already supported by the product. Use direct headings, field labels, and mono values. Validation pairs Warning or Brick Red with an icon and an explanation.
 
-### Property input
+### Technical input
 
-A 31px high Control Navy field with a Structural Line border, 5px radius, and Working Ink. Labels sit above the control in compact, direct language. Measurements and calculated values use Geist Mono. Invalid values include a text explanation and Critical Coral border; reviewable cautions use Attention Orange.
+A squared ledger or Plan White field with a graphite rule, direct label, and Geist Mono value. Focus uses Prussian Blue. Invalid or reviewable values add a written message and state icon; color alone is insufficient.
 
-### Tool row
+### Primary and tool actions
 
-A 41px high full-width row with icon, label, and optional shortcut. Hover introduces a quiet navy fill. The active row uses Raised Navy, brighter text, and a two-pixel Signal Cyan inset marker on the leading edge. Tool identity must remain visible without relying on color alone.
+Primary actions use Prussian Blue with a clear verb. Redline controls may use Brick Red only when their label and icon make the markup purpose explicit. Success and Warning are status colors, not general action colors. T/Y controls retain their existing behavior and use the same visual hierarchy as other active drafting tools.
 
-### Status chip
+### Bottom traveler
 
-A small pill for short states such as “Saved,” “Needs review,” or “Ready.” Pair the status color with text and, when useful, an icon. Chips report state; they do not replace an action or a full explanation of a blocker.
+A 76px ledger-paper strip with a measured top rule. It shows the existing workflow position, completed/current labels, and relevant next action. It does not invent, reorder, or merge workflow steps.
 
-### Panel card
+### Status strip
 
-An 8px radius Control Navy or Raised Navy group with a one-pixel border and subtle inset top highlight. Cards organize one task and its evidence. Avoid card-on-card nesting beyond one level; use dividers and spacing inside a card instead.
+A 34px zinc strip for source, scale, save, and readiness. State combines plain text with an icon or stamp. Technical values use Geist Mono.
 
-### Branch workflow panel
+## Do
 
-A selectively raised instrument panel with a dark gold-tinted surface, Branch Gold edge, clear placement instruction, and one confident action. It should make the safe next step obvious while keeping ambiguous connection choices visible and user-controlled.
+- Keep the source plan pure white, visually dominant, and authoritative.
+- Keep HVAC runs, symbols, and T/Y tools above Redline.
+- Use the Patternmaker materials on chrome only.
+- Keep labels short, direct, and grounded in field work.
+- Use squared controls, measured rules, and restrained physical edges.
+- Pair every color state with text and a non-color cue.
+- Preserve visible focus, 49px mobile rail targets, and reduced-motion behavior.
 
-## Do’s and Don’ts
+## Do not
 
-### Do
-
-- Keep the source plan central and preserve strong contrast for HVAC geometry above Redline.
-- Make the current tool, current placement state, and safe next action unmistakable.
-- Use Signal Cyan for general control and Branch Gold only for T/Y branch work.
-- Show evidence, uncertainty, blockers, and approval state in direct field language.
-- Use compact controls with generous hit areas and visible keyboard focus.
-- Reserve pronounced depth for active instruments and temporary workspaces.
-
-### Don’t
-
-- Don’t resemble gaming software: avoid neon overload, decorative glow, dramatic animation, and trophy-like feedback.
-- Don’t resemble generic office software: avoid blank white forms, oversized empty cards, ribbon-style toolbars, and vague corporate copy.
-- Don’t hide plan geometry beneath Redline or use decoration that competes with the source PDF.
-- Don’t imply that color alone proves safety, connection, approval, or readiness.
-- Don’t silently move, connect, resize, or redraw uncertain geometry.
-- Don’t add new visual treatments when an established token or component already communicates the state.
+- Do not rename HVAC Plan Studio or promote Redline to the product title.
+- Do not call the workspace anything other than Draw & Detail.
+- Do not tint, texture, warm, fade, or distress the plan/PDF.
+- Do not move HVAC geometry below Redline.
+- Do not add or change workflows, gestures, placement, layers, or the data model.
+- Do not use soft rounded cards, glossy gradients, decorative shadows, or ornamental workshop props.
+- Do not use color alone to communicate selection, warning, success, or readiness.
