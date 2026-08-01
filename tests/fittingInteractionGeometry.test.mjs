@@ -11,6 +11,7 @@ const {
   FITTING_COARSE_HIT_STROKE_PX,
   FITTING_HIT_STROKE_PX,
   fittingPortReach,
+  fittingPortReachForVersion,
   fittingOverlayScale,
 } = await loadTypescriptModule(
   new URL("../app/fittingInteractionGeometry.ts", import.meta.url),
@@ -28,12 +29,20 @@ test("T/Y interaction chrome stays compact in screen space", () => {
 test("T/Y overlay scaling is bounded at extreme zoom levels", () => {
   assert.equal(fittingOverlayScale(100), 1 / 8);
   assert.equal(fittingOverlayScale(0.01), 4);
+  for (const zoom of [1, 2, 4, 8]) {
+    assert.equal(6 * fittingOverlayScale(zoom) * zoom, 6);
+  }
 });
 
-test("new T/Y fittings use compact visible geometry without changing legacy plans", () => {
+test("direct-placement T/Ys are smaller without changing saved v2 or legacy plans", () => {
   assert.equal(fittingPortReach("12", 0, true), 10.5);
   assert.equal(fittingPortReach("12", 1, true), 11);
   assert.equal(fittingPortReach("12", 2, true), 12);
+  assert.equal(fittingPortReachForVersion("12", 0, 3), 6);
+  assert.equal(fittingPortReachForVersion("12", 1, 3), 6.5);
+  assert.equal(fittingPortReachForVersion("12", 2, 3), 7);
+  assert.equal(fittingPortReachForVersion("12", 0, 2), 10.5);
+  assert.ok(fittingPortReachForVersion("12", 2, 3) < fittingPortReachForVersion("12", 2, 2));
   assert.ok(fittingPortReach("12", 2, true) < fittingPortReach("12", 2, false));
   assert.ok(Math.abs(fittingPortReach("12", 2, false) - 20.56) < 1e-9);
 });

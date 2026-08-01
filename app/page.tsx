@@ -25,7 +25,7 @@ import {
   BRANCH_PICK_RADIUS_PX,
   BRANCH_THREE_RUN_RADIUS_PX,
   FITTING_HIT_STROKE_PX,
-  fittingPortReach,
+  fittingPortReachForVersion,
   fittingOverlayScale,
 } from "./fittingInteractionGeometry";
 import {
@@ -935,7 +935,7 @@ type MeasurementMeta = {
 };
 type FittingMeta = {
   kind: "ty";
-  geometryVersion?: 2;
+  geometryVersion?: 2 | 3;
   style?: "wye45" | "tee90";
   angle: number;
   branchAngle?: number;
@@ -1081,6 +1081,7 @@ type DirectTouchPointer = {
 
 type BranchPreview = {
   center: Point;
+  geometryVersion?: 2 | 3;
   angle: number;
   branchAngle?: number;
   side: 1 | -1;
@@ -4247,7 +4248,7 @@ function HVACPlanStudioApp() {
           systemId: mainSystem,
           fitting: {
             kind: "ty",
-            geometryVersion: 2,
+            geometryVersion: 3,
             style: resolvedStyle,
             angle: mainAngle,
             branchAngle: angle,
@@ -4388,6 +4389,7 @@ function HVACPlanStudioApp() {
     setBranchHoverRunId(null);
     setBranchPreview({
       center: opportunity.center,
+      geometryVersion: 3,
       angle: opportunity.angle,
       branchAngle: opportunity.branchAngle,
       side: opportunity.side,
@@ -4601,7 +4603,7 @@ function HVACPlanStudioApp() {
             systemId: junctionSystem,
             fitting: {
               kind: "ty",
-              geometryVersion: 2,
+              geometryVersion: 3,
               style,
               angle,
               branchAngle,
@@ -4662,10 +4664,9 @@ function HVACPlanStudioApp() {
     if (!fitting.fitting) return [center, center, center];
     const axis = fitting.fitting.angle;
     const branchAxis = fitting.fitting.branchAngle ?? axis + fitting.fitting.side * (fitting.fitting.style === "tee90" ? Math.PI / 2 : Math.PI / 4);
-    const compact = fitting.fitting.geometryVersion === 2;
-    const inletReach = fittingPortReach(fitting.fitting.upstreamSize, 0, compact);
-    const outletReach = fittingPortReach(fitting.fitting.downstreamSize, 1, compact);
-    const branchReach = fittingPortReach(fitting.fitting.branchSize, 2, compact);
+    const inletReach = fittingPortReachForVersion(fitting.fitting.upstreamSize, 0, fitting.fitting.geometryVersion);
+    const outletReach = fittingPortReachForVersion(fitting.fitting.downstreamSize, 1, fitting.fitting.geometryVersion);
+    const branchReach = fittingPortReachForVersion(fitting.fitting.branchSize, 2, fitting.fitting.geometryVersion);
     return [
       { x: center.x - Math.cos(axis) * inletReach, y: center.y - Math.sin(axis) * inletReach },
       { x: center.x + Math.cos(axis) * outletReach, y: center.y + Math.sin(axis) * outletReach },
@@ -9269,7 +9270,7 @@ function HVACPlanStudioApp() {
       systemId: drawingSystem(target.drawing),
       fitting: {
         kind: "ty",
-        geometryVersion: 2,
+        geometryVersion: 3,
         style: resolvedStyle,
         angle: target.angle,
         branchAngle,
@@ -9317,7 +9318,7 @@ function HVACPlanStudioApp() {
     }
     const threeRunMatch = queuedBranchRunId
       ? null
-      : existingThreeRunJunction(point, rawTarget.drawing.id);
+      : existingThreeRunJunction(rawTarget.point, rawTarget.drawing.id);
     if (threeRunMatch) {
       const [upstreamMatch, downstreamMatch, branchMatch] = threeRunMatch.ports;
       const fittingId = crypto.randomUUID();
@@ -9331,7 +9332,7 @@ function HVACPlanStudioApp() {
         elevation: upstreamMatch.drawing.elevation,
         fitting: {
           kind: "ty",
-          geometryVersion: 2,
+          geometryVersion: 3,
           style: threeRunMatch.style,
           angle: threeRunMatch.angle,
           branchAngle: threeRunMatch.branchAngle,
@@ -9424,7 +9425,7 @@ function HVACPlanStudioApp() {
       elevation: target.drawing.elevation,
       fitting: {
         kind: "ty",
-        geometryVersion: 2,
+        geometryVersion: 3,
         style: resolvedStyle,
         angle: target.angle,
         branchAngle,
@@ -12226,6 +12227,7 @@ function HVACPlanStudioApp() {
           : branchStyle === "auto" ? fitting.fitting.style : branchStyle;
         setBranchPreview({
           center: fitting.points[0],
+          geometryVersion: fitting.fitting.geometryVersion,
           angle: fitting.fitting.angle,
           branchAngle,
           side,
@@ -12268,11 +12270,12 @@ function HVACPlanStudioApp() {
         }
         const threeRunMatch = queuedBranchRunId
           ? null
-          : existingThreeRunJunction(raw, rawTarget.drawing.id);
+          : existingThreeRunJunction(rawTarget.point, rawTarget.drawing.id);
         if (threeRunMatch) {
           const runIds = threeRunMatch.ports.map((match) => match.drawing.id);
           setBranchPreview({
             center: threeRunMatch.center,
+            geometryVersion: 3,
             angle: threeRunMatch.angle,
             branchAngle: threeRunMatch.branchAngle,
             side: threeRunMatch.side,
@@ -12301,6 +12304,7 @@ function HVACPlanStudioApp() {
         }
         setBranchPreview({
           center: placement.center,
+          geometryVersion: 3,
           angle: target.angle,
           branchAngle: placement.branchAngle,
           side: placement.fittingSide,
@@ -16139,10 +16143,15 @@ function HVACPlanStudioApp() {
                         {calibrating ? `${referenceFeet} FT REFERENCE` : `${(Math.hypot(hoverPoint.x - measureDraft[0].x, hoverPoint.y - measureDraft[0].y) * scaleFeetPerUnit).toFixed(1)} FT`}
                       </text>
                     </g>}
-                    {activeTool === "branch" && !pendingBranchFittingId && branchOpportunityList.slice(0, 8).map((opportunity, index) => <g className="branch-opportunity-marker" key={opportunity.id}>
-                      <circle cx={opportunity.center.x} cy={opportunity.center.y} r="10" />
-                      <text x={opportunity.center.x} y={opportunity.center.y + 2.8} textAnchor="middle">{index + 1}</text>
-                      {index === 0 && <text className="branch-opportunity-label" x={opportunity.center.x + 14} y={opportunity.center.y - 12}>SUGGESTED T/Y</text>}
+                    {activeTool === "branch" && !pendingBranchFittingId && !branchPreview && branchOpportunityList.slice(0, 3).map((opportunity, index) => <g
+                      aria-hidden="true"
+                      className="branch-opportunity-marker"
+                      key={opportunity.id}
+                      transform={`translate(${opportunity.center.x} ${opportunity.center.y}) scale(${fittingOverlayScale(zoom)})`}
+                    >
+                      <circle cx="0" cy="0" r="6" />
+                      <text x="0" y="2.8" textAnchor="middle">{index + 1}</text>
+                      {index === 0 && <text className="branch-opportunity-label" x="9" y="-8">OPTIONAL T/Y</text>}
                     </g>)}
                     {branchPreview && (() => {
                       const center = branchPreview.center;
@@ -16157,7 +16166,7 @@ function HVACPlanStudioApp() {
                         systemId: activeSystem,
                         fitting: {
                           kind: "ty",
-                          geometryVersion: 2,
+                          geometryVersion: branchPreview.geometryVersion ?? 3,
                           style: previewStyle,
                           angle: branchPreview.angle,
                           branchAngle: branchPreview.branchAngle,
@@ -17962,6 +17971,7 @@ function HVACPlanStudioApp() {
           activatePlanTool("branch");
           setBranchPreview({
             center: opportunity.center,
+            geometryVersion: 3,
             angle: opportunity.angle,
             branchAngle: opportunity.branchAngle,
             side: opportunity.side,
