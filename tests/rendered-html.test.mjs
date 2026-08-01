@@ -461,26 +461,66 @@ test("uses nominal icon sizes, accurate equipment identities, and selected place
   assert.ok(mark.byteLength > 500);
 });
 
-test("places new T/Y fittings only as complete one-click junctions", async () => {
+test("places a T/Y at the clicked trunk and auto-connects only one safe local branch endpoint", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const placement = source.slice(
+    source.indexOf("function placeSmartBranch"),
+    source.indexOf("function updateFittingPortSize"),
+  );
+  const preview = source.slice(
+    source.indexOf("function handlePointerMove"),
+    source.indexOf("function endDrag"),
+  );
+  const localMatch = source.slice(
+    source.indexOf("function existingBranchRoute"),
+    source.indexOf("function branchOpportunities"),
+  );
+  const undoSource = source.slice(
+    source.indexOf("function undo()"),
+    source.indexOf("function redo()"),
+  );
+  const threeRun = source.slice(
+    source.indexOf("function existingThreeRunJunction"),
+    source.indexOf("function steppedSize"),
+  );
 
-  assert.doesNotMatch(source, /branchWorkflow/);
-  assert.match(source, /if \(!matchedRoute\) \{[\s\S]*?Move to the point where a completed branch run meets the trunk/);
-  assert.match(source, /const branchRun: Drawing = \{/);
-  assert.match(source, /connectedIds: \[upstream\.id, downstream\.id, branchRun\.id\]/);
-  assert.match(source, /all three runs connected/);
-  assert.match(source, /assignedRuns\.has\(drawing\.id\)/);
-  assert.match(source, /competingRun\.distance - best\.distance < 6 \/ zoom/);
-  assert.match(source, /function automaticBranchOpportunity\(point: Point\)/);
-  assert.match(source, /nearestSupplySegment\(targetPoint, automaticOpportunity\?\.mainRunId\)/);
-  assert.match(source, /automaticOpportunity\.branchRunId/);
-  assert.doesNotMatch(source, /connectedIds: \[upstream\.id, downstream\.id, branchRun\?\.id \|\| ""\]/);
+  assert.match(placement, /const rawTarget = nearestSupplySegment\(point\)/);
+  assert.match(placement, /const placement = resolveDirectBranchPlacement\(target\)/);
+  assert.doesNotMatch(placement, /automaticBranchOpportunity\(point\)/);
+  assert.doesNotMatch(preview, /automaticBranchOpportunity\(raw\)/);
+  assert.match(placement, /existingThreeRunJunction\(point, rawTarget\.drawing\.id\)/);
+  assert.match(preview, /existingThreeRunJunction\(raw, rawTarget\.drawing\.id\)/);
+  assert.match(placement, /buildDirectBranchGeometry\(\{/);
+  assert.match(placement, /connectedIds: geometry\.connectedIds/);
+  assert.match(placement, /beginPort3BranchDraft\(fitting, "direct-placement"\)/);
+  assert.match(placement, /draw Port 3 or keep it open/);
+  assert.match(placement, /all three runs connected/);
+  assert.match(placement, /if \(!placement\.clearance\.valid\)/);
+
+  assert.match(localMatch, /chooseSafeLocalBranchEndpoint\(\{/);
+  assert.match(localMatch, /assignedRunIds: assignedRuns/);
+  assert.match(localMatch, /radiusPx: BRANCH_AUTO_MATCH_RADIUS_PX/);
+  assert.match(localMatch, /resolveBranchPort:/);
+  assert.match(localMatch, /return fittingPortPoints\(previewFitting\)\[2\]/);
+
+  assert.match(threeRun, /!assignedRuns\.has\(drawing\.id\)/);
+  assert.match(threeRun, /drawingSystem\(drawing\) === junctionSystem/);
+  assert.match(threeRun, /\[a\.drawing\.id, b\.drawing\.id\]\.includes\(clickedRunId\)/);
+  assert.match(threeRun, /directBranchEndpointsFitPorts\(\{/);
+  assert.match(threeRun, /center: point/);
+  assert.match(threeRun, /competing\.score - best\.score < 6 \/ zoom/);
+  assert.doesNotMatch(threeRun, /best\.a\.endpoint\.x \+ best\.b\.endpoint\.x/);
+
+  assert.match(undoSource, /port3UndoDisposition\(\{/);
+  assert.match(undoSource, /origin === "direct-placement"/);
+  assert.match(undoSource, /setDraft\(\[\]\)/);
+  assert.match(undoSource, /setDrawings\(previous\)/);
 
   // Existing incomplete fittings still keep their explicit repair controls.
   assert.match(source, /const \[pendingBranchFittingId, setPendingBranchFittingId\]/);
   assert.match(source, /const \[port3BranchDraft, setPort3BranchDraft\]/);
   assert.match(source, /function attachPendingBranchRun\(point: Point\)/);
-  assert.match(source, /function beginPort3BranchDraft\(fitting: Drawing\)/);
+  assert.match(source, /function beginPort3BranchDraft\([\s\S]*?origin: Port3BranchDraftState\["origin"\]/);
   assert.match(source, /const branchSize = fitting\.fitting\.branchSize/);
   assert.match(source, /anchor: branchPort/);
   assert.match(source, /commitPort3Branch\(\{/);
@@ -535,19 +575,29 @@ test("keeps deterministic junction suggestions available to the assistant", asyn
   assert.match(styles, /\.branch-opportunity-marker circle/);
 });
 
-test("makes T/Y placement a one-click complete connection", async () => {
+test("explains direct T/Y placement and the open Port 3 fallback", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  assert.match(source, /ONE-CLICK T\/Y/);
-  assert.match(source, /Click the junction/);
-  assert.match(source, /The fitting snaps, rotates, sizes, and connects itself/);
-  assert.match(source, /Junction found · click once to connect all three runs/);
-  assert.match(source, /Redline places only a complete 3-way connection/);
+  assert.match(source, /DIRECT-PLACE T\/Y/);
+  assert.match(source, /Click the blue trunk/);
+  assert.match(source, /Your click chooses the fitting station/);
+  assert.match(source, /Local junction found · click to connect all three runs/);
+  assert.match(source, /Redline still places the fitting there and opens Port 3 for you to draw/);
+  assert.doesNotMatch(source, /click where a branch meets the trunk/i);
   assert.doesNotMatch(source, /RUN-FIRST T\/Y PASS/);
   assert.doesNotMatch(source, /Pick next diffuser run/);
   assert.doesNotMatch(source, /PORT 3 RUN ARMED/);
   assert.match(styles, /\.branch-safe-mode/);
+});
+
+test("widens the desktop tool task dock without changing tablet or mobile drawers", async () => {
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  assert.match(styles, /@media \(min-width: 1101px\)[\s\S]*?\.app-shell\[data-presentation="galvanized-daylight"\]:not\(\.tablet-layout\)[\s\S]*?--deck-tools: 208px/);
+  assert.match(styles, /@media \(max-width: 1500px\) and \(min-width: 1101px\)[\s\S]*?\.app-shell\[data-presentation="galvanized-daylight"\]:not\(\.tablet-layout\)[\s\S]*?--deck-tools: 192px/);
+  assert.match(styles, /width: min\(380px, 88vw\)/);
+  assert.match(styles, /width: min\(390px, 94vw\)/);
 });
 
 test("builds a deterministic STEP 1 plan with type, sheet, system, and endpoint safeguards", async () => {
@@ -735,12 +785,21 @@ test("deletes runs and icons without leaving the page or broken drawing referenc
   assert.match(source, /Run deleted · connected icons and fitting ports safely detached · Undo restores it/);
 });
 
-test("deletes complete or incomplete T/Y fittings without leaving a stale selection", async () => {
+test("deletes connected or open-Port-3 T/Y fittings and heals the clicked trunk", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const deletion = source.slice(
+    source.indexOf("function removeFittingAndHeal"),
+    source.indexOf("function selectedStandaloneCopyTemplate"),
+  );
 
   assert.match(source, /if \(selectedId && !drawings\.some\(\(drawing\) => drawing\.id === selectedId\)\)/);
-  assert.match(source, /if \(!upstream \|\| !downstream \|\| upstream\.points\.length < 2 \|\| downstream\.points\.length < 2\)/);
-  assert.match(source, /clearDeletedDrawingState\(\[fitting\.id\]\)/);
+  assert.match(deletion, /const \[upstreamId, downstreamId\] = fitting\.fitting\.connectedIds/);
+  assert.match(deletion, /if \(!upstream \|\| !downstream \|\| upstream\.points\.length < 2 \|\| downstream\.points\.length < 2\)/);
+  assert.match(deletion, /points: cleanPoints\(\[\.\.\.upstreamPoints\.slice\(0, -1\), \.\.\.downstreamPoints\]\)/);
+  assert.match(deletion, /drawing\.id !== fitting\.id &&\s*drawing\.id !== upstreamId &&\s*drawing\.id !== downstreamId/);
+  assert.match(deletion, /clearDeletedDrawingState\(\[fitting\.id\]\)/);
+  assert.match(deletion, /setHistory\(\[\.\.\.retained, healedMain\]\)/);
+  assert.doesNotMatch(deletion, /connectedIds\[2\].*required|if \(!.*connectedIds\[2\]\).*return/);
   assert.match(source, /T\/Y fitting deleted · incomplete routes kept in place · Undo restores it/);
   assert.match(source, /T\/Y fitting deleted · main run healed · branch route kept · Undo restores it/);
   assert.doesNotMatch(source, /setSelectedId\(branchId\)/);

@@ -29,8 +29,16 @@ import {
   fittingOverlayScale,
 } from "./fittingInteractionGeometry";
 import {
+  buildDirectBranchGeometry,
+  chooseSafeLocalBranchEndpoint,
+  directBranchEndpointsFitPorts,
+  directBranchStationClearance,
+  projectDirectBranchStation,
+} from "./directBranchPlacement";
+import {
   branchLeavesTrunkAtClearAngle,
   commitPort3Branch,
+  port3UndoDisposition,
   type Port3BranchDraftState,
 } from "./port3BranchDraft";
 import SystemBalanceStudio from "./SystemBalanceStudio";
@@ -1121,6 +1129,7 @@ type ThreeRunBranchMatch = {
   branchAngle: number;
   side: 1 | -1;
   style: "wye45" | "tee90";
+  score: number;
   ports: Array<{ drawing: Drawing; endpointIndex: number }>;
 };
 
@@ -2259,7 +2268,7 @@ function HVACPlanStudioApp() {
     const timer = window.setTimeout(() => {
       setBranchPlacementResult(null);
       if (activeTool === "branch") {
-        setBranchMessage("Ready for the next junction · click where a branch meets the trunk");
+        setBranchMessage("Ready for the next fitting · click the blue trunk where it belongs");
       }
     }, 4500);
     return () => window.clearTimeout(timer);
@@ -4120,7 +4129,7 @@ function HVACPlanStudioApp() {
   }
 
   function nearestSupplySegment(point: Point, onlyDrawingId?: string) {
-    let best: { point: Point; drawing: Drawing; segmentIndex: number; distance: number; angle: number; side: 1 | -1 } | null = null;
+    let best: { point: Point; drawing: Drawing; segmentIndex: number; distance: number; angle: number; side: 1 | -1; amount: number; length: number } | null = null;
     for (const drawing of drawings) {
       if (
         drawing.page !== pageNumber ||
@@ -4131,19 +4140,10 @@ function HVACPlanStudioApp() {
       for (let index = 0; index < drawing.points.length - 1; index++) {
         const a = drawing.points[index];
         const b = drawing.points[index + 1];
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const lengthSquared = dx * dx + dy * dy;
-        if (!lengthSquared) continue;
-        const length = Math.sqrt(lengthSquared);
-        const margin = Math.min(.45, 24 / length);
-        const amount = Math.max(margin, Math.min(1 - margin, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared));
-        const projected = { x: a.x + amount * dx, y: a.y + amount * dy };
-        const distance = Math.hypot(point.x - projected.x, point.y - projected.y);
-        const cross = dx * (point.y - projected.y) - dy * (point.x - projected.x);
-        const side: 1 | -1 = cross >= 0 ? 1 : -1;
-        if (!best || distance < best.distance) {
-          best = { point: projected, drawing, segmentIndex: index, distance, angle: Math.atan2(dy, dx), side };
+        const projection = projectDirectBranchStation(point, a, b);
+        if (!projection) continue;
+        if (!best || projection.distance < best.distance) {
+          best = { ...projection, drawing, segmentIndex: index };
         }
       }
     }
@@ -4201,63 +4201,74 @@ function HVACPlanStudioApp() {
     return {
       drawing,
       points: cleanPoints([center, ...orientedPoints.slice(1)]),
+      endpointIndex,
       angle,
       side: (cross >= 0 ? 1 : -1) as 1 | -1,
       distance: Math.min(startDistance, endDistance),
     };
   }
 
-  function existingBranchRoute(center: Point, mainId: string, mainAngle: number) {
-    const routeCandidates: { drawing: Drawing; points: Point[]; angle: number; side: 1 | -1; distance: number }[] = [];
+  function existingBranchRoute(center: Point, mainId: string, mainAngle: number, mainSize: string) {
     const main = drawings.find((drawing) => drawing.id === mainId);
     const mainSystem = main ? drawingSystem(main) : activeSystem;
     const assignedRuns = new Set(drawings
       .filter((drawing) => drawing.fitting)
       .flatMap((drawing) => drawing.fitting?.connectedIds.filter(Boolean) || []));
-    for (const drawing of drawings) {
-      if (
-        drawing.id === mainId ||
-        assignedRuns.has(drawing.id) ||
-        drawing.page !== pageNumber ||
-        drawing.type !== "supply" ||
-        drawing.fitting ||
-        drawing.symbol ||
-        drawingSystem(drawing) !== mainSystem
-      ) continue;
-      for (let index = 0; index < drawing.points.length - 1; index++) {
-        const a = drawing.points[index];
-        const b = drawing.points[index + 1];
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const lengthSquared = dx * dx + dy * dy;
-        if (!lengthSquared) continue;
-        const amount = Math.max(0, Math.min(1, ((center.x - a.x) * dx + (center.y - a.y) * dy) / lengthSquared));
-        const projected = { x: a.x + amount * dx, y: a.y + amount * dy };
-        const distance = Math.hypot(center.x - projected.x, center.y - projected.y);
-        if (distance > BRANCH_AUTO_MATCH_RADIUS_PX / zoom) continue;
-
-        const towardEnd = cleanPoints([center, projected, ...drawing.points.slice(index + 1)]);
-        const towardStart = cleanPoints([center, projected, ...drawing.points.slice(0, index + 1).reverse()]);
-        const routes = [towardEnd, towardStart].filter((points) => points.length >= 2);
-        for (const points of routes) {
-          const vector = points.find((point) => Math.hypot(point.x - center.x, point.y - center.y) > 2);
-          if (!vector) continue;
-          const angle = Math.atan2(vector.y - center.y, vector.x - center.x);
-          const divergence = Math.abs(Math.sin(angle - mainAngle));
-          if (divergence < .22) continue;
-          const cross = Math.cos(mainAngle) * Math.sin(angle) - Math.sin(mainAngle) * Math.cos(angle);
-          const side: 1 | -1 = cross >= 0 ? 1 : -1;
-          const score = distance - divergence * 8;
-          routeCandidates.push({ drawing, points, angle, side, distance: score });
-        }
-      }
-    }
-    routeCandidates.sort((left, right) => left.distance - right.distance);
-    const best = routeCandidates[0] || null;
-    if (!best) return null;
-    const competingRun = routeCandidates.find((candidate) => candidate.drawing.id !== best.drawing.id);
-    if (competingRun && competingRun.distance - best.distance < 6 / zoom) return null;
-    return best;
+    const downstreamSize = steppedSize(mainSize, 1);
+    const match = chooseSafeLocalBranchEndpoint({
+      center,
+      mainRunId: mainId,
+      mainAngle,
+      page: pageNumber,
+      systemId: mainSystem,
+      zoom,
+      assignedRunIds: assignedRuns,
+      radiusPx: BRANCH_AUTO_MATCH_RADIUS_PX,
+      ambiguityPx: 6,
+      runs: drawings.map((drawing) => ({
+        id: drawing.id,
+        type: drawing.type,
+        page: drawing.page,
+        systemId: drawingSystem(drawing),
+        points: drawing.points,
+        eligible: !drawing.fitting && !drawing.symbol,
+        drawing,
+      })),
+      resolveBranchPort: ({ run, angle, side }) => {
+        const resolvedStyle = branchStyle === "auto"
+          ? automaticBranchStyle(mainAngle, angle)
+          : branchStyle;
+        const previewFitting: Drawing = {
+          id: "branch-route-match-preview",
+          type: "branch",
+          points: [center],
+          size: "",
+          page: pageNumber,
+          systemId: mainSystem,
+          fitting: {
+            kind: "ty",
+            geometryVersion: 2,
+            style: resolvedStyle,
+            angle: mainAngle,
+            branchAngle: angle,
+            side,
+            upstreamSize: mainSize,
+            downstreamSize,
+            branchSize: run.drawing.size,
+            connectedIds: [],
+          },
+        };
+        return fittingPortPoints(previewFitting)[2];
+      },
+    });
+    if (!match) return null;
+    return {
+      drawing: match.run.drawing,
+      endpointIndex: match.endpointIndex,
+      angle: match.angle,
+      side: match.side,
+      distance: match.portDistance,
+    };
   }
 
   function branchOpportunities(): BranchOpportunity[] {
@@ -4506,13 +4517,22 @@ function HVACPlanStudioApp() {
     return true;
   }
 
-  function existingThreeRunJunction(point: Point): ThreeRunBranchMatch | null {
-    const radius = BRANCH_THREE_RUN_RADIUS_PX / zoom;
+  function existingThreeRunJunction(point: Point, clickedRunId: string): ThreeRunBranchMatch | null {
+    const clickedRun = drawings.find((drawing) => drawing.id === clickedRunId);
+    if (!clickedRun) return null;
+    const junctionSystem = drawingSystem(clickedRun);
+    const assignedRuns = new Set(drawings
+      .filter((drawing) => drawing.fitting)
+      .flatMap((drawing) => drawing.fitting?.connectedIds.filter(Boolean) || []));
+    const searchRadius = BRANCH_THREE_RUN_RADIUS_PX / zoom;
     const endpoints = drawings
       .filter((drawing) =>
         drawing.page === pageNumber &&
         drawing.type === "supply" &&
         !drawing.fitting &&
+        !drawing.symbol &&
+        !assignedRuns.has(drawing.id) &&
+        drawingSystem(drawing) === junctionSystem &&
         drawing.points.length >= 2
       )
       .flatMap((drawing) => [0, drawing.points.length - 1].map((endpointIndex) => {
@@ -4526,43 +4546,14 @@ function HVACPlanStudioApp() {
           distance: Math.hypot(endpoint.x - point.x, endpoint.y - point.y),
         };
       }))
-      .filter((candidate) => candidate.distance <= radius)
-      .sort((a, b) => a.distance - b.distance);
-
-    const nearestByRun = [...new Map(endpoints.map((candidate) => [candidate.drawing.id, candidate])).values()].slice(0, 12);
+      .filter((candidate) => candidate.distance <= searchRadius)
+      .sort((left, right) => left.distance - right.distance);
+    const nearestByRun = [...endpoints.reduce((byRun, candidate) => {
+      if (!byRun.has(candidate.drawing.id)) byRun.set(candidate.drawing.id, candidate);
+      return byRun;
+    }, new Map<string, typeof endpoints[number]>()).values()].slice(0, 12);
     if (nearestByRun.length < 3) return null;
 
-    let best: { a: typeof nearestByRun[number]; b: typeof nearestByRun[number]; c: typeof nearestByRun[number]; score: number } | null = null;
-    for (let aIndex = 0; aIndex < nearestByRun.length - 2; aIndex += 1) {
-      for (let bIndex = aIndex + 1; bIndex < nearestByRun.length - 1; bIndex += 1) {
-        const a = nearestByRun[aIndex];
-        const b = nearestByRun[bIndex];
-        const angleA = Math.atan2(a.neighbor.y - a.endpoint.y, a.neighbor.x - a.endpoint.x);
-        const angleB = Math.atan2(b.neighbor.y - b.endpoint.y, b.neighbor.x - b.endpoint.x);
-        const oppositeError = Math.abs(Math.PI - Math.abs(Math.atan2(Math.sin(angleA - angleB), Math.cos(angleA - angleB))));
-        if (oppositeError > Math.PI * .38) continue;
-        for (let cIndex = 0; cIndex < nearestByRun.length; cIndex += 1) {
-          if (cIndex === aIndex || cIndex === bIndex) continue;
-          const c = nearestByRun[cIndex];
-          if (drawingSystem(a.drawing) !== drawingSystem(b.drawing) || drawingSystem(a.drawing) !== drawingSystem(c.drawing)) continue;
-          const angleC = Math.atan2(c.neighbor.y - c.endpoint.y, c.neighbor.x - c.endpoint.x);
-          const divergence = Math.min(
-            Math.abs(Math.sin(angleC - angleA)),
-            Math.abs(Math.sin(angleC - angleB)),
-          );
-          if (divergence < .28) continue;
-          const score = a.distance + b.distance + c.distance + oppositeError * 28 - divergence * 12;
-          if (!best || score < best.score) best = { a, b, c, score };
-        }
-      }
-    }
-    if (!best) return null;
-
-    const center = {
-      x: (best.a.endpoint.x + best.b.endpoint.x + best.c.endpoint.x) / 3,
-      y: (best.a.endpoint.y + best.b.endpoint.y + best.c.endpoint.y) / 3,
-    };
-    const junctionSystem = drawingSystem(best.a.drawing);
     const equipment = drawings.filter((drawing) =>
       drawing.page === pageNumber &&
       isPrimaryAirflowEquipment(drawing) &&
@@ -4571,22 +4562,84 @@ function HVACPlanStudioApp() {
     const sourceDistance = (candidate: (typeof nearestByRun)[number]) => equipment.length
       ? Math.min(...equipment.map((unit) => Math.hypot(candidate.neighbor.x - unit.points[0].x, candidate.neighbor.y - unit.points[0].y)))
       : candidate.distance;
-    const upstream = sourceDistance(best.a) <= sourceDistance(best.b) ? best.a : best.b;
-    const downstream = upstream === best.a ? best.b : best.a;
-    const branch = best.c;
-    const upstreamDirection = Math.atan2(upstream.neighbor.y - upstream.endpoint.y, upstream.neighbor.x - upstream.endpoint.x);
-    const angle = upstreamDirection + Math.PI;
-    const branchAngle = Math.atan2(branch.neighbor.y - branch.endpoint.y, branch.neighbor.x - branch.endpoint.x);
-    const cross = Math.cos(angle) * Math.sin(branchAngle) - Math.sin(angle) * Math.cos(branchAngle);
-    const side: 1 | -1 = cross >= 0 ? 1 : -1;
-    return {
-      center,
-      angle,
-      branchAngle,
-      side,
-      style: branchStyle === "auto" ? automaticBranchStyle(angle, branchAngle) : branchStyle,
-      ports: [upstream, downstream, branch].map(({ drawing, endpointIndex }) => ({ drawing, endpointIndex })),
-    };
+    const candidates: Array<ThreeRunBranchMatch & { identity: string }> = [];
+    for (let aIndex = 0; aIndex < nearestByRun.length - 2; aIndex += 1) {
+      for (let bIndex = aIndex + 1; bIndex < nearestByRun.length - 1; bIndex += 1) {
+        const a = nearestByRun[aIndex];
+        const b = nearestByRun[bIndex];
+        if (![a.drawing.id, b.drawing.id].includes(clickedRunId)) continue;
+        const angleA = Math.atan2(a.neighbor.y - a.endpoint.y, a.neighbor.x - a.endpoint.x);
+        const angleB = Math.atan2(b.neighbor.y - b.endpoint.y, b.neighbor.x - b.endpoint.x);
+        const oppositeError = Math.abs(Math.PI - Math.abs(Math.atan2(Math.sin(angleA - angleB), Math.cos(angleA - angleB))));
+        if (oppositeError > Math.PI * .22) continue;
+        for (let cIndex = 0; cIndex < nearestByRun.length; cIndex += 1) {
+          if (cIndex === aIndex || cIndex === bIndex) continue;
+          const c = nearestByRun[cIndex];
+          const angleC = Math.atan2(c.neighbor.y - c.endpoint.y, c.neighbor.x - c.endpoint.x);
+          const divergence = Math.min(
+            Math.abs(Math.sin(angleC - angleA)),
+            Math.abs(Math.sin(angleC - angleB)),
+          );
+          if (divergence < .28) continue;
+          const upstream = sourceDistance(a) <= sourceDistance(b) ? a : b;
+          const downstream = upstream === a ? b : a;
+          const upstreamDirection = Math.atan2(
+            upstream.neighbor.y - upstream.endpoint.y,
+            upstream.neighbor.x - upstream.endpoint.x,
+          );
+          const angle = upstreamDirection + Math.PI;
+          const branchAngle = angleC;
+          const cross = Math.cos(angle) * Math.sin(branchAngle) - Math.sin(angle) * Math.cos(branchAngle);
+          const side: 1 | -1 = cross >= 0 ? 1 : -1;
+          const style = branchStyle === "auto" ? automaticBranchStyle(angle, branchAngle) : branchStyle;
+          const previewFitting: Drawing = {
+            id: "three-run-match-preview",
+            type: "branch",
+            points: [point],
+            size: "",
+            page: pageNumber,
+            systemId: junctionSystem,
+            fitting: {
+              kind: "ty",
+              geometryVersion: 2,
+              style,
+              angle,
+              branchAngle,
+              side,
+              upstreamSize: upstream.drawing.size,
+              downstreamSize: downstream.drawing.size,
+              branchSize: c.drawing.size,
+              connectedIds: [],
+            },
+          };
+          const finalPorts = fittingPortPoints(previewFitting) as [Point, Point, Point];
+          const portMatch = directBranchEndpointsFitPorts({
+            endpoints: [upstream.endpoint, downstream.endpoint, c.endpoint],
+            ports: finalPorts,
+            radius: BRANCH_AUTO_MATCH_RADIUS_PX / zoom,
+          });
+          if (!portMatch.valid) continue;
+          const ports = [upstream, downstream, c];
+          candidates.push({
+            center: point,
+            angle,
+            branchAngle,
+            side,
+            style,
+            score: portMatch.score + oppositeError * 28 - divergence * 12,
+            ports: ports.map(({ drawing, endpointIndex }) => ({ drawing, endpointIndex })),
+            identity: ports.map((candidate) => candidate.drawing.id).join(":"),
+          });
+        }
+      }
+    }
+    candidates.sort((left, right) => left.score - right.score);
+    const best = candidates[0] || null;
+    if (!best) return null;
+    const competing = candidates.find((candidate) => candidate.identity !== best.identity);
+    if (competing && competing.score - best.score < 6 / zoom) return null;
+    const { identity: _identity, ...match } = best;
+    return match;
   }
 
   function steppedSize(parent: string, steps: number) {
@@ -9112,7 +9165,10 @@ function HVACPlanStudioApp() {
     }, pageNumber);
   }
 
-  function beginPort3BranchDraft(fitting: Drawing) {
+  function beginPort3BranchDraft(
+    fitting: Drawing,
+    origin: Port3BranchDraftState["origin"] = "existing-fitting",
+  ) {
     if (!fitting.fitting || drawingLocked(fitting)) {
       setBranchMessage("Unlock the supply layer before drawing the Port 3 branch");
       return;
@@ -9128,6 +9184,7 @@ function HVACPlanStudioApp() {
       page: fitting.page,
       systemId,
       anchor: branchPort,
+      origin,
     });
     setContinuingRunId(null);
     setDuctSize(branchSize);
@@ -9184,14 +9241,87 @@ function HVACPlanStudioApp() {
     setBranchMessage("Attach existing run · click the blue supply run for Port 3");
   }
 
+  function resolveDirectBranchPlacement(
+    target: NonNullable<ReturnType<typeof nearestSupplySegment>> & {
+      points: Point[];
+      reversed: boolean;
+    },
+  ) {
+    const center = target.point;
+    const matchedRoute = queuedBranchRunId
+      ? queuedBranchRoute(center, target.drawing.id, target.angle)
+      : existingBranchRoute(center, target.drawing.id, target.angle, target.drawing.size);
+    if (queuedBranchRunId && !matchedRoute) return null;
+    const downstreamSize = steppedSize(target.drawing.size, 1);
+    const branchSize = matchedRoute?.drawing.size || steppedSize(target.drawing.size, 2);
+    const fittingSide = matchedRoute?.side || target.side;
+    const defaultBranchOffset = branchStyle === "tee90" ? Math.PI / 2 : Math.PI / 4;
+    const branchAngle = matchedRoute?.angle ?? target.angle + fittingSide * defaultBranchOffset;
+    const resolvedStyle = branchStyle === "auto"
+      ? automaticBranchStyle(target.angle, branchAngle)
+      : branchStyle;
+    const previewFitting: Drawing = {
+      id: "branch-port-preview",
+      type: "branch",
+      points: [center],
+      size: "",
+      page: pageNumber,
+      systemId: drawingSystem(target.drawing),
+      fitting: {
+        kind: "ty",
+        geometryVersion: 2,
+        style: resolvedStyle,
+        angle: target.angle,
+        branchAngle,
+        side: fittingSide,
+        upstreamSize: target.drawing.size,
+        downstreamSize,
+        branchSize,
+        connectedIds: [],
+      },
+    };
+    const [inletPort, outletPort, branchPort] = fittingPortPoints(previewFitting);
+    const clearance = directBranchStationClearance({
+      segmentStart: target.points[target.segmentIndex],
+      segmentEnd: target.points[target.segmentIndex + 1],
+      center,
+      inletPort,
+      outletPort,
+    });
+    return {
+      center,
+      matchedRoute,
+      downstreamSize,
+      branchSize,
+      fittingSide,
+      branchAngle,
+      resolvedStyle,
+      inletPort,
+      outletPort,
+      branchPort,
+      clearance,
+    };
+  }
+
   function placeSmartBranch(point: Point) {
     setBranchPlacementResult(null);
     if (attachPendingBranchRun(point)) return;
-    const threeRunMatch = queuedBranchRunId ? null : existingThreeRunJunction(point);
+    const rawTarget = nearestSupplySegment(point);
+    if (!rawTarget || rawTarget.distance > BRANCH_PICK_RADIUS_PX / zoom) {
+      setBranchMessage("Move closer to a blue supply run");
+      return;
+    }
+    if (queuedBranchRunId && rawTarget.drawing.id === queuedBranchRunId) {
+      setBranchMessage("That is the branch run already armed for Port 3 · click the main trunk where the T/Y belongs");
+      return;
+    }
+    const threeRunMatch = queuedBranchRunId
+      ? null
+      : existingThreeRunJunction(point, rawTarget.drawing.id);
     if (threeRunMatch) {
       const [upstreamMatch, downstreamMatch, branchMatch] = threeRunMatch.ports;
       const fittingId = crypto.randomUUID();
-      const temporaryFitting: Drawing = {
+      const fitting: Drawing = {
         id: fittingId,
         type: "branch",
         points: [threeRunMatch.center],
@@ -9212,100 +9342,78 @@ function HVACPlanStudioApp() {
           connectedIds: threeRunMatch.ports.map((match) => match.drawing.id),
         },
       };
-      const ports = fittingPortPoints(temporaryFitting);
+      const finalPorts = fittingPortPoints(fitting);
       const endpointAssignments = new Map(threeRunMatch.ports.map((match, port) => [
         match.drawing.id,
-        { endpointIndex: match.endpointIndex, point: ports[port] },
+        { endpointIndex: match.endpointIndex, point: finalPorts[port] },
       ]));
       const connectedRuns = drawings.map((drawing) => {
         const assignment = endpointAssignments.get(drawing.id);
         if (!assignment) return drawing;
         return {
           ...drawing,
-          points: drawing.points.map((existingPoint, index) => index === assignment.endpointIndex ? assignment.point : existingPoint),
+          points: drawing.points.map((existingPoint, index) =>
+            index === assignment.endpointIndex ? assignment.point : existingPoint),
         };
       });
-      setHistory([...connectedRuns, temporaryFitting]);
+      setHistory([...connectedRuns, fitting]);
       setActiveSystem(drawingSystem(upstreamMatch.drawing));
       setSelectedId(fittingId);
-      const completionMessage = `${threeRunMatch.style === "tee90" ? "90° tee" : "45° wye"} complete · 3 separate runs attached to Ports 1, 2 and 3`;
+      setBranchHoverRunId(null);
+      const completionMessage = `${threeRunMatch.style === "tee90" ? "90° tee" : "45° wye"} placed · 3 separate runs connected`;
       setBranchMessage(completionMessage);
       setBranchPlacementResult({ fittingId, message: completionMessage });
       return;
     }
-
-    const automaticOpportunity = queuedBranchRunId ? null : automaticBranchOpportunity(point);
-    const targetPoint = automaticOpportunity?.center || point;
-    const rawTarget = nearestSupplySegment(targetPoint, automaticOpportunity?.mainRunId);
-    if (!rawTarget || rawTarget.distance > BRANCH_PICK_RADIUS_PX / zoom) {
-      setBranchMessage("Move closer to a blue supply run");
-      return;
-    }
-    if (queuedBranchRunId && rawTarget.drawing.id === queuedBranchRunId) {
-      setBranchMessage("That is the branch run already armed for Port 3 · click the main trunk where the T/Y belongs");
-      return;
-    }
     const target = orientMainTowardAirflow(rawTarget);
-
-    const center = automaticOpportunity?.center || target.point;
-    const matchedRoute = queuedBranchRunId
-      ? queuedBranchRoute(center, target.drawing.id, target.angle)
-      : automaticOpportunity
-        ? queuedBranchRoute(center, target.drawing.id, target.angle, automaticOpportunity.branchRunId)
-        : existingBranchRoute(center, target.drawing.id, target.angle);
-    if (queuedBranchRunId && !matchedRoute) return;
-    if (!matchedRoute) {
-      setBranchMessage("Move to the point where a completed branch run meets the trunk");
+    const placement = resolveDirectBranchPlacement(target);
+    if (!placement) return;
+    if (!placement.clearance.valid) {
+      setBranchMessage("Place the T/Y farther from the run end or bend so both trunk ports fit");
       return;
     }
-    const downstreamSize = steppedSize(target.drawing.size, 1);
-    const branchSize = matchedRoute?.drawing.size || steppedSize(target.drawing.size, 2);
+    const {
+      center,
+      matchedRoute,
+      downstreamSize,
+      branchSize,
+      fittingSide,
+      branchAngle,
+      resolvedStyle,
+      inletPort,
+      outletPort,
+      branchPort,
+    } = placement;
     const downstreamId = crypto.randomUUID();
     const fittingId = crypto.randomUUID();
-    const fittingSide = matchedRoute?.side || target.side;
-    const defaultBranchOffset = branchStyle === "tee90" ? Math.PI / 2 : Math.PI / 4;
-    const branchAngle = matchedRoute?.angle ?? target.angle + fittingSide * defaultBranchOffset;
-    const resolvedStyle = branchStyle === "auto" ? automaticBranchStyle(target.angle, branchAngle) : branchStyle;
-    const temporaryFitting: Drawing = {
-      id: "branch-port-preview",
-      type: "branch",
-      points: [center],
-      size: "",
-      page: pageNumber,
-      fitting: {
-        kind: "ty",
-        geometryVersion: 2,
-        style: resolvedStyle,
-        angle: target.angle,
-        branchAngle,
-        side: fittingSide,
-        upstreamSize: target.drawing.size,
-        downstreamSize,
-        branchSize,
-        connectedIds: [],
-      },
-    };
-    const [inletPort, outletPort, branchPort] = fittingPortPoints(temporaryFitting);
-    const upstreamPoints = cleanPoints([...target.points.slice(0, target.segmentIndex + 1), inletPort]);
-    const downstreamPoints = cleanPoints([outletPort, ...target.points.slice(target.segmentIndex + 1)]);
-    if (upstreamPoints.length < 2 || downstreamPoints.length < 2) {
-      setBranchMessage("Place the fitting farther from the end of the run");
-      return;
-    }
-
-    const upstream: Drawing = { ...target.drawing, points: upstreamPoints };
+    const geometry = buildDirectBranchGeometry({
+      center,
+      mainPoints: target.points,
+      mainSegmentIndex: target.segmentIndex,
+      inletPort,
+      outletPort,
+      branchPort,
+      upstreamId: target.drawing.id,
+      downstreamId,
+      branch: matchedRoute ? {
+        id: matchedRoute.drawing.id,
+        endpointIndex: matchedRoute.endpointIndex,
+        points: matchedRoute.drawing.points,
+      } : undefined,
+    });
+    const upstream: Drawing = { ...target.drawing, points: geometry.upstreamPoints };
     const downstream: Drawing = {
       ...target.drawing,
       id: downstreamId,
-      points: downstreamPoints,
+      points: geometry.downstreamPoints,
       size: downstreamSize,
       cfm: target.drawing.cfm,
       cfmSource: target.drawing.cfmSource,
     };
-    const branchRun: Drawing = {
+    const branchRun: Drawing | null = matchedRoute ? {
       ...matchedRoute.drawing,
-      points: cleanPoints([branchPort, ...matchedRoute.points.slice(1)]),
-    };
+      points: geometry.branchPoints!,
+    } : null;
     const fitting: Drawing = {
       id: fittingId,
       type: "branch",
@@ -9324,23 +9432,28 @@ function HVACPlanStudioApp() {
         upstreamSize: target.drawing.size,
         downstreamSize,
         branchSize,
-        connectedIds: [upstream.id, downstream.id, branchRun.id],
+        connectedIds: geometry.connectedIds,
       },
     };
     setHistory([
-      ...drawings.filter((drawing) => drawing.id !== target.drawing.id && drawing.id !== matchedRoute?.drawing.id),
+      ...drawings.filter((drawing) => drawing.id !== target.drawing.id && drawing.id !== branchRun?.id),
       upstream,
       downstream,
-      branchRun,
+      ...(branchRun ? [branchRun] : []),
       fitting,
     ]);
     setActiveSystem(drawingSystem(target.drawing));
     setSelectedId(fittingId);
     setQueuedBranchRunId(null);
     setBranchHoverRunId(null);
-    const completionMessage = `${resolvedStyle === "tee90" ? "90° tee" : "45° wye"} placed · all three runs connected`;
-    setBranchMessage(completionMessage);
-    setBranchPlacementResult({ fittingId, message: completionMessage });
+    if (branchRun) {
+      const completionMessage = `${resolvedStyle === "tee90" ? "90° tee" : "45° wye"} placed · all three runs connected`;
+      setBranchMessage(completionMessage);
+      setBranchPlacementResult({ fittingId, message: completionMessage });
+      return;
+    }
+    beginPort3BranchDraft(fitting, "direct-placement");
+    setBranchMessage(`${resolvedStyle === "tee90" ? "90° tee" : "45° wye"} placed here · draw Port 3 or keep it open`);
   }
 
   function updateFittingPortSize(port: 0 | 1 | 2, size: string) {
@@ -10537,16 +10650,42 @@ function HVACPlanStudioApp() {
   }
 
   function undo() {
+    const undoDisposition = port3UndoDisposition({
+      draftPointCount: draft.length,
+      origin: port3BranchDraft?.origin,
+    });
+    const undoDirectPlacement = Boolean(
+      port3BranchDraft?.origin === "direct-placement" &&
+      draft.length === 1
+    );
     if (draft.length) {
-      if (port3BranchDraft && draft.length === 1) {
+      if (!port3BranchDraft) {
+        setDraft((points) => points.slice(0, -1));
+        return;
+      }
+      if (port3BranchDraft && undoDisposition === "leave-port-open") {
         leavePort3BranchOpen();
         return;
       }
-      setDraft((points) => points.slice(0, -1));
-      return;
+      if (undoDisposition === "trim-route") {
+        setDraft((points) => points.slice(0, -1));
+        return;
+      }
     }
     const previous = undoStack.at(-1);
     if (!previous) return;
+    if (undoDirectPlacement) {
+      port3BranchResolvedRef.current = true;
+      setPort3BranchDraft(null);
+      setContinuingRunId(null);
+      setDraft([]);
+      setHoverPoint(null);
+      setSnapMarker(null);
+      setQueuedBranchRunId(null);
+      setBranchHoverRunId(null);
+      setActiveTool("branch");
+      setBranchMessage("T/Y placement undone · click the blue trunk to place it again");
+    }
     const reversibleRecord = undoableAssistantRepairRecord(previous);
     const reversibleRoomMarkup = undoableRoomMarkupRecord(previous);
     if (reversibleRecord) {
@@ -12119,33 +12258,7 @@ function HVACPlanStudioApp() {
         return;
       }
       setBranchHoverRunId(null);
-      const threeRunMatch = queuedBranchRunId ? null : existingThreeRunJunction(raw);
-      if (threeRunMatch) {
-        const runIds = threeRunMatch.ports.map((match) => match.drawing.id);
-        setBranchPreview({
-          center: threeRunMatch.center,
-          angle: threeRunMatch.angle,
-          branchAngle: threeRunMatch.branchAngle,
-          side: threeRunMatch.side,
-          style: threeRunMatch.style,
-          parentSize: threeRunMatch.ports[0].drawing.size,
-          portSizes: threeRunMatch.ports.map(
-            (match) => match.drawing.size
-          ) as [string, string, string],
-          valid: true,
-          matchedExisting: true,
-          mainRunId: runIds[0],
-          branchRunId: runIds[2],
-          runIds,
-          mode: "three-runs",
-        });
-        setSnapMarker(threeRunMatch.center);
-        setBranchMessage("3 separate run endpoints found · click to connect Ports 1, 2 and 3");
-        return;
-      }
-      const automaticOpportunity = queuedBranchRunId ? null : automaticBranchOpportunity(raw);
-      const targetPoint = automaticOpportunity?.center || raw;
-      const rawTarget = nearestSupplySegment(targetPoint, automaticOpportunity?.mainRunId);
+      const rawTarget = nearestSupplySegment(raw);
       if (rawTarget && rawTarget.distance <= BRANCH_PICK_RADIUS_PX / zoom) {
         if (queuedBranchRunId && rawTarget.drawing.id === queuedBranchRunId) {
           setBranchPreview(null);
@@ -12153,48 +12266,64 @@ function HVACPlanStudioApp() {
           setBranchMessage("Branch run is armed · move to the main trunk and click where the T/Y belongs");
           return;
         }
+        const threeRunMatch = queuedBranchRunId
+          ? null
+          : existingThreeRunJunction(raw, rawTarget.drawing.id);
+        if (threeRunMatch) {
+          const runIds = threeRunMatch.ports.map((match) => match.drawing.id);
+          setBranchPreview({
+            center: threeRunMatch.center,
+            angle: threeRunMatch.angle,
+            branchAngle: threeRunMatch.branchAngle,
+            side: threeRunMatch.side,
+            style: threeRunMatch.style,
+            parentSize: threeRunMatch.ports[0].drawing.size,
+            portSizes: threeRunMatch.ports.map(
+              (match) => match.drawing.size
+            ) as [string, string, string],
+            valid: true,
+            matchedExisting: true,
+            mainRunId: runIds[0],
+            branchRunId: runIds[2],
+            runIds,
+            mode: "three-runs",
+          });
+          setSnapMarker(threeRunMatch.center);
+          setBranchMessage("3 local endpoints found · click to connect Ports 1, 2 and 3");
+          return;
+        }
         const target = orientMainTowardAirflow(rawTarget);
-        const previewCenter = automaticOpportunity?.center || target.point;
-        const matchedRoute = queuedBranchRunId
-          ? queuedBranchRoute(previewCenter, target.drawing.id, target.angle)
-          : automaticOpportunity
-            ? queuedBranchRoute(previewCenter, target.drawing.id, target.angle, automaticOpportunity.branchRunId)
-            : existingBranchRoute(previewCenter, target.drawing.id, target.angle);
-        if (queuedBranchRunId && !matchedRoute) {
+        const placement = resolveDirectBranchPlacement(target);
+        if (!placement) {
           setBranchPreview(null);
-          setSnapMarker(previewCenter);
+          setSnapMarker(target.point);
           return;
         }
-        if (!matchedRoute) {
-          setBranchPreview(null);
-          setSnapMarker(previewCenter);
-          setBranchMessage("Move to the point where a completed branch run meets the trunk");
-          return;
-        }
-        const previewStyle = matchedRoute
-          ? branchStyle === "auto" ? automaticBranchStyle(target.angle, matchedRoute.angle) : branchStyle
-          : branchStyle === "tee90" ? "tee90" : "wye45";
         setBranchPreview({
-          center: previewCenter,
+          center: placement.center,
           angle: target.angle,
-          branchAngle: matchedRoute?.angle,
-          side: matchedRoute?.side || target.side,
-          style: previewStyle,
+          branchAngle: placement.branchAngle,
+          side: placement.fittingSide,
+          style: placement.resolvedStyle,
           parentSize: target.drawing.size,
           portSizes: [
             target.drawing.size,
-            steppedSize(target.drawing.size, 1),
-            matchedRoute?.drawing.size || steppedSize(target.drawing.size, 2),
+            placement.downstreamSize,
+            placement.branchSize,
           ],
-          valid: true,
-          matchedExisting: Boolean(matchedRoute),
+          valid: placement.clearance.valid,
+          matchedExisting: Boolean(placement.matchedRoute),
           mainRunId: target.drawing.id,
-          branchRunId: matchedRoute?.drawing.id,
-          runIds: [target.drawing.id, ...(matchedRoute ? [matchedRoute.drawing.id] : [])],
+          branchRunId: placement.matchedRoute?.drawing.id,
+          runIds: [target.drawing.id, ...(placement.matchedRoute ? [placement.matchedRoute.drawing.id] : [])],
           mode: "split-trunk",
         });
-        setSnapMarker(previewCenter);
-        setBranchMessage("Junction found · click once to connect all three runs");
+        setSnapMarker(placement.center);
+        setBranchMessage(!placement.clearance.valid
+          ? "Move farther from the run end or bend so both trunk ports fit"
+          : placement.matchedRoute
+            ? "Local junction found · click to connect all three runs"
+            : "Click to place the fitting here · Port 3 is ready to draw next");
       } else {
         setBranchPreview(null);
         setSnapMarker(null);
@@ -14222,7 +14351,7 @@ function HVACPlanStudioApp() {
     {
       id: "branch-pass",
       label: "Place a T/Y fitting",
-      detail: "Click once where a completed branch meets its trunk",
+      detail: "Click the blue trunk exactly where the fitting belongs",
       group: "Draw",
       shortcut: "B",
       run: () => { finishDrawing(); activatePlanTool("branch"); },
@@ -14512,12 +14641,12 @@ function HVACPlanStudioApp() {
               <small>{selectedRun ? "Selected runs update immediately." : "Draw first. New supply and return runs stay unlabeled until you confirm a size."}</small>
             </div>
             <div className={`branch-designer ${activeTool === "branch" ? "active" : ""}`}>
-              <div className="library-title"><DraftingCompass size={14} /><span>ONE-CLICK T/Y</span><b>REDLINE CONNECTS IT</b></div>
+              <div className="library-title"><DraftingCompass size={14} /><span>DIRECT-PLACE T/Y</span><b>YOU CHOOSE THE STATION</b></div>
               <div className="branch-safe-mode" role="status">
                 <CheckCircle2 size={15} />
                 <span>
-                  <b>Click the junction</b>
-                  <small>Point where the completed branch meets the trunk. The fitting snaps, rotates, sizes, and connects itself.</small>
+                  <b>Click the blue trunk</b>
+                  <small>Your click chooses the fitting station. Only clear, nearby endpoints connect automatically.</small>
                 </span>
               </div>
               <button className="branch-arm" onClick={() => {
@@ -14530,7 +14659,7 @@ function HVACPlanStudioApp() {
                 setBranchHoverRunId(null);
                 setBranchPreview(null);
                 setBranchPlacementResult(null);
-                setBranchMessage("Click where a completed branch run meets the blue trunk");
+                setBranchMessage("Click the blue trunk exactly where the T/Y belongs");
               }}>
                 <span className="mini-fitting wye45"><i /><i /><i /></span>
                 Place T/Y
@@ -14546,7 +14675,7 @@ function HVACPlanStudioApp() {
                 <span>Click anywhere on the blue run that should connect to Port 3.</span>
                 <button onClick={leavePort3BranchOpen}>Leave Port 3 open for now</button>
               </div>}
-              <small>Redline places only a complete 3-way connection. If the preview does not appear, move closer to the point where the two runs meet.</small>
+              <small>If no branch endpoint is clearly local, Redline still places the fitting there and opens Port 3 for you to draw.</small>
             </div>
             <div className="symbol-library">
               <div className="library-title"><Sparkles size={14} /><span>HVAC SYMBOL LIBRARY</span><b>{symbolPresets.length}+ presets</b></div>
@@ -15408,15 +15537,15 @@ function HVACPlanStudioApp() {
             </div>}
             {pdf && activeTool === "branch" && <div className={`branch-workflow-hud ${pendingBranchFittingId ? "awaiting-branch" : ""} ${queuedBranchRunId ? "run-armed" : ""} ${branchPlacementResult ? "complete" : ""}`} aria-live="polite" data-canvas-ui>
               <div className="branch-workflow-heading">
-                <span><DraftingCompass size={14} /> ONE-CLICK T/Y</span>
+                <span><DraftingCompass size={14} /> DIRECT-PLACE T/Y</span>
                 <b>{branchPlacementResult
                   ? "CONNECTED"
                   : pendingBranchFittingId
                     ? "REPAIRING OLD FITTING"
                     : branchPreview?.matchedExisting ? "JUNCTION FOUND" : "READY"}</b>
               </div>
-              <strong className="branch-workflow-message">{branchPlacementResult?.message || branchMessage || "Click where a completed branch run meets the trunk"}</strong>
-              {!pendingBranchFittingId && !branchPlacementResult && <small>When the clean fitting preview appears, one click completes everything.</small>}
+              <strong className="branch-workflow-message">{branchPlacementResult?.message || branchMessage || "Click the blue trunk exactly where the T/Y belongs"}</strong>
+              {!pendingBranchFittingId && !branchPlacementResult && <small>Your click chooses the station; only clear local endpoints auto-connect.</small>}
               {pendingBranchFittingId && <div className="branch-workflow-actions">
                 <button onClick={leavePort3BranchOpen}>Leave Port 3 open</button>
                 <button className="danger" onClick={undo}><Undo2 size={13} /> Undo fitting</button>
@@ -16063,7 +16192,9 @@ function HVACPlanStudioApp() {
                         {branchPreview.mode === "split-trunk" && <text className="preview-trunk-label" x={center.x} y={center.y - 20 * previewScale} textAnchor="middle" style={{ fontSize: `${8 * previewScale}px` }}>TRUNK TO SPLIT</text>}
                         {branchPreview.mode === "attach-run" && branchPreview.branchRunId && branchPreview.candidateProjected && <text className="preview-run-label" x={branchPreview.candidateProjected.x} y={branchPreview.candidateProjected.y - 13 * previewScale} textAnchor="middle" style={{ fontSize: `${8 * previewScale}px` }}>BRANCH RUN SELECTED</text>}
                         <text x={branchPort.x + 7 * previewScale} y={branchPort.y - 6 * previewScale} style={{ fontSize: `${8 * previewScale}px` }}>
-                          {branchPreview.mode === "attach-run"
+                          {!branchPreview.valid
+                            ? "MOVE AWAY FROM END OR BEND"
+                            : branchPreview.mode === "attach-run"
                             ? branchPreview.matchedExisting
                               ? `CLICK TO ATTACH · ${previewStyle === "tee90" ? "TEE" : "WYE"}`
                               : "SELECT ANY BLUE BRANCH RUN"
@@ -17273,7 +17404,7 @@ function HVACPlanStudioApp() {
             <div className="takeoff-note">Design-intent review only. Engineering objects and scheduled values govern. Field verify before fabrication and final balance.</div>
             </>}
           </div>}
-          <div className="status-card"><span className="pulse" /><div><strong>{splitMode ? "Split run mode" : calibrating && pdf ? "Scale calibration" : activeTool === "measure" && pdf ? "Measurement tool" : symbolTools.includes(activeTool as SymbolKind) && pdf ? "HVAC symbol placement" : activeTool === "branch" && pdf ? pendingBranchFittingId ? "Choose branch run" : queuedBranchRunId ? "Branch matched" : "One-click T/Y placement" : continuingRunId ? "Extending connected branch run" : draft.length ? "Drawing in progress" : pdf ? "Construction plan loaded" : "Drawing engine ready"}</strong><small>{splitMode ? "Click the duct centerline where you want two editable sections · Esc cancels" : calibrating && pdf ? `Pick two points exactly ${referenceFeet} ft apart` : activeTool === "measure" && pdf ? "Pick two points to place a field dimension" : symbolTools.includes(activeTool as SymbolKind) && pdf ? `Wheel rotates preview · Shift+wheel 45° · ${placementRotation}° · click places` : activeTool === "branch" && pdf ? branchMessage || "Click where a completed branch run meets the trunk" : continuingRunId ? "Left-click: add route points · Shift: lock 45°/90° · Right-click: finish on the same run" : draft.length ? "Left-click: add point · Shift: lock 45°/90° · Right-click: finish · Esc: cancel" : pdf ? `${pdf.numPages} page PDF · ${drawings.length} drawing objects` : "Upload a plan to start drafting"}</small></div></div>
+          <div className="status-card"><span className="pulse" /><div><strong>{splitMode ? "Split run mode" : calibrating && pdf ? "Scale calibration" : activeTool === "measure" && pdf ? "Measurement tool" : symbolTools.includes(activeTool as SymbolKind) && pdf ? "HVAC symbol placement" : activeTool === "branch" && pdf ? pendingBranchFittingId ? "Choose branch run" : queuedBranchRunId ? "Branch matched" : "Direct-place T/Y" : continuingRunId ? "Extending connected branch run" : draft.length ? "Drawing in progress" : pdf ? "Construction plan loaded" : "Drawing engine ready"}</strong><small>{splitMode ? "Click the duct centerline where you want two editable sections · Esc cancels" : calibrating && pdf ? `Pick two points exactly ${referenceFeet} ft apart` : activeTool === "measure" && pdf ? "Pick two points to place a field dimension" : symbolTools.includes(activeTool as SymbolKind) && pdf ? `Wheel rotates preview · Shift+wheel 45° · ${placementRotation}° · click places` : activeTool === "branch" && pdf ? branchMessage || "Click the blue trunk exactly where the T/Y belongs" : continuingRunId ? "Left-click: add route points · Shift: lock 45°/90° · Right-click: finish on the same run" : draft.length ? "Left-click: add point · Shift: lock 45°/90° · Right-click: finish · Esc: cancel" : pdf ? `${pdf.numPages} page PDF · ${drawings.length} drawing objects` : "Upload a plan to start drafting"}</small></div></div>
         </aside>
       </section>
 

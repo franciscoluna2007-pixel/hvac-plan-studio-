@@ -9,7 +9,21 @@ export type Port3BranchDraftState = {
   page: number;
   systemId: string;
   anchor: Port3Point;
+  origin?: "existing-fitting" | "direct-placement";
 };
+
+export function port3UndoDisposition({
+  draftPointCount,
+  origin,
+}: {
+  draftPointCount: number;
+  origin?: Port3BranchDraftState["origin"];
+}): "history" | "leave-port-open" | "trim-route" {
+  if (draftPointCount === 0) return "history";
+  if (draftPointCount === 1 && origin === "direct-placement") return "history";
+  if (draftPointCount === 1) return "leave-port-open";
+  return "trim-route";
+}
 
 type Port3Fitting = {
   upstreamSize: string;
