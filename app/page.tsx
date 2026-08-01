@@ -14312,15 +14312,15 @@ function HVACPlanStudioApp() {
           : `Saved locally${lastSavedTime ? ` at ${lastSavedTime}` : ""}`;
 
   /*
-   * THESIS: Patternmaker's Layout Table makes the source plan the open work surface and refuses dashboard chrome.
-   * OWN-WORLD: Pale kraft, chalk paper, graphite, Prussian blue, brick red, zinc trays, steel rules, and squared instruments.
-   * STORY: Open the authoritative plan, draw and inspect HVAC work, then advance the job through one measured traveler.
-   * FIRST VIEWPORT: Kraft identity plate, zinc rule and tool trays, dominant white plan, ledger inspector, bottom workflow deck.
-   * FORM: User-pinned Patternmaker's Layout Table, approved through decision key ef99ff31.
-   * FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+   * THESIS: Galvanized Daylight frames the authoritative plan like a clean fabrication bench in clear jobsite light.
+   * OWN-WORLD: Matte graphite, galvanized plate, exact plan white, safety orange, pressed controls, and hard seams.
+   * STORY: Open the source plan, choose the operation, draw and inspect HVAC work, then advance the unchanged traveler.
+   * FIRST VIEWPORT: Graphite job bar, galvanized destination rail, compact tool dock, dominant white plan, ledger inspector.
+   * FORM: User-approved Concept A, implemented as a presentation layer over the frozen command-deck behavior.
+   * FINISH: agency-signoff fidelity across desktop, tablet, mobile, dialogs, selection, and drawing states.
    */
   return (
-    <main data-layout="command-deck" data-visual-world="patternmakers-layout-table" className={`app-shell field-first-workspace layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${fieldRedline.open ? "redline-open" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showFinishJobStudio ? "finish-job-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${packagePrintReleased ? "package-print-released" : "package-print-draft"}`}>
+    <main data-layout="command-deck" data-visual-world="patternmakers-layout-table" data-presentation="galvanized-daylight" className={`app-shell field-first-workspace layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${fieldRedline.open ? "redline-open" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showFinishJobStudio ? "finish-job-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${packagePrintReleased ? "package-print-released" : "package-print-draft"}`}>
       <input
         ref={inputRef}
         className="file-input"
@@ -14368,6 +14368,17 @@ function HVACPlanStudioApp() {
           </button>
           <button className={`cloud-button ${showCloudProjects ? "active" : ""}`} aria-pressed={showCloudProjects} onClick={() => setShowCloudProjects(true)}>
             <Cloud size={16} /> Saved jobs
+          </button>
+          <button
+            className="top-history-button"
+            onClick={undo}
+            disabled={!undoStack.length}
+            title="Undo the last drawing action"
+          >
+            <Undo2 size={16} /> <span>Undo</span>
+          </button>
+          <button className="top-save-button" onClick={saveProject} title="Save the working copy">
+            <Save size={16} /> <span>Save</span>
           </button>
         </nav>
       </header>

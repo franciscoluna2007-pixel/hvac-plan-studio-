@@ -19320,3 +19320,1793 @@ footer {
   }
   .app-shell[data-visual-world="patternmakers-layout-table"] :is(.plan-sheet, .pdf-stage canvas) { background: #fff; }
 }
+
+/* v152 — Galvanized Daylight
+   Approved Concept A. This presentation layer intentionally keeps the v151
+   command-deck structure and every drawing/data behavior beneath it. */
+.app-shell[data-visual-world="patternmakers-layout-table"][data-presentation="galvanized-daylight"] {
+  --gd-plan: #ffffff;
+  --gd-shell: #f3f5f2;
+  --gd-metal: #b8c0bc;
+  --gd-metal-light: #dce1de;
+  --gd-metal-dark: #929c97;
+  --gd-ink: #202522;
+  --gd-graphite: #343a37;
+  --gd-graphite-deep: #171b19;
+  --gd-on-dark: #f7f8f5;
+  --gd-muted: #5d6863;
+  --gd-active: #d85b27;
+  --gd-active-deep: #a94018;
+  --gd-active-soft: #f7d8c8;
+  --gd-confirm: #39705d;
+  --gd-critical: #a63e32;
+  --gd-warning: #a77a28;
+  --gd-focus: #0e5a75;
+  --gd-line: #2025228c;
+  --gd-line-soft: #20252238;
+  --gd-raised: inset 0 1px #ffffffc7, inset 0 -2px #2025221f, 0 1px 0 #20252252;
+  --gd-pressed: inset 0 2px 3px #171b1947;
+  --gd-panel-shadow: 0 8px 22px #171b1938;
+
+  /* Compatibility aliases retain legibility across the existing component set. */
+  --pattern-kraft: var(--gd-graphite);
+  --pattern-kraft-light: var(--gd-graphite);
+  --pattern-paper: var(--gd-shell);
+  --pattern-plan: var(--gd-plan);
+  --pattern-ink: var(--gd-ink);
+  --pattern-blue: var(--gd-active);
+  --pattern-blue-deep: var(--gd-active-deep);
+  --pattern-red: var(--gd-critical);
+  --pattern-red-deep: #7f2f27;
+  --pattern-zinc: var(--gd-metal);
+  --pattern-zinc-light: var(--gd-metal-light);
+  --pattern-line: var(--gd-line);
+  --pattern-line-soft: var(--gd-line-soft);
+  --pattern-muted: var(--gd-muted);
+  --pattern-success: var(--gd-confirm);
+  --pattern-warning: var(--gd-warning);
+  --pattern-kraft-texture: none;
+  --pattern-zinc-texture: none;
+  --pattern-paper-texture: none;
+  --pattern-inset: inset 0 1px #ffffffa8, inset 0 -1px #20252258;
+  --pattern-raised: var(--gd-raised);
+  --pattern-deck-shadow: inset 0 1px #ffffff80, inset 0 -1px #20252250;
+
+  --panel: var(--gd-metal);
+  --panel-2: var(--gd-shell);
+  --line: var(--gd-line-soft);
+  --muted: var(--gd-muted);
+  --cyan: var(--gd-active);
+  --blue: var(--gd-active);
+  --yellow: var(--gd-warning);
+  --red: var(--gd-critical);
+  --green: var(--gd-confirm);
+  --orange: var(--gd-active);
+  --plan-navy: var(--gd-metal);
+  --control-navy: var(--gd-graphite);
+  --raised-navy: var(--gd-shell);
+  --structural-line: var(--gd-line-soft);
+  --working-ink: var(--gd-ink);
+  --muted-steel: var(--gd-muted);
+  --signal-cyan: var(--gd-active);
+  --branch-gold: var(--gd-active);
+  --critical-coral: var(--gd-critical);
+  --approval-green: var(--gd-confirm);
+  --attention-orange: var(--gd-warning);
+  --instrument-shadow: var(--gd-raised);
+  --workspace-shadow: var(--pattern-deck-shadow);
+  --control-motion: 150ms cubic-bezier(.2, .8, .2, 1);
+  --deck-gap: 4px;
+  --deck-tools: 168px;
+  --deck-inspector: 304px;
+
+  color: var(--gd-ink);
+  background: var(--gd-shell);
+  background-image: none;
+  font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] ::selection {
+  color: var(--gd-ink);
+  background: var(--gd-active);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(button, input, select, textarea) {
+  font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .brand strong,
+  .brand span,
+  .command-rail button,
+  .panel-heading,
+  .left-panel-tabs button,
+  .right-tabs button,
+  .tool,
+  .section-title,
+  .library-title,
+  .canvas-toolbar button,
+  .field-first-guide,
+  .project-home-header,
+  .project-home-nav,
+  .project-home-hero h1,
+  .home-section-heading h2,
+  .dialog-heading
+) {
+  font-family: var(--font-pattern-condensed), "Arial Narrow", sans-serif;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .canvas-toolbar strong,
+  .scale,
+  .page-controls,
+  .property-value,
+  .status-value,
+  footer
+) {
+  font-family: var(--font-geist-mono), Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--gd-focus);
+  outline-offset: 2px;
+}
+
+.app-shell.field-first-workspace[data-visual-world="patternmakers-layout-table"][data-presentation="galvanized-daylight"]:not(.field-mode) {
+  grid-template-rows: 52px minmax(0, 1fr) 76px 30px;
+  background: var(--gd-shell);
+}
+
+/* Graphite job bar */
+.app-shell[data-presentation="galvanized-daylight"]:not(.field-mode) > .topbar,
+.app-shell[data-presentation="galvanized-daylight"] .project-home-header {
+  min-height: 52px;
+  color: var(--gd-on-dark);
+  border-color: var(--gd-graphite-deep);
+  background: var(--gd-ink);
+  background-image:
+    linear-gradient(90deg, #ffffff09 1px, transparent 1px),
+    linear-gradient(180deg, #ffffff0c, transparent 35%, #0000001a);
+  background-size: 84px 100%, 100% 100%;
+  box-shadow: inset 0 -1px #0000008a;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .topbar :is(
+  .brand,
+  .brand strong,
+  .project-name,
+  .project-breadcrumb,
+  .project-breadcrumb strong,
+  .project-context-row
+),
+.app-shell[data-presentation="galvanized-daylight"] .project-home-header :is(strong, small) {
+  color: var(--gd-on-dark);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .brand span,
+  .project-breadcrumb span,
+  .project-breadcrumb i,
+  .project-readiness,
+  .studio-save-state
+) {
+  color: #f3f5f2c7;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .brand {
+  min-width: 0;
+  border-right-color: #ffffff24;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .brand-mark,
+.app-shell[data-presentation="galvanized-daylight"] .project-home-brand > span {
+  color: var(--gd-active);
+  border: 1px solid #ffffff52;
+  border-radius: 2px;
+  background: var(--gd-graphite);
+  box-shadow: inset 0 1px #ffffff1f, inset 0 -2px #00000045;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .brand strong {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 18px;
+  letter-spacing: .015em;
+  text-transform: uppercase;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .brand span {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 12px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .topbar :is(.top-actions > button, .system-switcher) {
+  color: var(--gd-on-dark) !important;
+  border: 1px solid #59615d !important;
+  border-radius: 2px !important;
+  background: var(--gd-graphite) !important;
+  box-shadow: inset 0 1px #ffffff18, inset 0 -2px #00000045 !important;
+  font-size: 11px;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .topbar :is(.top-actions > button, .system-switcher):hover:not(:disabled) {
+  border-color: var(--gd-active) !important;
+  background: #3e4642 !important;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .top-actions .cloud-button.active {
+  color: var(--gd-active-deep) !important;
+  border-color: var(--gd-active-deep) !important;
+  background: var(--gd-active-soft) !important;
+  box-shadow: inset 0 3px var(--gd-active), inset 0 1px #ffffffa8 !important;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .topbar .top-actions > .top-save-button {
+  color: var(--gd-ink) !important;
+  border-color: var(--gd-active-deep) !important;
+  background: var(--gd-active) !important;
+  box-shadow: inset 0 1px #ffffff32, inset 0 -2px var(--gd-active-deep) !important;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .project-readiness i,
+.app-shell[data-presentation="galvanized-daylight"] .studio-save-state i {
+  background: var(--gd-confirm);
+  box-shadow: 0 0 0 1px #ffffff7a;
+}
+
+/* Desktop: horizontal destination rail above the working row. */
+@media (min-width: 1101px) {
+  .app-shell[data-presentation="galvanized-daylight"]:not(.field-mode):not(.tablet-layout) > .workspace {
+    grid-template-areas:
+      "rail rail rail"
+      "tools canvas inspector";
+    grid-template-columns: var(--deck-tools) minmax(520px, 1fr) var(--deck-inspector);
+    grid-template-rows: 34px minmax(0, 1fr);
+    gap: 4px;
+    padding: 4px;
+    background: var(--gd-shell);
+    background-image: none;
+    box-shadow: none;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.field-mode):not(.tablet-layout).left-closed > .workspace {
+    grid-template-areas:
+      "rail rail"
+      "canvas inspector";
+    grid-template-columns: minmax(560px, 1fr) var(--deck-inspector);
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.field-mode):not(.tablet-layout).right-closed > .workspace {
+    grid-template-areas:
+      "rail rail"
+      "tools canvas";
+    grid-template-columns: var(--deck-tools) minmax(560px, 1fr);
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.field-mode):not(.tablet-layout).left-closed.right-closed > .workspace {
+    grid-template-areas:
+      "rail"
+      "canvas";
+    grid-template-columns: minmax(600px, 1fr);
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.field-mode):not(.tablet-layout).wide-inspector > .workspace {
+    grid-template-areas:
+      "rail rail rail"
+      "tools canvas inspector";
+    grid-template-columns: var(--deck-tools) minmax(500px, 1fr) 390px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.field-mode):not(.tablet-layout).wide-inspector.left-closed > .workspace {
+    grid-template-areas:
+      "rail rail"
+      "canvas inspector";
+    grid-template-columns: minmax(540px, 1fr) 390px;
+  }
+}
+
+/* Horizontal destination rail */
+.app-shell[data-presentation="galvanized-daylight"] .command-rail {
+  min-width: 0;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+  color: var(--gd-ink);
+  border: 1px solid var(--gd-line);
+  border-radius: 2px;
+  background: var(--gd-metal);
+  background-image: linear-gradient(180deg, #ffffff5c, #ffffff00 44%, #20252212);
+  box-shadow: inset 0 1px #ffffff9c, inset 0 -1px #20252242;
+  overflow: hidden;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .command-rail-group {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .command-rail-main {
+  flex: 0 0 auto;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .command-rail-review {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--gd-line-soft);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .command-rail button {
+  width: auto;
+  min-width: 86px;
+  min-height: 32px;
+  height: 32px;
+  padding: 0 12px;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--gd-ink);
+  border: 0;
+  border-right: 1px solid var(--gd-line-soft);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .command-rail button svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .command-rail button:hover:not(:disabled) {
+  color: var(--gd-ink);
+  background: #ffffff57;
+  box-shadow: inset 0 -2px var(--gd-active);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .command-rail button:is(.active, .redline.active) {
+  color: var(--gd-active-deep);
+  border-color: var(--gd-active-deep);
+  background: var(--gd-active-soft);
+  box-shadow: inset 0 3px var(--gd-active), inset 0 1px #ffffffa8;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .command-rail button:is(.active, .redline.active) svg {
+  color: currentColor;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .command-rail button.redline.active {
+  color: var(--gd-critical);
+  border-color: var(--gd-critical);
+  background: color-mix(in srgb, var(--gd-critical) 10%, var(--gd-shell));
+  box-shadow: inset 0 3px var(--gd-critical), inset 0 1px #ffffffa8;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .command-rail-settings {
+  margin: 0 0 0 auto;
+}
+
+/* Graphite high-frequency tool dock */
+.app-shell[data-presentation="galvanized-daylight"]:not(.field-mode) .left-panel {
+  color: var(--gd-on-dark);
+  border: 1px solid var(--gd-graphite-deep);
+  border-radius: 3px;
+  background: var(--gd-ink);
+  background-image: linear-gradient(90deg, #ffffff08 1px, transparent 1px);
+  background-size: 42px 100%;
+  box-shadow: inset -1px 0 #00000075;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .left-panel .panel-heading,
+.app-shell[data-presentation="galvanized-daylight"] .left-panel .left-panel-tabs {
+  color: var(--gd-on-dark);
+  border-color: #59615d;
+  background: var(--gd-graphite);
+  background-image: none;
+  box-shadow: inset 0 1px #ffffff16, inset 0 -1px #00000052;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .left-panel .panel-heading :is(span, small) {
+  color: var(--gd-on-dark);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .left-panel .panel-heading span {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .055em;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .left-panel .panel-heading small {
+  color: #f3f5f2a8;
+  font-size: 9px;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .left-panel .panel-heading button,
+.app-shell[data-presentation="galvanized-daylight"] .left-panel-tabs button {
+  color: var(--gd-on-dark);
+  border-color: #59615d;
+  background: var(--gd-graphite);
+  box-shadow: inset 0 1px #ffffff16, inset 0 -2px #00000045;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .left-panel-tabs button.active {
+  color: var(--gd-active-deep);
+  border-color: var(--gd-active-deep);
+  background: var(--gd-active-soft);
+  box-shadow: inset 0 3px var(--gd-active), inset 0 1px #ffffff1f;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .left-panel.view-draw .tool-list {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+  padding: 6px;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .left-panel.view-draw .tool {
+  min-height: 48px;
+  height: auto;
+  padding: 6px 8px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  justify-items: start;
+  gap: 8px;
+  color: var(--gd-on-dark);
+  border: 1px solid #59615d;
+  border-radius: 2px;
+  background: var(--gd-graphite);
+  box-shadow: inset 0 1px #ffffff16, inset 0 -2px #00000045;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .left-panel.view-draw .tool:hover {
+  color: #fff;
+  border-color: var(--gd-active);
+  background: #3e4642;
+  transform: none;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .left-panel.view-draw .tool.active {
+  color: var(--gd-ink);
+  border-color: var(--gd-active-deep);
+  background: var(--gd-active);
+  box-shadow: inset 0 1px #ffffff32, inset 0 -2px var(--gd-active-deep);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .left-panel.view-draw .tool-icon {
+  color: var(--gd-on-dark);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .left-panel.view-draw .tool.active :is(.tool-icon, kbd) {
+  color: var(--gd-ink);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .left-panel.view-draw .tool kbd {
+  color: #f3f5f2ad;
+  background: transparent;
+}
+
+/* Shared galvanized membrane controls */
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .run-size-default,
+  .symbol-library,
+  .branch-designer,
+  .line-weight-control,
+  .run-detail-editor,
+  .fitting-properties,
+  .status-card,
+  .builder-hero,
+  .smart-plan-preflight,
+  .run-connection-card,
+  .run-label-control,
+  .symbol-resize-control,
+  .smart-can-editor,
+  .network-trace-summary,
+  .duct-trace-summary,
+  .workspace-panel-hero,
+  .display-settings-panel,
+  .panel-section,
+  .plan-summary
+) {
+  color: var(--gd-ink);
+  border: 1px solid var(--gd-line);
+  border-radius: 2px;
+  background: var(--gd-shell);
+  background-image: none;
+  box-shadow: inset 0 1px #fff, inset 0 -2px #2025221f;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .left-panel :is(
+  .run-size-default,
+  .symbol-library,
+  .branch-designer,
+  .panel-section
+) {
+  grid-column: 1 / -1;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .run-size-default,
+  .symbol-library,
+  .branch-designer,
+  .line-weight-control,
+  .run-detail-editor,
+  .panel-section
+) :is(strong, b, span, label, small) {
+  color: inherit;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .run-detail-editor {
+  margin-bottom: 10px;
+  gap: 9px;
+  padding: 10px;
+  box-shadow: inset 3px 0 var(--gd-warning), inset 0 1px #fff;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .run-detail-editor.complete {
+  border-color: var(--gd-confirm);
+  background: color-mix(in srgb, var(--gd-confirm) 8%, var(--gd-shell));
+  box-shadow: inset 3px 0 var(--gd-confirm), inset 0 1px #fff;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .run-detail-heading :is(small, strong) {
+  color: var(--gd-ink) !important;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .run-detail-heading > b {
+  color: #fff;
+  border-radius: 2px;
+  background: var(--gd-warning);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .run-detail-editor.complete .run-detail-heading > b {
+  color: #fff;
+  background: var(--gd-confirm);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .run-detail-fields label,
+.app-shell[data-presentation="galvanized-daylight"] .run-detail-editor > small {
+  color: var(--gd-muted) !important;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .run-detail-actions button {
+  color: var(--gd-ink);
+  border-color: var(--gd-line);
+  border-radius: 2px;
+  background: var(--gd-metal-light);
+  box-shadow: var(--gd-raised);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .run-detail-actions button.primary {
+  color: #fff;
+  border-color: var(--gd-confirm);
+  background: var(--gd-confirm);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .run-detail-actions button:disabled {
+  color: var(--gd-muted);
+  border-color: var(--gd-line-soft);
+  background: var(--gd-metal-light);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea,
+  .property-input,
+  .system-switcher
+) {
+  color: var(--gd-ink);
+  border-color: var(--gd-line);
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: inset 0 1px 2px #20252224;
+  font-size: 12px;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .left-panel-tabs button.active,
+  .right-tabs button.active,
+  .canvas-toolbar button.active,
+  .symbol-catalog-card.selected
+) {
+  color: var(--gd-active-deep);
+  border-color: var(--gd-active-deep);
+  background: var(--gd-active-soft);
+  box-shadow: inset 0 3px var(--gd-active), inset 0 1px #ffffffa8;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(.branch-designer.active, .branch-workflow-hud) {
+  color: var(--gd-ink);
+  border-color: var(--gd-active);
+  background: color-mix(in srgb, var(--gd-active) 10%, var(--gd-shell));
+  box-shadow: inset 3px 0 var(--gd-active);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .branch-arm,
+  .branch-mode-toggle button.active,
+  .place-symbol,
+  .primary-button,
+  .builder-primary-action,
+  .field-first-primary
+) {
+  color: var(--gd-ink) !important;
+  border-color: var(--gd-active-deep) !important;
+  border-radius: 2px !important;
+  background: var(--gd-active) !important;
+  box-shadow: inset 0 1px #ffffff32, inset 0 -2px var(--gd-active-deep) !important;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .builder-action-card.current {
+  background: color-mix(in srgb, var(--gd-active) 8%, var(--gd-shell));
+  box-shadow: inset 3px 0 var(--gd-active);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .builder-action-card.attention {
+  background: color-mix(in srgb, var(--gd-warning) 10%, var(--gd-shell));
+  box-shadow: inset 3px 0 var(--gd-warning);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .builder-action-card.critical {
+  background: color-mix(in srgb, var(--gd-critical) 10%, var(--gd-shell));
+  box-shadow: inset 3px 0 var(--gd-critical);
+}
+
+/* Canvas frame and command surface */
+.app-shell[data-presentation="galvanized-daylight"]:not(.field-mode) .canvas-area {
+  border: 1px solid var(--gd-line);
+  border-radius: 3px;
+  background: var(--gd-metal);
+  background-image: none;
+  box-shadow: inset 0 1px #ffffff80;
+}
+
+.app-shell[data-presentation="galvanized-daylight"]:not(.field-mode) .canvas-toolbar {
+  min-height: 46px;
+  padding: 4px 6px 7px;
+  gap: 4px;
+  color: var(--gd-ink);
+  border-color: var(--gd-line);
+  background: var(--gd-metal);
+  background-image: linear-gradient(180deg, #ffffff63, #ffffff00 46%, #20252212);
+  box-shadow: inset 0 1px #ffffff9c, inset 0 -1px #20252242;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .canvas-toolbar::after {
+  height: 4px;
+  border-top-color: var(--gd-line);
+  background:
+    repeating-linear-gradient(90deg, var(--gd-ink) 0 1px, transparent 1px 8px),
+    var(--gd-metal);
+  opacity: .42;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .canvas-toolbar :is(button, .canvas-edit-actions, .page-controls, .scale) {
+  flex: 0 0 auto;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .canvas-toolbar button,
+.app-shell[data-presentation="galvanized-daylight"] .canvas-edit-actions {
+  min-height: 34px;
+  color: var(--gd-ink);
+  border: 1px solid var(--gd-line);
+  border-radius: 2px;
+  background: var(--gd-shell);
+  box-shadow: var(--gd-raised);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .025em;
+  text-transform: uppercase;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .canvas-toolbar button:hover:not(:disabled) {
+  border-color: var(--gd-active);
+  background: #fff;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .canvas-edit-actions {
+  padding: 2px;
+  background: var(--gd-metal-light);
+}
+
+.app-shell[data-presentation="galvanized-daylight"]:not(.field-mode) .canvas {
+  border-radius: 0 0 2px 2px;
+  background-color: var(--gd-metal-light);
+  background-image:
+    linear-gradient(#20252213 1px, transparent 1px),
+    linear-gradient(90deg, #20252213 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+.app-shell[data-presentation="galvanized-daylight"]:not(.field-mode) .canvas.grid-hidden {
+  background-color: var(--gd-metal-light);
+  background-image: none;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(.plan-sheet, .pdf-stage canvas) {
+  background: #fff !important;
+  background-image: none !important;
+  filter: none !important;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .upload-zone {
+  color: var(--gd-ink);
+  border-color: var(--gd-line);
+  background: var(--gd-daylight, var(--gd-shell));
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-context-toolbar {
+  color: var(--gd-on-dark);
+  border-color: var(--gd-graphite-deep);
+  background: var(--gd-graphite);
+  box-shadow: 0 5px 16px #171b1938;
+}
+
+/* Galvanized inspector ledger */
+.app-shell[data-presentation="galvanized-daylight"]:not(.field-mode) .right-panel {
+  color: var(--gd-ink);
+  border: 1px solid var(--gd-line);
+  border-radius: 3px;
+  background: var(--gd-metal);
+  background-image: none;
+  box-shadow: inset 0 1px #ffffff8a;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel :is(.panel-heading, .right-tabs) {
+  color: var(--gd-ink);
+  border-color: var(--gd-line);
+  background: var(--gd-metal);
+  background-image: linear-gradient(180deg, #ffffff58, transparent);
+  box-shadow: inset 0 -1px #20252238;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel :is(.panel-heading span, .panel-heading small, .right-tabs button) {
+  color: var(--gd-ink);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel :is(
+  .builder-hero,
+  .smart-plan-preflight,
+  .panel-section,
+  .builder-workflow,
+  .builder-action-card,
+  .builder-safety-note,
+  .plan-summary,
+  .status-card,
+  .fitting-properties,
+  .run-connection-card
+) {
+  margin-right: 0;
+  margin-left: 0;
+  border-radius: 0;
+  border-right: 0;
+  border-left: 0;
+  border-bottom-color: var(--gd-line-soft);
+  background: var(--gd-shell);
+  box-shadow: none;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .system-builder-panel {
+  padding: 0 0 12px;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .builder-hero {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding: 12px 14px;
+  border-top: 0;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .builder-hero-heading > span {
+  color: var(--gd-active-deep);
+  border-radius: 2px;
+  background: var(--gd-active-soft);
+  box-shadow: inset 0 3px var(--gd-active);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .builder-hero-heading :is(strong, small, b) {
+  color: var(--gd-ink);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .smart-plan-preflight {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding: 0;
+  gap: 0;
+  overflow: visible;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .smart-plan-preflight > header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--gd-line-soft);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .smart-plan-preflight > header :is(strong, small) {
+  color: var(--gd-ink);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .smart-plan-preflight > dl {
+  gap: 0;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .smart-plan-preflight > dl > div {
+  min-height: 44px;
+  padding: 9px 14px;
+  color: var(--gd-muted);
+  border: 0;
+  border-bottom: 1px solid var(--gd-line-soft);
+  border-radius: 0;
+  background: transparent;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .smart-plan-preflight > dl dd {
+  color: var(--gd-ink);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .smart-plan-preflight-actions {
+  padding: 12px 14px;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .builder-workflow {
+  margin: 0;
+  gap: 0;
+  overflow: visible;
+  border-top: 0;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .builder-action-card {
+  margin: 0;
+  padding: 12px 14px;
+  border-top: 0;
+  border-bottom: 1px solid var(--gd-line-soft);
+  background: transparent;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .builder-action-card.current {
+  background: color-mix(in srgb, var(--gd-active) 7%, var(--gd-shell));
+  box-shadow: inset 3px 0 var(--gd-active);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .builder-action-card.attention:not(.current) {
+  background: color-mix(in srgb, var(--gd-warning) 5%, var(--gd-shell));
+  box-shadow: none;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .builder-action-card.critical:not(.current) {
+  background: color-mix(in srgb, var(--gd-critical) 5%, var(--gd-shell));
+  box-shadow: none;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .builder-safety-note {
+  margin-top: 0;
+  padding: 12px 14px;
+  border-top: 0;
+  background: var(--gd-metal-light);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel :is(.section-title, .library-title) {
+  color: var(--gd-ink);
+  border-bottom: 1px solid var(--gd-line-soft);
+  background: var(--gd-metal-light);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-tabs button.active {
+  color: var(--gd-active-deep);
+}
+
+/* Workflow traveler and status strip */
+.app-shell[data-presentation="galvanized-daylight"] > .field-first-guide {
+  min-height: 76px;
+  grid-template-columns: minmax(0, 1fr) 142px;
+  gap: 5px;
+  padding: 5px;
+  color: var(--gd-ink);
+  border-color: var(--gd-line);
+  background: var(--gd-metal);
+  background-image: linear-gradient(180deg, #ffffff52, transparent 46%, #20252212);
+  box-shadow: inset 0 1px #ffffff8a;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-next {
+  display: none;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav {
+  gap: 4px;
+  counter-reset: gd-traveler-step;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button {
+  min-height: 64px;
+  color: var(--gd-ink);
+  border: 1px solid var(--gd-line);
+  border-radius: 2px;
+  background: var(--gd-shell);
+  box-shadow: var(--gd-raised);
+  counter-increment: gd-traveler-step;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button > b {
+  color: var(--gd-ink);
+  border-color: var(--gd-active-deep);
+  background: var(--gd-active);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button:not(.complete) > b {
+  font-size: 0;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button:not(.complete) > b > svg {
+  display: none;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button:not(.complete) > b::after {
+  content: counter(gd-traveler-step);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button :is(strong, small) {
+  color: var(--gd-ink);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button.active {
+  color: var(--gd-ink);
+  border-color: var(--gd-active);
+  background: var(--gd-shell);
+  box-shadow: inset 0 3px var(--gd-active), var(--gd-raised);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button.active :is(strong, small) {
+  color: var(--gd-ink);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button.active > b {
+  color: var(--gd-ink);
+  border-color: var(--gd-active-deep);
+  background: var(--gd-active);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button.complete {
+  border-color: var(--gd-confirm);
+  background: color-mix(in srgb, var(--gd-confirm) 8%, var(--gd-shell));
+  box-shadow: inset 0 3px var(--gd-confirm), var(--gd-raised);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button.complete > b {
+  color: #fff;
+  border-color: var(--gd-confirm);
+  background: var(--gd-confirm);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-primary {
+  min-height: 64px;
+  font-size: 14px;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .field-first-primary span {
+  display: none;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .right-panel .smart-plan-preflight button:not(.secondary) {
+  color: var(--gd-ink);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] > footer {
+  min-height: 30px;
+  color: var(--gd-ink);
+  border-color: var(--gd-line);
+  background: var(--gd-metal);
+  background-image: linear-gradient(180deg, #ffffff58, #20252212);
+  box-shadow: inset 0 1px #ffffff8a;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] > footer .online {
+  background: var(--gd-confirm);
+  box-shadow: 0 0 0 1px #ffffff9c;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] > footer .footer-right {
+  color: var(--gd-ink);
+}
+
+/* Project Home, job opening, command surfaces, and dialogs */
+.app-shell[data-presentation="galvanized-daylight"] .project-home-overlay {
+  color: var(--gd-ink);
+  background: var(--gd-shell);
+  background-image:
+    linear-gradient(#2025220b 1px, transparent 1px),
+    linear-gradient(90deg, #2025220b 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .project-home-scroll {
+  background: transparent;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .project-home-nav {
+  color: var(--gd-on-dark);
+  border-color: #59615d;
+  background: var(--gd-graphite);
+  box-shadow: inset 0 -1px #00000052;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .project-home-nav button {
+  color: var(--gd-on-dark);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .project-home-content {
+  color: var(--gd-ink);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .project-home-hero {
+  color: var(--gd-ink);
+  border: 1px solid var(--gd-line);
+  border-radius: 3px;
+  background: var(--gd-shell);
+  background-image: none;
+  box-shadow: inset 0 1px #fff, 0 2px 0 var(--gd-graphite);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .project-home-hero h1,
+.app-shell[data-presentation="galvanized-daylight"] .project-home-hero-copy > p {
+  color: var(--gd-ink);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .home-command-preview,
+  .project-home-grid,
+  .project-home-plan-sources
+) {
+  color: var(--gd-ink);
+  border-color: var(--gd-line);
+  background: var(--gd-metal);
+  background-image: none;
+  box-shadow: inset 0 1px #ffffff85;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .home-command-preview li {
+  color: var(--gd-ink);
+  border-color: var(--gd-line);
+  background: var(--gd-shell);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .project-home-nav button.active,
+  .home-command-preview li.active,
+  .project-home-primary-actions .home-primary,
+  .upload-icon
+) {
+  color: var(--gd-ink);
+  border-color: var(--gd-active-deep);
+  background: var(--gd-active);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .home-command-preview li.complete {
+  border-color: var(--gd-confirm);
+  background: color-mix(in srgb, var(--gd-confirm) 10%, var(--gd-shell));
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .home-command-preview .standby {
+  color: var(--gd-ink);
+  border: 1px solid var(--gd-warning);
+  background: color-mix(in srgb, var(--gd-warning) 14%, var(--gd-shell));
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .project-home-empty {
+  color: var(--gd-ink);
+  border: 1px solid var(--gd-line);
+  border-radius: 2px;
+  background: var(--gd-shell);
+  box-shadow: inset 0 1px #fff;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .project-home-empty :is(strong, p) {
+  color: var(--gd-ink);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .project-home-empty button {
+  color: var(--gd-ink);
+  border-color: var(--gd-active-deep);
+  background: var(--gd-active);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .upload-card {
+  color: var(--gd-ink);
+  border-color: var(--gd-line);
+  border-radius: 3px;
+  background: var(--gd-shell);
+  background-image: none;
+  box-shadow: inset 0 1px #fff, 0 2px 0 var(--gd-graphite);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .command-palette,
+  .cloud-projects-panel,
+  .display-settings-panel,
+  .scale-calibration-guide
+) {
+  color: var(--gd-ink);
+  border: 1px solid var(--gd-line);
+  border-radius: 4px;
+  background: var(--gd-metal);
+  background-image: none;
+  box-shadow: var(--gd-panel-shadow), inset 0 1px #ffffff8a;
+  backdrop-filter: none;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .command-palette,
+  .cloud-projects-panel,
+  .display-settings-panel,
+  .scale-calibration-guide
+) :is(button, input, select) {
+  border-radius: 2px;
+}
+
+/* Redline chrome only; mark data and canvas behavior remain untouched. */
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .field-redline-studio,
+  .redline-dialog,
+  .redline-selection-wheel
+) {
+  color: var(--gd-ink);
+  border: 1px solid var(--gd-line);
+  border-radius: 4px;
+  background: var(--gd-metal);
+  background-image: none;
+  box-shadow: 0 4px 12px #20252235, inset 0 1px #ffffff8a;
+  backdrop-filter: none;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .field-redline-studio,
+  .redline-dialog,
+  .redline-selection-wheel
+) button {
+  color: var(--gd-ink);
+  border: 1px solid var(--gd-line);
+  border-radius: 2px;
+  background: var(--gd-shell);
+  box-shadow: var(--gd-raised);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(.field-redline-studio, .redline-dialog) button.primary {
+  color: var(--gd-ink);
+  border-color: var(--gd-active-deep);
+  background: var(--gd-active);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .redline-dock-heading small,
+  .redline-favorites header small,
+  .redline-layer-controls small
+) {
+  color: var(--gd-muted);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(
+  .redline-safety-note,
+  .redline-layer-controls,
+  .redline-favorites
+) {
+  color: var(--gd-ink);
+  border: 1px solid var(--gd-line);
+  border-radius: 2px;
+  background: var(--gd-shell);
+  box-shadow: inset 0 1px #fff;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .redline-safety-note {
+  border-left: 3px solid var(--gd-critical);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .redline-safety-note :is(span, strong) {
+  color: var(--gd-ink);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .redline-safety-note > svg {
+  color: var(--gd-critical);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .redline-layer-controls input[type="range"] {
+  accent-color: var(--gd-active);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .redline-style-panel {
+  color: var(--gd-ink);
+  border: 1px solid var(--gd-line);
+  border-radius: 3px;
+  background: var(--gd-shell);
+  box-shadow: var(--gd-panel-shadow), inset 0 1px #fff;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .redline-style-panel :is(label, span, small) {
+  color: var(--gd-ink);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .redline-style-panel input[type="range"] {
+  accent-color: var(--gd-active);
+}
+
+/* Selected-object actions read as a compact field instrument, not a game HUD. */
+.app-shell[data-presentation="galvanized-daylight"] .symbol-action-wheel {
+  width: 168px;
+  height: 168px;
+  filter: none;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .symbol-action-wheel::before {
+  inset: 52px;
+  border: 1px solid var(--gd-line);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--gd-metal) 92%, transparent);
+  box-shadow: 0 5px 14px #171b192b, inset 0 1px #ffffff9c;
+  backdrop-filter: none;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .symbol-action-wheel-caption {
+  top: 49px;
+  color: var(--gd-active);
+  letter-spacing: .08em;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .symbol-wheel-action {
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  min-height: 48px;
+  color: var(--gd-ink);
+  border: 1px solid var(--gd-line);
+  border-radius: 3px;
+  background: var(--gd-shell);
+  box-shadow: var(--gd-raised);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .symbol-wheel-action:is(:hover, :focus-visible, .active) {
+  color: var(--gd-ink);
+  border-color: var(--gd-active-deep);
+  outline-color: color-mix(in srgb, var(--gd-active) 32%, transparent);
+  background: var(--gd-active);
+  box-shadow: inset 0 1px #ffffff38, inset 0 -2px var(--gd-active-deep);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .symbol-wheel-action.action-close {
+  color: var(--gd-on-dark);
+  border-color: var(--gd-graphite-deep);
+  border-radius: 3px;
+  background: var(--gd-graphite);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .symbol-wheel-action.danger {
+  color: var(--gd-critical);
+  border-color: var(--gd-critical);
+  background: var(--gd-shell);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .symbol-wheel-action.danger:is(:hover, :focus-visible) {
+  color: #fff;
+  border-color: #7f2f27;
+  background: var(--gd-critical);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] :is(.live-draft-hud, .branch-workflow-hud) {
+  color: var(--gd-on-dark);
+  border: 1px solid var(--gd-graphite-deep);
+  border-radius: 3px;
+  background: var(--gd-graphite);
+  box-shadow: var(--gd-panel-shadow), inset 3px 0 var(--gd-active);
+  backdrop-filter: none;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .live-draft-hud :is(span, strong, b, small) {
+  color: var(--gd-on-dark);
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .live-draft-hud span {
+  color: #f7b190;
+}
+
+/* Compact desktop */
+@media (max-width: 1500px) and (min-width: 1101px) {
+  .app-shell[data-presentation="galvanized-daylight"] {
+    --deck-tools: 152px;
+    --deck-inspector: 272px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .command-rail button {
+    min-width: 74px;
+    padding-inline: 8px;
+    gap: 4px;
+    font-size: 11px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .left-panel.view-draw .tool {
+    min-height: 44px;
+    grid-template-columns: 21px minmax(0, 1fr) auto;
+    padding-inline: 6px;
+    gap: 5px;
+    font-size: 10px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button small {
+    display: none;
+  }
+}
+
+@media (max-width: 1359px) {
+  .app-shell[data-presentation="galvanized-daylight"] .topbar .top-actions > .top-save-button {
+    display: inline-flex !important;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .topbar .top-actions > .cloud-button {
+    display: none !important;
+  }
+}
+
+/* Tablet landscape: destinations stay above the canvas; tools and inspector
+   retain their established opaque drawer behavior. */
+@media (min-width: 900px) and (max-width: 1359px) {
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode) > .workspace,
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode).left-closed > .workspace,
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode).right-closed > .workspace,
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode).left-closed.right-closed > .workspace,
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode).wide-inspector > .workspace {
+    grid-template-areas:
+      "rail"
+      "canvas";
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: 48px minmax(0, 1fr);
+    gap: 4px;
+    padding: 4px;
+    background: var(--gd-shell);
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .command-rail {
+    height: 48px;
+    min-height: 48px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .command-rail button {
+    min-width: 84px;
+    min-height: 48px;
+    height: 48px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode) .left-panel,
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode) .right-panel {
+    top: 96px;
+    bottom: 110px;
+    width: min(380px, 88vw);
+    border-radius: 0 3px 3px 0;
+    box-shadow: var(--gd-panel-shadow);
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode) .right-panel {
+    border-radius: 3px 0 0 3px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .workspace-drawer-scrim {
+    inset: 96px 0 110px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .canvas-toolbar button {
+    min-height: 42px;
+  }
+}
+
+/* Mobile: compact job bar, top destination membrane, dominant plan,
+   workflow traveler, and opaque tool/inspector sheets. */
+@media (max-width: 899px), (orientation: portrait) and (pointer: coarse) {
+  .app-shell.field-first-workspace[data-visual-world="patternmakers-layout-table"][data-presentation="galvanized-daylight"]:not(.field-mode) {
+    grid-template-rows: 48px minmax(0, 1fr) 64px 24px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.field-mode) > .topbar {
+    height: 48px;
+    min-height: 48px;
+    grid-template-columns: minmax(150px, 1fr) auto;
+    gap: 6px;
+    padding: 0 7px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .brand {
+    height: 48px;
+    padding-right: 4px;
+    border-right: 0;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .brand-mark {
+    width: 32px;
+    height: 32px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .brand strong {
+    font-size: 14px;
+    line-height: 14px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .brand span,
+  .app-shell[data-presentation="galvanized-daylight"] .project-name {
+    display: none;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .brand > div:last-child {
+    display: block !important;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .top-actions {
+    gap: 4px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .top-actions .studio-save-state {
+    display: inline-flex;
+    min-width: 0;
+    max-width: 72px;
+    overflow: hidden;
+    color: var(--gd-on-dark);
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .top-actions .top-history-button {
+    display: none;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .top-actions > button {
+    width: 48px;
+    min-width: 48px;
+    height: 48px;
+    padding: 0 !important;
+    justify-content: center;
+    font-size: 0 !important;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .topbar .top-actions > .top-save-button {
+    display: inline-flex !important;
+    color: var(--gd-ink) !important;
+    border-color: var(--gd-active-deep) !important;
+    background: var(--gd-active) !important;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode) > .workspace,
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode).left-closed > .workspace,
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode).right-closed > .workspace,
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode).left-closed.right-closed > .workspace,
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode).wide-inspector > .workspace {
+    grid-template-areas:
+      "rail"
+      "canvas";
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: 48px minmax(0, 1fr);
+    gap: 3px;
+    padding: 3px;
+    background: var(--gd-shell);
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .command-rail {
+    position: static;
+    z-index: auto;
+    width: 100%;
+    height: 48px;
+    min-height: 48px;
+    padding: 0;
+    flex-direction: row;
+    gap: 0;
+    color: var(--gd-ink);
+    border: 0;
+    border-radius: 2px;
+    background: var(--gd-metal);
+    box-shadow: inset 0 1px #ffffff9c, inset 0 -1px #20252242;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .command-rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .command-rail-group {
+    display: contents;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .command-rail-review {
+    padding: 0;
+    border: 0;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .command-rail button {
+    width: auto;
+    min-width: 48px;
+    min-height: 48px;
+    height: 48px;
+    padding: 3px 2px;
+    flex: 1 1 48px;
+    flex-direction: column;
+    gap: 2px;
+    color: var(--gd-ink);
+    border: 0;
+    border-right: 1px solid var(--gd-line-soft);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    font-size: 10px;
+    line-height: 11px;
+    scroll-snap-align: start;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .command-rail button svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .command-rail button:hover:not(:disabled) {
+    color: var(--gd-ink);
+    border-color: var(--gd-active);
+    background: #ffffff57;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .command-rail-settings {
+    margin: 0 0 0 auto;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode) .left-panel,
+  .app-shell[data-presentation="galvanized-daylight"].tablet-layout:not(.field-mode) .right-panel {
+    top: max(48px, env(safe-area-inset-top));
+    bottom: calc(88px + env(safe-area-inset-bottom));
+    width: min(390px, 94vw);
+    padding-bottom: 0;
+    box-shadow: var(--gd-panel-shadow);
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .workspace-drawer-scrim {
+    inset: max(48px, env(safe-area-inset-top)) 0 calc(88px + env(safe-area-inset-bottom));
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.field-mode) .canvas-area {
+    border-radius: 2px;
+    grid-template-rows: 58px minmax(0, 1fr);
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.field-mode) .canvas {
+    border-radius: 0 0 1px 1px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.field-mode) .canvas-toolbar {
+    min-height: 58px;
+    padding: 4px 5px 6px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .canvas-toolbar button {
+    min-height: 48px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] > .field-first-guide {
+    height: 64px;
+    min-height: 64px;
+    padding: 4px 5px;
+    grid-template-columns: minmax(0, 1fr) 96px;
+    gap: 4px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px;
+    overflow: hidden;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button {
+    min-width: 0;
+    min-height: 48px;
+    padding: 3px;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button > b {
+    width: 18px;
+    height: 18px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button:not(.complete) > b::after {
+    font-size: 10px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button strong {
+    overflow-wrap: normal;
+    font-size: 9px;
+    line-height: 10px;
+    text-wrap: balance;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button small {
+    display: none;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .field-first-primary {
+    position: static;
+    width: 96px;
+    min-width: 96px;
+    min-height: 48px;
+    height: 48px;
+    padding: 0 9px;
+    gap: 4px;
+    font-size: 10px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .field-first-primary span {
+    display: none;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .right-tabs {
+    grid-template-columns: minmax(0, 1fr) 70px 48px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .right-tablist {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .right-tablist > button {
+    min-width: 0;
+    padding-inline: 3px;
+    overflow: hidden;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .right-fix-plan {
+    min-width: 70px !important;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .right-collapse {
+    min-width: 48px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] > footer {
+    height: 24px;
+    min-height: 24px;
+    gap: 8px;
+    padding-inline: 8px;
+    font-size: 9px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] > footer > span:nth-child(2),
+  .app-shell[data-presentation="galvanized-daylight"] > footer .footer-right {
+    display: none;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .project-home-content {
+    padding-inline: 12px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .project-home-hero {
+    border-radius: 2px;
+  }
+}
+
+@media (max-width: 350px) {
+  .app-shell[data-presentation="galvanized-daylight"] .top-actions .studio-save-state {
+    width: 14px;
+    min-width: 14px;
+    max-width: 14px;
+    margin: 0;
+    font-size: 0;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .command-rail {
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .command-rail button {
+    flex: 0 0 48px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] > .field-first-guide {
+    grid-template-columns: minmax(0, 1fr) 88px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav {
+    grid-template-columns: repeat(5, minmax(48px, 1fr));
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .field-first-guide > nav > button {
+    scroll-snap-align: start;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .field-first-primary {
+    width: 88px;
+    min-width: 88px;
+    padding-inline: 6px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .right-tablist {
+    display: grid;
+    grid-template-columns: repeat(4, 48px);
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .right-tablist > button {
+    min-width: 48px;
+  }
+}
+
+@media (pointer: coarse) {
+  .app-shell[data-presentation="galvanized-daylight"] :is(
+    .command-rail button,
+    .left-panel-tabs button,
+    .right-tabs button,
+    .canvas-toolbar button
+  ) {
+    min-height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-presentation="galvanized-daylight"] *,
+  .app-shell[data-presentation="galvanized-daylight"] *::before,
+  .app-shell[data-presentation="galvanized-daylight"] *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media print {
+  .app-shell[data-visual-world="patternmakers-layout-table"][data-presentation="galvanized-daylight"] {
+    color: #000;
+    background: #fff;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] :is(.command-rail, .field-first-guide) {
+    display: none !important;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.field-mode) > .workspace {
+    display: block;
+    padding: 0;
+    background: #fff;
+    box-shadow: none;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] :is(.plan-sheet, .pdf-stage canvas) {
+    background: #fff !important;
+  }
+}
