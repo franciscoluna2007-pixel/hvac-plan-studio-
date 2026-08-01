@@ -58,7 +58,7 @@ export const metadata: Metadata = {
       url: "/og.png",
       width: 1728,
       height: 908,
-      alt: "HVAC Plan Studio framing a mechanical source plan on a measured layout table",
+      alt: "HVAC Plan Studio framing a mechanical source plan on a galvanized daylight workbench",
     }],
   },
   twitter: {
@@ -80,9 +80,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${patternCondensed.variable} antialiased`}
       >
         <template
-          data-impeccable-direction="patternmakers-layout-table"
+          data-impeccable-direction="galvanized-daylight"
           dangerouslySetInnerHTML={{
-            __html: "<!-- THESIS: the source plan is an open patternmaking surface, not a dashboard. OWN-WORLD: kraft, chalk paper, graphite, Prussian blue, brick red, zinc trays, steel rules. STORY: open, draw, inspect, advance. FIRST VIEWPORT: identity plate, measured worktable, ledger inspector, bottom traveler. FORM: user-pinned direction, decision ef99ff31. FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md -->",
+            __html: "<!-- THESIS: the source plan is the white workpiece on a clean fabrication bench. OWN-WORLD: matte graphite, galvanized plate, exact plan white, safety orange, pressed controls, hard seams. STORY: open, choose, draw, inspect, advance. FIRST VIEWPORT: graphite job bar, horizontal destination rail, compact tool dock, white plan, ledger inspector, unchanged traveler. FORM: approved Concept A, presentation-only over frozen behavior. FINISH: agency-signoff fidelity across desktop, tablet, and mobile. -->",
           }}
         />
         {children}
