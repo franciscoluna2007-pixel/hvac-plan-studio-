@@ -1,111 +1,173 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-07-31T12:50:39.977Z",
-  "title": "HVAC Plan Studio — Field Command Console",
+  "generatedAt": "2026-08-01T04:52:38.128Z",
+  "title": "HVAC Plan Studio - Patternmaker's Layout Table",
   "extensions": {
     "narrative": {
-      "northStar": "HVAC Plan Studio is a **Field Command Console**: precise, calm, and operational. It should feel like dependable professional equipment placed beside the source plan—not a dashboard competing for attention and never gaming software or generic office software.",
-      "depth": "The visual system combines **Layered Control Surfaces** with selective **Raised Instrument Panels**. Everyday structure comes from deep navy tonal layers and crisp borders. Depth, glow, and tactile highlights are reserved for the active tool, the current decision, and temporary workspaces that sit above the plan. Components are compact and confident so experienced users can move quickly without losing clarity."
+      "northStar": "HVAC Plan Studio feels like a patternmaker's working layout table: measured, physical, quiet, and ready for exact drafting.",
+      "workspace": "Draw & Detail is the drafting workspace. Redline remains an internal workspace within HVAC Plan Studio.",
+      "planAuthority": "The source plan is authoritative pure white. Material texture belongs to surrounding chrome only.",
+      "changeBoundary": "This visual system does not change workflows, gestures, placement, layers, or the data model."
     },
     "colorMeta": {
-      "Plan Navy": { "value": "#07111f", "role": "App background and deepest surface" },
-      "Control Navy": { "value": "#0d1b2d", "role": "Panels and standard controls" },
-      "Raised Navy": { "value": "#12243a", "role": "Active and elevated controls" },
-      "Structural Line": { "value": "#203752", "role": "Borders and divisions" },
-      "Working Ink": { "value": "#dbe6f5", "role": "Primary interface text" },
-      "Muted Steel": { "value": "#708198", "role": "Secondary text and metadata" },
-      "Signal Cyan": { "value": "#2ccce4", "role": "Primary action and focus" },
-      "Branch Gold": { "value": "#f7b733", "role": "T/Y branch work" },
-      "Critical Coral": { "value": "#f0525a", "role": "Errors and blockers" },
-      "Approval Green": { "value": "#35c98b", "role": "Confirmed and ready states" },
-      "Attention Orange": { "value": "#ff8a3d", "role": "Non-blocking caution" }
+      "Kraft": {
+        "value": "#D8C49A",
+        "role": "Product identity bar, reference tabs, and warm structural fields"
+      },
+      "Ledger Paper": {
+        "value": "#F7F4EA",
+        "role": "Tool tray, inspector, traveler, menus, and readable chrome"
+      },
+      "Plan White": {
+        "value": "#FFFFFF",
+        "role": "Untinted and untextured source plan/PDF surface"
+      },
+      "Graphite": {
+        "value": "#2B2B28",
+        "role": "Primary text, rules, icons, and working marks"
+      },
+      "Prussian Blue": {
+        "value": "#28527A",
+        "role": "Active tool, current workspace, primary action, links, and focus"
+      },
+      "Brick Red": {
+        "value": "#A84537",
+        "role": "Redline identity, correction marks, and destructive emphasis"
+      },
+      "Aged Zinc": {
+        "value": "#AEB1AA",
+        "role": "Command rail, hardware edges, dividers, and inactive controls"
+      },
+      "Success": {
+        "value": "#536B50",
+        "role": "Saved, checked, connected, and ready states"
+      },
+      "Warning": {
+        "value": "#8A5E23",
+        "role": "Needs-review and caution states"
+      }
     },
     "typographyMeta": {
-      "interface": { "family": "Geist Sans, system-ui, sans-serif", "range": "8px–25px", "weights": [500, 600, 700, 800] },
-      "technical": { "family": "Geist Mono, ui-monospace, monospace", "use": "Measurements, identifiers, coordinates, and calculated values" },
-      "hero": { "family": "Geist Sans, system-ui, sans-serif", "range": "28px–46px", "use": "First-run and focused workspace messaging only" }
+      "display": {
+        "family": "Barlow Condensed, Arial Narrow, sans-serif",
+        "source": "self-hosted",
+        "weights": [
+          600,
+          700,
+          800
+        ],
+        "use": "Brand, headings, tools, workflow labels, buttons, tabs, and short status stamps"
+      },
+      "body": {
+        "family": "Geist Sans, system-ui, sans-serif",
+        "use": "Instructions, descriptions, form labels, help, and notes"
+      },
+      "technical": {
+        "family": "Geist Mono, ui-monospace, monospace",
+        "use": "Dimensions, scale, coordinates, identifiers, airflow values, and counts"
+      }
     },
-    "shadows": {
-      "active": "0 5px 18px rgba(14, 155, 202, 0.15)",
-      "raised": "0 24px 80px rgba(0, 0, 0, 0.6)",
-      "modal": "0 38px 120px rgba(0, 0, 0, 0.8), inset 0 1px rgba(255, 255, 255, 0.05)",
-      "insetHighlight": "inset 0 1px rgba(255, 255, 255, 0.04)"
-    },
-    "motion": {
-      "fast": "160ms ease-out",
-      "standard": "200ms ease-out",
-      "deliberate": "250ms cubic-bezier(.2, .8, .2, 1)",
-      "reducedMotion": "Remove nonessential animation and preserve instantaneous state changes"
-    },
-    "breakpoints": {
-      "compactPhone": "560px",
-      "fieldTablet": "760px",
-      "compactWorkspace": "980px",
-      "wideWorkspace": "1350px",
-      "largePlanDisplay": "1920px"
+    "materials": {
+      "kraft": {
+        "asset": "/materials/pattern-kraft-fiber.webp",
+        "use": "52px identity bar, reference tabs, and small label fields"
+      },
+      "agedZinc": {
+        "asset": "/materials/pattern-aged-zinc.webp",
+        "use": "Command rail, hardware edges, and separators"
+      },
+      "ledgerPaper": {
+        "asset": "/materials/pattern-ledger-paper.webp",
+        "use": "Tool tray, inspector, bottom traveler, and menus"
+      },
+      "planRule": "Never apply a material asset, tint, filter, blend mode, opacity wash, or off-white color to the plan/PDF."
     },
     "layout": {
-      "shell": "72px global bar, 72px mission strip, flexible work deck, 30px status deck",
-      "desktopDeck": "64px command rail, 280px tool dock, fluid plan canvas, 336px inspector",
-      "focusedInspector": "420px inspector while preserving a practical plan width",
-      "tablet": "Persistent command rail with overlay tool and inspector docks",
-      "mobile": "Horizontal bottom command rail, scrollable mission stages, and touch-safe overlay docks"
+      "desktopRows": "52px identity bar, minmax(0, 1fr) workspace, 76px bottom traveler, 34px status strip",
+      "desktopWorkspace": "58px command rail, 224px tool tray, minmax(0, 1fr) plan, 304px inspector",
+      "compact": "Reduce gaps and supporting chrome before constraining the plan; drawerize the tray or inspector when both no longer fit.",
+      "tabletMobile": "Plan-first view with tray and inspector drawers plus a horizontal command rail with 49px minimum targets.",
+      "responsiveGuardrail": "Opening a drawer does not alter the current tool, selection, placement state, workflow, or plan viewport."
+    },
+    "layerOrder": [
+      "Source plan/PDF on #FFFFFF",
+      "Redline markup",
+      "HVAC runs, symbols, fitting previews, and T/Y tools",
+      "Existing selection handles and temporary interaction affordances"
+    ],
+    "shape": {
+      "controlRadius": "2px",
+      "panelRadius": "3px",
+      "rule": "1px graphite or zinc structure",
+      "activeRule": "2px inset Prussian Blue plus a text label and pressed/current attribute",
+      "depth": "Physical inset and 1-2px raised edges; restrained drawer and modal separation only",
+      "measure": "Regular low-contrast rule marks outside the source plan"
+    },
+    "motion": {
+      "standard": "170ms ease-out",
+      "properties": "Opacity, color, border, and up to 1px translation",
+      "reducedMotion": "Remove nonessential transition and animation while preserving every state cue"
+    },
+    "accessibility": {
+      "focus": "2px Prussian Blue outline with 2px offset, visible on kraft, ledger, zinc, and white",
+      "state": "Color is never the sole cue; pair it with text and an icon, rule, underline, check, or position marker.",
+      "mobileTargets": "Horizontal command rail controls are at least 49px in both axes."
     }
   },
   "components": [
     {
-      "name": "Command Rail",
-      "description": "Persistent workspace navigation that opens the correct instrument dock without changing plan geometry.",
-      "html": "<nav class=\"ds-command-rail\" aria-label=\"Field command rail\"><button type=\"button\" aria-pressed=\"true\"><span aria-hidden=\"true\">╱</span><span>Draw</span></button><button type=\"button\"><span aria-hidden=\"true\">▦</span><span>Symbols</span></button></nav>",
-      "css": ":host{font-family:Geist Sans,system-ui,sans-serif}.ds-command-rail{box-sizing:border-box;width:64px;padding:6px;display:grid;gap:5px;border:1px solid #294762;border-radius:12px;background:linear-gradient(180deg,#0e2033,#091827);box-shadow:0 18px 44px rgba(1,7,17,.44),inset 0 1px rgba(255,255,255,.03)}.ds-command-rail button{min-height:50px;padding:5px 2px;display:grid;place-items:center;gap:4px;border:1px solid transparent;border-radius:7px;color:#8299ad;background:transparent;font:750 8px inherit}.ds-command-rail button[aria-pressed=true]{color:#eafaff;border-color:#347089;background:linear-gradient(180deg,#183a51,#102a3f);box-shadow:inset 3px 0 #2ccce4}.ds-command-rail button:focus-visible{outline:2px solid #2ccce4;outline-offset:2px}"
+      "name": "Kraft Identity Bar",
+      "description": "A 52px product bar that keeps HVAC Plan Studio and the Draw & Detail workspace distinct.",
+      "html": "<header class=\"pm-identity\"><div class=\"pm-brand\"><strong>HVAC Plan Studio</strong><span>Draw &amp; Detail</span></div><div class=\"pm-job\"><span>Current job</span><b>North Shop</b></div><button type=\"button\">Saved jobs</button></header>",
+      "css": ":host{display:block;color:#2B2B28;font-family:Geist Sans,system-ui,sans-serif}.pm-identity{box-sizing:border-box;height:52px;display:flex;align-items:center;gap:18px;padding:0 14px;border:1px solid #8f846b;border-radius:2px;background-color:#D8C49A;background-image:url('/materials/pattern-kraft-fiber.webp');box-shadow:inset 0 1px rgba(255,255,255,.42),inset 0 -2px rgba(43,43,40,.2)}.pm-brand{display:flex;align-items:baseline;gap:12px}.pm-brand strong,.pm-brand span,.pm-job span,.pm-identity button{font-family:'Barlow Condensed','Arial Narrow',sans-serif}.pm-brand strong{font-size:20px;font-weight:800;letter-spacing:.02em}.pm-brand span{padding-left:12px;border-left:1px solid rgba(43,43,40,.42);font-size:14px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}.pm-job{margin-left:auto;display:grid;line-height:1}.pm-job span{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}.pm-job b{margin-top:3px;font-size:11px;font-weight:600}.pm-identity button{min-height:32px;padding:0 10px;border:1px solid #2B2B28;border-radius:2px;color:#2B2B28;background:#F7F4EA;font-size:12px;font-weight:700;transition:background-color 170ms ease-out,transform 170ms ease-out}.pm-identity button:hover{background:#FFFFFF;transform:translateY(-1px)}.pm-identity button:focus-visible{outline:2px solid #28527A;outline-offset:2px}@media(prefers-reduced-motion:reduce){.pm-identity button{transition:none}}"
     },
     {
-      "name": "Primary Action",
-      "description": "A compact cyan control for the single preferred next action.",
-      "html": "<button class=\"ds-primary-action\" type=\"button\">Apply change</button>",
-      "css": ":host{font-family:Geist Sans,system-ui,sans-serif}.ds-primary-action{min-height:32px;padding:0 12px;border:1px solid #42d8ef;border-radius:6px;color:#04111b;background:linear-gradient(180deg,#2ec8ef,#1398d2);box-shadow:0 5px 18px rgba(14,155,202,.15);font:700 12px inherit;cursor:pointer;transition:filter 160ms ease-out,transform 160ms ease-out}.ds-primary-action:hover{filter:brightness(1.08);transform:translateY(-1px)}.ds-primary-action:focus-visible{outline:2px solid #2ccce4;outline-offset:2px}.ds-primary-action:active{transform:translateY(0)}"
+      "name": "Measured Command Rail",
+      "description": "A 58px zinc workspace rail that becomes horizontal with 49px targets on tablet and mobile.",
+      "html": "<nav class=\"pm-rail\" aria-label=\"Workspace commands\"><button type=\"button\" aria-current=\"page\"><span aria-hidden=\"true\">/</span><b>Draw</b></button><button type=\"button\"><span aria-hidden=\"true\">+</span><b>Symbols</b></button><button type=\"button\"><span aria-hidden=\"true\">R</span><b>Redline</b></button></nav>",
+      "css": ":host{display:block;font-family:'Barlow Condensed','Arial Narrow',sans-serif}.pm-rail{box-sizing:border-box;width:58px;display:grid;align-content:start;gap:2px;padding:5px;border:1px solid #777b76;border-radius:2px;background-color:#AEB1AA;background-image:url('/materials/pattern-aged-zinc.webp');box-shadow:inset 1px 0 rgba(255,255,255,.45),inset -2px 0 rgba(43,43,40,.18)}.pm-rail button{position:relative;min-width:46px;min-height:46px;display:grid;place-items:center;gap:1px;padding:3px;border:1px solid transparent;border-radius:2px;color:#2B2B28;background:rgba(247,244,234,.24);font:600 10px 'Barlow Condensed','Arial Narrow',sans-serif;letter-spacing:.035em;transition:background-color 170ms ease-out,box-shadow 170ms ease-out}.pm-rail button span{font:700 15px Geist Mono,ui-monospace,monospace}.pm-rail button[aria-current=page]{border-color:#2B2B28;background:#F7F4EA;box-shadow:inset 3px 0 #28527A}.pm-rail button[aria-current=page] b:after{content:' current';position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.pm-rail button:hover{background:#FFFFFF}.pm-rail button:focus-visible{outline:2px solid #28527A;outline-offset:2px}@media(max-width:780px){.pm-rail{width:100%;height:49px;grid-auto-flow:column;grid-auto-columns:minmax(49px,1fr);align-content:stretch;padding:0;overflow-x:auto}.pm-rail button{min-width:49px;min-height:49px}.pm-rail button[aria-current=page]{box-shadow:inset 0 -3px #28527A}}@media(prefers-reduced-motion:reduce){.pm-rail button{transition:none}}"
     },
     {
-      "name": "Secondary Action",
-      "description": "A reversible utility control that remains subordinate to the primary action.",
-      "html": "<button class=\"ds-secondary-action\" type=\"button\">Fit plan</button>",
-      "css": ":host{font-family:Geist Sans,system-ui,sans-serif}.ds-secondary-action{min-height:32px;padding:0 10px;border:1px solid #24364b;border-radius:6px;color:#dbe6f5;background:#0d1b2d;font:600 12px inherit;cursor:pointer;transition:background 160ms ease-out,border-color 160ms ease-out}.ds-secondary-action:hover{background:#162335;border-color:#35506d}.ds-secondary-action:focus-visible{outline:2px solid #2ccce4;outline-offset:2px}.ds-secondary-action:disabled{opacity:.45;cursor:not-allowed}"
+      "name": "Ledger Tool Tray",
+      "description": "A 224px ledger sheet for the current workspace tools; selected tools keep a label and gain an inset rule.",
+      "html": "<aside class=\"pm-tray\" aria-labelledby=\"pm-tools-title\"><header><span id=\"pm-tools-title\">Draw tools</span><small>Draw &amp; Detail</small></header><button type=\"button\" aria-pressed=\"true\"><i aria-hidden=\"true\">/</i><b>Supply run</b><kbd>R</kbd></button><button type=\"button\" aria-pressed=\"false\"><i aria-hidden=\"true\">T</i><b>Place T/Y</b><kbd>T</kbd></button><button type=\"button\" aria-pressed=\"false\"><i aria-hidden=\"true\">O</i><b>Symbol</b><kbd>S</kbd></button></aside>",
+      "css": ":host{display:block;color:#2B2B28;font-family:Geist Sans,system-ui,sans-serif}.pm-tray{box-sizing:border-box;width:224px;padding:12px 10px;border:1px solid #8c8e89;border-radius:3px;background-color:#F7F4EA;background-image:url('/materials/pattern-ledger-paper.webp');box-shadow:inset 0 1px #FFFFFF,inset -2px 0 rgba(43,43,40,.12)}.pm-tray header{display:flex;align-items:baseline;justify-content:space-between;margin:0 2px 8px;padding-bottom:7px;border-bottom:1px solid rgba(43,43,40,.42)}.pm-tray header span{font:700 15px 'Barlow Condensed','Arial Narrow',sans-serif;letter-spacing:.04em;text-transform:uppercase}.pm-tray header small{font:500 9px Geist Sans,system-ui,sans-serif}.pm-tray button{box-sizing:border-box;width:100%;min-height:38px;display:flex;align-items:center;gap:9px;padding:0 8px;border:1px solid transparent;border-bottom-color:rgba(43,43,40,.2);border-radius:2px;color:#2B2B28;background:transparent;text-align:left;transition:background-color 170ms ease-out,box-shadow 170ms ease-out}.pm-tray button i{width:20px;color:#2B2B28;font:700 14px Geist Mono,ui-monospace,monospace;font-style:normal;text-align:center}.pm-tray button b{font:700 13px 'Barlow Condensed','Arial Narrow',sans-serif;letter-spacing:.025em}.pm-tray kbd{margin-left:auto;font:600 10px Geist Mono,ui-monospace,monospace}.pm-tray button[aria-pressed=true]{border-color:#7d817c;background:#FFFFFF;box-shadow:inset 3px 0 #28527A}.pm-tray button[aria-pressed=true] b:after{content:' - selected';font:500 9px Geist Sans,system-ui,sans-serif}.pm-tray button:hover{background:#FFFFFF}.pm-tray button:focus-visible{outline:2px solid #28527A;outline-offset:2px}@media(prefers-reduced-motion:reduce){.pm-tray button{transition:none}}"
     },
     {
-      "name": "Branch Action",
-      "description": "A gold instrument control reserved for T/Y creation and confirmation.",
-      "html": "<button class=\"ds-branch-action\" type=\"button\"><span aria-hidden=\"true\">⑂</span> Place branch</button>",
-      "css": ":host{font-family:Geist Sans,system-ui,sans-serif}.ds-branch-action{min-height:32px;padding:0 12px;border:1px solid #f7d45f;border-radius:5px;color:#251b00;background:linear-gradient(180deg,#ffe783,#d3a41e);box-shadow:0 5px 18px rgba(230,183,42,.14);font:800 11px inherit;letter-spacing:.3px;text-transform:uppercase;cursor:pointer;transition:filter 160ms ease-out,transform 160ms ease-out}.ds-branch-action:hover{filter:brightness(1.07);transform:translateY(-1px)}.ds-branch-action:focus-visible{outline:2px solid #f7b733;outline-offset:2px}.ds-branch-action:active{transform:none}"
+      "name": "Authoritative Plan Stack",
+      "description": "A pure-white source plan with Redline above it and HVAC runs, symbols, and T/Y tools above Redline.",
+      "html": "<figure class=\"pm-plan\" aria-label=\"Source plan with Redline below HVAC work\"><div class=\"pm-plan-white\"><span class=\"pm-source pm-source-a\" aria-hidden=\"true\"></span><span class=\"pm-source pm-source-b\" aria-hidden=\"true\"></span><span class=\"pm-redline\" aria-hidden=\"true\"></span><span class=\"pm-hvac\" aria-hidden=\"true\"></span><span class=\"pm-ty\" aria-hidden=\"true\">T</span></div><figcaption><span>Source plan</span><span>Redline: visible</span><strong>HVAC work: top layer</strong></figcaption></figure>",
+      "css": ":host{display:block;color:#2B2B28;font-family:Geist Sans,system-ui,sans-serif}.pm-plan{box-sizing:border-box;width:330px;margin:0;padding:7px;border:1px solid #777b76;border-radius:3px;background-color:#AEB1AA;background-image:url('/materials/pattern-aged-zinc.webp');box-shadow:inset 0 1px rgba(255,255,255,.48),inset 0 -2px rgba(43,43,40,.2)}.pm-plan-white{position:relative;height:190px;overflow:hidden;border:1px solid #2B2B28;border-radius:2px;background:#FFFFFF}.pm-source{position:absolute;z-index:1;background:#d7d7d3}.pm-source-a{left:24px;top:40px;width:250px;height:1px;box-shadow:0 58px #d7d7d3,0 112px #d7d7d3}.pm-source-b{left:80px;top:18px;width:1px;height:145px;box-shadow:118px 0 #d7d7d3}.pm-redline{position:absolute;z-index:2;left:42px;top:72px;width:175px;height:48px;border:2px dashed #A84537;border-radius:2px;transform:rotate(-2deg)}.pm-hvac{position:absolute;z-index:3;left:34px;top:94px;width:238px;height:5px;background:#28527A;box-shadow:0 0 0 1px #FFFFFF,0 0 0 2px #28527A;transform:rotate(4deg);transform-origin:left center}.pm-ty{position:absolute;z-index:3;left:176px;top:77px;width:24px;height:24px;display:grid;place-items:center;border:2px solid #28527A;border-radius:2px;color:#28527A;background:#FFFFFF;font:800 13px 'Barlow Condensed','Arial Narrow',sans-serif}.pm-plan figcaption{display:flex;align-items:center;gap:10px;padding:6px 2px 0;font-size:9px}.pm-plan figcaption span,.pm-plan figcaption strong{padding-left:7px;border-left:3px solid #2B2B28}.pm-plan figcaption span:nth-child(2){border-color:#A84537}.pm-plan figcaption strong{border-color:#28527A;font-weight:700}"
     },
     {
-      "name": "Property Input",
-      "description": "A compact technical field for direct, reviewable plan properties.",
-      "html": "<label class=\"ds-property\"><span>Duct size</span><input value=\"12 × 8 in\" aria-describedby=\"ds-property-help\"><small id=\"ds-property-help\">Width × height</small></label>",
-      "css": ":host{font-family:Geist Sans,system-ui,sans-serif}.ds-property{display:grid;gap:4px;width:180px;color:#8fa0b7;font:700 9px inherit;letter-spacing:.5px;text-transform:uppercase}.ds-property input{box-sizing:border-box;height:31px;padding:0 8px;border:1px solid #213247;border-radius:5px;color:#dbe6f5;background:#0e1b2a;font:500 12px Geist Mono,ui-monospace,monospace;text-transform:none}.ds-property input:hover{border-color:#35506d}.ds-property input:focus-visible{outline:2px solid #2ccce4;outline-offset:2px}.ds-property small{color:#708198;font:500 9px Geist Sans,system-ui,sans-serif;letter-spacing:0;text-transform:none}"
+      "name": "Technical Input",
+      "description": "A squared measured field with a mono value, visible focus, and written guidance.",
+      "html": "<label class=\"pm-field\"><span>Duct size</span><input value=\"12 x 8 in\" aria-describedby=\"pm-field-help\"><small id=\"pm-field-help\">Width x height</small></label>",
+      "css": ":host{display:block;color:#2B2B28;font-family:Geist Sans,system-ui,sans-serif}.pm-field{box-sizing:border-box;width:190px;display:grid;gap:4px;padding:10px;border:1px solid #AEB1AA;border-radius:3px;background:#F7F4EA;box-shadow:inset 0 1px #FFFFFF}.pm-field>span{font:700 12px 'Barlow Condensed','Arial Narrow',sans-serif;letter-spacing:.045em;text-transform:uppercase}.pm-field input{box-sizing:border-box;height:34px;padding:0 8px;border:1px solid #6d6e6a;border-radius:2px;color:#2B2B28;background:#FFFFFF;font:600 12px Geist Mono,ui-monospace,monospace;transition:border-color 170ms ease-out,box-shadow 170ms ease-out}.pm-field input:hover{border-color:#2B2B28}.pm-field input:focus-visible{outline:2px solid #28527A;outline-offset:2px}.pm-field small{font:500 10px Geist Sans,system-ui,sans-serif}@media(prefers-reduced-motion:reduce){.pm-field input{transition:none}}"
     },
     {
-      "name": "Tool Row",
-      "description": "A full-width tool choice with persistent identity and an unmistakable active state.",
-      "html": "<button class=\"ds-tool-row\" type=\"button\" aria-pressed=\"true\"><span class=\"ds-tool-icon\" aria-hidden=\"true\">╱</span><span>Supply run</span><kbd>R</kbd></button>",
-      "css": ":host{font-family:Geist Sans,system-ui,sans-serif}.ds-tool-row{position:relative;box-sizing:border-box;width:210px;height:41px;display:flex;align-items:center;gap:10px;padding:0 10px;border:0;border-radius:6px;color:#dff6ff;background:#12263a;box-shadow:inset 2px 0 #2ccce4;font:600 12px inherit;text-align:left;cursor:pointer}.ds-tool-row:hover{background:#173149}.ds-tool-row:focus-visible{outline:2px solid #2ccce4;outline-offset:2px}.ds-tool-icon{width:24px;color:#2ccce4;text-align:center;font-size:20px}.ds-tool-row kbd{margin-left:auto;color:#708198;font:500 10px Geist Mono,ui-monospace,monospace}"
+      "name": "Ledger Inspector",
+      "description": "A 304px sheet for current selection data and direct review guidance without changing selection behavior.",
+      "html": "<section class=\"pm-inspector\" aria-labelledby=\"pm-inspector-title\"><header><span id=\"pm-inspector-title\">Selected supply run</span><small>1 item</small></header><dl><div><dt>Size</dt><dd>12 x 8 in</dd></div><div><dt>Airflow</dt><dd>620 CFM</dd></div><div><dt>Layer</dt><dd>Supply</dd></div></dl><p class=\"pm-warning\"><b aria-hidden=\"true\">!</b><span><strong>Needs review</strong> Check the outlet connection.</span></p></section>",
+      "css": ":host{display:block;color:#2B2B28;font-family:Geist Sans,system-ui,sans-serif}.pm-inspector{box-sizing:border-box;width:304px;padding:13px;border:1px solid #8c8e89;border-radius:3px;background-color:#F7F4EA;background-image:url('/materials/pattern-ledger-paper.webp');box-shadow:inset 0 1px #FFFFFF,inset 2px 0 rgba(43,43,40,.1)}.pm-inspector header{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:8px;border-bottom:1px solid rgba(43,43,40,.48)}.pm-inspector header span{font:700 15px 'Barlow Condensed','Arial Narrow',sans-serif;letter-spacing:.035em;text-transform:uppercase}.pm-inspector header small{font:600 10px Geist Mono,ui-monospace,monospace}.pm-inspector dl{margin:8px 0}.pm-inspector dl div{display:grid;grid-template-columns:1fr auto;gap:12px;padding:7px 2px;border-bottom:1px solid rgba(43,43,40,.18)}.pm-inspector dt{font:600 11px Geist Sans,system-ui,sans-serif}.pm-inspector dd{margin:0;font:600 11px Geist Mono,ui-monospace,monospace}.pm-warning{display:flex;gap:8px;margin:10px 0 0;padding:8px;border:1px solid #8A5E23;border-left-width:4px;border-radius:2px;background:#FFFFFF;font-size:10px;line-height:1.35}.pm-warning>b{flex:0 0 18px;height:18px;display:grid;place-items:center;border:1px solid #8A5E23;border-radius:2px;color:#8A5E23;font:800 12px Geist Mono,ui-monospace,monospace}.pm-warning strong{display:block;color:#8A5E23;font:700 12px 'Barlow Condensed','Arial Narrow',sans-serif;text-transform:uppercase}"
     },
     {
-      "name": "Status Chip",
-      "description": "A short state label that combines color, text, and a recognizable marker.",
-      "html": "<span class=\"ds-status-chip\"><span aria-hidden=\"true\">✓</span> Ready to issue</span>",
-      "css": ":host{font-family:Geist Sans,system-ui,sans-serif}.ds-status-chip{min-height:24px;box-sizing:border-box;display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border:1px solid #2d7150;border-radius:999px;color:#b8f1d2;background:#0d2118;font:800 9px inherit;letter-spacing:.35px;text-transform:uppercase}.ds-status-chip:hover{border-color:#35c98b}.ds-status-chip:focus-visible{outline:2px solid #2ccce4;outline-offset:2px}"
+      "name": "Drafting Actions",
+      "description": "Direct, squared actions for existing drafting and internal Redline tools.",
+      "html": "<div class=\"pm-actions\"><button class=\"pm-primary\" type=\"button\">Place T/Y</button><button class=\"pm-redline-action\" type=\"button\"><span aria-hidden=\"true\">R</span> Open Redline</button><button class=\"pm-secondary\" type=\"button\">Cancel</button></div>",
+      "css": ":host{display:block;font-family:'Barlow Condensed','Arial Narrow',sans-serif}.pm-actions{display:flex;flex-wrap:wrap;gap:7px;padding:10px;border:1px solid #AEB1AA;border-radius:3px;background:#F7F4EA}.pm-actions button{min-height:34px;padding:0 11px;border-radius:2px;font:700 12px 'Barlow Condensed','Arial Narrow',sans-serif;letter-spacing:.035em;cursor:pointer;transition:filter 170ms ease-out,transform 170ms ease-out}.pm-primary{border:1px solid #183d60;color:#FFFFFF;background:#28527A;box-shadow:inset 0 1px rgba(255,255,255,.22),0 2px 0 #183d60}.pm-redline-action{border:1px solid #7f2e25;color:#FFFFFF;background:#A84537;box-shadow:inset 0 1px rgba(255,255,255,.2),0 2px 0 #7f2e25}.pm-redline-action span{margin-right:5px;padding-right:5px;border-right:1px solid currentColor;font-family:Geist Mono,ui-monospace,monospace}.pm-secondary{border:1px solid #656762;color:#2B2B28;background:#FFFFFF;box-shadow:0 2px 0 #AEB1AA}.pm-actions button:hover{filter:brightness(1.08);transform:translateY(-1px)}.pm-actions button:active{transform:translateY(1px);box-shadow:none}.pm-actions button:focus-visible{outline:2px solid #28527A;outline-offset:2px}@media(prefers-reduced-motion:reduce){.pm-actions button{transition:none}}"
     },
     {
-      "name": "Panel Card",
-      "description": "A restrained control group that keeps one task and its evidence together.",
-      "html": "<section class=\"ds-panel-card\" aria-labelledby=\"ds-panel-title\"><header><span id=\"ds-panel-title\">Source plan</span><span class=\"ds-panel-state\">Bound</span></header><strong>A2.1 — Mechanical Plan</strong><small>Scale verified · 1/8 in = 1 ft</small></section>",
-      "css": ":host{font-family:Geist Sans,system-ui,sans-serif}.ds-panel-card{box-sizing:border-box;width:260px;display:grid;gap:8px;padding:12px;border:1px solid #223b52;border-radius:8px;color:#dbe6f5;background:linear-gradient(145deg,#0d2030,#0a1826);box-shadow:inset 0 1px rgba(255,255,255,.04)}.ds-panel-card:hover{border-color:#31506c}.ds-panel-card:focus-within{outline:2px solid #2ccce4;outline-offset:2px}.ds-panel-card header{display:flex;justify-content:space-between;color:#8fa0b7;font:800 9px inherit;letter-spacing:.7px;text-transform:uppercase}.ds-panel-state{color:#35c98b}.ds-panel-card strong{font-size:13px}.ds-panel-card small{color:#708198;font-size:10px}"
+      "name": "Bottom Traveler",
+      "description": "A 76px measured ledger strip for the existing workflow position and relevant next action.",
+      "html": "<section class=\"pm-traveler\" aria-label=\"Current workflow position\"><div><span>Current work</span><strong>Draw &amp; Detail</strong></div><p><b aria-hidden=\"true\">2</b><span>Items need review</span></p><button type=\"button\">Continue</button></section>",
+      "css": ":host{display:block;color:#2B2B28;font-family:Geist Sans,system-ui,sans-serif}.pm-traveler{box-sizing:border-box;height:76px;display:flex;align-items:center;gap:18px;padding:13px 15px;border:1px solid #8c8e89;border-radius:3px;background-color:#F7F4EA;background-image:repeating-linear-gradient(90deg,rgba(43,43,40,.24) 0 1px,transparent 1px 12px),url('/materials/pattern-ledger-paper.webp');background-size:auto 6px,auto;background-repeat:repeat-x,repeat;background-position:left top,left top;box-shadow:inset 0 2px #FFFFFF}.pm-traveler>div{display:grid;min-width:135px}.pm-traveler>div span{font:600 10px 'Barlow Condensed','Arial Narrow',sans-serif;letter-spacing:.06em;text-transform:uppercase}.pm-traveler>div strong{font:800 17px 'Barlow Condensed','Arial Narrow',sans-serif}.pm-traveler p{display:flex;align-items:center;gap:7px;margin:0;padding-left:17px;border-left:1px solid #AEB1AA;font-size:11px}.pm-traveler p b{width:22px;height:22px;display:grid;place-items:center;border:1px solid #8A5E23;border-radius:2px;color:#8A5E23;font:700 11px Geist Mono,ui-monospace,monospace}.pm-traveler button{margin-left:auto;min-height:34px;padding:0 13px;border:1px solid #183d60;border-radius:2px;color:#FFFFFF;background:#28527A;box-shadow:inset 0 1px rgba(255,255,255,.22),0 2px 0 #183d60;font:700 12px 'Barlow Condensed','Arial Narrow',sans-serif;transition:filter 170ms ease-out,transform 170ms ease-out}.pm-traveler button:hover{filter:brightness(1.08);transform:translateY(-1px)}.pm-traveler button:focus-visible{outline:2px solid #28527A;outline-offset:2px}@media(prefers-reduced-motion:reduce){.pm-traveler button{transition:none}}"
     },
     {
-      "name": "Branch Workflow Panel",
-      "description": "A raised instrument panel that makes the safe branch-placement step obvious.",
-      "html": "<section class=\"ds-branch-panel\" aria-labelledby=\"ds-branch-title\"><header><span aria-hidden=\"true\">⑂</span><strong id=\"ds-branch-title\">T/Y Branch</strong></header><p>Choose the main run. Redline stays below the fitting preview.</p><button type=\"button\">Select main run</button></section>",
-      "css": ":host{font-family:Geist Sans,system-ui,sans-serif}.ds-branch-panel{box-sizing:border-box;width:280px;padding:12px;border:1px solid #b58a19;border-radius:8px;color:#e9ddb2;background:linear-gradient(145deg,#211c0d,#11180f);box-shadow:inset 2px 0 #f7b733,0 16px 44px rgba(0,0,0,.38)}.ds-branch-panel header{display:flex;align-items:center;gap:8px;color:#f7b733;font-size:12px}.ds-branch-panel p{margin:9px 0 12px;color:#b9ab7b;font-size:11px;line-height:1.45}.ds-branch-panel button{min-height:32px;width:100%;border:1px solid #f7d45f;border-radius:5px;color:#251b00;background:linear-gradient(180deg,#ffe783,#d3a41e);font:800 10px inherit;letter-spacing:.3px;text-transform:uppercase;cursor:pointer}.ds-branch-panel button:hover{filter:brightness(1.07)}.ds-branch-panel button:focus-visible{outline:2px solid #f7b733;outline-offset:2px}"
+      "name": "Zinc Status Strip",
+      "description": "A 34px strip that reports source, scale, save, and readiness with text and non-color marks.",
+      "html": "<footer class=\"pm-status\"><span><b>Source</b> A2.1</span><span><b>Scale</b> 1/8 in = 1 ft</span><span class=\"pm-saved\"><i aria-hidden=\"true\">check</i> Saved</span><span class=\"pm-ready\"><i aria-hidden=\"true\">check</i> Ready to review</span></footer>",
+      "css": ":host{display:block;color:#2B2B28;font-family:Geist Sans,system-ui,sans-serif}.pm-status{box-sizing:border-box;height:34px;display:flex;align-items:center;gap:16px;padding:0 10px;border:1px solid #777b76;border-radius:2px;background-color:#AEB1AA;background-image:url('/materials/pattern-aged-zinc.webp');box-shadow:inset 0 1px rgba(255,255,255,.45);font:600 9px Geist Mono,ui-monospace,monospace}.pm-status span{display:flex;align-items:center;gap:5px;padding-right:14px;border-right:1px solid rgba(43,43,40,.3)}.pm-status span:last-child{border:0}.pm-status b{font:700 10px 'Barlow Condensed','Arial Narrow',sans-serif;letter-spacing:.04em;text-transform:uppercase}.pm-status i{padding:1px 3px;border:1px solid currentColor;border-radius:2px;font:700 8px 'Barlow Condensed','Arial Narrow',sans-serif;font-style:normal;text-transform:uppercase}.pm-saved,.pm-ready{color:#536B50}"
     }
   ]
 }

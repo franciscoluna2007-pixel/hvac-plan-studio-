@@ -5,13 +5,13 @@ import {
   AlertTriangle,
   ArrowRight,
   Cloud,
+  DraftingCompass,
   FileText,
   FolderKanban,
   HardDrive,
   LoaderCircle,
   Plus,
   ScanSearch,
-  Wind,
   X,
 } from "lucide-react";
 import {
@@ -212,10 +212,10 @@ export default function ProjectHome({
           disabled={!hasPlan}
           aria-label={hasPlan ? "Return to the open plan" : "HVAC Plan Studio home"}
         >
-          <span><Wind size={22} strokeWidth={2.4} /></span>
+          <span><DraftingCompass size={22} strokeWidth={2.4} /></span>
           <div>
             <strong>HVAC Plan Studio</strong>
-            <small>Field Command Console</small>
+            <small>Draw &amp; Detail</small>
           </div>
         </button>
 
@@ -236,7 +236,6 @@ export default function ProjectHome({
         <main className="project-home-content">
           <section className="project-home-hero">
             <div className="project-home-hero-copy">
-              <span className="home-eyebrow">FIELD COMMAND</span>
               <h1>{hasPlan ? "Your plan is ready." : "Open the plan. Run the job."}</h1>
               <p>
                 {hasPlan
@@ -354,7 +353,7 @@ export default function ProjectHome({
 
               {hasPlan && (
                 <div className="project-home-trust-row" aria-label="Current job">
-                  <span><Wind size={14} /> {currentProjectName}</span>
+                  <span><DraftingCompass size={14} /> {currentProjectName}</span>
                   <span>{currentRevisionLabel}</span>
                 </div>
               )}
@@ -363,7 +362,7 @@ export default function ProjectHome({
             <aside className="home-command-preview" aria-label="Field command workflow">
               <header>
                 <div>
-                  <small>COMMAND DECK</small>
+                  <small>JOB TRAVELER</small>
                   <strong>{hasPlan ? currentProjectName : "Ready for source plan"}</strong>
                 </div>
                 <span className={hasPlan ? "ready" : "standby"}>{hasPlan ? "LIVE" : "STANDBY"}</span>

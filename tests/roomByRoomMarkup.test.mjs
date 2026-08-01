@@ -248,7 +248,7 @@ test("keeps Room Markup touch-friendly, mobile, and out of print", () => {
 });
 
 test("keeps V131 and V132 documented beneath the current shell release", () => {
-  assert.match(layout, /HVAC Plan Studio · Field Command Console/);
+  assert.match(layout, /HVAC Plan Studio · Draw & Detail/);
   assert.match(
     layout,
     /Plan, route, review, redline, and issue controlled HVAC work directly over the source PDF/,
