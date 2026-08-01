@@ -6,6 +6,7 @@ import { loadTypescriptModule } from "./load-typescript-module.mjs";
 const {
   branchLeavesTrunkAtClearAngle,
   commitPort3Branch,
+  port3UndoDisposition,
 } = await loadTypescriptModule(
   new URL("../app/port3BranchDraft.ts", import.meta.url),
 );
@@ -118,4 +119,29 @@ test("existing-run attachment rejects near-parallel branch geometry", () => {
   assert.equal(branchLeavesTrunkAtClearAngle(0, Math.PI - 0.05), false);
   assert.equal(branchLeavesTrunkAtClearAngle(0, Math.PI / 4), true);
   assert.equal(branchLeavesTrunkAtClearAngle(0, Math.PI / 2), true);
+});
+
+test("one Undo rolls a newly direct-placed fitting back through history", () => {
+  assert.equal(port3UndoDisposition({
+    draftPointCount: 1,
+    origin: "direct-placement",
+  }), "history");
+});
+
+test("existing fitting drafts retain their established Undo behavior", () => {
+  assert.equal(port3UndoDisposition({
+    draftPointCount: 1,
+    origin: "existing-fitting",
+  }), "leave-port-open");
+  assert.equal(port3UndoDisposition({
+    draftPointCount: 1,
+  }), "leave-port-open");
+  assert.equal(port3UndoDisposition({
+    draftPointCount: 2,
+    origin: "direct-placement",
+  }), "trim-route");
+  assert.equal(port3UndoDisposition({
+    draftPointCount: 0,
+    origin: "direct-placement",
+  }), "history");
 });

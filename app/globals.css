@@ -19560,6 +19560,10 @@ footer {
 
 /* Desktop: horizontal destination rail above the working row. */
 @media (min-width: 1101px) {
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) {
+    --deck-tools: 208px;
+  }
+
   .app-shell[data-presentation="galvanized-daylight"]:not(.field-mode):not(.tablet-layout) > .workspace {
     grid-template-areas:
       "rail rail rail"
@@ -20637,8 +20641,8 @@ footer {
 
 /* Compact desktop */
 @media (max-width: 1500px) and (min-width: 1101px) {
-  .app-shell[data-presentation="galvanized-daylight"] {
-    --deck-tools: 152px;
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) {
+    --deck-tools: 192px;
     --deck-inspector: 272px;
   }
 

@@ -44,7 +44,7 @@ test("symbol placement stays armed and does not auto-open selection actions", ()
   assert.doesNotMatch(placement, /selectOnly\(symbol\.id\)/);
 });
 
-test("missed plan releases commit icon and run placement instead of restoring the pointer-down snapshot", () => {
+test("missed releases stay safe and raw plan clicks drive T/Y, icon, and run placement", () => {
   const completion = page.slice(
     page.indexOf("function completeStalePlanPointerInteraction"),
     page.indexOf("function beginEditTransaction"),
@@ -67,6 +67,7 @@ test("missed plan releases commit icon and run placement instead of restoring th
     page.indexOf("function handleDrawingClick"),
     page.indexOf("function undoableAssistantRepairRecord"),
   );
+  assert.match(placement, /if \(activeTool === "branch"\) \{\s*placeSmartBranch\(rawPoint\);\s*return;/);
   assert.match(placement, /placeSymbol\(activeTool as SymbolKind, rawPoint\)/);
   assert.match(placement, /setDraft\(\(points\) => \[\.\.\.points, point\]\)/);
 });
