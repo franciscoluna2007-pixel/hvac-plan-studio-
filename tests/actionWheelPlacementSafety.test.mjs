@@ -29,6 +29,19 @@ test("HVAC action wheels and the fallback toolbar are limited to safe Select mod
     page,
     /\{selectedId && planSelectionActionsVisible && !selectedContextWheelVisible && <div className="field-context-toolbar"/,
   );
+  assert.match(page, /const planContextWheelAllowed = zoom <= 3/);
+  assert.match(
+    page,
+    /const selectedRunWheelVisible = Boolean\(\s*planContextWheelAllowed && selectedRunWheel/,
+  );
+  assert.match(
+    page,
+    /const selectedFittingWheelVisible = Boolean\(\s*planContextWheelAllowed && selectedFittingWheel/,
+  );
+  assert.match(
+    page,
+    /const selectedSymbolWheelVisible = Boolean\(\s*planContextWheelAllowed &&[\s\S]*?!selectedSymbolWheel\.hidden/,
+  );
 });
 
 test("symbol placement stays armed and does not auto-open selection actions", () => {
@@ -79,13 +92,74 @@ test("missed releases stay safe and raw plan input drives T/Y, icon, and run pla
 });
 
 test("supply-run dots are visually smaller without shrinking their edit target", () => {
-  assert.match(page, /className="edit-handle-hit"[\s\S]*?r="10"/);
-  assert.match(page, /r=\{runSelected \? endpoint \? 4 : 3 : 2\.5\}/);
+  assert.match(page, /const screenStablePlanChromeScale = fittingOverlayScale\(zoom\)/);
+  assert.match(
+    page,
+    /const selectedRunChromeVisible = runSelected && planSelectionActionsVisible/,
+  );
+  assert.match(
+    page,
+    /const showRunNodeHandles = selectedRunChromeVisible \|\| Boolean\(branchCandidateClass\)/,
+  );
+  assert.match(
+    page,
+    /className="screen-stable-run-node"[\s\S]*?transform=\{`translate\(\$\{point\.x\} \$\{point\.y\}\) scale\(\$\{screenStablePlanChromeScale\}\)`\}/,
+  );
+  assert.match(
+    page,
+    /\{selectedRunChromeVisible && <circle[\s\S]*?className="edit-handle-hit"[\s\S]*?cx="0"[\s\S]*?cy="0"[\s\S]*?r="10"/,
+  );
+  assert.match(page, /r=\{selectedRunChromeVisible \? endpoint \? 4 : 3 : 2\.5\}/);
+  assert.match(
+    page,
+    /\{selectedRunChromeVisible && drawing\.points\.slice[\s\S]*?className="screen-stable-run-node"[\s\S]*?transform=\{`translate\([\s\S]*?scale\(\$\{screenStablePlanChromeScale\}\)`\}[\s\S]*?className="midpoint-grip"[\s\S]*?cx="0"[\s\S]*?cy="0"[\s\S]*?r="4"/,
+  );
+  assert.match(
+    page,
+    /className="screen-stable-draft-point"[\s\S]*?scale\(\$\{screenStablePlanChromeScale\}\)[\s\S]*?className="draft-point"/,
+  );
   assert.match(page, /className="draft-point"[\s\S]*?r="2\.5"/);
   assert.match(page, /fill=\{drawingColors\[activeTool as DrawType\] \|\| drawingColors\.supply\}/);
+  assert.match(
+    page,
+    /className={`snap-marker[\s\S]*?scale\(\$\{screenStablePlanChromeScale\}\)[\s\S]*?<circle cx="0" cy="0" r="9"/,
+  );
   assert.match(styles, /\.edit-handle-hit \{[^}]*fill: transparent;[^}]*pointer-events: all;/);
   assert.match(styles, /@media \(pointer: coarse\)[\s\S]*?\.edit-handle-hit \{ r: 12px; \}/);
   assert.doesNotMatch(styles, /@media \(pointer: coarse\)[\s\S]*?\.edit-handle \{ r: 8px; \}/);
+});
+
+test("T/Y repair warnings stay compact and leave the drawing path while a tool is active", () => {
+  assert.match(
+    page,
+    /\{planSelectionActionsVisible && \(branchRepairPreview\.detached\.length > 0 \|\| branchRepairPreview\.missing\.length > 0\)/,
+  );
+  assert.match(
+    page,
+    /className="missing-run-marker"[\s\S]*?scale\(\$\{screenStablePlanChromeScale\}\)/,
+  );
+  assert.match(
+    page,
+    /className="repair-port-label"[\s\S]*?scale\(\$\{screenStablePlanChromeScale\}\)/,
+  );
+  assert.match(
+    page,
+    /className="repair-end-marker"[\s\S]*?scale\(\$\{screenStablePlanChromeScale\}\)/,
+  );
+  assert.match(
+    page,
+    /className="repair-port-marker"[\s\S]*?scale\(\$\{screenStablePlanChromeScale\}\)/,
+  );
+  assert.match(
+    page,
+    /className="missing-run-marker"[\s\S]*?scale\(\$\{screenStablePlanChromeScale\}\)[\s\S]*?<circle cx="0" cy="0" r="8"[\s\S]*?<text x="0" y="-13"/,
+  );
+  assert.doesNotMatch(page, /<text x=\{gap\.portPoint\.x\}/);
+  assert.match(styles, /\.network-repair-preview \{ pointer-events: none; \}/);
+  assert.match(
+    styles,
+    /\.missing-run-preview\.has-candidate \.missing-run-marker > circle \{[^}]*fill: #fff2bd;[^}]*stroke: #a77809;/,
+  );
 });
 
 test("redline actions disappear while drawing, editing dialogs, or placing copies and details", () => {

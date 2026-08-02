@@ -594,7 +594,8 @@ test("keeps completed T/Y fittings readable and reveals numbered ports only whil
   assert.match(source, /const fittingFullyConnected = portStates\.every\(\(state\) => state\.connected\)/);
   assert.match(source, /const showPortGuides =[\s\S]*?pendingBranchFittingId === drawing\.id \|\|[\s\S]*?port3BranchDraft\?\.fittingId === drawing\.id/);
   assert.match(source, /\{showPortGuides && \[inlet, outlet, branchPort\]\.map/);
-  assert.match(source, /const showRunNodeHandles = runSelected \|\| Boolean\(branchCandidateClass\)/);
+  assert.match(source, /const selectedRunChromeVisible = runSelected && planSelectionActionsVisible/);
+  assert.match(source, /const showRunNodeHandles = selectedRunChromeVisible \|\| Boolean\(branchCandidateClass\)/);
   assert.match(source, /\{showRunNodeHandles && drawing\.points\.map/);
   assert.match(source, /className={`branch-fitting \$\{fittingFullyConnected \? "complete-fitting" : "open-fitting"\}/);
   assert.match(source, /textAnchor="middle"/);
