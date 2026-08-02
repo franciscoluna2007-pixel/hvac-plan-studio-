@@ -44,7 +44,7 @@ test("symbol placement stays armed and does not auto-open selection actions", ()
   assert.doesNotMatch(placement, /selectOnly\(symbol\.id\)/);
 });
 
-test("missed releases stay safe and raw plan clicks drive T/Y, icon, and run placement", () => {
+test("missed releases stay safe and raw plan input drives T/Y, icon, and run placement", () => {
   const completion = page.slice(
     page.indexOf("function completeStalePlanPointerInteraction"),
     page.indexOf("function beginEditTransaction"),
@@ -67,7 +67,13 @@ test("missed releases stay safe and raw plan clicks drive T/Y, icon, and run pla
     page.indexOf("function handleDrawingClick"),
     page.indexOf("function undoableAssistantRepairRecord"),
   );
-  assert.match(placement, /if \(activeTool === "branch"\) \{\s*placeSmartBranch\(rawPoint\);\s*return;/);
+  assert.match(placement, /if \(activeTool === "branch"\) \{\s*beginDirectBranchPlacementGesture\(event, rawPoint\);\s*return;/);
+  assert.doesNotMatch(placement, /placeSmartBranch\(rawPoint\)/);
+  const release = page.slice(
+    page.indexOf("function finishDirectBranchPlacementGesture"),
+    page.indexOf("function placeSmartBranch"),
+  );
+  assert.match(release, /placeSmartBranch\(releasePoint, target\)/);
   assert.match(placement, /placeSymbol\(activeTool as SymbolKind, rawPoint\)/);
   assert.match(placement, /setDraft\(\(points\) => \[\.\.\.points, point\]\)/);
 });
@@ -279,10 +285,14 @@ test("T/Y preview topology comes from the same geometry as the committed fitting
     page.indexOf("{symbolPreview && (() => {"),
   );
   assert.match(preview, /const previewFitting: Drawing =/);
-  assert.match(preview, /const \[inlet, outlet, branchPort\] = fittingPortPoints\(previewFitting\)/);
+  assert.match(preview, /const \[naturalInlet, naturalOutlet, naturalBranchPort\] = fittingPortPoints\(previewFitting\)/);
+  assert.match(preview, /const ghostScale = fittingGhostScale\(/);
+  assert.match(preview, /const inlet = displayPort\(naturalInlet\)/);
+  assert.match(preview, /const outlet = displayPort\(naturalOutlet\)/);
+  assert.match(preview, /const branchPort = displayPort\(naturalBranchPort\)/);
   assert.match(preview, /branchPreview\.portSizes\.join\("×"\)/);
   assert.doesNotMatch(
     preview,
-    /const (?:inlet|outlet|branchPort) = \{[^}]*previewScale/,
+    /const (?:naturalInlet|naturalOutlet|naturalBranchPort) = \{[^}]*previewScale/,
   );
 });
