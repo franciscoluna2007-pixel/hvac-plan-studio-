@@ -9,6 +9,8 @@ const {
   directBranchEndpointsFitPorts,
   directBranchStationClearance,
   projectDirectBranchStation,
+  reserveDirectBranchPolylineSpan,
+  resolveDirectBranchTrunkCandidate,
 } = await loadTypescriptModule(
   new URL("../app/directBranchPlacement.ts", import.meta.url),
 );
@@ -232,4 +234,186 @@ test("three-run shortcuts require every endpoint to fit its final port", () => {
     radius: 18,
   });
   assert.equal(unsafe.valid, false);
+});
+
+test("trunk resolver prefers the selected run, then the active system, without moving the station", () => {
+  const base = {
+    type: "supply",
+    page: 1,
+    eligible: true,
+  };
+  const runs = [
+    { ...base, id: "other", systemId: "system-b", points: [{ x: 0, y: 1 }, { x: 100, y: 1 }] },
+    { ...base, id: "active", systemId: "system-a", points: [{ x: 0, y: 2 }, { x: 100, y: 2 }] },
+    { ...base, id: "selected", systemId: "system-b", points: [{ x: 0, y: 3 }, { x: 100, y: 3 }] },
+  ];
+
+  const selected = resolveDirectBranchTrunkCandidate({
+    point: { x: 37, y: 0 },
+    runs,
+    page: 1,
+    activeSystemId: "system-a",
+    selectedRunId: "selected",
+    zoom: 1,
+    inputType: "pen",
+  });
+  assert.equal(selected.run.id, "selected");
+  assert.deepEqual(selected.point, { x: 37, y: 3 });
+  assert.equal(selected.segmentIndex, 0);
+
+  const active = resolveDirectBranchTrunkCandidate({
+    point: { x: 37, y: 0 },
+    runs,
+    page: 1,
+    activeSystemId: "system-a",
+    zoom: 1,
+    inputType: "mouse",
+  });
+  assert.equal(active.run.id, "active");
+  assert.deepEqual(active.point, { x: 37, y: 2 });
+});
+
+test("trunk resolver uses input-specific screen radii and rejects real ambiguity", () => {
+  const base = {
+    type: "supply",
+    page: 1,
+    systemId: "system-a",
+    eligible: true,
+  };
+  const distant = { ...base, id: "touch-only", points: [{ x: 0, y: 20 }, { x: 100, y: 20 }] };
+  const point = { x: 50, y: 0 };
+
+  assert.equal(resolveDirectBranchTrunkCandidate({
+    point,
+    runs: [distant],
+    page: 1,
+    activeSystemId: "system-a",
+    zoom: 1,
+    inputType: "mouse",
+  }), null);
+  assert.equal(resolveDirectBranchTrunkCandidate({
+    point,
+    runs: [distant],
+    page: 1,
+    activeSystemId: "system-a",
+    zoom: 1,
+    inputType: "pen",
+  }), null);
+  assert.equal(resolveDirectBranchTrunkCandidate({
+    point,
+    runs: [distant],
+    page: 1,
+    activeSystemId: "system-a",
+    zoom: 1,
+    inputType: "touch",
+  }).run.id, "touch-only");
+
+  const crossingRuns = [
+    { ...base, id: "horizontal", points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] },
+    { ...base, id: "vertical", points: [{ x: 50, y: -50 }, { x: 50, y: 50 }] },
+  ];
+  assert.equal(resolveDirectBranchTrunkCandidate({
+    point,
+    runs: crossingRuns,
+    page: 1,
+    activeSystemId: "system-a",
+    zoom: 2,
+    inputType: "pen",
+  }), null);
+
+  const sameRunBend = { ...base, id: "bend", points: [{ x: 0, y: 0 }, point, { x: 50, y: 50 }] };
+  assert.equal(resolveDirectBranchTrunkCandidate({
+    point,
+    runs: [sameRunBend],
+    page: 1,
+    activeSystemId: "system-a",
+    zoom: 2,
+    inputType: "pen",
+  }).segmentIndex, 0);
+});
+
+test("trunk resolver excludes ineligible context and is deterministic across run order", () => {
+  const candidate = {
+    id: "valid",
+    type: "supply",
+    page: 1,
+    systemId: "system-a",
+    points: [{ x: 0, y: 3 }, { x: 100, y: 3 }],
+  };
+  const excluded = [
+    { ...candidate, id: "hidden", visible: false, points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] },
+    { ...candidate, id: "locked", locked: true, points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] },
+    { ...candidate, id: "return", type: "return", points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] },
+    { ...candidate, id: "other-page", page: 2, points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] },
+    { ...candidate, id: "disabled", eligible: false, points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] },
+  ];
+  for (const runs of [[candidate, ...excluded], [...excluded].reverse().concat(candidate)]) {
+    const resolved = resolveDirectBranchTrunkCandidate({
+      point: { x: 25, y: 0 },
+      runs,
+      page: 1,
+      activeSystemId: "system-a",
+      zoom: 1,
+      inputType: "mouse",
+    });
+    assert.equal(resolved.run.id, "valid");
+    assert.deepEqual(resolved.point, { x: 25, y: 3 });
+  }
+});
+
+test("polyline span crosses collinear vertices while preserving the exact station", () => {
+  const center = { x: 30, y: 0 };
+  const result = reserveDirectBranchPolylineSpan({
+    points: [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 40, y: 0 }, { x: 100, y: 0 }],
+    segmentIndex: 1,
+    center,
+    inletPort: { x: 24, y: 0 },
+    outletPort: { x: 36, y: 0 },
+  });
+
+  assert.equal(result.valid, true);
+  assert.deepEqual(result.center, center);
+  assert.deepEqual(result.upstreamPoints, [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 24, y: 0 }]);
+  assert.deepEqual(result.downstreamPoints, [{ x: 36, y: 0 }, { x: 40, y: 0 }, { x: 100, y: 0 }]);
+  assert.equal(result.before, 30);
+  assert.equal(result.after, 70);
+});
+
+test("polyline span safely reserves across adjacent bends without relocating the center", () => {
+  const center = { x: 30, y: 5 };
+  const result = reserveDirectBranchPolylineSpan({
+    points: [{ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 30, y: 10 }, { x: 60, y: 10 }],
+    segmentIndex: 1,
+    center,
+    inletPort: { x: 30, y: -1 },
+    outletPort: { x: 30, y: 11 },
+  });
+
+  assert.equal(result.valid, true);
+  assert.deepEqual(result.center, center);
+  assert.deepEqual(result.upstreamPoints, [{ x: 0, y: 0 }, { x: 30, y: -1 }]);
+  assert.deepEqual(result.downstreamPoints, [{ x: 30, y: 11 }, { x: 60, y: 10 }]);
+});
+
+test("polyline span rejects true total-length and self-intersection failures", () => {
+  const tooShort = reserveDirectBranchPolylineSpan({
+    points: [{ x: 0, y: 0 }, { x: 10, y: 0 }],
+    segmentIndex: 0,
+    center: { x: 3, y: 0 },
+    inletPort: { x: -1, y: 0 },
+    outletPort: { x: 7, y: 0 },
+  });
+  assert.equal(tooShort.valid, false);
+  assert.equal(tooShort.reason, "insufficient-before");
+
+  const crossing = reserveDirectBranchPolylineSpan({
+    points: [{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 }],
+    segmentIndex: 2,
+    center: { x: 5, y: 5 },
+    inletPort: { x: 3, y: 7 },
+    outletPort: { x: 7, y: 3 },
+    minimumLeg: 0,
+  });
+  assert.equal(crossing.valid, false);
+  assert.equal(crossing.reason, "self-intersection");
 });

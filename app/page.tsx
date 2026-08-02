@@ -25,6 +25,7 @@ import {
   BRANCH_PICK_RADIUS_PX,
   BRANCH_THREE_RUN_RADIUS_PX,
   FITTING_HIT_STROKE_PX,
+  fittingGhostScale,
   fittingPortReachForVersion,
   fittingOverlayScale,
 } from "./fittingInteractionGeometry";
@@ -32,8 +33,10 @@ import {
   buildDirectBranchGeometry,
   chooseSafeLocalBranchEndpoint,
   directBranchEndpointsFitPorts,
-  directBranchStationClearance,
   projectDirectBranchStation,
+  reserveDirectBranchPolylineSpan,
+  resolveDirectBranchTrunkCandidate,
+  type DirectBranchInputType,
 } from "./directBranchPlacement";
 import {
   branchLeavesTrunkAtClearAngle,
@@ -935,7 +938,7 @@ type MeasurementMeta = {
 };
 type FittingMeta = {
   kind: "ty";
-  geometryVersion?: 2 | 3;
+  geometryVersion?: 2 | 3 | 4;
   style?: "wye45" | "tee90";
   angle: number;
   branchAngle?: number;
@@ -1079,9 +1082,28 @@ type DirectTouchPointer = {
   point: ScreenPoint;
 };
 
+type DirectBranchPlacementGesture = {
+  pointerId: number;
+  pointerType: DirectBranchInputType;
+  mode: "place" | "attach";
+  drawingId: string;
+  segmentIndex: number;
+  endpointIndex?: number;
+  fittingId?: string;
+  queuedRunId?: string;
+  latestPoint: Point;
+  sourceFingerprint: string;
+};
+
+type ExplicitThreeRunOption = {
+  center: Point;
+  clickedRunId: string;
+  runIds: [string, string, string];
+};
+
 type BranchPreview = {
   center: Point;
-  geometryVersion?: 2 | 3;
+  geometryVersion?: 2 | 3 | 4;
   angle: number;
   branchAngle?: number;
   side: 1 | -1;
@@ -1610,6 +1632,7 @@ function HVACPlanStudioApp() {
   const [snapInfo, setSnapInfo] = useState<SnapInfo | null>(null);
   const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuide[]>([]);
   const [branchPreview, setBranchPreview] = useState<BranchPreview | null>(null);
+  const [explicitThreeRunOption, setExplicitThreeRunOption] = useState<ExplicitThreeRunOption | null>(null);
   const [pendingBranchFittingId, setPendingBranchFittingId] = useState<string | null>(null);
   const [port3BranchDraft, setPort3BranchDraft] = useState<Port3BranchDraftState | null>(null);
   const [symbolPreview, setSymbolPreview] = useState<{ kind: SymbolKind; point: Point } | null>(null);
@@ -2007,6 +2030,7 @@ function HVACPlanStudioApp() {
   const touchPointersRef = useRef(new Map<number, ScreenPoint>());
   const touchGestureRef = useRef<TouchGestureState | null>(null);
   const directTouchPointerRef = useRef<DirectTouchPointer | null>(null);
+  const directBranchPlacementGestureRef = useRef<DirectBranchPlacementGesture | null>(null);
   const activeEditPointerIdRef = useRef<number | null>(null);
   const completedEditPointerIdsRef = useRef(new Set<number>());
   const editTransactionRef = useRef<EditTransactionSnapshot | null>(null);
@@ -3537,6 +3561,9 @@ function HVACPlanStudioApp() {
       if (directTouchPointerRef.current?.pointerId === pointerId) {
         directTouchPointerRef.current = null;
       }
+      if (directBranchPlacementGestureRef.current?.pointerId === pointerId) {
+        directBranchPlacementGestureRef.current = null;
+      }
     }
     dragRef.current = null;
     activeEditPointerIdRef.current = null;
@@ -3547,6 +3574,7 @@ function HVACPlanStudioApp() {
     setAlignmentGuides([]);
     setHoverPoint(null);
     setBranchPreview(null);
+    setExplicitThreeRunOption(null);
     setSymbolPreview(null);
   }
 
@@ -3823,6 +3851,14 @@ function HVACPlanStudioApp() {
           x: event.clientX,
           y: event.clientY,
         };
+        const gesture = directBranchPlacementGestureRef.current;
+        const point = gesture?.pointerId === event.pointerId
+          ? planPointFromClient(event.clientX, event.clientY)
+          : null;
+        if (gesture && point) {
+          gesture.latestPoint = point;
+          previewDirectBranchPlacementGesture(point, gesture.pointerType, gesture);
+        }
         return;
       }
       if (!touchPointersRef.current.has(event.pointerId)) return;
@@ -3843,6 +3879,14 @@ function HVACPlanStudioApp() {
       completeStalePlanPointerInteraction(event);
       return;
     }
+    const gesture = directBranchPlacementGestureRef.current;
+    const point = gesture?.pointerId === event.pointerId
+      ? planPointFromClient(event.clientX, event.clientY)
+      : null;
+    if (gesture && point) {
+      gesture.latestPoint = point;
+      previewDirectBranchPlacementGesture(point, gesture.pointerType, gesture);
+    }
     if (
       event.pointerType === "pen" &&
       (activePenPointerIdRef.current === event.pointerId || event.buttons !== 0 || event.pressure > 0)
@@ -3853,6 +3897,7 @@ function HVACPlanStudioApp() {
   }
 
   function handleViewportPointerUpCapture(event: PointerEvent<HTMLDivElement>) {
+    finishDirectBranchPlacementGesture(event);
     if (event.pointerType === "touch") {
       if (directTouchPointerRef.current?.pointerId === event.pointerId) {
         directTouchPointerRef.current = null;
@@ -3899,6 +3944,7 @@ function HVACPlanStudioApp() {
   }
 
   function handleViewportPointerCancelCapture(event: PointerEvent<HTMLDivElement>) {
+    finishDirectBranchPlacementGesture(event, true);
     completedEditPointerIdsRef.current.delete(event.pointerId);
     if (event.pointerType === "touch") {
       if (directTouchPointerRef.current?.pointerId === event.pointerId) {
@@ -4151,6 +4197,100 @@ function HVACPlanStudioApp() {
     return best;
   }
 
+  function directBranchInputType(pointerType: string): DirectBranchInputType {
+    return pointerType === "touch" ? "touch" : pointerType === "pen" ? "pen" : "mouse";
+  }
+
+  function directBranchRunVisible(drawing: Drawing) {
+    const layer = drawingLayer(drawing);
+    return !layer || visibleLayers[layer];
+  }
+
+  function directBranchRunFingerprint(drawing: Drawing) {
+    return JSON.stringify([
+      drawing.id,
+      drawing.page,
+      drawingSystem(drawing),
+      drawing.type,
+      drawing.size,
+      drawing.points,
+    ]);
+  }
+
+  function resolveDeterministicDirectBranchTarget(
+    point: Point,
+    inputType: DirectBranchInputType,
+  ): ReturnType<typeof nearestSupplySegment> {
+    const candidate = resolveDirectBranchTrunkCandidate({
+      point,
+      runs: drawings.map((drawing) => ({
+        id: drawing.id,
+        type: drawing.type,
+        page: drawing.page,
+        systemId: drawingSystem(drawing),
+        points: drawing.points,
+        drawing,
+        eligible: Boolean(
+          drawing.type === "supply" &&
+          !drawing.fitting &&
+          !drawing.symbol &&
+          drawingSystem(drawing) === activeSystem
+        ),
+        visible: directBranchRunVisible(drawing),
+        locked: drawingLocked(drawing),
+      })),
+      page: pageNumber,
+      activeSystemId: activeSystem,
+      selectedRunId: selectedId,
+      ignoredRunId: queuedBranchRunId,
+      zoom,
+      inputType,
+    });
+    if (!candidate) return null;
+    return {
+      point: candidate.point,
+      drawing: candidate.run.drawing,
+      segmentIndex: candidate.segmentIndex,
+      distance: candidate.distance,
+      angle: candidate.angle,
+      side: candidate.side,
+      amount: candidate.amount,
+      length: candidate.length,
+    };
+  }
+
+  function resolveLockedDirectBranchTarget(
+    point: Point,
+    gesture: DirectBranchPlacementGesture,
+  ): ReturnType<typeof nearestSupplySegment> {
+    const drawing = drawings.find((candidate) => candidate.id === gesture.drawingId);
+    if (
+      !drawing ||
+      drawing.type !== "supply" ||
+      drawing.fitting ||
+      drawing.symbol ||
+      drawing.page !== pageNumber ||
+      drawingSystem(drawing) !== activeSystem ||
+      drawingLocked(drawing) ||
+      !directBranchRunVisible(drawing) ||
+      directBranchRunFingerprint(drawing) !== gesture.sourceFingerprint ||
+      gesture.segmentIndex < 0 ||
+      gesture.segmentIndex >= drawing.points.length - 1
+    ) return null;
+    const projection = projectDirectBranchStation(
+      point,
+      drawing.points[gesture.segmentIndex],
+      drawing.points[gesture.segmentIndex + 1],
+    );
+    const pickRadiusPx = gesture.pointerType === "touch" ? 24 : 14;
+    if (!projection || projection.distance > pickRadiusPx / Math.max(.25, zoom)) return null;
+    return {
+      ...projection,
+      drawing,
+      segmentIndex: gesture.segmentIndex,
+    };
+  }
+
   function orientMainTowardAirflow<T extends NonNullable<ReturnType<typeof nearestSupplySegment>>>(target: T) {
     const equipment = drawings.filter((drawing) =>
       drawing.page === pageNumber &&
@@ -4248,7 +4388,7 @@ function HVACPlanStudioApp() {
           systemId: mainSystem,
           fitting: {
             kind: "ty",
-            geometryVersion: 3,
+            geometryVersion: 4,
             style: resolvedStyle,
             angle: mainAngle,
             branchAngle: angle,
@@ -4389,7 +4529,7 @@ function HVACPlanStudioApp() {
     setBranchHoverRunId(null);
     setBranchPreview({
       center: opportunity.center,
-      geometryVersion: 3,
+      geometryVersion: 4,
       angle: opportunity.angle,
       branchAngle: opportunity.branchAngle,
       side: opportunity.side,
@@ -4417,7 +4557,7 @@ function HVACPlanStudioApp() {
     });
   }
 
-  function nearestAttachableSupplySegment(point: Point, fittingId: string) {
+  function nearestAttachableSupplySegment(point: Point, fittingId: string, onlyDrawingId?: string) {
     const fitting = drawings.find((drawing) => drawing.id === fittingId && drawing.fitting);
     if (!fitting?.fitting) return null;
     const connected = new Set(fitting.fitting.connectedIds.filter(Boolean));
@@ -4426,6 +4566,7 @@ function HVACPlanStudioApp() {
       point: Point;
       distance: number;
       endpointIndex: number;
+      segmentIndex: number;
       angle: number;
       side: 1 | -1;
     } | null = null;
@@ -4435,7 +4576,10 @@ function HVACPlanStudioApp() {
         drawing.type !== "supply" ||
         drawing.fitting ||
         connected.has(drawing.id) ||
+        (onlyDrawingId && drawing.id !== onlyDrawingId) ||
         drawingSystem(drawing) !== drawingSystem(fitting) ||
+        drawingLocked(drawing) ||
+        !directBranchRunVisible(drawing) ||
         drawing.points.length < 2
       ) continue;
       for (let index = 0; index < drawing.points.length - 1; index += 1) {
@@ -4458,16 +4602,16 @@ function HVACPlanStudioApp() {
         const neighbor = endpointIndex === 0 ? drawing.points[1] : drawing.points[lastIndex - 1];
         const angle = Math.atan2(neighbor.y - endpoint.y, neighbor.x - endpoint.x);
         const cross = Math.cos(fitting.fitting.angle) * Math.sin(angle) - Math.sin(fitting.fitting.angle) * Math.cos(angle);
-        best = { drawing, point: projected, distance, endpointIndex, angle, side: cross >= 0 ? 1 : -1 };
+        best = { drawing, point: projected, distance, endpointIndex, segmentIndex: index, angle, side: cross >= 0 ? 1 : -1 };
       }
     }
     return best;
   }
 
-  function attachPendingBranchRun(point: Point) {
+  function attachPendingBranchRun(point: Point, onlyDrawingId?: string) {
     if (!pendingBranchFittingId) return false;
     const fitting = drawings.find((drawing) => drawing.id === pendingBranchFittingId && drawing.fitting);
-    const candidate = nearestAttachableSupplySegment(point, pendingBranchFittingId);
+    const candidate = nearestAttachableSupplySegment(point, pendingBranchFittingId, onlyDrawingId);
     if (!fitting?.fitting || !candidate || candidate.distance > BRANCH_ATTACH_RADIUS_PX / zoom) {
       setBranchMessage("Click directly on the blue run you want connected to the open branch port");
       return true;
@@ -4521,7 +4665,12 @@ function HVACPlanStudioApp() {
 
   function existingThreeRunJunction(point: Point, clickedRunId: string): ThreeRunBranchMatch | null {
     const clickedRun = drawings.find((drawing) => drawing.id === clickedRunId);
-    if (!clickedRun) return null;
+    if (
+      !clickedRun ||
+      drawingSystem(clickedRun) !== activeSystem ||
+      drawingLocked(clickedRun) ||
+      !directBranchRunVisible(clickedRun)
+    ) return null;
     const junctionSystem = drawingSystem(clickedRun);
     const assignedRuns = new Set(drawings
       .filter((drawing) => drawing.fitting)
@@ -4535,6 +4684,8 @@ function HVACPlanStudioApp() {
         !drawing.symbol &&
         !assignedRuns.has(drawing.id) &&
         drawingSystem(drawing) === junctionSystem &&
+        !drawingLocked(drawing) &&
+        directBranchRunVisible(drawing) &&
         drawing.points.length >= 2
       )
       .flatMap((drawing) => [0, drawing.points.length - 1].map((endpointIndex) => {
@@ -4603,7 +4754,7 @@ function HVACPlanStudioApp() {
             systemId: junctionSystem,
             fitting: {
               kind: "ty",
-              geometryVersion: 3,
+              geometryVersion: 4,
               style,
               angle,
               branchAngle,
@@ -9251,7 +9402,7 @@ function HVACPlanStudioApp() {
     const center = target.point;
     const matchedRoute = queuedBranchRunId
       ? queuedBranchRoute(center, target.drawing.id, target.angle)
-      : existingBranchRoute(center, target.drawing.id, target.angle, target.drawing.size);
+      : null;
     if (queuedBranchRunId && !matchedRoute) return null;
     const downstreamSize = steppedSize(target.drawing.size, 1);
     const branchSize = matchedRoute?.drawing.size || steppedSize(target.drawing.size, 2);
@@ -9270,7 +9421,7 @@ function HVACPlanStudioApp() {
       systemId: drawingSystem(target.drawing),
       fitting: {
         kind: "ty",
-        geometryVersion: 3,
+        geometryVersion: 4,
         style: resolvedStyle,
         angle: target.angle,
         branchAngle,
@@ -9282,9 +9433,9 @@ function HVACPlanStudioApp() {
       },
     };
     const [inletPort, outletPort, branchPort] = fittingPortPoints(previewFitting);
-    const clearance = directBranchStationClearance({
-      segmentStart: target.points[target.segmentIndex],
-      segmentEnd: target.points[target.segmentIndex + 1],
+    const clearance = reserveDirectBranchPolylineSpan({
+      points: target.points,
+      segmentIndex: target.segmentIndex,
       center,
       inletPort,
       outletPort,
@@ -9304,73 +9455,335 @@ function HVACPlanStudioApp() {
     };
   }
 
-  function placeSmartBranch(point: Point) {
+  function commitExplicitThreeRunJunction(threeRunMatch: ThreeRunBranchMatch) {
+    const [upstreamMatch, downstreamMatch, branchMatch] = threeRunMatch.ports;
+    const fittingId = crypto.randomUUID();
+    const fitting: Drawing = {
+      id: fittingId,
+      type: "branch",
+      points: [threeRunMatch.center],
+      size: `${upstreamMatch.drawing.size}×${downstreamMatch.drawing.size}×${branchMatch.drawing.size}`,
+      page: pageNumber,
+      systemId: drawingSystem(upstreamMatch.drawing),
+      elevation: upstreamMatch.drawing.elevation,
+      fitting: {
+        kind: "ty",
+        geometryVersion: 4,
+        style: threeRunMatch.style,
+        angle: threeRunMatch.angle,
+        branchAngle: threeRunMatch.branchAngle,
+        side: threeRunMatch.side,
+        upstreamSize: upstreamMatch.drawing.size,
+        downstreamSize: downstreamMatch.drawing.size,
+        branchSize: branchMatch.drawing.size,
+        connectedIds: threeRunMatch.ports.map((match) => match.drawing.id),
+      },
+    };
+    const finalPorts = fittingPortPoints(fitting);
+    const endpointAssignments = new Map(threeRunMatch.ports.map((match, port) => [
+      match.drawing.id,
+      { endpointIndex: match.endpointIndex, point: finalPorts[port] },
+    ]));
+    const connectedRuns = drawings.map((drawing) => {
+      const assignment = endpointAssignments.get(drawing.id);
+      if (!assignment) return drawing;
+      return {
+        ...drawing,
+        points: drawing.points.map((existingPoint, index) =>
+          index === assignment.endpointIndex ? assignment.point : existingPoint),
+      };
+    });
+    setHistory([...connectedRuns, fitting]);
+    setActiveSystem(drawingSystem(upstreamMatch.drawing));
+    setSelectedId(fittingId);
+    setBranchHoverRunId(null);
+    setBranchPreview(null);
+    setExplicitThreeRunOption(null);
+    const completionMessage = `${threeRunMatch.style === "tee90" ? "90° tee" : "45° wye"} placed · 3 explicitly confirmed runs connected`;
+    setBranchMessage(completionMessage);
+    setBranchPlacementResult({ fittingId, message: completionMessage });
+  }
+
+  function confirmExplicitThreeRunConnection() {
+    const option = explicitThreeRunOption;
+    if (!option) return;
+    const refreshed = existingThreeRunJunction(option.center, option.clickedRunId);
+    const refreshedIds = refreshed?.ports.map((match) => match.drawing.id).sort();
+    const expectedIds = [...option.runIds].sort();
+    if (
+      !refreshed ||
+      refreshedIds?.length !== expectedIds.length ||
+      refreshedIds.some((id, index) => id !== expectedIds[index])
+    ) {
+      setExplicitThreeRunOption(null);
+      setBranchMessage("Those three run ends changed · point at the junction again");
+      return;
+    }
+    commitExplicitThreeRunJunction(refreshed);
+  }
+
+  function previewDirectBranchPlacementGesture(
+    point: Point,
+    inputType: DirectBranchInputType,
+    gesture = directBranchPlacementGestureRef.current,
+  ) {
+    if (pendingBranchFittingId) {
+      const fitting = drawings.find((drawing) => drawing.id === pendingBranchFittingId && drawing.fitting);
+      const lockedDrawingId = gesture?.mode === "attach" ? gesture.drawingId : undefined;
+      const candidate = fitting
+        ? nearestAttachableSupplySegment(point, pendingBranchFittingId, lockedDrawingId)
+        : null;
+      if (!fitting?.fitting) {
+        directBranchPlacementGestureRef.current = null;
+        setPendingBranchFittingId(null);
+        setBranchPreview(null);
+        setExplicitThreeRunOption(null);
+        return;
+      }
+      const sourceStillMatches = !gesture || gesture.mode !== "attach" || Boolean(
+        candidate &&
+        directBranchRunFingerprint(candidate.drawing) === gesture.sourceFingerprint
+      );
+      const candidateReady = Boolean(
+        sourceStillMatches &&
+        candidate &&
+        candidate.distance <= BRANCH_ATTACH_RADIUS_PX / zoom
+      );
+      const branchAngle = candidateReady ? candidate!.angle : fitting.fitting.branchAngle;
+      const side = candidateReady ? candidate!.side : fitting.fitting.side;
+      const style = candidateReady && branchStyle === "auto"
+        ? automaticBranchStyle(fitting.fitting.angle, candidate!.angle)
+        : branchStyle === "auto" ? fitting.fitting.style : branchStyle;
+      setExplicitThreeRunOption(null);
+      setBranchPreview({
+        center: fitting.points[0],
+        geometryVersion: fitting.fitting.geometryVersion,
+        angle: fitting.fitting.angle,
+        branchAngle,
+        side,
+        style,
+        parentSize: fitting.fitting.upstreamSize,
+        portSizes: [
+          fitting.fitting.upstreamSize,
+          fitting.fitting.downstreamSize,
+          candidateReady ? candidate!.drawing.size : fitting.fitting.branchSize,
+        ],
+        valid: candidateReady,
+        matchedExisting: candidateReady,
+        mainRunId: fitting.fitting.connectedIds[0],
+        branchRunId: candidateReady ? candidate!.drawing.id : undefined,
+        runIds: fitting.fitting.connectedIds.filter(Boolean),
+        mode: "attach-run",
+        candidateEndpoint: candidateReady ? candidate!.drawing.points[candidate!.endpointIndex] : undefined,
+        candidateProjected: candidateReady ? candidate!.point : undefined,
+        candidateEndpointDistance: candidateReady
+          ? Math.hypot(
+            candidate!.drawing.points[candidate!.endpointIndex].x - fitting.points[0].x,
+            candidate!.drawing.points[candidate!.endpointIndex].y - fitting.points[0].y,
+          )
+          : undefined,
+      });
+      setSnapMarker(candidateReady ? candidate!.point : null);
+      setBranchMessage(candidateReady
+        ? `${gesture ? "Release" : "Press"} to attach ${candidate!.drawing.size}″ duct to open Port 3`
+        : gesture
+          ? "Keep the pen on the selected blue branch run, then release"
+          : "Press directly on the blue branch run you want to attach");
+      return;
+    }
+
+    const rawTarget = gesture?.mode === "place"
+      ? resolveLockedDirectBranchTarget(point, gesture)
+      : resolveDeterministicDirectBranchTarget(point, inputType);
+    setBranchHoverRunId(null);
+    if (!rawTarget) {
+      setBranchPreview(null);
+      setSnapMarker(null);
+      setExplicitThreeRunOption(null);
+      setBranchMessage(gesture
+        ? "Keep the pen close to the selected trunk, then release"
+        : "Press directly on one unlocked blue run in the active system");
+      return;
+    }
+    if (queuedBranchRunId && rawTarget.drawing.id === queuedBranchRunId) {
+      setBranchPreview(null);
+      setSnapMarker(rawTarget.point);
+      setExplicitThreeRunOption(null);
+      setBranchMessage("Branch run is armed · choose the main trunk for the T/Y");
+      return;
+    }
+    const target = orientMainTowardAirflow(rawTarget);
+    const placement = resolveDirectBranchPlacement(target);
+    if (!placement) {
+      setBranchPreview(null);
+      setSnapMarker(target.point);
+      setExplicitThreeRunOption(null);
+      setBranchMessage("The armed branch does not reach this station · move along the locked trunk");
+      return;
+    }
+    const threeRunMatch = queuedBranchRunId
+      ? null
+      : existingThreeRunJunction(target.point, target.drawing.id);
+    if (threeRunMatch && threeRunMatch.ports.length === 3) {
+      const [firstRunId, secondRunId, thirdRunId] = threeRunMatch.ports.map((match) => match.drawing.id);
+      setExplicitThreeRunOption({
+        center: threeRunMatch.center,
+        clickedRunId: target.drawing.id,
+        runIds: [firstRunId, secondRunId, thirdRunId],
+      });
+    } else {
+      setExplicitThreeRunOption(null);
+    }
+    setBranchPreview({
+      center: placement.center,
+      geometryVersion: 4,
+      angle: target.angle,
+      branchAngle: placement.branchAngle,
+      side: placement.fittingSide,
+      style: placement.resolvedStyle,
+      parentSize: target.drawing.size,
+      portSizes: [
+        target.drawing.size,
+        placement.downstreamSize,
+        placement.branchSize,
+      ],
+      valid: placement.clearance.valid,
+      matchedExisting: Boolean(placement.matchedRoute),
+      mainRunId: target.drawing.id,
+      branchRunId: placement.matchedRoute?.drawing.id,
+      runIds: [target.drawing.id, ...(placement.matchedRoute ? [placement.matchedRoute.drawing.id] : [])],
+      mode: "split-trunk",
+    });
+    setSnapMarker(placement.center);
+    setBranchMessage(!placement.clearance.valid
+      ? "Move farther from the run end or unsafe bend"
+      : gesture
+        ? `Release to place ${placement.resolvedStyle === "tee90" ? "the tee" : "the wye"} at this exact station`
+        : threeRunMatch
+          ? "Press-drag-release to split here, or explicitly connect the three nearby ends"
+          : "Press, move along this run, and release at the exact T/Y station");
+  }
+
+  function beginDirectBranchPlacementGesture(
+    event: PointerEvent<SVGSVGElement>,
+    point: Point,
+  ) {
+    const inputType = directBranchInputType(event.pointerType);
     setBranchPlacementResult(null);
-    if (attachPendingBranchRun(point)) return;
-    const rawTarget = nearestSupplySegment(point);
-    if (!rawTarget || rawTarget.distance > BRANCH_PICK_RADIUS_PX / zoom) {
-      setBranchMessage("Move closer to a blue supply run");
+    if (pendingBranchFittingId) {
+      const candidate = nearestAttachableSupplySegment(point, pendingBranchFittingId);
+      if (!candidate || candidate.distance > BRANCH_ATTACH_RADIUS_PX / zoom) {
+        setBranchMessage("Press directly on the blue branch run you want to attach");
+        return;
+      }
+      const gesture: DirectBranchPlacementGesture = {
+        pointerId: event.pointerId,
+        pointerType: inputType,
+        mode: "attach",
+        drawingId: candidate.drawing.id,
+        segmentIndex: candidate.segmentIndex,
+        endpointIndex: candidate.endpointIndex,
+        fittingId: pendingBranchFittingId,
+        latestPoint: point,
+        sourceFingerprint: directBranchRunFingerprint(candidate.drawing),
+      };
+      directBranchPlacementGestureRef.current = gesture;
+      capturePlanPointer(event.currentTarget, event.pointerId);
+      previewDirectBranchPlacementGesture(point, inputType, gesture);
+      event.preventDefault();
+      return;
+    }
+    const target = resolveDeterministicDirectBranchTarget(point, inputType);
+    if (!target) {
+      setBranchPreview(null);
+      setExplicitThreeRunOption(null);
+      setBranchMessage("Press directly on one unlocked blue run in the active system");
+      return;
+    }
+    const gesture: DirectBranchPlacementGesture = {
+      pointerId: event.pointerId,
+      pointerType: inputType,
+      mode: "place",
+      drawingId: target.drawing.id,
+      segmentIndex: target.segmentIndex,
+      queuedRunId: queuedBranchRunId || undefined,
+      latestPoint: point,
+      sourceFingerprint: directBranchRunFingerprint(target.drawing),
+    };
+    directBranchPlacementGestureRef.current = gesture;
+    capturePlanPointer(event.currentTarget, event.pointerId);
+    previewDirectBranchPlacementGesture(point, inputType, gesture);
+    event.preventDefault();
+  }
+
+  function finishDirectBranchPlacementGesture(
+    event: PointerEvent<SVGSVGElement> | PointerEvent<HTMLDivElement>,
+    cancelled = false,
+  ) {
+    const gesture = directBranchPlacementGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return false;
+    directBranchPlacementGestureRef.current = null;
+    if (cancelled) {
+      setBranchPreview(null);
+      setExplicitThreeRunOption(null);
+      setSnapMarker(null);
+      return true;
+    }
+    const releasePoint = event.currentTarget instanceof SVGSVGElement
+      ? canvasPoint(event as PointerEvent<SVGSVGElement>)
+      : gesture.latestPoint;
+    if (gesture.mode === "attach") {
+      const source = drawings.find((drawing) => drawing.id === gesture.drawingId);
+      if (
+        pendingBranchFittingId !== gesture.fittingId ||
+        !source ||
+        directBranchRunFingerprint(source) !== gesture.sourceFingerprint
+      ) {
+        setBranchPreview(null);
+        setSnapMarker(null);
+        setBranchMessage("That branch run changed before release · press it again");
+        return true;
+      }
+      attachPendingBranchRun(releasePoint, gesture.drawingId);
+      return true;
+    }
+    if ((queuedBranchRunId || undefined) !== gesture.queuedRunId) {
+      setBranchPreview(null);
+      setSnapMarker(null);
+      setBranchMessage("The armed branch changed before release · choose the trunk again");
+      return true;
+    }
+    const target = resolveLockedDirectBranchTarget(releasePoint, gesture);
+    if (!target) {
+      setBranchPreview(null);
+      setSnapMarker(null);
+      setExplicitThreeRunOption(null);
+      setBranchMessage("Nothing placed · keep the pen close to the selected trunk and release again");
+      return true;
+    }
+    placeSmartBranch(releasePoint, target);
+    return true;
+  }
+
+  function placeSmartBranch(
+    point: Point,
+    lockedTarget?: NonNullable<ReturnType<typeof nearestSupplySegment>>,
+  ) {
+    setBranchPlacementResult(null);
+    const rawTarget = lockedTarget || resolveDeterministicDirectBranchTarget(point, "mouse");
+    if (!rawTarget) {
+      setBranchMessage("Press directly on one unlocked blue run in the active system");
       return;
     }
     if (queuedBranchRunId && rawTarget.drawing.id === queuedBranchRunId) {
       setBranchMessage("That is the branch run already armed for Port 3 · click the main trunk where the T/Y belongs");
       return;
     }
-    const threeRunMatch = queuedBranchRunId
-      ? null
-      : existingThreeRunJunction(rawTarget.point, rawTarget.drawing.id);
-    if (threeRunMatch) {
-      const [upstreamMatch, downstreamMatch, branchMatch] = threeRunMatch.ports;
-      const fittingId = crypto.randomUUID();
-      const fitting: Drawing = {
-        id: fittingId,
-        type: "branch",
-        points: [threeRunMatch.center],
-        size: `${upstreamMatch.drawing.size}×${downstreamMatch.drawing.size}×${branchMatch.drawing.size}`,
-        page: pageNumber,
-        systemId: drawingSystem(upstreamMatch.drawing),
-        elevation: upstreamMatch.drawing.elevation,
-        fitting: {
-          kind: "ty",
-          geometryVersion: 3,
-          style: threeRunMatch.style,
-          angle: threeRunMatch.angle,
-          branchAngle: threeRunMatch.branchAngle,
-          side: threeRunMatch.side,
-          upstreamSize: upstreamMatch.drawing.size,
-          downstreamSize: downstreamMatch.drawing.size,
-          branchSize: branchMatch.drawing.size,
-          connectedIds: threeRunMatch.ports.map((match) => match.drawing.id),
-        },
-      };
-      const finalPorts = fittingPortPoints(fitting);
-      const endpointAssignments = new Map(threeRunMatch.ports.map((match, port) => [
-        match.drawing.id,
-        { endpointIndex: match.endpointIndex, point: finalPorts[port] },
-      ]));
-      const connectedRuns = drawings.map((drawing) => {
-        const assignment = endpointAssignments.get(drawing.id);
-        if (!assignment) return drawing;
-        return {
-          ...drawing,
-          points: drawing.points.map((existingPoint, index) =>
-            index === assignment.endpointIndex ? assignment.point : existingPoint),
-        };
-      });
-      setHistory([...connectedRuns, fitting]);
-      setActiveSystem(drawingSystem(upstreamMatch.drawing));
-      setSelectedId(fittingId);
-      setBranchHoverRunId(null);
-      const completionMessage = `${threeRunMatch.style === "tee90" ? "90° tee" : "45° wye"} placed · 3 separate runs connected`;
-      setBranchMessage(completionMessage);
-      setBranchPlacementResult({ fittingId, message: completionMessage });
-      return;
-    }
     const target = orientMainTowardAirflow(rawTarget);
     const placement = resolveDirectBranchPlacement(target);
     if (!placement) return;
     if (!placement.clearance.valid) {
-      setBranchMessage("Place the T/Y farther from the run end or bend so both trunk ports fit");
+      setBranchMessage("Move farther from the run end or unsafe bend so both trunk ports fit");
       return;
     }
     const {
@@ -9402,11 +9815,11 @@ function HVACPlanStudioApp() {
         points: matchedRoute.drawing.points,
       } : undefined,
     });
-    const upstream: Drawing = { ...target.drawing, points: geometry.upstreamPoints };
+    const upstream: Drawing = { ...target.drawing, points: placement.clearance.upstreamPoints };
     const downstream: Drawing = {
       ...target.drawing,
       id: downstreamId,
-      points: geometry.downstreamPoints,
+      points: placement.clearance.downstreamPoints,
       size: downstreamSize,
       cfm: target.drawing.cfm,
       cfmSource: target.drawing.cfmSource,
@@ -9425,7 +9838,7 @@ function HVACPlanStudioApp() {
       elevation: target.drawing.elevation,
       fitting: {
         kind: "ty",
-        geometryVersion: 3,
+        geometryVersion: 4,
         style: resolvedStyle,
         angle: target.angle,
         branchAngle,
@@ -9447,6 +9860,8 @@ function HVACPlanStudioApp() {
     setSelectedId(fittingId);
     setQueuedBranchRunId(null);
     setBranchHoverRunId(null);
+    setBranchPreview(null);
+    setExplicitThreeRunOption(null);
     if (branchRun) {
       const completionMessage = `${resolvedStyle === "tee90" ? "90° tee" : "45° wye"} placed · all three runs connected`;
       setBranchMessage(completionMessage);
@@ -10056,14 +10471,19 @@ function HVACPlanStudioApp() {
     setBranchMessage(`Extending Outlet ${port === 1 ? "A" : "B"} · left-click points · right-click to finish`);
   }
 
-  function canvasPoint(event: PointerEvent<SVGSVGElement>): Point {
-    const target = event.currentTarget as unknown as SVGSVGElement | SVGGraphicsElement;
-    const svg = target instanceof SVGSVGElement ? target : target.ownerSVGElement;
-    const bounds = (svg || target).getBoundingClientRect();
+  function planPointFromClient(clientX: number, clientY: number): Point | null {
+    const svg = planOverlayRef.current;
+    if (!svg) return null;
+    const bounds = svg.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return null;
     return {
-      x: ((event.clientX - bounds.left) / bounds.width) * renderSize.width,
-      y: ((event.clientY - bounds.top) / bounds.height) * renderSize.height,
+      x: ((clientX - bounds.left) / bounds.width) * renderSize.width,
+      y: ((clientY - bounds.top) / bounds.height) * renderSize.height,
     };
+  }
+
+  function canvasPoint(event: PointerEvent<SVGSVGElement>): Point {
+    return planPointFromClient(event.clientX, event.clientY) || { x: 0, y: 0 };
   }
 
   function saveRoomMarkupCandidate(candidate: RoomMarkupCandidate) {
@@ -10570,7 +10990,7 @@ function HVACPlanStudioApp() {
       return;
     }
     if (activeTool === "branch") {
-      placeSmartBranch(rawPoint);
+      beginDirectBranchPlacementGesture(event, rawPoint);
       return;
     }
     if (symbolTools.includes(activeTool as SymbolKind)) {
@@ -12049,7 +12469,11 @@ function HVACPlanStudioApp() {
   }
 
   function handlePointerMove(event: PointerEvent<SVGSVGElement>) {
-    if (panRef.current || touchGestureRef.current || (event.pointerType === "touch" && !dragRef.current)) return;
+    if (
+      panRef.current ||
+      touchGestureRef.current ||
+      (event.pointerType === "touch" && !dragRef.current && !directBranchPlacementGestureRef.current)
+    ) return;
     const raw = canvasPoint(event);
     const drag = dragRef.current;
     if (copyPlacement && !drag) {
@@ -12211,128 +12635,10 @@ function HVACPlanStudioApp() {
       return;
     }
     if (activeTool === "branch") {
-      if (pendingBranchFittingId) {
-        const fitting = drawings.find((drawing) => drawing.id === pendingBranchFittingId && drawing.fitting);
-        const candidate = nearestAttachableSupplySegment(raw, pendingBranchFittingId);
-        if (!fitting?.fitting) {
-          setPendingBranchFittingId(null);
-          setBranchPreview(null);
-          return;
-        }
-        const candidateReady = Boolean(candidate && candidate.distance <= BRANCH_ATTACH_RADIUS_PX / zoom);
-        const branchAngle = candidateReady ? candidate!.angle : fitting.fitting.branchAngle;
-        const side = candidateReady ? candidate!.side : fitting.fitting.side;
-        const style = candidateReady && branchStyle === "auto"
-          ? automaticBranchStyle(fitting.fitting.angle, candidate!.angle)
-          : branchStyle === "auto" ? fitting.fitting.style : branchStyle;
-        setBranchPreview({
-          center: fitting.points[0],
-          geometryVersion: fitting.fitting.geometryVersion,
-          angle: fitting.fitting.angle,
-          branchAngle,
-          side,
-          style,
-          parentSize: fitting.fitting.upstreamSize,
-          portSizes: [
-            fitting.fitting.upstreamSize,
-            fitting.fitting.downstreamSize,
-            candidateReady ? candidate!.drawing.size : fitting.fitting.branchSize,
-          ],
-          valid: candidateReady,
-          matchedExisting: candidateReady,
-          mainRunId: fitting.fitting.connectedIds[0],
-          branchRunId: candidateReady ? candidate!.drawing.id : undefined,
-          runIds: fitting.fitting.connectedIds.filter(Boolean),
-          mode: "attach-run",
-          candidateEndpoint: candidateReady ? candidate!.drawing.points[candidate!.endpointIndex] : undefined,
-          candidateProjected: candidateReady ? candidate!.point : undefined,
-          candidateEndpointDistance: candidateReady
-            ? Math.hypot(
-              candidate!.drawing.points[candidate!.endpointIndex].x - fitting.points[0].x,
-              candidate!.drawing.points[candidate!.endpointIndex].y - fitting.points[0].y,
-            )
-            : undefined,
-        });
-        setSnapMarker(candidateReady ? candidate!.point : null);
-        setBranchMessage(candidateReady
-          ? `Run selected · click to attach ${candidate!.drawing.size}″ duct to open Port 3`
-          : "Fitting placed · click directly on any blue branch run to finish");
-        return;
-      }
-      setBranchHoverRunId(null);
-      const rawTarget = nearestSupplySegment(raw);
-      if (rawTarget && rawTarget.distance <= BRANCH_PICK_RADIUS_PX / zoom) {
-        if (queuedBranchRunId && rawTarget.drawing.id === queuedBranchRunId) {
-          setBranchPreview(null);
-          setSnapMarker(rawTarget.point);
-          setBranchMessage("Branch run is armed · move to the main trunk and click where the T/Y belongs");
-          return;
-        }
-        const threeRunMatch = queuedBranchRunId
-          ? null
-          : existingThreeRunJunction(rawTarget.point, rawTarget.drawing.id);
-        if (threeRunMatch) {
-          const runIds = threeRunMatch.ports.map((match) => match.drawing.id);
-          setBranchPreview({
-            center: threeRunMatch.center,
-            geometryVersion: 3,
-            angle: threeRunMatch.angle,
-            branchAngle: threeRunMatch.branchAngle,
-            side: threeRunMatch.side,
-            style: threeRunMatch.style,
-            parentSize: threeRunMatch.ports[0].drawing.size,
-            portSizes: threeRunMatch.ports.map(
-              (match) => match.drawing.size
-            ) as [string, string, string],
-            valid: true,
-            matchedExisting: true,
-            mainRunId: runIds[0],
-            branchRunId: runIds[2],
-            runIds,
-            mode: "three-runs",
-          });
-          setSnapMarker(threeRunMatch.center);
-          setBranchMessage("3 local endpoints found · click to connect Ports 1, 2 and 3");
-          return;
-        }
-        const target = orientMainTowardAirflow(rawTarget);
-        const placement = resolveDirectBranchPlacement(target);
-        if (!placement) {
-          setBranchPreview(null);
-          setSnapMarker(target.point);
-          return;
-        }
-        setBranchPreview({
-          center: placement.center,
-          geometryVersion: 3,
-          angle: target.angle,
-          branchAngle: placement.branchAngle,
-          side: placement.fittingSide,
-          style: placement.resolvedStyle,
-          parentSize: target.drawing.size,
-          portSizes: [
-            target.drawing.size,
-            placement.downstreamSize,
-            placement.branchSize,
-          ],
-          valid: placement.clearance.valid,
-          matchedExisting: Boolean(placement.matchedRoute),
-          mainRunId: target.drawing.id,
-          branchRunId: placement.matchedRoute?.drawing.id,
-          runIds: [target.drawing.id, ...(placement.matchedRoute ? [placement.matchedRoute.drawing.id] : [])],
-          mode: "split-trunk",
-        });
-        setSnapMarker(placement.center);
-        setBranchMessage(!placement.clearance.valid
-          ? "Move farther from the run end or bend so both trunk ports fit"
-          : placement.matchedRoute
-            ? "Local junction found · click to connect all three runs"
-            : "Click to place the fitting here · Port 3 is ready to draw next");
-      } else {
-        setBranchPreview(null);
-        setSnapMarker(null);
-        setBranchMessage("Move over a blue supply run");
-      }
+      const gesture = directBranchPlacementGestureRef.current;
+      if (gesture && gesture.pointerId !== event.pointerId) return;
+      if (gesture) gesture.latestPoint = raw;
+      previewDirectBranchPlacementGesture(raw, directBranchInputType(event.pointerType), gesture);
       return;
     }
     if (symbolTools.includes(activeTool as SymbolKind)) {
@@ -12356,6 +12662,11 @@ function HVACPlanStudioApp() {
   }
 
   function endDrag(event: PointerEvent<SVGSVGElement>, cancelled = false) {
+    if (finishDirectBranchPlacementGesture(event, cancelled)) {
+      activeEditPointerIdRef.current = null;
+      if (editTransactionRef.current?.pointerId === event.pointerId) editTransactionRef.current = null;
+      return;
+    }
     if (event.pointerType === "touch" && !dragRef.current) return;
     if (activeEditPointerIdRef.current !== null && activeEditPointerIdRef.current !== event.pointerId) return;
     if (selectionBox) {
@@ -15546,10 +15857,15 @@ function HVACPlanStudioApp() {
                   ? "CONNECTED"
                   : pendingBranchFittingId
                     ? "REPAIRING OLD FITTING"
+                    : explicitThreeRunOption
+                      ? "3-RUN OPTION"
                     : branchPreview?.matchedExisting ? "JUNCTION FOUND" : "READY"}</b>
               </div>
-              <strong className="branch-workflow-message">{branchPlacementResult?.message || branchMessage || "Click the blue trunk exactly where the T/Y belongs"}</strong>
-              {!pendingBranchFittingId && !branchPlacementResult && <small>Your click chooses the station; only clear local endpoints auto-connect.</small>}
+              <strong className="branch-workflow-message">{branchPlacementResult?.message || branchMessage || "Press the trunk, drag along it, and release at the exact station"}</strong>
+              {!pendingBranchFittingId && !branchPlacementResult && <small>Release splits only the selected trunk. Existing runs connect only when you explicitly choose them.</small>}
+              {explicitThreeRunOption && !pendingBranchFittingId && !branchPlacementResult && <div className="branch-workflow-actions">
+                <button type="button" className="primary" onClick={confirmExplicitThreeRunConnection}>Connect these 3 existing runs</button>
+              </div>}
               {pendingBranchFittingId && <div className="branch-workflow-actions">
                 <button onClick={leavePort3BranchOpen}>Leave Port 3 open</button>
                 <button className="danger" onClick={undo}><Undo2 size={13} /> Undo fitting</button>
@@ -16143,15 +16459,14 @@ function HVACPlanStudioApp() {
                         {calibrating ? `${referenceFeet} FT REFERENCE` : `${(Math.hypot(hoverPoint.x - measureDraft[0].x, hoverPoint.y - measureDraft[0].y) * scaleFeetPerUnit).toFixed(1)} FT`}
                       </text>
                     </g>}
-                    {activeTool === "branch" && !pendingBranchFittingId && !branchPreview && branchOpportunityList.slice(0, 3).map((opportunity, index) => <g
+                    {activeTool === "branch" && !pendingBranchFittingId && !branchPreview && branchOpportunityList.slice(0, 1).map((opportunity) => <g
                       aria-hidden="true"
                       className="branch-opportunity-marker"
                       key={opportunity.id}
                       transform={`translate(${opportunity.center.x} ${opportunity.center.y}) scale(${fittingOverlayScale(zoom)})`}
                     >
-                      <circle cx="0" cy="0" r="6" />
-                      <text x="0" y="2.8" textAnchor="middle">{index + 1}</text>
-                      {index === 0 && <text className="branch-opportunity-label" x="9" y="-8">OPTIONAL T/Y</text>}
+                      <circle cx="0" cy="0" r="4.5" />
+                      <text className="branch-opportunity-label" x="8" y="-7">OPTIONAL T/Y</text>
                     </g>)}
                     {branchPreview && (() => {
                       const center = branchPreview.center;
@@ -16177,12 +16492,24 @@ function HVACPlanStudioApp() {
                           connectedIds: [],
                         },
                       };
-                      const [inlet, outlet, branchPort] = fittingPortPoints(previewFitting);
+                      const [naturalInlet, naturalOutlet, naturalBranchPort] = fittingPortPoints(previewFitting);
+                      const ghostScale = fittingGhostScale(
+                        branchPreview.portSizes,
+                        branchPreview.geometryVersion ?? 4,
+                        zoom,
+                      );
+                      const displayPort = (port: Point) => ({
+                        x: center.x + (port.x - center.x) * ghostScale,
+                        y: center.y + (port.y - center.y) * ghostScale,
+                      });
+                      const inlet = displayPort(naturalInlet);
+                      const outlet = displayPort(naturalOutlet);
+                      const branchPort = displayPort(naturalBranchPort);
                       return <g className={`branch-preview ${branchPreview.valid ? "" : "invalid"}`}>
                         {branchPreview.mode === "attach-run" && branchPreview.candidateEndpoint && <>
                           <path className="candidate-endpoint-guide" d={`M ${branchPreview.candidateEndpoint.x} ${branchPreview.candidateEndpoint.y} L ${branchPort.x} ${branchPort.y}`} />
                           <circle className="candidate-endpoint" cx={branchPreview.candidateEndpoint.x} cy={branchPreview.candidateEndpoint.y} r={7 * previewScale} />
-                          <text className="candidate-endpoint-label" x={branchPreview.candidateEndpoint.x + 10 * previewScale} y={branchPreview.candidateEndpoint.y - 9 * previewScale} style={{ fontSize: `${8 * previewScale}px` }}>
+                          <text className="candidate-endpoint-label" x={branchPreview.candidateEndpoint.x + 10 * previewScale} y={branchPreview.candidateEndpoint.y - 9 * previewScale} style={{ fontSize: `${12 * previewScale}px` }}>
                             THIS END MOVES TO PORT 3{branchPreview.candidateEndpointDistance ? ` · ${(branchPreview.candidateEndpointDistance * scaleFeetPerUnit).toFixed(1)} FT` : ""}
                           </text>
                         </>}
@@ -16195,21 +16522,21 @@ function HVACPlanStudioApp() {
                             cy={port.y}
                             r={4.5 * previewScale}
                           />
-                          <text className="preview-port-number" x={port.x} y={port.y + 2.8 * previewScale} textAnchor="middle" style={{ fontSize: `${6 * previewScale}px` }}>{index + 1}</text>
-                          <text className="preview-port-role" x={port.x} y={port.y + 14 * previewScale} textAnchor="middle" style={{ fontSize: `${6 * previewScale}px` }}>{["IN", "OUT", "BRANCH"][index]}</text>
+                          <text className="preview-port-number" x={port.x} y={port.y + 3.5 * previewScale} textAnchor="middle" style={{ fontSize: `${11 * previewScale}px` }}>{index + 1}</text>
+                          <text className="preview-port-role" x={port.x} y={port.y + 16 * previewScale} textAnchor="middle" style={{ fontSize: `${10 * previewScale}px` }}>{["IN", "OUT", "BRANCH"][index]}</text>
                         </g>)}
-                        {branchPreview.mode === "split-trunk" && <text className="preview-trunk-label" x={center.x} y={center.y - 20 * previewScale} textAnchor="middle" style={{ fontSize: `${8 * previewScale}px` }}>TRUNK TO SPLIT</text>}
-                        {branchPreview.mode === "attach-run" && branchPreview.branchRunId && branchPreview.candidateProjected && <text className="preview-run-label" x={branchPreview.candidateProjected.x} y={branchPreview.candidateProjected.y - 13 * previewScale} textAnchor="middle" style={{ fontSize: `${8 * previewScale}px` }}>BRANCH RUN SELECTED</text>}
-                        <text x={branchPort.x + 7 * previewScale} y={branchPort.y - 6 * previewScale} style={{ fontSize: `${8 * previewScale}px` }}>
+                        {branchPreview.mode === "split-trunk" && <text className="preview-trunk-label" x={center.x} y={center.y - 22 * previewScale} textAnchor="middle" style={{ fontSize: `${12 * previewScale}px` }}>SELECTED TRUNK</text>}
+                        {branchPreview.mode === "attach-run" && branchPreview.branchRunId && branchPreview.candidateProjected && <text className="preview-run-label" x={branchPreview.candidateProjected.x} y={branchPreview.candidateProjected.y - 15 * previewScale} textAnchor="middle" style={{ fontSize: `${12 * previewScale}px` }}>BRANCH RUN SELECTED</text>}
+                        <text x={branchPort.x + 9 * previewScale} y={branchPort.y - 8 * previewScale} style={{ fontSize: `${12 * previewScale}px` }}>
                           {!branchPreview.valid
                             ? "MOVE AWAY FROM END OR BEND"
                             : branchPreview.mode === "attach-run"
                             ? branchPreview.matchedExisting
-                              ? `CLICK TO ATTACH · ${previewStyle === "tee90" ? "TEE" : "WYE"}`
+                              ? `RELEASE TO ATTACH · ${previewStyle === "tee90" ? "TEE" : "WYE"}`
                               : "SELECT ANY BLUE BRANCH RUN"
                             : branchPreview.matchedExisting
-                              ? `READY · ${previewStyle === "tee90" ? "TEE" : "WYE"} · ${branchPreview.mode === "three-runs" ? "3 SEPARATE RUNS" : "TRUNK + BRANCH"}`
-                              : "PLACE HERE · DRAW PORT 3 NEXT"} · {branchPreview.portSizes.join("×")}
+                              ? `RELEASE TO CONNECT · ${previewStyle === "tee90" ? "TEE" : "WYE"}`
+                              : "RELEASE TO PLACE"} · {branchPreview.portSizes.join("×")}
                         </text>
                       </g>;
                     })()}
@@ -17971,7 +18298,7 @@ function HVACPlanStudioApp() {
           activatePlanTool("branch");
           setBranchPreview({
             center: opportunity.center,
-            geometryVersion: 3,
+            geometryVersion: 4,
             angle: opportunity.angle,
             branchAngle: opportunity.branchAngle,
             side: opportunity.side,

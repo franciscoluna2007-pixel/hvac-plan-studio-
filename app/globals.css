@@ -21165,3 +21165,85 @@ footer {
     background: #fff !important;
   }
 }
+
+/* Deterministic T/Y placement: keep field tools readable without changing
+   the established tablet and mobile drawers. This block intentionally follows
+   the visual-world rules so the desktop dimensions remain authoritative. */
+@media (min-width: 1101px) {
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) {
+    --deck-tools: 320px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .left-panel .left-panel-tabs button {
+    font-size: 14px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .left-panel.view-draw .tool {
+    min-height: 54px;
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    padding-inline: 12px;
+    gap: 9px;
+    font-size: 15px;
+    line-height: 18px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .left-panel.view-draw .tool-icon {
+    font-size: 18px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .left-panel :is(.library-title, .branch-safe-mode b) {
+    font-size: 13px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .left-panel .library-title b,
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .left-panel .run-size-default small,
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .left-panel .branch-designer small {
+    font-size: 13px !important;
+    line-height: 1.45 !important;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) .left-panel .branch-arm {
+    min-height: 44px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 1500px) and (min-width: 1101px) {
+  .app-shell[data-presentation="galvanized-daylight"]:not(.tablet-layout) {
+    --deck-tools: 280px;
+  }
+
+  .app-shell[data-presentation="galvanized-daylight"] .left-panel.view-draw .tool {
+    min-height: 52px;
+    grid-template-columns: 25px minmax(0, 1fr) auto;
+    padding-inline: 10px;
+    font-size: 14px;
+    line-height: 17px;
+  }
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .branch-workflow-hud {
+  width: min(360px, calc(100% - 16px));
+  margin-bottom: -180px;
+  padding: 8px;
+  gap: 6px;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .branch-workflow-heading span,
+.app-shell[data-presentation="galvanized-daylight"] .branch-workflow-message {
+  font-size: 12px;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .branch-workflow-heading b {
+  font-size: 10px;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .branch-workflow-hud > small,
+.app-shell[data-presentation="galvanized-daylight"] .branch-workflow-actions button {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .branch-opportunity-marker .branch-opportunity-label {
+  font-size: 10px;
+}

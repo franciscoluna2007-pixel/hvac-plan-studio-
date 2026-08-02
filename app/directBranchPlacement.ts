@@ -10,6 +10,8 @@ export type DirectBranchRun = {
   systemId: string;
   points: DirectBranchPoint[];
   eligible?: boolean;
+  visible?: boolean;
+  locked?: boolean;
 };
 
 export type DirectBranchProjection = {
@@ -47,6 +49,327 @@ export function projectDirectBranchStation(
     distance: Math.hypot(point.x - projected.x, point.y - projected.y),
     angle: Math.atan2(dy, dx),
     side: cross >= 0 ? 1 : -1,
+  };
+}
+
+export type DirectBranchInputType = "mouse" | "pen" | "touch";
+
+export type DirectBranchTrunkCandidate<T extends DirectBranchRun> =
+  DirectBranchProjection & {
+    run: T;
+    segmentIndex: number;
+    selected: boolean;
+    activeSystem: boolean;
+  };
+
+const DIRECT_BRANCH_PICK_RADIUS_PX: Record<DirectBranchInputType, number> = {
+  mouse: 14,
+  pen: 14,
+  touch: 24,
+};
+
+/**
+ * Resolves one eligible trunk without allowing array order or a nearby crossing
+ * to make the choice for the user. Adjacent segments from the same polyline are
+ * collapsed to one run candidate, so clicking a real vertex is not ambiguous.
+ */
+export function resolveDirectBranchTrunkCandidate<T extends DirectBranchRun>({
+  point,
+  runs,
+  page,
+  activeSystemId,
+  selectedRunId,
+  ignoredRunId,
+  zoom,
+  inputType,
+  radiusPx,
+  ambiguityPx = 6,
+}: {
+  point: DirectBranchPoint;
+  runs: readonly T[];
+  page: number;
+  activeSystemId?: string;
+  selectedRunId?: string | null;
+  ignoredRunId?: string | null;
+  zoom: number;
+  inputType: DirectBranchInputType;
+  radiusPx?: Partial<Record<DirectBranchInputType, number>>;
+  ambiguityPx?: number;
+}): DirectBranchTrunkCandidate<T> | null {
+  const resolvedZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const resolvedRadiusPx = radiusPx?.[inputType] ?? DIRECT_BRANCH_PICK_RADIUS_PX[inputType];
+  const radius = Math.max(0, resolvedRadiusPx) / resolvedZoom;
+  const perRun: DirectBranchTrunkCandidate<T>[] = [];
+
+  for (const run of runs) {
+    if (
+      run.id === ignoredRunId ||
+      run.page !== page ||
+      run.type !== "supply" ||
+      run.eligible === false ||
+      run.visible === false ||
+      run.locked === true ||
+      run.points.length < 2
+    ) continue;
+
+    let bestForRun: DirectBranchTrunkCandidate<T> | null = null;
+    for (let segmentIndex = 0; segmentIndex < run.points.length - 1; segmentIndex++) {
+      const projection = projectDirectBranchStation(
+        point,
+        run.points[segmentIndex],
+        run.points[segmentIndex + 1],
+      );
+      if (!projection || projection.distance > radius) continue;
+      const candidate: DirectBranchTrunkCandidate<T> = {
+        ...projection,
+        run,
+        segmentIndex,
+        selected: run.id === selectedRunId,
+        activeSystem: Boolean(activeSystemId) && run.systemId === activeSystemId,
+      };
+      if (
+        !bestForRun ||
+        candidate.distance < bestForRun.distance ||
+        (candidate.distance === bestForRun.distance && candidate.segmentIndex < bestForRun.segmentIndex)
+      ) bestForRun = candidate;
+    }
+    if (bestForRun) perRun.push(bestForRun);
+  }
+
+  const priority = (candidate: DirectBranchTrunkCandidate<T>) =>
+    candidate.selected ? 0 : candidate.activeSystem ? 1 : 2;
+  perRun.sort((left, right) =>
+    priority(left) - priority(right) ||
+    left.distance - right.distance ||
+    left.run.id.localeCompare(right.run.id) ||
+    left.segmentIndex - right.segmentIndex
+  );
+
+  const best = perRun[0];
+  if (!best) return null;
+  const bestPriority = priority(best);
+  const ambiguity = Math.max(0, ambiguityPx) / resolvedZoom;
+  const competingRun = perRun.find((candidate) =>
+    candidate.run.id !== best.run.id &&
+    priority(candidate) === bestPriority &&
+    candidate.distance - best.distance < ambiguity
+  );
+  return competingRun ? null : best;
+}
+
+export type DirectBranchPolylineSpanFailure =
+  | "invalid-polyline"
+  | "center-off-polyline"
+  | "insufficient-before"
+  | "insufficient-after"
+  | "self-intersection";
+
+export type DirectBranchPolylineSpan = {
+  valid: boolean;
+  reason: DirectBranchPolylineSpanFailure | null;
+  center: DirectBranchPoint;
+  before: number;
+  after: number;
+  requiredBefore: number;
+  requiredAfter: number;
+  upstreamPoints: DirectBranchPoint[];
+  downstreamPoints: DirectBranchPoint[];
+};
+
+function finiteDirectBranchPoint(point: DirectBranchPoint | undefined) {
+  return Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.y));
+}
+
+function preciseDirectBranchPoints(points: DirectBranchPoint[]) {
+  return points.filter((point, index) =>
+    index === 0 || Math.hypot(
+      point.x - points[index - 1].x,
+      point.y - points[index - 1].y,
+    ) > 1e-7
+  );
+}
+
+function directBranchSegmentsIntersect(
+  a: DirectBranchPoint,
+  b: DirectBranchPoint,
+  c: DirectBranchPoint,
+  d: DirectBranchPoint,
+) {
+  const epsilon = 1e-7;
+  const cross = (p: DirectBranchPoint, q: DirectBranchPoint, r: DirectBranchPoint) =>
+    (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const within = (value: number, edgeA: number, edgeB: number) =>
+    value >= Math.min(edgeA, edgeB) - epsilon && value <= Math.max(edgeA, edgeB) + epsilon;
+  const onSegment = (p: DirectBranchPoint, q: DirectBranchPoint, r: DirectBranchPoint) =>
+    Math.abs(cross(p, q, r)) <= epsilon &&
+    within(r.x, p.x, q.x) &&
+    within(r.y, p.y, q.y);
+  const abC = cross(a, b, c);
+  const abD = cross(a, b, d);
+  const cdA = cross(c, d, a);
+  const cdB = cross(c, d, b);
+  if (
+    ((abC > epsilon && abD < -epsilon) || (abC < -epsilon && abD > epsilon)) &&
+    ((cdA > epsilon && cdB < -epsilon) || (cdA < -epsilon && cdB > epsilon))
+  ) return true;
+  return onSegment(a, b, c) || onSegment(a, b, d) || onSegment(c, d, a) || onSegment(c, d, b);
+}
+
+function directBranchSpanSelfIntersects(
+  upstreamPoints: DirectBranchPoint[],
+  outletPort: DirectBranchPoint,
+  downstreamPoints: DirectBranchPoint[],
+) {
+  const fullPoints = [
+    ...upstreamPoints,
+    { ...outletPort },
+    ...downstreamPoints.slice(1),
+  ];
+  const inletIndex = upstreamPoints.length - 1;
+  const modifiedSegments = new Set<number>([
+    inletIndex - 1,
+    inletIndex,
+    inletIndex + 1,
+  ].filter((index) => index >= 0 && index < fullPoints.length - 1));
+  for (const segmentIndex of modifiedSegments) {
+    for (let otherIndex = 0; otherIndex < fullPoints.length - 1; otherIndex++) {
+      if (
+        otherIndex === segmentIndex ||
+        Math.abs(otherIndex - segmentIndex) <= 1
+      ) continue;
+      if (directBranchSegmentsIntersect(
+        fullPoints[segmentIndex],
+        fullPoints[segmentIndex + 1],
+        fullPoints[otherIndex],
+        fullPoints[otherIndex + 1],
+      )) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Reserves the fitting around an exact station using distance along the whole
+ * trunk, not only the clicked segment. Vertices inside the fitting reach are
+ * removed, which safely straightens a small local bend while keeping the center
+ * fixed. The returned runs never mutate the source polyline.
+ */
+export function reserveDirectBranchPolylineSpan({
+  points,
+  segmentIndex,
+  center,
+  inletPort,
+  outletPort,
+  minimumLeg = 0.5,
+  centerTolerance = 0.05,
+}: {
+  points: readonly DirectBranchPoint[];
+  segmentIndex: number;
+  center: DirectBranchPoint;
+  inletPort: DirectBranchPoint;
+  outletPort: DirectBranchPoint;
+  minimumLeg?: number;
+  centerTolerance?: number;
+}): DirectBranchPolylineSpan {
+  const failure = (
+    reason: DirectBranchPolylineSpanFailure,
+    before = 0,
+    after = 0,
+    requiredBefore = 0,
+    requiredAfter = 0,
+  ): DirectBranchPolylineSpan => ({
+    valid: false,
+    reason,
+    center: { ...center },
+    before,
+    after,
+    requiredBefore,
+    requiredAfter,
+    upstreamPoints: [],
+    downstreamPoints: [],
+  });
+  if (
+    points.length < 2 ||
+    segmentIndex < 0 ||
+    segmentIndex >= points.length - 1 ||
+    !points.every(finiteDirectBranchPoint) ||
+    !finiteDirectBranchPoint(center) ||
+    !finiteDirectBranchPoint(inletPort) ||
+    !finiteDirectBranchPoint(outletPort)
+  ) return failure("invalid-polyline");
+
+  const segmentLengths: number[] = [];
+  const cumulative = [0];
+  for (let index = 0; index < points.length - 1; index++) {
+    const length = Math.hypot(
+      points[index + 1].x - points[index].x,
+      points[index + 1].y - points[index].y,
+    );
+    segmentLengths.push(length);
+    cumulative.push(cumulative[index] + length);
+  }
+  const projection = projectDirectBranchStation(
+    center,
+    points[segmentIndex],
+    points[segmentIndex + 1],
+  );
+  if (!projection || projection.distance > Math.max(0, centerTolerance)) {
+    return failure("center-off-polyline");
+  }
+
+  const centerDistance = cumulative[segmentIndex] + projection.amount * segmentLengths[segmentIndex];
+  const before = centerDistance;
+  const after = cumulative[cumulative.length - 1] - centerDistance;
+  const inletReach = Math.hypot(center.x - inletPort.x, center.y - inletPort.y);
+  const outletReach = Math.hypot(center.x - outletPort.x, center.y - outletPort.y);
+  const resolvedMinimumLeg = Math.max(0, minimumLeg);
+  const requiredBefore = inletReach + resolvedMinimumLeg;
+  const requiredAfter = outletReach + resolvedMinimumLeg;
+  if (before < requiredBefore) {
+    return failure("insufficient-before", before, after, requiredBefore, requiredAfter);
+  }
+  if (after < requiredAfter) {
+    return failure("insufficient-after", before, after, requiredBefore, requiredAfter);
+  }
+
+  const inletCutDistance = centerDistance - inletReach;
+  const outletCutDistance = centerDistance + outletReach;
+  const epsilon = 1e-7;
+  const upstreamPoints = preciseDirectBranchPoints([
+    ...points
+      .filter((_point, index) => cumulative[index] < inletCutDistance - epsilon)
+      .map((point) => ({ ...point })),
+    { ...inletPort },
+  ]);
+  const downstreamPoints = preciseDirectBranchPoints([
+    { ...outletPort },
+    ...points
+      .filter((_point, index) => cumulative[index] > outletCutDistance + epsilon)
+      .map((point) => ({ ...point })),
+  ]);
+  if (upstreamPoints.length < 2 || downstreamPoints.length < 2) {
+    return failure(
+      upstreamPoints.length < 2 ? "insufficient-before" : "insufficient-after",
+      before,
+      after,
+      requiredBefore,
+      requiredAfter,
+    );
+  }
+  if (directBranchSpanSelfIntersects(upstreamPoints, outletPort, downstreamPoints)) {
+    return failure("self-intersection", before, after, requiredBefore, requiredAfter);
+  }
+
+  return {
+    valid: true,
+    reason: null,
+    center: { ...center },
+    before,
+    after,
+    requiredBefore,
+    requiredAfter,
+    upstreamPoints,
+    downstreamPoints,
   };
 }
 

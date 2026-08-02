@@ -461,8 +461,12 @@ test("uses nominal icon sizes, accurate equipment identities, and selected place
   assert.ok(mark.byteLength > 500);
 });
 
-test("places a T/Y at the clicked trunk and auto-connects only one safe local branch endpoint", async () => {
+test("locks one deterministic T/Y trunk until release and keeps connections explicit", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const pointerDown = source.slice(
+    source.indexOf("function handleDrawingClick"),
+    source.indexOf("function undoableAssistantRepairRecord"),
+  );
   const placement = source.slice(
     source.indexOf("function placeSmartBranch"),
     source.indexOf("function updateFittingPortSize"),
@@ -471,9 +475,25 @@ test("places a T/Y at the clicked trunk and auto-connects only one safe local br
     source.indexOf("function handlePointerMove"),
     source.indexOf("function endDrag"),
   );
-  const localMatch = source.slice(
-    source.indexOf("function existingBranchRoute"),
-    source.indexOf("function branchOpportunities"),
+  const gesturePreview = source.slice(
+    source.indexOf("function previewDirectBranchPlacementGesture"),
+    source.indexOf("function beginDirectBranchPlacementGesture"),
+  );
+  const gestureBegin = source.slice(
+    source.indexOf("function beginDirectBranchPlacementGesture"),
+    source.indexOf("function finishDirectBranchPlacementGesture"),
+  );
+  const gestureFinish = source.slice(
+    source.indexOf("function finishDirectBranchPlacementGesture"),
+    source.indexOf("function placeSmartBranch"),
+  );
+  const placementResolution = source.slice(
+    source.indexOf("function resolveDirectBranchPlacement"),
+    source.indexOf("function commitExplicitThreeRunJunction"),
+  );
+  const release = source.slice(
+    source.indexOf("function endDrag"),
+    source.indexOf("function wheelZoom"),
   );
   const undoSource = source.slice(
     source.indexOf("function undo()"),
@@ -484,24 +504,42 @@ test("places a T/Y at the clicked trunk and auto-connects only one safe local br
     source.indexOf("function steppedSize"),
   );
 
-  assert.match(placement, /const rawTarget = nearestSupplySegment\(point\)/);
+  assert.match(source, /resolveDirectBranchTrunkCandidate/);
+  assert.match(source, /reserveDirectBranchPolylineSpan/);
+  assert.match(source, /const directBranchPlacementGestureRef = useRef<DirectBranchPlacementGesture \| null>\(null\)/);
+  assert.match(source, /function beginDirectBranchPlacementGesture/);
+  assert.match(source, /function finishDirectBranchPlacementGesture/);
+  assert.match(pointerDown, /beginDirectBranchPlacementGesture\(event, rawPoint\)/);
+  assert.doesNotMatch(pointerDown, /placeSmartBranch\(rawPoint\)/);
+  assert.match(gestureBegin, /directBranchPlacementGestureRef\.current = gesture/);
+  assert.match(gestureBegin, /drawingId: target\.drawing\.id/);
+  assert.match(gestureBegin, /segmentIndex: target\.segmentIndex/);
+
+  // Moving keeps resolving the exact run and segment captured on pointer down.
+  assert.match(preview, /directBranchPlacementGestureRef\.current/);
+  assert.match(preview, /previewDirectBranchPlacementGesture\(/);
+  assert.match(gesturePreview, /resolveLockedDirectBranchTarget\(point, gesture\)/);
+  assert.match(gesturePreview, /gesture\?\.mode === "place"/);
+
+  // Release is the sole direct-placement commit point; cancellation is mutation-free.
+  assert.match(release, /finishDirectBranchPlacementGesture\(event, cancelled\)/);
+  assert.match(gestureFinish, /if \(cancelled\)[\s\S]*?return true;/);
+  assert.match(gestureFinish, /placeSmartBranch\(releasePoint, target\)/);
+  assert.equal(gestureFinish.match(/placeSmartBranch\(/g)?.length, 1);
+
   assert.match(placement, /const placement = resolveDirectBranchPlacement\(target\)/);
+  assert.match(placementResolution, /queuedBranchRunId[\s\S]*?queuedBranchRoute\(/);
+  assert.doesNotMatch(placementResolution, /existingBranchRoute\(/);
   assert.doesNotMatch(placement, /automaticBranchOpportunity\(point\)/);
   assert.doesNotMatch(preview, /automaticBranchOpportunity\(raw\)/);
-  assert.match(placement, /existingThreeRunJunction\(rawTarget\.point, rawTarget\.drawing\.id\)/);
-  assert.match(preview, /existingThreeRunJunction\(rawTarget\.point, rawTarget\.drawing\.id\)/);
+  assert.doesNotMatch(placement, /existingBranchRoute\(/);
+  assert.doesNotMatch(placement, /existingThreeRunJunction\(/);
+  assert.doesNotMatch(preview, /mode: "three-runs"/);
   assert.match(placement, /buildDirectBranchGeometry\(\{/);
   assert.match(placement, /connectedIds: geometry\.connectedIds/);
   assert.match(placement, /beginPort3BranchDraft\(fitting, "direct-placement"\)/);
   assert.match(placement, /draw Port 3 or keep it open/);
-  assert.match(placement, /all three runs connected/);
   assert.match(placement, /if \(!placement\.clearance\.valid\)/);
-
-  assert.match(localMatch, /chooseSafeLocalBranchEndpoint\(\{/);
-  assert.match(localMatch, /assignedRunIds: assignedRuns/);
-  assert.match(localMatch, /radiusPx: BRANCH_AUTO_MATCH_RADIUS_PX/);
-  assert.match(localMatch, /resolveBranchPort:/);
-  assert.match(localMatch, /return fittingPortPoints\(previewFitting\)\[2\]/);
 
   assert.match(threeRun, /!assignedRuns\.has\(drawing\.id\)/);
   assert.match(threeRun, /drawingSystem\(drawing\) === junctionSystem/);
@@ -510,6 +548,10 @@ test("places a T/Y at the clicked trunk and auto-connects only one safe local br
   assert.match(threeRun, /center: point/);
   assert.match(threeRun, /competing\.score - best\.score < 6 \/ zoom/);
   assert.doesNotMatch(threeRun, /best\.a\.endpoint\.x \+ best\.b\.endpoint\.x/);
+  assert.match(source, /function confirmExplicitThreeRunConnection\(\)/);
+  assert.match(source, /function confirmExplicitThreeRunConnection[\s\S]*?existingThreeRunJunction\(option\.center, option\.clickedRunId\)/);
+  assert.match(source, /function confirmExplicitThreeRunConnection[\s\S]*?commitExplicitThreeRunJunction\(refreshed\)/);
+  assert.match(source, /onClick=\{confirmExplicitThreeRunConnection\}/);
 
   assert.match(undoSource, /port3UndoDisposition\(\{/);
   assert.match(undoSource, /origin === "direct-placement"/);
@@ -519,7 +561,7 @@ test("places a T/Y at the clicked trunk and auto-connects only one safe local br
   // Existing incomplete fittings still keep their explicit repair controls.
   assert.match(source, /const \[pendingBranchFittingId, setPendingBranchFittingId\]/);
   assert.match(source, /const \[port3BranchDraft, setPort3BranchDraft\]/);
-  assert.match(source, /function attachPendingBranchRun\(point: Point\)/);
+  assert.match(source, /function attachPendingBranchRun\(point: Point/);
   assert.match(source, /function beginPort3BranchDraft\([\s\S]*?origin: Port3BranchDraftState\["origin"\]/);
   assert.match(source, /const branchSize = fitting\.fitting\.branchSize/);
   assert.match(source, /anchor: branchPort/);
@@ -563,7 +605,7 @@ test("keeps completed T/Y fittings readable and reveals numbered ports only whil
   assert.match(source, /className="fitting-hit"[\s\S]*?vectorEffect="non-scaling-stroke"/);
 });
 
-test("keeps deterministic junction suggestions available to the assistant", async () => {
+test("keeps optional junction suggestions separate from explicit connection", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
@@ -571,24 +613,27 @@ test("keeps deterministic junction suggestions available to the assistant", asyn
   assert.match(source, /function branchOpportunities\(\): BranchOpportunity\[\]/);
   assert.match(source, /function focusNextBranchOpportunity\(opportunities = branchOpportunities\(\)\)/);
   assert.match(source, /className="branch-opportunity-marker"/);
-  assert.match(source, /!branchPreview && branchOpportunityList\.slice\(0, 3\)/);
+  assert.match(source, /!branchPreview && branchOpportunityList\.slice\(0, 1\)/);
   assert.match(source, /scale\(\$\{fittingOverlayScale\(zoom\)\}\)/);
-  assert.match(source, /<circle cx="0" cy="0" r="6"/);
-  assert.match(source, /OPTIONAL T\/Y/);
+  assert.match(source, /<circle cx="0" cy="0" r="4\.5"/);
+  assert.equal(source.match(/>OPTIONAL T\/Y<\/text>/g)?.length, 1);
   assert.match(styles, /\.branch-opportunity-marker circle/);
   assert.match(styles, /\.branch-opportunity-marker \{ pointer-events: none; \}/);
   assert.doesNotMatch(styles, /\.branch-opportunity-marker circle \{[^}]*drop-shadow/);
-  assert.match(source, /existingThreeRunJunction\(rawTarget\.point, rawTarget\.drawing\.id\)/);
+  assert.match(source, /setExplicitThreeRunOption\(/);
+  assert.match(source, /onClick=\{confirmExplicitThreeRunConnection\}/);
+  assert.match(source, /Connect (?:these )?3 existing runs/i);
 });
 
-test("explains direct T/Y placement and the open Port 3 fallback", async () => {
+test("explains press-drag-release T/Y placement and the open Port 3 fallback", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
   assert.match(source, /DIRECT-PLACE T\/Y/);
-  assert.match(source, /Click the blue trunk/);
-  assert.match(source, /Your click chooses the fitting station/);
-  assert.match(source, /Local junction found · click to connect all three runs/);
+  assert.match(source, /Press (?:on )?(?:the )?(?:blue )?trunk/i);
+  assert.match(source, /drag/i);
+  assert.match(source, /release/i);
+  assert.match(source, /Connect (?:these )?3 existing runs/i);
   assert.match(source, /Redline still places the fitting there and opens Port 3 for you to draw/);
   assert.doesNotMatch(source, /click where a branch meets the trunk/i);
   assert.doesNotMatch(source, /RUN-FIRST T\/Y PASS/);
@@ -597,16 +642,30 @@ test("explains direct T/Y placement and the open Port 3 fallback", async () => {
   assert.match(styles, /\.branch-safe-mode/);
 });
 
+test("uses compact v4 T/Y geometry with a screen-stable preview cap", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /fittingGhostScale/);
+  assert.match(source, /geometryVersion: 4/);
+  assert.match(source, /const ghostScale = fittingGhostScale\(/);
+  assert.match(source, /const displayPort = \(port: Point\) => \(\{/);
+  assert.match(source, /center\.x \+ \(port\.x - center\.x\) \* ghostScale/);
+  assert.match(source, /const inlet = displayPort\(naturalInlet\)/);
+  assert.match(source, /fontSize: `\$\{12 \* previewScale\}px`/);
+});
+
 test("widens the desktop tool task dock without changing tablet or mobile drawers", async () => {
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const readabilityOverrides = styles.slice(styles.lastIndexOf("/* Deterministic T/Y placement"));
 
-  assert.match(styles, /@media \(min-width: 1101px\)[\s\S]*?\.app-shell\[data-presentation="galvanized-daylight"\]:not\(\.tablet-layout\)[\s\S]*?--deck-tools: 280px/);
-  assert.match(styles, /@media \(max-width: 1500px\) and \(min-width: 1101px\)[\s\S]*?\.app-shell\[data-presentation="galvanized-daylight"\]:not\(\.tablet-layout\)[\s\S]*?--deck-tools: 240px/);
-  assert.match(styles, /\.left-panel\.view-draw \.tool \{[^}]*font-size: 13px;[^}]*line-height: 16px;/);
-  assert.match(styles, /\.left-panel \.panel-heading span \{[^}]*font-size: 14px;/);
-  assert.match(styles, /\.left-panel \.panel-heading small \{[^}]*font-size: 11px;/);
-  assert.match(styles, /:not\(\.tablet-layout\) \.branch-safe-mode b,[\s\S]*?font-size: 11px;/);
-  assert.match(styles, /:not\(\.tablet-layout\) \.branch-arm,[\s\S]*?font-size: 12px;/);
+  assert.match(readabilityOverrides, /@media \(min-width: 1101px\)[\s\S]*?--deck-tools: 320px/);
+  assert.match(readabilityOverrides, /\.left-panel \.left-panel-tabs button \{[^}]*font-size: 14px;/);
+  assert.match(readabilityOverrides, /\.left-panel\.view-draw \.tool \{[^}]*font-size: 15px;[^}]*line-height: 18px;/);
+  assert.match(readabilityOverrides, /\.left-panel \.run-size-default small,[\s\S]*?font-size: 13px !important;/);
+  assert.match(readabilityOverrides, /\.left-panel \.branch-arm \{[^}]*min-height: 44px;[^}]*font-size: 13px;/);
+  assert.match(readabilityOverrides, /@media \(max-width: 1500px\) and \(min-width: 1101px\)[\s\S]*?--deck-tools: 280px/);
+  assert.match(readabilityOverrides, /@media \(max-width: 1500px\)[\s\S]*?\.left-panel\.view-draw \.tool \{[^}]*font-size: 14px;[^}]*line-height: 17px;/);
+  assert.doesNotMatch(readabilityOverrides, /@media \(max-width: 1100px\)/);
   assert.match(styles, /width: min\(380px, 88vw\)/);
   assert.match(styles, /width: min\(390px, 94vw\)/);
 });
