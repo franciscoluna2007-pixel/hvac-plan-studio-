@@ -13365,6 +13365,7 @@ function HVACPlanStudioApp() {
     !continuingRunId &&
     !pendingBranchFittingId &&
     !queuedBranchRunId;
+  const screenStablePlanChromeScale = fittingOverlayScale(zoom);
   const redlineSelectionActionsVisible =
     fieldRedline.open &&
     fieldRedline.activeTool === "select" &&
@@ -13433,8 +13434,12 @@ function HVACPlanStudioApp() {
       maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
     })
     : null;
+  const planContextWheelAllowed = zoom <= 3;
   const selectedSymbolWheelVisible = Boolean(
-    selectedDrawing?.symbol && selectedSymbolWheel && !selectedSymbolWheel.hidden
+    planContextWheelAllowed &&
+    selectedDrawing?.symbol &&
+    selectedSymbolWheel &&
+    !selectedSymbolWheel.hidden
   );
   const selectedRunWheel = selectedRun &&
     planSelectionActionsVisible &&
@@ -13478,8 +13483,12 @@ function HVACPlanStudioApp() {
       maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
     })
     : null;
-  const selectedRunWheelVisible = Boolean(selectedRunWheel && !selectedRunWheel.hidden);
-  const selectedFittingWheelVisible = Boolean(selectedFittingWheel && !selectedFittingWheel.hidden);
+  const selectedRunWheelVisible = Boolean(
+    planContextWheelAllowed && selectedRunWheel && !selectedRunWheel.hidden
+  );
+  const selectedFittingWheelVisible = Boolean(
+    planContextWheelAllowed && selectedFittingWheel && !selectedFittingWheel.hidden
+  );
   const selectedContextWheelVisible =
     selectedSymbolWheelVisible ||
     selectedRunWheelVisible ||
@@ -16228,7 +16237,8 @@ function HVACPlanStudioApp() {
                             ? "markup-preview-run"
                             : "";
                       const runSelected = isSelected(drawing.id);
-                      const showRunNodeHandles = runSelected || Boolean(branchCandidateClass);
+                      const selectedRunChromeVisible = runSelected && planSelectionActionsVisible;
+                      const showRunNodeHandles = selectedRunChromeVisible || Boolean(branchCandidateClass);
                       const runLabelText = [
                         drawing.runNumber?.trim(),
                         drawing.sizeReviewed === true ? `${drawing.size}"` : "",
@@ -16246,35 +16256,44 @@ function HVACPlanStudioApp() {
                         <path className="duct-line" d={path} stroke={drawingColors[drawing.type as DrawType]} style={{ strokeWidth: runStrokeWidth(drawing.lineWeight) }} />
                         {showRunNodeHandles && drawing.points.map((point, index) => {
                           const endpoint = index === 0 || index === drawing.points.length - 1;
-                          return <g key={index}>
-                            {runSelected && <circle
+                          return <g
+                            key={index}
+                            className="screen-stable-run-node"
+                            transform={`translate(${point.x} ${point.y}) scale(${screenStablePlanChromeScale})`}
+                          >
+                            {selectedRunChromeVisible && <circle
                               className="edit-handle-hit"
-                              cx={point.x}
-                              cy={point.y}
+                              cx="0"
+                              cy="0"
                               r="10"
                               onPointerDown={(event) => startPointDrag(event, drawing.id, index)}
                             />}
                             <circle
-                              className={runSelected ? `edit-handle ${endpoint ? "endpoint-grip" : "vertex-grip"}` : "branch-candidate-node"}
-                              cx={point.x}
-                              cy={point.y}
-                              r={runSelected ? endpoint ? 4 : 3 : 2.5}
+                              className={selectedRunChromeVisible ? `edit-handle ${endpoint ? "endpoint-grip" : "vertex-grip"}` : "branch-candidate-node"}
+                              cx="0"
+                              cy="0"
+                              r={selectedRunChromeVisible ? endpoint ? 4 : 3 : 2.5}
                               fill={drawingColors[drawing.type as DrawType]}
-                              pointerEvents={runSelected ? "none" : undefined}
-                              onPointerDown={runSelected ? undefined : (event) => startPointDrag(event, drawing.id, index)}
+                              pointerEvents={selectedRunChromeVisible ? "none" : undefined}
+                              onPointerDown={selectedRunChromeVisible ? undefined : (event) => startPointDrag(event, drawing.id, index)}
                             />
                           </g>;
                         })}
-                        {runSelected && drawing.points.slice(0, -1).map((point, index) => {
+                        {selectedRunChromeVisible && drawing.points.slice(0, -1).map((point, index) => {
                           const next = drawing.points[index + 1];
-                          return <circle
-                            className="midpoint-grip"
+                          return <g
+                            className="screen-stable-run-node"
                             key={`mid-${index}`}
-                            cx={(point.x + next.x) / 2}
-                            cy={(point.y + next.y) / 2}
-                            r="4"
-                            onPointerDown={(event) => startMidpointStretch(event, drawing.id, index)}
-                          />;
+                            transform={`translate(${(point.x + next.x) / 2} ${(point.y + next.y) / 2}) scale(${screenStablePlanChromeScale})`}
+                          >
+                            <circle
+                              className="midpoint-grip"
+                              cx="0"
+                              cy="0"
+                              r="4"
+                              onPointerDown={(event) => startMidpointStretch(event, drawing.id, index)}
+                            />
+                          </g>;
                         })}
                         {queuedBranchRunId === drawing.id && <text className="branch-run-armed-label" x={middle.x + 8} y={middle.y - 24}>BRANCH MATCHED</text>}
                         {runLabelText && <text
@@ -16417,19 +16436,29 @@ function HVACPlanStudioApp() {
                         </g>
                       </g>;
                     })()}
-                    {(branchRepairPreview.detached.length > 0 || branchRepairPreview.missing.length > 0) && <g className="network-repair-preview">
+                    {planSelectionActionsVisible && (branchRepairPreview.detached.length > 0 || branchRepairPreview.missing.length > 0) && <g className="network-repair-preview">
                       {branchRepairPreview.detached.map((gap) => <g key={gap.id}>
                         <path d={`M ${gap.endpoint.x} ${gap.endpoint.y} L ${gap.portPoint.x} ${gap.portPoint.y}`} />
-                        <circle className="detached-end" cx={gap.endpoint.x} cy={gap.endpoint.y} r="5" />
-                        <circle className="target-port" cx={gap.portPoint.x} cy={gap.portPoint.y} r="7" />
-                        <text x={(gap.endpoint.x + gap.portPoint.x) / 2} y={(gap.endpoint.y + gap.portPoint.y) / 2 - 5} textAnchor="middle">PORT {gap.port + 1}</text>
+                        <g className="repair-end-marker" transform={`translate(${gap.endpoint.x} ${gap.endpoint.y}) scale(${screenStablePlanChromeScale})`}>
+                          <circle className="detached-end" cx="0" cy="0" r="5" />
+                        </g>
+                        <g className="repair-port-marker" transform={`translate(${gap.portPoint.x} ${gap.portPoint.y}) scale(${screenStablePlanChromeScale})`}>
+                          <circle className="target-port" cx="0" cy="0" r="7" />
+                        </g>
+                        <g className="repair-port-label" transform={`translate(${(gap.endpoint.x + gap.portPoint.x) / 2} ${(gap.endpoint.y + gap.portPoint.y) / 2}) scale(${screenStablePlanChromeScale})`}>
+                          <text x="0" y="-5" textAnchor="middle">PORT {gap.port + 1}</text>
+                        </g>
                       </g>)}
                       {branchRepairPreview.missing.map((gap) => <g className={`missing-run-preview ${gap.candidate ? "has-candidate" : ""}`} key={gap.id}>
                         {gap.candidate && <path className="candidate-guide" d={`M ${gap.candidate.endpoint.x} ${gap.candidate.endpoint.y} L ${gap.portPoint.x} ${gap.portPoint.y}`} />}
-                        {gap.candidate && <circle className="candidate-end" cx={gap.candidate.endpoint.x} cy={gap.candidate.endpoint.y} r="5" />}
-                        <circle cx={gap.portPoint.x} cy={gap.portPoint.y} r="8" />
-                        <path d={`M ${gap.portPoint.x - 4} ${gap.portPoint.y - 4} L ${gap.portPoint.x + 4} ${gap.portPoint.y + 4} M ${gap.portPoint.x + 4} ${gap.portPoint.y - 4} L ${gap.portPoint.x - 4} ${gap.portPoint.y + 4}`} />
-                        <text x={gap.portPoint.x} y={gap.portPoint.y - 11} textAnchor="middle">{gap.candidate ? "EXISTING RUN FOUND" : "MISSING RUN"}</text>
+                        {gap.candidate && <g className="repair-end-marker" transform={`translate(${gap.candidate.endpoint.x} ${gap.candidate.endpoint.y}) scale(${screenStablePlanChromeScale})`}>
+                          <circle className="candidate-end" cx="0" cy="0" r="5" />
+                        </g>}
+                        <g className="missing-run-marker" transform={`translate(${gap.portPoint.x} ${gap.portPoint.y}) scale(${screenStablePlanChromeScale})`}>
+                          <circle cx="0" cy="0" r="8" />
+                          <path d="M -4 -4 L 4 4 M 4 -4 L -4 4" />
+                          <text x="0" y="-13" textAnchor="middle">{gap.candidate ? "EXISTING RUN FOUND" : "MISSING RUN"}</text>
+                        </g>
                       </g>)}
                     </g>}
                     {draft.length > 0 && <g className="draft-drawing">
@@ -16444,14 +16473,19 @@ function HVACPlanStudioApp() {
                           ),
                         }}
                       />
-                      {draft.map((point, index) => <circle
-                        className="draft-point"
+                      {draft.map((point, index) => <g
+                        className="screen-stable-draft-point"
                         key={index}
-                        cx={point.x}
-                        cy={point.y}
-                        r="2.5"
-                        fill={drawingColors[activeTool as DrawType] || drawingColors.supply}
-                      />)}
+                        transform={`translate(${point.x} ${point.y}) scale(${screenStablePlanChromeScale})`}
+                      >
+                        <circle
+                          className="draft-point"
+                          cx="0"
+                          cy="0"
+                          r="2.5"
+                          fill={drawingColors[activeTool as DrawType] || drawingColors.supply}
+                        />
+                      </g>)}
                     </g>}
                     {measureDraft.length > 0 && hoverPoint && <g className="measure-preview">
                       <path d={`M ${measureDraft[0].x} ${measureDraft[0].y} L ${hoverPoint.x} ${hoverPoint.y}`} />
@@ -16572,10 +16606,13 @@ function HVACPlanStudioApp() {
                         },
                       }, true);
                     })()}
-                    {snapMarker && <g className={`snap-marker snap-${snapInfo?.kind.replace(" ", "-") || "point"}`}>
-                      <circle cx={snapMarker.x} cy={snapMarker.y} r="9" />
-                      <path d={`M ${snapMarker.x - 5} ${snapMarker.y} L ${snapMarker.x + 5} ${snapMarker.y} M ${snapMarker.x} ${snapMarker.y - 5} L ${snapMarker.x} ${snapMarker.y + 5}`} />
-                      {snapInfo && <text x={snapMarker.x + 13} y={snapMarker.y - 11}>{snapInfo.label}</text>}
+                    {snapMarker && <g
+                      className={`snap-marker snap-${snapInfo?.kind.replace(" ", "-") || "point"}`}
+                      transform={`translate(${snapMarker.x} ${snapMarker.y}) scale(${screenStablePlanChromeScale})`}
+                    >
+                      <circle cx="0" cy="0" r="9" />
+                      <path d="M -5 0 L 5 0 M 0 -5 L 0 5" />
+                      {snapInfo && <text x="13" y="-11">{snapInfo.label}</text>}
                     </g>}
                   </svg>
                 </div>

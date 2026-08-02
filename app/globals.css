@@ -570,10 +570,11 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .network-repair-preview > g > path { fill: none; stroke: #ef3f4a; stroke-width: 2.5; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 3px #ef3f4a); }
 .network-repair-preview .detached-end { fill: #ffe1e3; stroke: #c61f2b; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .network-repair-preview .target-port { fill: #39d98a33; stroke: #0a9f60; stroke-width: 2.5; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
-.network-repair-preview text { fill: #a50e19; stroke-width: 3px; font-size: 7px; font-weight: 900; }
+.network-repair-preview text { fill: #a50e19; stroke: white; stroke-width: 3px; paint-order: stroke; font-size: 9px; font-weight: 900; }
 .network-repair-preview .missing-run-preview circle { fill: #ffe1e3; stroke: #c61f2b; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
 .network-repair-preview .missing-run-preview path { stroke-dasharray: none; }
-.network-repair-preview .missing-run-preview.has-candidate > circle:not(.candidate-end) { fill: #fff2bd; stroke: #a77809; }
+.network-repair-preview .missing-run-marker path { fill: none; stroke: #c61f2b; stroke-width: 1.75; vector-effect: non-scaling-stroke; }
+.network-repair-preview .missing-run-preview.has-candidate .missing-run-marker > circle { fill: #fff2bd; stroke: #a77809; }
 .network-repair-preview .missing-run-preview .candidate-guide { stroke: #e1a91d; stroke-dasharray: 5 4; filter: drop-shadow(0 0 3px #e1a91d); }
 .network-repair-preview .missing-run-preview .candidate-end { fill: #e6fff2; stroke: #0a9f60; }
 .network-repair-preview .missing-run-preview.has-candidate text { fill: #795600; }
@@ -21223,10 +21224,21 @@ footer {
 }
 
 .app-shell[data-presentation="galvanized-daylight"] .branch-workflow-hud {
-  width: min(360px, calc(100% - 16px));
-  margin-bottom: -180px;
-  padding: 8px;
-  gap: 6px;
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: min(300px, calc(100% - 16px));
+  margin: 0;
+  padding: 7px 8px;
+  gap: 4px;
+}
+
+.app-shell[data-presentation="galvanized-daylight"] .live-draft-hud {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: min(220px, calc(100% - 16px));
+  margin: 0;
 }
 
 .app-shell[data-presentation="galvanized-daylight"] .branch-workflow-heading span,

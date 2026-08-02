@@ -36,6 +36,14 @@ test("T/Y overlay scaling is bounded at extreme zoom levels", () => {
   }
 });
 
+test("T/Y repair chrome and run grips remain screen-sized at 668% zoom", () => {
+  const zoom = 6.68;
+  const scale = fittingOverlayScale(zoom);
+  for (const pixels of [4, 7, 8, 10, 12]) {
+    assert.ok(Math.abs(pixels * scale * zoom - pixels) < 1e-9);
+  }
+});
+
 test("direct-placement T/Ys are smaller without changing saved v2 or legacy plans", () => {
   assert.equal(fittingPortReach("12", 0, true), 10.5);
   assert.equal(fittingPortReach("12", 1, true), 11);
