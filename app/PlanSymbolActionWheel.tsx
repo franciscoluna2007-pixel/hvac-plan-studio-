@@ -50,12 +50,14 @@ export type RunActionWheelProps = CommonActionWheelProps & {
   onExtendA: () => void;
   onExtendB: () => void;
   onSplit: () => void;
+  onDuplicate: () => void;
 };
 
 export type FittingActionWheelProps = CommonActionWheelProps & {
   variant: "fitting";
   onInspectConnections: () => void;
   onEditProperties: () => void;
+  onDuplicate: () => void;
 };
 
 export type PlanActionWheelProps =
@@ -125,6 +127,13 @@ function actionsFor(props: PlanActionWheelProps): WheelAction[] {
         run: props.onExtendA,
       },
       {
+        id: "duplicate",
+        label: "Copy connected supply assembly and place it with the mouse",
+        shortLabel: "Copy & place",
+        icon: Copy,
+        run: props.onDuplicate,
+      },
+      {
         id: "delete",
         label: "Delete duct run",
         shortLabel: "Delete",
@@ -158,6 +167,13 @@ function actionsFor(props: PlanActionWheelProps): WheelAction[] {
         shortLabel: "Edit",
         icon: Settings2,
         run: props.onEditProperties,
+      },
+      {
+        id: "duplicate",
+        label: "Copy connected supply assembly and place it with the mouse",
+        shortLabel: "Copy & place",
+        icon: Copy,
+        run: props.onDuplicate,
       },
       {
         id: "delete",

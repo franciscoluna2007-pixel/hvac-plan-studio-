@@ -15924,7 +15924,7 @@ function HVACPlanStudioApp() {
               }}>Properties</button>}
               {selectedIds.length === 2 && selectedSelectionAllEditable && <button title="Join the two nearest compatible run endpoints" onClick={joinSelectedRuns}><Route size={15} /> Join runs</button>}
               {!selectedDrawingLocked && selectedIds.length === 1 && (selectedDrawing?.symbol || selectedDrawing?.measurement) && <button title="Mirror selection" onClick={mirrorSelectedHorizontal}><FlipHorizontal2 size={15} /> Mirror</button>}
-              {!selectedDrawingLocked && selectedIds.length === 1 && (selectedDrawing?.symbol || selectedDrawing?.measurement) && <button title="Copy this item and place it with the mouse" onClick={duplicateSelected}><Copy size={15} /> Copy & place</button>}
+              {!selectedDrawingLocked && (selectedDrawing?.symbol || selectedDrawing?.measurement || selectedRun || selectedFitting) && <button title={selectedRun || selectedFitting ? "Copy this connected supply assembly and place it with the mouse" : "Copy this item and place it with the mouse"} onClick={duplicateSelected}><Copy size={15} /> Copy & place</button>}
               {selectedSelectionHasEditable && <button className="danger" title="Delete selection" onClick={deleteSelected}><Trash2 size={15} /></button>}
               <button title="Clear selection" onClick={() => selectOnly(null)}><X size={15} /></button>
             </div>}
@@ -15956,6 +15956,7 @@ function HVACPlanStudioApp() {
                 activatePlanTool("select");
                 setSplitMode((enabled) => !enabled);
               }}
+              onDuplicate={duplicateSelected}
               onDelete={deleteSelected}
               onClose={() => selectOnly(null)}
             />}
@@ -15972,6 +15973,7 @@ function HVACPlanStudioApp() {
                 setLeftPanelView("properties");
                 openToolsPanel();
               }}
+              onDuplicate={duplicateSelected}
               onDelete={deleteSelected}
               onClose={() => selectOnly(null)}
             />}
