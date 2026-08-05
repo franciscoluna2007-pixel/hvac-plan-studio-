@@ -13,8 +13,8 @@ function fittingTarget(overrides = {}) {
     id: "fitting:ty-1:0",
     kind: "fitting",
     drawingId: "ty-1",
-    label: "T/Y fitting - Port 1",
-    detail: "Open T/Y connection",
+    label: "T Branch fitting - Port 1",
+    detail: "Open T Branch connection",
     page: 1,
     systemId: "system-1",
     ductType: "supply",
@@ -56,7 +56,7 @@ function terminalTarget(overrides = {}) {
 
 const verifiedScale = { verified: true, feetPerUnit: .1 };
 
-test("unsaved T/Y port prepares a high-confidence existing-endpoint repair", () => {
+test("unsaved T Branch port prepares a high-confidence existing-endpoint repair", () => {
   const runs = [supplyRun()];
   const originalRuns = structuredClone(runs);
   const plan = buildConnectionRepairPlan({
@@ -95,7 +95,7 @@ test("unsaved T/Y port prepares a high-confidence existing-endpoint repair", () 
   assert.deepEqual(runs, originalRuns, "planning a repair must not mutate or create run geometry");
 });
 
-test("saved T/Y port never falls back to another nearby run", () => {
+test("saved T Branch port never falls back to another nearby run", () => {
   const plan = buildConnectionRepairPlan({
     systemId: "system-1",
     runs: [supplyRun({ id: "nearby-but-not-saved" })],
@@ -106,7 +106,7 @@ test("saved T/Y port never falls back to another nearby run", () => {
   assert.equal(plan.items[0].status, "blocked");
   assert.equal(plan.items[0].saved, true);
   assert.deepEqual(plan.items[0].candidates, []);
-  assert.match(plan.items[0].reason, /saved T\/Y run is missing/);
+  assert.match(plan.items[0].reason, /saved T Branch run is missing/);
 });
 
 test("similar nearby endpoints remain an explicit user choice", () => {
@@ -189,7 +189,7 @@ test("two targets cannot automatically claim the same run endpoint", () => {
       fittingTarget({
         id: "fitting:ty-2:0",
         drawingId: "ty-2",
-        label: "Second T/Y fitting - Port 1",
+        label: "Second T Branch fitting - Port 1",
         targetPoint: { x: 0, y: .5 },
       }),
     ],

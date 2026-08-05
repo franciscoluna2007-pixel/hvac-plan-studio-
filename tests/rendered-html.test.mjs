@@ -639,13 +639,13 @@ test("explains press-drag-release T Branch placement and connected branch fallba
   assert.match(source, /Connect (?:these )?3 existing runs/i);
   assert.match(source, /a connected branch run starts in your drag direction so all three ports stay live/);
   assert.doesNotMatch(source, /click where a branch meets the trunk/i);
-  assert.doesNotMatch(source, /RUN-FIRST T\/Y PASS/);
+  assert.doesNotMatch(source, /RUN-FIRST T Branch PASS/);
   assert.doesNotMatch(source, /Pick next diffuser run/);
   assert.doesNotMatch(source, /PORT 3 RUN ARMED/);
   assert.match(styles, /\.branch-safe-mode/);
 });
 
-test("uses compact v4 T/Y geometry with a screen-stable preview cap", async () => {
+test("uses compact v4 T Branch geometry with a screen-stable preview cap", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
   assert.match(source, /fittingGhostScale/);
@@ -659,7 +659,7 @@ test("uses compact v4 T/Y geometry with a screen-stable preview cap", async () =
 
 test("widens the desktop tool task dock without changing tablet or mobile drawers", async () => {
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  const readabilityOverrides = styles.slice(styles.lastIndexOf("/* Deterministic T/Y placement"));
+  const readabilityOverrides = styles.slice(styles.lastIndexOf("/* Deterministic T Branch placement"));
 
   assert.match(readabilityOverrides, /@media \(min-width: 1101px\)[\s\S]*?--deck-tools: 320px/);
   assert.match(readabilityOverrides, /\.left-panel \.left-panel-tabs button \{[^}]*font-size: 14px;/);
@@ -752,7 +752,7 @@ test("requires a choice for ambiguous STEP 1 matches and stays stable when drawi
   assert.equal(chosen.items[0].candidate.runId, "run-a");
 });
 
-test("repairs only the run already saved to a T/Y port and rejects stale or distant batches", async () => {
+test("repairs only the run already saved to a T Branch port and rejects stale or distant batches", async () => {
   const { buildConnectionRepairPlan, prepareConnectionRepairBatch } = await loadConnectionRepairModule();
   const runs = [
     { id: "saved-run", page: 1, systemId: "system-1", type: "supply", size: "10", points: [{ x: 12, y: 0 }, { x: 100, y: 0 }] },
@@ -762,8 +762,8 @@ test("repairs only the run already saved to a T/Y port and rejects stale or dist
     id: "fitting:ty-1:2",
     kind: "fitting",
     drawingId: "ty-1",
-    label: "T/Y fitting · Port 3",
-    detail: "Saved T/Y connection",
+    label: "T Branch fitting · Port 3",
+    detail: "Saved T Branch connection",
     page: 1,
     systemId: "system-1",
     ductType: "supply",

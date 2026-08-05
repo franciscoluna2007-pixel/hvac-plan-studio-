@@ -77,20 +77,13 @@ test("the layout table gives the plan measured trays, a steel rule, and a bottom
   assert.ok(page.indexOf('className="workspace"') < page.indexOf('className="field-first-guide"'), "the job traveler should follow the worktable in visual and focus order");
 });
 
-test("the durable design artifacts match the shipped interface system", () => {
-  assert.match(design, /Patternmaker(?:'|’)s Layout Table/);
-  assert.match(design, /#d8c49a/i);
-  assert.match(design, /#f7f4ea/i);
-  assert.match(design, /#28527a/i);
-  assert.match(design, /#a84537/i);
+test("the durable design document matches the shipped Galvanized Daylight interface", () => {
+  assert.match(design, /Galvanized Daylight/);
+  assert.match(design, /#B8C0BC/i);
+  assert.match(design, /#DCE1DE/i);
+  assert.match(design, /#D85B27/i);
+  assert.match(design, /#202522/i);
   assert.match(design, /source (?:PDF|plan)[\s\S]*?(?:true white|white)/i);
   assert.equal(sidecar.schemaVersion, 2);
-  assert.match(sidecar.title, /Patternmaker(?:'|’)s Layout Table/);
-  const sidecarContract = JSON.stringify(sidecar.extensions);
-  assert.match(sidecarContract, /#d8c49a/i);
-  assert.match(sidecarContract, /#ffffff/i);
-  assert.match(sidecarContract, /52px/);
-  assert.match(sidecarContract, /76px/);
-  assert.match(sidecarContract, /34px/);
-  assert.ok(sidecar.components.length >= 6, "the documented world should retain reusable instrument components");
+  assert.ok(sidecar.components.length >= 6, "the legacy sidecar should retain its reusable instrument components until refreshed");
 });

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadTypescriptModule } from "./load-typescript-module.mjs";
 
+const source = await readFile(new URL("../app/planSetExport.ts", import.meta.url), "utf8");
 const planSet = await loadTypescriptModule(
   new URL("../app/planSetExport.ts", import.meta.url),
 );
@@ -14,6 +16,8 @@ test("title block and scale are reserved for the cover sheet", () => {
   assert.equal(planSet.pageHasPlanTitleBlock(1), true);
   assert.equal(planSet.pageHasPlanTitleBlock(2), false);
   assert.equal(planSet.pageHasPlanTitleBlock(18), false);
+  assert.match(source, /document\.addPage\(\[canvas\.width, canvas\.height\]\)/);
+  assert.doesNotMatch(source, /document\.addPage\(\[canvas\.width, canvas\.height\], orientation\)/);
 });
 
 test("cover title block writes project, revision, and scale with a right-aligned scale field", () => {

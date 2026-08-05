@@ -53,7 +53,8 @@ test("run and fitting selections use object-specific wheels and duct labels pers
   assert.match(page, /onLabelSmaller=\{\(\) => adjustSelectedRunLabelScale\(-1\)\}/);
   assert.match(page, /onResetLabel=\{resetSelectedRunLabel\}/);
   assert.match(page, /splitActive=\{splitMode\}/);
-  assert.match(page, /Copy & place works for diffusers, grilles, equipment, notes, controls, and measurements/);
+  assert.match(page, /buildPlanAssemblyCopyTemplate/);
+  assert.match(page, /materializePlanAssembly/);
   assert.match(page, /Copy follows your mouse/);
   assert.match(page, /Mirror is limited to icons and measurements so duct routing stays intact/);
   assert.match(page, /disabled=\{!selectedRunHasLabel\}/);

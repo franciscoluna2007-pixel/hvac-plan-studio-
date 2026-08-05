@@ -170,7 +170,9 @@ export async function generatePlanSetPdf(input: {
     if (!document) {
       document = new jsPDF({ orientation, unit: "px", format: [canvas.width, canvas.height], hotfixes: ["px_scaling"] });
     } else {
-      document.addPage([canvas.width, canvas.height], orientation);
+      // The custom dimensions already encode their orientation. Passing it again
+      // makes jsPDF rotate the second and later landscape pages a second time.
+      document.addPage([canvas.width, canvas.height]);
     }
     document.addImage(canvas.toDataURL("image/jpeg", .9), "JPEG", 0, 0, canvas.width, canvas.height, undefined, "FAST");
     if (pageHasPlanTitleBlock(pageNumber)) {

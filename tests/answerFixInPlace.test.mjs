@@ -33,7 +33,7 @@ test("connection repair is staged behind named review and final confirmation", (
   assert.match(page, /reviewer: input\.reviewer/);
   assert.match(page, /kind: "manual-follow-up" as const/);
   assert.match(page, /connectionRepairPreviewChanges\(item\)/);
-  assert.match(page, /T\/Y port \$\{item\.port \+ 1\} run reference/);
+  assert.match(page, /T Branch port \$\{item\.port \+ 1\} run reference/);
   assert.match(page, /\$\{item\.slot \|\| "terminal"\} connected endpoint/);
 });
 
