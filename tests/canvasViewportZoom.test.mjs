@@ -31,3 +31,22 @@ test("line-mode wheel deltas use the same cursor-centered zoom path", () => {
     zoom.wheelZoomFactor({ deltaY: 3, deltaMode: 1, ctrlKey: false }) < 1,
   );
 });
+
+test("page-mode and horizontal-routed wheel deltas remain visible across browsers", () => {
+  assert.ok(
+    zoom.wheelZoomFactor({
+      deltaY: 1,
+      deltaMode: 2,
+      ctrlKey: false,
+      viewportHeight: 700,
+    }) < 0.9,
+  );
+  assert.ok(
+    zoom.wheelZoomFactor({
+      deltaX: -120,
+      deltaY: 0,
+      deltaMode: 0,
+      ctrlKey: false,
+    }) > 1,
+  );
+});

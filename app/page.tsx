@@ -3293,6 +3293,8 @@ function HVACPlanStudioApp() {
 
   function handleWheelZoom(event: globalThis.WheelEvent) {
     if (!pdf) return;
+    const viewport = canvasViewportRef.current;
+    if (!viewport) return;
     const editIsActive = Boolean(
       dragRef.current ||
       selectionBox ||
@@ -3354,9 +3356,11 @@ function HVACPlanStudioApp() {
       return;
     }
     const nextZoom = clampZoom(+(zoomRef.current * wheelZoomFactor({
+      deltaX: event.deltaX,
       deltaY: event.deltaY,
       deltaMode: event.deltaMode,
       ctrlKey: event.ctrlKey,
+      viewportHeight: viewport.clientHeight,
     })).toFixed(3));
     zoomAtPoint(nextZoom, event.clientX, event.clientY);
   }
@@ -3364,17 +3368,16 @@ function HVACPlanStudioApp() {
   wheelHandlerRef.current = handleWheelZoom;
 
   useEffect(() => {
+    const viewport = canvasViewportRef.current;
+    if (!viewport) return;
     const onWheel = (event: globalThis.WheelEvent) => {
-      const viewport = canvasViewportRef.current;
-      if (
-        !viewport ||
-        !(event.target instanceof Node) ||
-        !viewport.contains(event.target)
-      ) return;
+      if (document.activeElement !== viewport && !viewport.contains(document.activeElement)) {
+        viewport.focus({ preventScroll: true });
+      }
       wheelHandlerRef.current(event);
     };
-    document.addEventListener("wheel", onWheel, { capture: true, passive: false });
-    return () => document.removeEventListener("wheel", onWheel, true);
+    viewport.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    return () => viewport.removeEventListener("wheel", onWheel, true);
   }, []);
 
   function startPlanPan(event: PointerEvent<HTMLDivElement>) {
@@ -15975,6 +15978,8 @@ function HVACPlanStudioApp() {
           <div
             ref={canvasViewportRef}
             className={`canvas ${pdf ? "has-plan" : ""} ${showGrid ? "" : "grid-hidden"}`}
+            tabIndex={0}
+            aria-label="Plan canvas workspace"
             onDragOver={(event) => event.preventDefault()}
             onDrop={onDrop}
             onPointerDownCapture={handleViewportPointerDownCapture}

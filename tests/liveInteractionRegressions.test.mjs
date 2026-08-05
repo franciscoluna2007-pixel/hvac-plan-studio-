@@ -30,14 +30,18 @@ test("mouse editing leaves pointer capture with the visible SVG target", () => {
   }
 });
 
-test("plain wheel zoom uses one capture-phase non-passive listener for the real canvas event path", () => {
+test("plain wheel zoom uses a native capture-phase non-passive listener on the plan canvas", () => {
   assert.match(
     page,
-    /document\.addEventListener\("wheel", onWheel, \{ capture: true, passive: false \}\)/,
+    /viewport\.addEventListener\("wheel", onWheel, \{ capture: true, passive: false \}\)/,
   );
-  assert.match(page, /viewport\.contains\(event\.target\)/);
+  assert.match(page, /viewport\.focus\(\{ preventScroll: true \}\)/);
   assert.match(page, /wheelHandlerRef\.current\(event\)/);
-  assert.match(page, /return \(\) => document\.removeEventListener\("wheel", onWheel, true\)/);
+  assert.match(page, /return \(\) => viewport\.removeEventListener\("wheel", onWheel, true\)/);
+  assert.match(page, /deltaX: event\.deltaX/);
+  assert.match(page, /viewportHeight: viewport\.clientHeight/);
+  assert.match(page, /tabIndex=\{0\}/);
+  assert.match(page, /aria-label="Plan canvas workspace"/);
   assert.match(page, /const editIsActive = Boolean\([\s\S]*?dragRef\.current[\s\S]*?selectionBox[\s\S]*?directBranchPlacementGestureRef\.current/);
   assert.match(page, /activeEditPointerIdRef\.current = null;[\s\S]*?editTransactionRef\.current = null;/);
   assert.doesNotMatch(page, /onWheel=\{handleWheelZoom\}/);
