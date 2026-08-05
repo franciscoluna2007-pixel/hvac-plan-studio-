@@ -31,15 +31,16 @@ test("uses object-specific captions and action contracts", () => {
       "extend-b",
       "split",
       "extend-a",
+      "duplicate",
       "delete",
       "close",
     ],
   );
   assert.ok(!PLAN_CONTEXT_WHEEL_ACTION_IDS.fitting.includes("mirror"));
-  assert.ok(!PLAN_CONTEXT_WHEEL_ACTION_IDS.fitting.includes("duplicate"));
+  assert.ok(PLAN_CONTEXT_WHEEL_ACTION_IDS.fitting.includes("duplicate"));
   assert.deepEqual(
     [...PLAN_CONTEXT_WHEEL_ACTION_IDS.fitting],
-    ["inspect-connections", "edit-properties", "delete", "close"],
+    ["inspect-connections", "edit-properties", "duplicate", "delete", "close"],
   );
 });
 
