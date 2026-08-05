@@ -3285,7 +3285,7 @@ function HVACPlanStudioApp() {
     setZoom(normalizedZoom);
   }
 
-  function handleWheelZoom(event: ReactWheelEvent<HTMLDivElement>) {
+  function handleWheelZoom(event: ReactWheelEvent<HTMLDivElement> | WheelEvent) {
     if (!pdf) return;
     event.preventDefault();
     if (touchGestureRef.current || panRef.current || activeEditPointerIdRef.current !== null) return;
@@ -3344,6 +3344,14 @@ function HVACPlanStudioApp() {
     })).toFixed(3));
     zoomAtPoint(nextZoom, event.clientX, event.clientY);
   }
+
+  useEffect(() => {
+    const viewport = canvasViewportRef.current;
+    if (!viewport) return;
+    const onWheel = (event: WheelEvent) => handleWheelZoom(event);
+    viewport.addEventListener("wheel", onWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", onWheel);
+  }, [activeTool, copyPlacement, pdf, symbolPreview]);
 
   function startPlanPan(event: PointerEvent<HTMLDivElement>) {
     if (
@@ -3848,14 +3856,10 @@ function HVACPlanStudioApp() {
       startPlanPan(event);
       return;
     }
-    if (event.button === 0) {
-      if (!beginEditTransaction(event.pointerId)) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-      capturePlanPointer(event.currentTarget, event.pointerId);
-    }
+    // Mouse editing is owned by the SVG surface or the visible item that starts
+    // the gesture. Capturing here first transfers capture away from the canvas
+    // child and fires lostpointercapture, which cancels the edit transaction.
+    if (event.button === 0) return;
   }
 
   function handleViewportPointerMoveCapture(event: PointerEvent<HTMLDivElement>) {
@@ -3911,7 +3915,22 @@ function HVACPlanStudioApp() {
   }
 
   function handleViewportPointerUpCapture(event: PointerEvent<HTMLDivElement>) {
-    finishDirectBranchPlacementGesture(event);
+    if (finishDirectBranchPlacementGesture(event)) {
+      event.preventDefault();
+      event.stopPropagation();
+      completedEditPointerIdsRef.current.add(event.pointerId);
+      activeEditPointerIdRef.current = null;
+      if (editTransactionRef.current?.pointerId === event.pointerId) {
+        editTransactionRef.current = null;
+      }
+      releasePlanPointerCapture(event.pointerId);
+      releaseCanvasPointerOwner(canvasPointerOwnersRef.current, event.pointerId);
+      window.setTimeout(
+        () => completedEditPointerIdsRef.current.delete(event.pointerId),
+        0,
+      );
+      return;
+    }
     if (event.pointerType === "touch") {
       if (directTouchPointerRef.current?.pointerId === event.pointerId) {
         directTouchPointerRef.current = null;
@@ -10915,8 +10934,8 @@ function HVACPlanStudioApp() {
       activeEditPointerIdRef.current !== event.pointerId
     ) {
       cancelPlanPointerInteraction(activeEditPointerIdRef.current);
-      beginEditTransaction(event.pointerId);
     }
+    if (!beginEditTransaction(event.pointerId)) return;
     const rawPoint = canvasPoint(event);
     if (copyPlacement) {
       if (copyTemplateDrawings(copyPlacement.template).some(drawingLocked)) {
@@ -12211,6 +12230,7 @@ function HVACPlanStudioApp() {
       startGroupDrag(event, drawingId);
       return;
     }
+    if (!beginEditTransaction(event.pointerId)) return;
     event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
     dragRef.current = {
       kind: "point",
@@ -12232,6 +12252,7 @@ function HVACPlanStudioApp() {
     const b = drawing.points[segmentIndex + 1];
     const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     const nextPoints = [...drawing.points.slice(0, segmentIndex + 1), midpoint, ...drawing.points.slice(segmentIndex + 1)];
+    if (!beginEditTransaction(event.pointerId)) return;
     event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
     dragRef.current = {
       kind: "point",
@@ -12356,6 +12377,7 @@ function HVACPlanStudioApp() {
       startGroupDrag(event, drawing.id);
       return;
     }
+    if (!beginEditTransaction(event.pointerId)) return;
     event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
     dragRef.current = {
       kind: "fitting",
@@ -12405,6 +12427,7 @@ function HVACPlanStudioApp() {
       startGroupDrag(event, drawing.id);
       return;
     }
+    if (!beginEditTransaction(event.pointerId)) return;
     event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
     dragRef.current = {
       kind: "symbol",
@@ -12550,6 +12573,7 @@ function HVACPlanStudioApp() {
       setBranchMessage("Finish or keep the Port 3 branch open before moving this fitting network");
       return;
     }
+    if (!beginEditTransaction(event.pointerId)) return;
     const originals = Object.fromEntries(
       drawings.filter((drawing) => ids.includes(drawing.id)).map((drawing) => [
         drawing.id,
@@ -15885,7 +15909,6 @@ function HVACPlanStudioApp() {
             className={`canvas ${pdf ? "has-plan" : ""} ${showGrid ? "" : "grid-hidden"}`}
             onDragOver={(event) => event.preventDefault()}
             onDrop={onDrop}
-            onWheel={handleWheelZoom}
             onPointerDownCapture={handleViewportPointerDownCapture}
             onPointerMoveCapture={handleViewportPointerMoveCapture}
             onPointerUpCapture={handleViewportPointerUpCapture}
@@ -15896,8 +15919,10 @@ function HVACPlanStudioApp() {
               if (draft.length) finishDrawing();
             }}
           >
-            {selectedId && planSelectionActionsVisible && !selectedContextWheelVisible && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
+            {selectedId && planSelectionActionsVisible && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
               <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T BRANCH FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : "DUCT RUN"}{selectedDrawingLocked ? selectedPort3FittingLocked ? " · FINISH PORT 3 FIRST" : " · LAYER LOCKED" : ""}</strong>
+              {!selectedDrawingLocked && (selectedDrawing?.symbol || selectedDrawing?.measurement || selectedRun || selectedFitting) && <button className="copy-primary" title={selectedRun || selectedFitting ? "Copy this connected supply assembly, then click the plan to paste it repeatedly" : "Copy this item, then click the plan to paste it repeatedly"} onClick={duplicateSelected}><Copy size={15} /> Copy &amp; paste</button>}
+              {!selectedDrawingLocked && <span className="selection-drag-hint">Drag the highlighted item to move</span>}
               {!selectedDrawingLocked && selectedIds.length === 1 && !selectedDrawing?.symbol && !selectedDrawing?.measurement && <select
                 aria-label="Quick duct size"
                 value={selectedDrawing?.fitting?.upstreamSize || selectedDrawing?.size || ductSize}
@@ -15924,7 +15949,6 @@ function HVACPlanStudioApp() {
               }}>Properties</button>}
               {selectedIds.length === 2 && selectedSelectionAllEditable && <button title="Join the two nearest compatible run endpoints" onClick={joinSelectedRuns}><Route size={15} /> Join runs</button>}
               {!selectedDrawingLocked && selectedIds.length === 1 && (selectedDrawing?.symbol || selectedDrawing?.measurement) && <button title="Mirror selection" onClick={mirrorSelectedHorizontal}><FlipHorizontal2 size={15} /> Mirror</button>}
-              {!selectedDrawingLocked && (selectedDrawing?.symbol || selectedDrawing?.measurement || selectedRun || selectedFitting) && <button title={selectedRun || selectedFitting ? "Copy this connected supply assembly and place it with the mouse" : "Copy this item and place it with the mouse"} onClick={duplicateSelected}><Copy size={15} /> Copy & place</button>}
               {selectedSelectionHasEditable && <button className="danger" title="Delete selection" onClick={deleteSelected}><Trash2 size={15} /></button>}
               <button title="Clear selection" onClick={() => selectOnly(null)}><X size={15} /></button>
             </div>}
