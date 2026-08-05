@@ -359,31 +359,31 @@ export default function ProjectHome({
               )}
             </div>
 
-            <aside className="home-command-preview" aria-label="Field command workflow">
+            <aside className="home-command-preview" aria-label="HVAC plan workflow">
               <header>
                 <div>
-                  <small>JOB TRAVELER</small>
+                  <small>WORKFLOW</small>
                   <strong>{hasPlan ? currentProjectName : "Ready for source plan"}</strong>
                 </div>
                 <span className={hasPlan ? "ready" : "standby"}>{hasPlan ? "LIVE" : "STANDBY"}</span>
               </header>
               <ol>
                 <li className={hasPlan ? "complete" : "active"}>
-                  <b>01</b><span><strong>Source plan</strong><small>{hasPlan ? "Loaded and authoritative" : "Open the construction PDF"}</small></span>
+                  <b>01</b><span><strong>Open plan</strong><small>{hasPlan ? "Construction PDF loaded" : "Choose the construction PDF"}</small></span>
                 </li>
                 <li className={hasPlan ? "active" : ""}>
-                  <b>02</b><span><strong>Draw &amp; detail</strong><small>Routes, symbols, and T Branches</small></span>
+                  <b>02</b><span><strong>Draw HVAC</strong><small>Routes, symbols, and T Branches</small></span>
                 </li>
                 <li>
-                  <b>03</b><span><strong>Review systems</strong><small>Airflow, sizing, layers, and Fix Plan</small></span>
+                  <b>03</b><span><strong>Materials list</strong><small>Runs, fittings, and air devices</small></span>
                 </li>
                 <li>
-                  <b>04</b><span><strong>Issue field work</strong><small>Materials, checks, and controlled output</small></span>
+                  <b>04</b><span><strong>Export &amp; share</strong><small>Print-ready plan and PDF</small></span>
                 </li>
               </ol>
               <footer>
-                <span><i /> Plan-first workspace</span>
-                <strong>Nothing changes without approval</strong>
+                <span><i /> One plan-first workflow</span>
+                <strong>Plan Check stays advisory</strong>
               </footer>
             </aside>
           </section>

@@ -21464,3 +21464,514 @@ footer {
 .app-shell[data-presentation="galvanized-daylight"] .branch-opportunity-marker .branch-opportunity-label {
   font-size: 10px;
 }
+
+/* Swiss Plan Workspace — focused navigation and Plan Check pass.
+   This layer changes presentation only; plan canvas colors and drawing geometry
+   remain owned by the existing SVG/canvas implementation. */
+.app-shell.swiss-plan-workspace {
+  /* Important is deliberate here: the retained legacy theme selector carries
+     two data attributes. These tokens are the approved presentation override. */
+  --swiss-paper: #ffffff !important;
+  --swiss-field: #f7f7f8 !important;
+  --swiss-line: #d5d7da !important;
+  --swiss-line-strong: #a7abb0 !important;
+  --swiss-ink: #111318 !important;
+  --swiss-muted: #5d626b !important;
+  --swiss-blue: #002fa7 !important;
+  --swiss-blue-soft: #edf2ff !important;
+
+  --gd-plan: var(--swiss-paper) !important;
+  --gd-shell: var(--swiss-field) !important;
+  --gd-metal: var(--swiss-field) !important;
+  --gd-metal-light: var(--swiss-paper) !important;
+  --gd-metal-dark: var(--swiss-line-strong) !important;
+  --gd-ink: var(--swiss-ink) !important;
+  --gd-graphite: var(--swiss-paper) !important;
+  --gd-graphite-deep: var(--swiss-ink) !important;
+  --gd-on-dark: var(--swiss-ink) !important;
+  --gd-muted: var(--swiss-muted) !important;
+  --gd-active: var(--swiss-blue) !important;
+  --gd-active-deep: var(--swiss-blue) !important;
+  --gd-active-soft: var(--swiss-blue-soft) !important;
+  --gd-confirm: var(--swiss-blue) !important;
+  --gd-focus: var(--swiss-blue) !important;
+  --gd-line: var(--swiss-line-strong) !important;
+  --gd-line-soft: var(--swiss-line) !important;
+  --gd-raised: none !important;
+  --gd-pressed: inset 0 0 0 1px var(--swiss-blue) !important;
+  --gd-panel-shadow: 0 14px 32px rgba(17, 19, 24, .12) !important;
+
+  color: var(--swiss-ink) !important;
+  background: var(--swiss-field) !important;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+}
+
+.app-shell.swiss-plan-workspace :is(button, input, select, textarea),
+.app-shell.swiss-plan-workspace :is(
+  .brand strong,
+  .brand span,
+  .command-rail button,
+  .panel-heading,
+  .left-panel-tabs button,
+  .right-tabs button,
+  .tool,
+  .section-title,
+  .library-title,
+  .canvas-toolbar button,
+  .field-first-guide,
+  .project-home-header,
+  .project-home-nav,
+  .project-home-hero h1,
+  .home-section-heading h2,
+  .dialog-heading
+) {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+}
+
+.app-shell.swiss-plan-workspace :is(button, input, select, textarea):focus-visible {
+  outline: 3px solid var(--swiss-blue);
+  outline-offset: 2px;
+}
+
+.app-shell.swiss-plan-workspace:not(.field-mode) {
+  grid-template-rows: 52px minmax(0, 1fr) 30px;
+}
+
+.app-shell.swiss-plan-workspace > .field-first-guide {
+  display: none;
+}
+
+.app-shell.swiss-plan-workspace:not(.field-mode) > .topbar,
+.app-shell.swiss-plan-workspace .project-home-header,
+.app-shell.swiss-plan-workspace .command-rail,
+.app-shell.swiss-plan-workspace:not(.field-mode) .left-panel,
+.app-shell.swiss-plan-workspace:not(.field-mode) .right-panel,
+.app-shell.swiss-plan-workspace:not(.field-mode) .canvas-area,
+.app-shell.swiss-plan-workspace .canvas-toolbar,
+.app-shell.swiss-plan-workspace > footer {
+  color: var(--swiss-ink);
+  border-color: var(--swiss-line);
+  border-radius: 0;
+  background: var(--swiss-paper);
+  background-image: none;
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace .brand-mark,
+.app-shell.swiss-plan-workspace .project-home-brand > span {
+  color: var(--swiss-paper);
+  border-radius: 0;
+  background: var(--swiss-blue);
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace .brand strong {
+  color: var(--swiss-ink);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  text-transform: none;
+}
+
+.app-shell.swiss-plan-workspace .brand span,
+.app-shell.swiss-plan-workspace .project-breadcrumb,
+.app-shell.swiss-plan-workspace .project-readiness,
+.app-shell.swiss-plan-workspace .studio-save-state {
+  color: var(--swiss-muted);
+}
+
+.app-shell.swiss-plan-workspace .topbar :is(.top-actions > button, .system-switcher),
+.app-shell.swiss-plan-workspace .canvas-toolbar button,
+.app-shell.swiss-plan-workspace .canvas-edit-actions,
+.app-shell.swiss-plan-workspace .page-controls,
+.app-shell.swiss-plan-workspace .scale {
+  color: var(--swiss-ink);
+  border-color: var(--swiss-line);
+  border-radius: 0;
+  background: var(--swiss-paper);
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace .topbar .top-actions > .top-save-button,
+.app-shell.swiss-plan-workspace .builder-primary-action,
+.app-shell.swiss-plan-workspace .field-first-primary {
+  color: var(--swiss-paper);
+  border-color: var(--swiss-blue);
+  background: var(--swiss-blue);
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace .command-rail {
+  counter-reset: swiss-workflow;
+  min-height: 42px;
+  height: 42px;
+  border-width: 0 0 1px;
+  overflow-x: auto;
+}
+
+.app-shell.swiss-plan-workspace .command-rail-main {
+  counter-reset: swiss-workflow;
+}
+
+.app-shell.swiss-plan-workspace .command-rail-main > button {
+  counter-increment: swiss-workflow;
+  min-width: 142px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  text-transform: none;
+}
+
+.app-shell.swiss-plan-workspace .command-rail-main > button::before {
+  content: "0" counter(swiss-workflow);
+  color: var(--swiss-blue);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell.swiss-plan-workspace .command-rail-review {
+  margin-left: auto;
+  border-left-color: var(--swiss-line);
+}
+
+.app-shell.swiss-plan-workspace .command-rail button {
+  min-height: 41px;
+  height: 41px;
+  color: var(--swiss-muted);
+  border-color: var(--swiss-line);
+  background: var(--swiss-paper);
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace .command-rail button:hover:not(:disabled) {
+  color: var(--swiss-blue);
+  background: var(--swiss-blue-soft);
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace .command-rail button:is(.active, .redline.active) {
+  color: var(--swiss-paper);
+  border-color: var(--swiss-blue);
+  background: var(--swiss-blue);
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace .command-rail button:is(.active, .redline.active)::before {
+  color: var(--swiss-paper);
+}
+
+.app-shell.swiss-plan-workspace:not(.field-mode) .left-panel,
+.app-shell.swiss-plan-workspace:not(.field-mode) .right-panel {
+  border-width: 0 1px 0 0;
+}
+
+.app-shell.swiss-plan-workspace:not(.field-mode) .right-panel {
+  border-width: 0 0 0 1px;
+}
+
+.app-shell.swiss-plan-workspace .left-panel :is(.panel-heading, .left-panel-tabs),
+.app-shell.swiss-plan-workspace .right-panel :is(.panel-heading, .right-tabs),
+.app-shell.swiss-plan-workspace .right-panel :is(.section-title, .library-title) {
+  color: var(--swiss-ink);
+  border-color: var(--swiss-line);
+  background: var(--swiss-field);
+  background-image: none;
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace .left-panel .panel-heading :is(span, small),
+.app-shell.swiss-plan-workspace .right-panel :is(.panel-heading span, .panel-heading small, .right-tabs button) {
+  color: var(--swiss-ink);
+}
+
+.app-shell.swiss-plan-workspace .left-panel-tabs button,
+.app-shell.swiss-plan-workspace .left-panel .panel-heading button {
+  color: var(--swiss-muted);
+  border-color: var(--swiss-line);
+  border-radius: 0;
+  background: var(--swiss-paper);
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace .left-panel-tabs button.active,
+.app-shell.swiss-plan-workspace .right-tabs button.active {
+  color: var(--swiss-blue);
+  border-color: var(--swiss-blue);
+  background: var(--swiss-blue-soft);
+  box-shadow: inset 0 -2px var(--swiss-blue);
+}
+
+.app-shell.swiss-plan-workspace .left-panel.view-draw .tool {
+  color: var(--swiss-ink);
+  border-color: var(--swiss-line);
+  border-radius: 0;
+  background: var(--swiss-paper);
+  box-shadow: none;
+  font-size: 13px;
+  text-transform: none;
+}
+
+.app-shell.swiss-plan-workspace .left-panel.view-draw .tool-icon,
+.app-shell.swiss-plan-workspace .left-panel.view-draw .tool kbd {
+  color: var(--swiss-muted);
+}
+
+.app-shell.swiss-plan-workspace .left-panel.view-draw .tool:hover,
+.app-shell.swiss-plan-workspace .left-panel.view-draw .tool.active {
+  color: var(--swiss-paper);
+  border-color: var(--swiss-blue);
+  background: var(--swiss-blue);
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace .left-panel.view-draw .tool.active :is(.tool-icon, kbd) {
+  color: var(--swiss-paper);
+}
+
+.app-shell.swiss-plan-workspace .right-panel :is(
+  .builder-hero,
+  .smart-plan-preflight,
+  .panel-section,
+  .builder-workflow,
+  .builder-action-card,
+  .plan-summary,
+  .status-card,
+  .fitting-properties,
+  .run-connection-card
+) {
+  border-color: var(--swiss-line);
+  background: var(--swiss-paper);
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace .right-panel .builder-action-card.current {
+  background: var(--swiss-blue-soft);
+  box-shadow: inset 2px 0 var(--swiss-blue);
+}
+
+.app-shell.swiss-plan-workspace .builder-progress,
+.app-shell.swiss-plan-workspace .builder-hero-heading > b,
+.app-shell.swiss-plan-workspace .builder-safety-note {
+  display: none;
+}
+
+.app-shell.swiss-plan-workspace:not(.field-mode) .canvas {
+  background-color: var(--swiss-field);
+  background-image:
+    linear-gradient(rgba(17, 19, 24, .06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 19, 24, .06) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.app-shell.swiss-plan-workspace:not(.field-mode) .canvas.grid-hidden {
+  background: var(--swiss-field);
+}
+
+.app-shell.swiss-plan-workspace :is(.plan-sheet, .pdf-stage canvas) {
+  background: var(--swiss-paper);
+}
+
+.plan-check-strip {
+  min-height: 46px;
+  padding: 7px 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--swiss-ink, #111318);
+  border-bottom: 1px solid var(--swiss-line, #d5d7da);
+  background: var(--swiss-paper, #fff);
+}
+
+.plan-check-strip > span,
+.plan-check-strip > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.plan-check-strip > span svg {
+  flex: 0 0 auto;
+  color: var(--swiss-blue, #002fa7);
+}
+
+.plan-check-strip strong,
+.plan-check-strip small {
+  white-space: nowrap;
+}
+
+.plan-check-strip strong {
+  font-size: 13px;
+}
+
+.plan-check-strip small {
+  overflow: hidden;
+  color: var(--swiss-muted, #5d626b);
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
+.plan-check-strip button {
+  min-height: 30px;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--swiss-ink, #111318);
+  border: 1px solid var(--swiss-line, #d5d7da);
+  border-radius: 0;
+  background: var(--swiss-paper, #fff);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.plan-check-strip > div button:first-child {
+  color: var(--swiss-paper, #fff);
+  border-color: var(--swiss-blue, #002fa7);
+  background: var(--swiss-blue, #002fa7);
+}
+
+.plan-check-strip button:disabled {
+  color: #979ba2;
+  background: #f1f2f3;
+}
+
+.plan-check-strip.ignored {
+  min-height: 36px;
+  padding-block: 3px;
+}
+
+.app-shell.swiss-plan-workspace .markup-assistant-overlay.fix-plan-sidecar {
+  width: min(430px, 40vw);
+  padding: 0;
+  border-left: 1px solid var(--swiss-line);
+  background: var(--swiss-paper);
+  box-shadow: -12px 0 32px rgba(17, 19, 24, .12);
+}
+
+.app-shell.swiss-plan-workspace .markup-assistant-studio,
+.app-shell.swiss-plan-workspace .markup-assistant-header,
+.app-shell.swiss-plan-workspace .assistant-workspace-tabs,
+.app-shell.swiss-plan-workspace .assistant-more-tools,
+.app-shell.swiss-plan-workspace .fix-plan-unified,
+.app-shell.swiss-plan-workspace .fix-plan-heading,
+.app-shell.swiss-plan-workspace .fix-plan-search {
+  color: var(--swiss-ink);
+  border-color: var(--swiss-line);
+  border-radius: 0;
+  background: var(--swiss-paper);
+  background-image: none;
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace .markup-assistant-header {
+  min-height: 58px;
+  padding: 9px 11px;
+}
+
+.app-shell.swiss-plan-workspace .markup-assistant-brand > span {
+  width: 34px;
+  height: 34px;
+  color: var(--swiss-paper);
+  border-radius: 0;
+  background: var(--swiss-blue);
+}
+
+.app-shell.swiss-plan-workspace .markup-assistant-brand :is(small, h2, p),
+.app-shell.swiss-plan-workspace .fix-plan-heading :is(h3, p),
+.app-shell.swiss-plan-workspace .markup-assistant-header-actions button {
+  color: var(--swiss-ink);
+}
+
+.app-shell.swiss-plan-workspace .markup-assistant-brand small {
+  color: var(--swiss-blue);
+  font-size: 11px !important;
+  letter-spacing: .04em;
+}
+
+.app-shell.swiss-plan-workspace .markup-assistant-brand h2 {
+  margin-top: 1px;
+  font-size: 17px;
+  letter-spacing: -.02em;
+}
+
+.app-shell.swiss-plan-workspace .assistant-workspace-tabs button,
+.app-shell.swiss-plan-workspace .assistant-more-tools button,
+.app-shell.swiss-plan-workspace .assistant-more-tools summary,
+.app-shell.swiss-plan-workspace .fix-plan-search button {
+  color: var(--swiss-ink);
+  border-color: var(--swiss-line);
+  border-radius: 0;
+  background: var(--swiss-paper);
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace .assistant-workspace-tabs button.active {
+  color: var(--swiss-blue);
+  background: var(--swiss-blue-soft);
+  box-shadow: inset 0 -2px var(--swiss-blue);
+}
+
+.app-shell.swiss-plan-workspace .fix-plan-heading {
+  padding: 12px;
+}
+
+.app-shell.swiss-plan-workspace .fix-plan-heading h3 {
+  font-size: 18px;
+  letter-spacing: -.02em;
+}
+
+.app-shell.swiss-plan-workspace .fix-plan-heading p {
+  max-width: 52ch;
+  color: var(--swiss-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1100px) {
+  .app-shell.swiss-plan-workspace .command-rail-main > button {
+    min-width: 124px;
+  }
+
+  .app-shell.swiss-plan-workspace .markup-assistant-overlay.fix-plan-sidecar {
+    width: min(470px, 72vw);
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell.swiss-plan-workspace:not(.field-mode) {
+    grid-template-rows: 48px minmax(0, 1fr) 30px;
+  }
+
+  .app-shell.swiss-plan-workspace .command-rail-main > button {
+    min-width: 116px;
+  }
+
+  .plan-check-strip {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .plan-check-strip > div {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .plan-check-strip button {
+    min-height: 42px;
+    justify-content: center;
+  }
+
+  .app-shell.swiss-plan-workspace .markup-assistant-overlay.fix-plan-sidecar {
+    width: 100vw;
+    border-left: 0;
+  }
+}
+
+@media print {
+  .app-shell.swiss-plan-workspace .plan-check-strip {
+    display: none !important;
+  }
+}

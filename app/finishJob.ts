@@ -78,8 +78,8 @@ export function finishJobGateActionLabel(gateId: FinishJobGateId) {
   const actions: Record<string, string> = {
     materials: "Review materials",
     runs: "Start drawing runs",
-    critical: "Open this in Fix Plan",
-    warning: "Review this in Fix Plan",
+    critical: "Open in Plan Check",
+    warning: "Open in Plan Check",
     connections: "Fix the next connection",
     elevations: "Show the missing elevation",
     rooms: "Assign the missing room",
@@ -95,7 +95,7 @@ export function finishJobGateActionLabel(gateId: FinishJobGateId) {
 export function buildFinishJobModel(input: BuildFinishJobInput): FinishJobModel {
   const materialComplete = input.materialRowCount > 0 && input.materialReviewCurrent;
   const technicalHolds = input.gates.filter(
-    (gate) => !gate.clear && !["materials", "checklist", "cloud"].includes(gate.id),
+    (gate) => !gate.clear && !["materials", "checklist", "cloud", "critical", "warning"].includes(gate.id),
   );
   const cloudGate = input.gates.find((gate) => gate.id === "cloud");
   const holdsComplete = technicalHolds.length === 0;

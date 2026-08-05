@@ -22,7 +22,6 @@ import {
   ScanSearch,
   Search,
   ShieldCheck,
-  Sparkles,
   Undo2,
   X,
 } from "lucide-react";
@@ -911,29 +910,28 @@ export default function MarkupAssistantStudio({
     >
       <header className="markup-assistant-header">
         <div className="markup-assistant-brand">
-          <span><Sparkles size={22} /></span>
+          <span><ShieldCheck size={20} /></span>
           <div>
-            <small>PLAN HELPER</small>
-            <h2 id="markup-assistant-title">One place to answer a question and approve the fix.</h2>
+            <small>PLAN CHECK</small>
+            <h2 id="markup-assistant-title">{combinedFixActions.length} item{combinedFixActions.length === 1 ? "" : "s"} to review</h2>
             <p>{projectName} · {systemName}</p>
           </div>
         </div>
         <div className="markup-assistant-header-actions">
-          <span><ShieldCheck size={14} /> NOTHING CHANGES WITHOUT APPROVAL</span>
-          <button className="markup-assistant-close" aria-label="Close Plan Helper" onClick={onClose}><X size={20} /></button>
+          <button className="markup-assistant-close" aria-label="Close Plan Check" onClick={onClose}><X size={20} /></button>
         </div>
       </header>
 
       <nav
         className="assistant-workspace-tabs"
-        aria-label="Plan Helper"
+        aria-label="Plan Check"
         role="tablist"
         style={PRIMARY_VIEW_GRID_STYLE}
         onKeyDown={handleViewKeyDown}
       >
         {([
           ["setup", "Plan setup", smartSetup?.counts.reviewItems ?? 0],
-          ["repair-plan", "Fix Plan", repairPlan.actions.length],
+          ["repair-plan", "Review", repairPlan.actions.length],
         ] as Array<[AssistantView, string, number]>).map(([id, label, count]) => <button
           key={id}
           id={`assistant-tab-${id}`}
@@ -949,8 +947,8 @@ export default function MarkupAssistantStudio({
       </nav>
 
       <details className="assistant-more-tools">
-        <summary><strong>More</strong><span>History, company rules, and source details</span></summary>
-        <nav className="markup-assistant-filter" aria-label="More Plan Helper tools">
+        <summary><strong>Details</strong><span>History, rules, sources</span></summary>
+        <nav className="markup-assistant-filter" aria-label="More Plan Check tools">
           {([
             ["history", "History & Undo", repairRecords.length],
             ["standards", "My HVAC Rules", designStandard.review + designStandard.blocked],
@@ -1091,9 +1089,8 @@ export default function MarkupAssistantStudio({
           </> : <div className="smart-plan-setup-empty">
             <ScanSearch size={38} />
             <small>SMART PLAN SETUP</small>
-            <h3>Let Plan Helper read the plan first</h3>
-            <p>It will look for each drawing scale, room and ceiling-height notes, equipment, systems, and the few details you still need to answer.</p>
-            <p>Plan reading starts automatically after you open a PDF.</p>
+            <h3>Open a plan to begin checks</h3>
+            <p>Plan Check will list source-backed details that may need review.</p>
           </div>}
         </main>}
 
@@ -1240,14 +1237,13 @@ export default function MarkupAssistantStudio({
         </main>}
 
         {view === "repair-plan" && <main className="repair-plan-workspace" role="tabpanel" id="assistant-panel-repair-plan" aria-labelledby="assistant-tab-repair-plan">
-          <section className="fix-plan-unified" aria-label="Fix Plan">
+          <section className="fix-plan-unified" aria-label="Plan Check">
             <header className="fix-plan-heading">
               <div>
-                <small>FIX PLAN</small>
-                <h3>One issue. One answer. One approved fix.</h3>
-                <p>Find the problem, answer missing job information, preview the exact change, and approve it without leaving this card.</p>
+                <h3>Review one item at a time</h3>
+                <p>Checks are advisory. Open an item, locate it on the plan, then record a decision if needed.</p>
               </div>
-              <div className="fix-plan-counts" aria-label="Fix Plan status">
+              <div className="fix-plan-counts" aria-label="Plan Check status">
                 <span><b>{combinedFixActions.length}</b> open</span>
                 <span><b>{combinedFixActions.filter((action) => action.readiness === "ready").length}</b> safe now</span>
                 <span><b>{combinedFixActions.filter((action) => action.readiness !== "ready").length}</b> need you</span>
@@ -1262,7 +1258,7 @@ export default function MarkupAssistantStudio({
                 if (rankedFixActions[0]) chooseFixAction(rankedFixActions[0].action);
               }}
             >
-              <label htmlFor="fix-plan-query"><Search size={17} /> Ask Fix Plan</label>
+              <label htmlFor="fix-plan-query"><Search size={17} /> Find an item</label>
               <div>
                 <input
                   id="fix-plan-query"
@@ -1284,7 +1280,7 @@ export default function MarkupAssistantStudio({
                     <span>{action.location}</span>
                     <small>Matched {matchedFields.join(", ")}</small>
                   </button>)
-                  : <p>No supported issue matches that search. Fix Plan only searches current plan evidence.</p>}
+                  : <p>No current plan item matches that search.</p>}
               </div>}
               <label className="fix-plan-marker-toggle">
                 <input
@@ -1975,7 +1971,7 @@ export default function MarkupAssistantStudio({
               </article>
             </> : <div className="fix-plan-clear">
               <CheckCircle2 size={34} />
-              <h3>{skippedActionIds.length ? "Every remaining issue is left for later" : "The Fix Plan is clear"}</h3>
+              <h3>{skippedActionIds.length ? "Every remaining item is left for later" : "Plan Check is clear"}</h3>
               <p>{skippedActionIds.length
                 ? "Nothing was marked fixed. Restore the skipped issues whenever you are ready."
                 : "No open repair action is supported by the current evidence."}</p>

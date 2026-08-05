@@ -8,11 +8,11 @@ const [assistant, page, styles] = await Promise.all([
   readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
 ]);
 
-test("v128 presents Plan setup and one Fix Plan instead of separate Problems and Fixes tabs", () => {
+test("Plan Check presents setup and one review list instead of separate Problems and Fixes tabs", () => {
   assert.match(assistant, /PRIMARY_VIEW_ORDER: AssistantView\[\] = \["setup", "repair-plan"\]/);
-  assert.match(assistant, /\["repair-plan", "Fix Plan", repairPlan\.actions\.length\]/);
+  assert.match(assistant, /\["repair-plan", "Review", repairPlan\.actions\.length\]/);
   assert.doesNotMatch(assistant, /\["recommendations", "Problems", recommendations\.length\]/);
-  assert.match(assistant, /One place to answer a question and approve the fix/);
+  assert.match(assistant, /item\{combinedFixActions\.length === 1 \? "" : "s"\} to review/);
 });
 
 test("the one-card flow answers where, wrong, fix, result, yes, and no", () => {

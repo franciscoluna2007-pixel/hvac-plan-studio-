@@ -176,7 +176,7 @@ test("leads solo HVAC operators through four job steps and keeps Field Redline s
   assert.match(page, /<strong>Plan setup<\/strong>/);
   assert.match(page, /label: "Draw & Detail"/);
   assert.match(page, /label: "Airflow & Sizes"/);
-  assert.match(page, /label: "Fix Plan"/);
+  assert.match(page, /label: "Plan Check"/);
   assert.match(page, /label: "Finish the Job"/);
   const fieldFirstStepsStart = page.indexOf("const fieldFirstSteps = [");
   const fieldFirstStepsEnd = page.indexOf("] as const;", fieldFirstStepsStart);
@@ -189,7 +189,12 @@ test("leads solo HVAC operators through four job steps and keeps Field Redline s
   assert.match(page, /function openToolsPanel\(\) \{\s*setLeftPanelOpen\(true\);\s*setRightPanelOpen\(false\)/);
   assert.match(page, /function openInspectorPanel\(\) \{\s*setRightPanelOpen\(true\);\s*setLeftPanelOpen\(false\)/);
   assert.match(page, /left-panel-tabs/);
-  assert.match(home, /JOB TRAVELER/);
+  assert.match(home, /WORKFLOW/);
+  assert.match(home, /Open plan/);
+  assert.match(home, /Draw HVAC/);
+  assert.match(home, /Materials list/);
+  assert.match(home, /Export &amp; share/);
+  assert.match(home, /Plan Check stays advisory/);
   assert.match(home, /className="home-command-preview"/);
   assert.match(home, /Continue current job/);
   assert.match(home, /> Open a plan\s*</);
@@ -652,7 +657,9 @@ test("uses compact v4 T Branch geometry with a screen-stable preview cap", async
 
 test("widens the desktop tool task dock without changing tablet or mobile drawers", async () => {
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  const readabilityOverrides = styles.slice(styles.lastIndexOf("/* Deterministic T/Y placement"));
+  const readabilityStart = styles.lastIndexOf("/* Deterministic T/Y placement");
+  const readabilityEnd = styles.indexOf("/* Swiss Plan Workspace", readabilityStart);
+  const readabilityOverrides = styles.slice(readabilityStart, readabilityEnd);
 
   assert.match(readabilityOverrides, /@media \(min-width: 1101px\)[\s\S]*?--deck-tools: 320px/);
   assert.match(readabilityOverrides, /\.left-panel \.left-panel-tabs button \{[^}]*font-size: 14px;/);
@@ -823,7 +830,7 @@ test("makes STEP 1 preview-first and preserves placed objects and saved T Branch
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
   assert.match(page, /Equipment, cans, and T Branch ports/);
-  assert.match(page, /Open \$\{activeConnectionRepairIssues\.length\} connection fix/);
+  assert.match(page, /Review \$\{activeConnectionRepairIssues\.length\} connection item/);
   assert.match(page, /Add this fix/);
   assert.match(page, /Apply \{selectedReadyConnectionRepairIds\.length\} selected · one Undo/);
   assert.match(page, /0<\/strong> placed objects move/);
@@ -1380,8 +1387,8 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(repairSource, /actions\.length !== selected\.size/);
   assert.match(repairSource, /Apply the reviewed terminal CFM first, then rebuild the repair plan so sizing uses the new network airflow/);
   assert.match(page, /setHistory\(next\)/);
-  assert.match(studio, /PLAN HELPER/);
-  assert.match(studio, /One place to answer a question and approve the fix\./);
+  assert.match(studio, /PLAN CHECK/);
+  assert.match(studio, /item\{combinedFixActions\.length === 1 \? "" : "s"\} to review/);
   assert.match(studio, /aria-modal="false"/);
   assert.match(studio, /Check only/);
   assert.match(studio, /Prepare fixes/);
@@ -2129,7 +2136,7 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
 
   assert.match(page, /label: "Draw & Detail"/);
   assert.match(page, /label: "Airflow & Sizes"/);
-  assert.match(page, /label: "Fix Plan"/);
+  assert.match(page, /label: "Plan Check"/);
   assert.match(page, /label: "Finish the Job"/);
   assert.match(page, /const fieldFirstProgress = Math\.round\(/);
   assert.match(page, /const airflowStepComplete = Boolean\(/);
@@ -2214,7 +2221,7 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(helper, /export type PlanHelperPrimaryView = "setup" \| "fix-plan" \| "problems" \| "fixes"/);
   assert.match(helper, /const PRIMARY_VIEW_ORDER: AssistantView\[\] = \["setup", "repair-plan"\]/);
   assert.match(helper, /\["setup", "Plan setup"/);
-  assert.match(helper, /\["repair-plan", "Fix Plan"/);
+  assert.match(helper, /\["repair-plan", "Review"/);
   assert.match(helper, /\["history", "History & Undo"/);
   assert.match(helper, /\["standards", "My HVAC Rules"/);
   assert.match(helper, /\["evidence", "Source details"/);
@@ -2251,7 +2258,7 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(page, /function startPlanScaleCalibration[\s\S]{0,300}setScaleHelperReturnPending\(true\)/);
   assert.match(page, /function cancelPlanScaleCalibration[\s\S]{0,400}openMarkupAssistant\("setup"\)/);
   assert.match(page, /if \(returnToHelper\) window\.requestAnimationFrame\(\(\) => openMarkupAssistant\("setup"\)\)/);
-  assert.match(page, /Cancel &amp; return to Plan Helper/);
+  assert.match(page, /Cancel &amp; return to Plan Check/);
   assert.match(drawingScale, /candidate\.ratio && candidate\.ratio > 0\s*\? candidate\.ratio\s*: scaleRatioFromLabel\(candidate\.label\)/);
   assert.match(drawingScale, /ratio \/ \(12 \* PDF_POINTS_PER_INCH \* viewportScale\)/);
 
