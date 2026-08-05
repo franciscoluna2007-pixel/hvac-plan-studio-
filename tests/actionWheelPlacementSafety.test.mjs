@@ -8,7 +8,7 @@ const [page, canvas, styles] = await Promise.all([
   readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
 ]);
 
-test("HVAC action wheels and the fallback toolbar are limited to safe Select mode", () => {
+test("HVAC action wheels and the discoverable toolbar are limited to safe Select mode", () => {
   assert.match(
     page,
     /const planSelectionActionsVisible =\s*activeTool === "select"[\s\S]*?!splitMode[\s\S]*?!calibrating[\s\S]*?!pendingRoomMarkupCandidateId[\s\S]*?!fieldRedline\.open/,
@@ -27,8 +27,10 @@ test("HVAC action wheels and the fallback toolbar are limited to safe Select mod
   );
   assert.match(
     page,
-    /\{selectedId && planSelectionActionsVisible && !selectedContextWheelVisible && <div className="field-context-toolbar"/,
+    /\{selectedId && planSelectionActionsVisible && <div className="field-context-toolbar"/,
   );
+  assert.match(page, /className="copy-primary"[\s\S]*?Copy &amp; paste/);
+  assert.match(page, /Drag the highlighted item to move/);
   assert.match(page, /const planContextWheelAllowed = zoom <= 3/);
   assert.match(
     page,

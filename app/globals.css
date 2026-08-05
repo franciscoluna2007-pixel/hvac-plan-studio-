@@ -289,6 +289,9 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .field-context-toolbar select { width: 68px; height: 30px; margin: 0; color: #f3f8fb; border-color: #345970; background: #102636; font-size: 9px; }
 .field-context-toolbar button { min-height: 30px; padding: 0 8px; display: inline-flex; align-items: center; gap: 5px; color: #a9c5d7; border: 1px solid #294358; border-radius: 5px; background: #0f2231; font-size: 8px; white-space: nowrap; }
 .field-context-toolbar button:hover { color: #e6f8ff; border-color: #4184a2; background: #15384b; }
+.field-context-toolbar button.copy-primary { color: #07141c; border-color: #63ddfa; background: #63ddfa; font-size: 9px; font-weight: 900; }
+.field-context-toolbar button.copy-primary:hover { color: #07141c; border-color: #a5efff; background: #a5efff; }
+.field-context-toolbar .selection-drag-hint { padding: 0 5px; color: #cfe9f7; font-size: 9px; font-weight: 700; white-space: nowrap; }
 .field-context-toolbar button.active { color: #07141c; border-color: var(--cyan); background: var(--cyan); font-weight: 900; }
 .field-context-toolbar button.danger { color: #ffaaa7; border-color: #66383b; background: #2c171b; }
 .symbol-action-wheel {
