@@ -30,12 +30,16 @@ test("mouse editing leaves pointer capture with the visible SVG target", () => {
   }
 });
 
-test("plain wheel zoom uses one native non-passive listener", () => {
+test("plain wheel zoom uses one capture-phase non-passive listener for the real canvas event path", () => {
   assert.match(
     page,
-    /viewport\.addEventListener\("wheel", onWheel, \{ passive: false \}\)/,
+    /document\.addEventListener\("wheel", onWheel, \{ capture: true, passive: false \}\)/,
   );
-  assert.match(page, /return \(\) => viewport\.removeEventListener\("wheel", onWheel\)/);
+  assert.match(page, /viewport\.contains\(event\.target\)/);
+  assert.match(page, /wheelHandlerRef\.current\(event\)/);
+  assert.match(page, /return \(\) => document\.removeEventListener\("wheel", onWheel, true\)/);
+  assert.match(page, /const editIsActive = Boolean\([\s\S]*?dragRef\.current[\s\S]*?selectionBox[\s\S]*?directBranchPlacementGestureRef\.current/);
+  assert.match(page, /activeEditPointerIdRef\.current = null;[\s\S]*?editTransactionRef\.current = null;/);
   assert.doesNotMatch(page, /onWheel=\{handleWheelZoom\}/);
 });
 
@@ -58,4 +62,32 @@ test("Copy and repeated Paste stay visible whenever a movable selection is activ
   );
   assert.match(page, /className="copy-primary"[\s\S]*?Copy &amp; paste/);
   assert.match(page, /Placed · move and click again · Esc or right-click finishes/);
+});
+
+test("right-clicking a plan item opens the primary compact Copy menu without starting pan", () => {
+  const viewportDown = bodyBetween(
+    "function handleViewportPointerDownCapture",
+    "function handleViewportPointerMoveCapture",
+  );
+  assert.match(viewportDown, /closest\("\[data-plan-drawing-id\]"\)/);
+  assert.match(viewportDown, /event\.button === 2[\s\S]*?setPlanContextMenu\(/);
+  assert.match(viewportDown, /if \(!selectedIds\.includes\(planDrawingId\)\) selectOnly\(planDrawingId\)/);
+  assert.match(page, /className="plan-context-menu"/);
+  assert.match(page, /role="menuitem"/);
+  assert.match(page, /<Copy size=\{15\} \/> Copy/);
+  assert.match(page, /data-plan-drawing-id=\{preview \? undefined : drawing\.id\}/);
+  assert.match(page, /data-plan-drawing-id=\{isCopyPreview \? undefined : drawing\.id\}/);
+});
+
+test("T Branch placement never manufactures a surprise third run", () => {
+  const placement = bodyBetween(
+    "function placeSmartBranch",
+    "function updateFittingPortSize",
+  );
+  assert.match(placement, /const branchRunId = matchedRoute\?\.drawing\.id \|\| ""/);
+  assert.match(placement, /const branchRun: Drawing \| null = matchedRoute/);
+  assert.match(placement, /\.\.\.\(branchRun \? \[branchRun\] : \[\]\)/);
+  assert.match(placement, /connectedIds: \[target\.drawing\.id, downstreamId, branchRunId\]/);
+  assert.match(placement, /setPendingBranchFittingId\(fittingId\)/);
+  assert.doesNotMatch(placement, /id: branchRunId,[\s\S]*?type: "supply"/);
 });
