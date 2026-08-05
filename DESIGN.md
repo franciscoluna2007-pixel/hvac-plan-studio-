@@ -36,7 +36,7 @@ motion:
 
 Concept A, **Galvanized Daylight**, is the production visual specification. This document records the durable tokens, component families, and responsive rules extracted from the approved concept board.
 
-The board defines one coherent family across the desktop workspace, tablet continuation, mobile continuation, job-opening dialog, selected T/Y Branch state, inspector, and active Redline pen-tip state. Implementation must read as the same product at every viewport, not as a desktop theme followed by generic responsive fallbacks.
+The board defines one coherent family across the desktop workspace, tablet continuation, mobile continuation, job-opening dialog, selected T Branch state, inspector, and active Redline pen-tip state. Implementation must read as the same product at every viewport, not as a desktop theme followed by generic responsive fallbacks.
 
 ## North star
 
@@ -55,10 +55,10 @@ This is a presentation-only visual replacement. The following are frozen and mus
 - Reducers, state transitions, undo behavior, and redo behavior.
 - Save and reload persistence.
 - Redline pen-tip behavior, including continuous square/circle stamp trails.
-- Redline remaining below HVAC runs, symbols, fitting previews, and T/Y tools.
+- Redline remaining below HVAC runs, symbols, fitting previews, and T Branch tools.
 - HVAC paint order and plan layer order.
 - Placement, connection, snap, and completion rules.
-- T/Y Branch size, rotation, fitting, preview, and connection behavior.
+- T Branch size, rotation, fitting, preview, and connection behavior.
 - Data model, serialized project shape, and saved user data.
 - Existing workflow destinations, workflow order, labels, and meaning.
 
@@ -203,7 +203,7 @@ The existing plan-tool panel becomes a compact Graphite dock. Tool rows retain t
 
 ### Galvanized canvas command surface
 
-The existing canvas toolbar uses light galvanized membrane controls, one-pixel separators, explicit condensed labels, and Mono values. Undo, redo, save, select/grab, zoom, fit, width, rendering quality, grid, snap, CFM, length, T/Y text, sheets, Redline, page, scale, and calibrate retain their existing functions and order.
+The existing canvas toolbar uses light galvanized membrane controls, one-pixel separators, explicit condensed labels, and Mono values. Undo, redo, save, select/grab, zoom, fit, width, rendering quality, grid, snap, CFM, length, T Branch text, sheets, Redline, page, scale, and calibrate retain their existing functions and order.
 
 ### Plan frame
 
@@ -294,4 +294,4 @@ Do not change drawing/controller/domain files, pointer handlers, reducers, persi
 - Do not use neon, glow, purple, glass, gaming HUD styling, decorative dashboards, or excessive cards.
 - Do not use glossy metal, fake screws, ornamental gauges, or workshop props.
 - Do not rename, add, remove, or reorder workflows or destinations.
-- Do not alter geometry, persistence, Redline behavior, HVAC paint order, placement, T/Y Branch behavior, undo, or the data model.
+- Do not alter geometry, persistence, Redline behavior, HVAC paint order, placement, T Branch behavior, undo, or the data model.

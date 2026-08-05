@@ -399,7 +399,7 @@ test("Redline paints below every HVAC run, fitting, icon, grille, and label", ()
     "SVG paint order is intentional: Redline stays below every HVAC object.",
   );
   const hvacDrawingLayerIndex = page.indexOf(
-    "{[...drawings, ...(copyPlacement?.preview ? [copyPlacement.preview] : [])]",
+    "{[...drawings, ...(copyPlacement?.preview || [])]",
   );
   const assistantOverlayIndex = page.indexOf(
     '{showAssistantSuggestionLayer && roomMarkupPlan.overlayCandidates.length > 0 && <g',

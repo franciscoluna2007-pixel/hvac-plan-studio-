@@ -129,7 +129,7 @@ test("supply-run dots are visually smaller without shrinking their edit target",
   assert.doesNotMatch(styles, /@media \(pointer: coarse\)[\s\S]*?\.edit-handle \{ r: 8px; \}/);
 });
 
-test("T/Y repair warnings stay compact and leave the drawing path while a tool is active", () => {
+test("T Branch repair warnings stay compact and leave the drawing path while a tool is active", () => {
   assert.match(
     page,
     /\{planSelectionActionsVisible && \(branchRepairPreview\.detached\.length > 0 \|\| branchRepairPreview\.missing\.length > 0\)/,
@@ -353,7 +353,7 @@ test("Port 3 routes resolve once, lock their fitting, and use the live fitting a
   assert.match(page, /attachExistingPort3RunInstead\(fitting\.id\)/);
 });
 
-test("T/Y preview topology comes from the same geometry as the committed fitting", () => {
+test("T Branch preview topology comes from the same geometry as the committed fitting", () => {
   const preview = page.slice(
     page.indexOf("{branchPreview && (() => {"),
     page.indexOf("{symbolPreview && (() => {"),

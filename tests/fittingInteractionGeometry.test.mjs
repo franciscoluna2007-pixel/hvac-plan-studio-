@@ -19,7 +19,7 @@ const {
   new URL("../app/fittingInteractionGeometry.ts", import.meta.url),
 );
 
-test("T/Y interaction chrome stays compact in screen space", () => {
+test("T Branch interaction chrome stays compact in screen space", () => {
   assert.equal(FITTING_HIT_STROKE_PX, 16);
   assert.equal(FITTING_COARSE_HIT_STROKE_PX, 22);
   assert.equal(fittingOverlayScale(1), 1);
@@ -28,7 +28,7 @@ test("T/Y interaction chrome stays compact in screen space", () => {
   assert.equal(fittingOverlayScale(Number.NaN), 1);
 });
 
-test("T/Y overlay scaling is bounded at extreme zoom levels", () => {
+test("T Branch overlay scaling is bounded at extreme zoom levels", () => {
   assert.equal(fittingOverlayScale(100), 1 / 8);
   assert.equal(fittingOverlayScale(0.01), 4);
   for (const zoom of [1, 2, 4, 8]) {
@@ -36,7 +36,7 @@ test("T/Y overlay scaling is bounded at extreme zoom levels", () => {
   }
 });
 
-test("T/Y repair chrome and run grips remain screen-sized at 668% zoom", () => {
+test("T Branch repair chrome and run grips remain screen-sized at 668% zoom", () => {
   const zoom = 6.68;
   const scale = fittingOverlayScale(zoom);
   for (const pixels of [4, 7, 8, 10, 12]) {
@@ -44,7 +44,7 @@ test("T/Y repair chrome and run grips remain screen-sized at 668% zoom", () => {
   }
 });
 
-test("direct-placement T/Ys are smaller without changing saved v2 or legacy plans", () => {
+test("direct-placement T Branchs are smaller without changing saved v2 or legacy plans", () => {
   assert.equal(fittingPortReach("12", 0, true), 10.5);
   assert.equal(fittingPortReach("12", 1, true), 11);
   assert.equal(fittingPortReach("12", 2, true), 12);
@@ -102,7 +102,7 @@ test("geometry v4 is compact while legacy, v2, and v3 reaches remain exact", () 
   }
 });
 
-test("T/Y ghost display stays within 48 screen pixels from 25% through 800% zoom", () => {
+test("T Branch ghost display stays within 48 screen pixels from 25% through 800% zoom", () => {
   assert.equal(FITTING_GHOST_MAX_DIAMETER_PX, 48);
   const portSizes = ["16", "16", "16"];
 
@@ -127,7 +127,7 @@ test("T/Y ghost display stays within 48 screen pixels from 25% through 800% zoom
   assert.equal(fittingGhostScale(portSizes, 4, Number.NaN), 1);
 });
 
-test("T/Y placement uses narrow, intentional run matching", () => {
+test("T Branch placement uses narrow, intentional run matching", () => {
   assert.equal(BRANCH_PICK_RADIUS_PX, 24);
   assert.equal(BRANCH_ATTACH_RADIUS_PX, 28);
   assert.equal(BRANCH_AUTO_MATCH_RADIUS_PX, 18);

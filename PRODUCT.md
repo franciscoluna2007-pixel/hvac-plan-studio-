@@ -23,7 +23,7 @@ The defining promise is professional HVAC work directly over the source PDF, wit
 ## Operating Context
 
 - Users open local or Google Drive plan PDFs, work sheet by sheet, and preserve the exact source fingerprint and drawing scale.
-- The normal job spans plan setup, supply and return routing, T/Y placement, equipment and terminal connections, airflow and size review, takeoff, field checks, and release.
+- The normal job spans plan setup, supply and return routing, T Branch placement, equipment and terminal connections, airflow and size review, takeoff, field checks, and release.
 - Work happens on desktop, tablet, and mobile web interfaces, including touch and stylus use in field conditions.
 - Local guest work remains available until a user chooses authenticated cloud collaboration.
 - Field Redline Studio is a source-bound annotation workspace within HVAC Plan Studio, not a separate product or engineering repair engine.
@@ -31,7 +31,7 @@ The defining promise is professional HVAC work directly over the source PDF, wit
 ## Capabilities and Constraints
 
 - The product maintains editable HVAC geometry over a source-plan PDF.
-- It supports supply, return, and fresh-air runs; equipment and terminals; T/Y fittings; measurements; notes; field redlines; connected-network review; takeoff; revisions; and controlled release.
+- It supports supply, return, and fresh-air runs; equipment and terminals; T Branch fittings; measurements; notes; field redlines; connected-network review; takeoff; revisions; and controlled release.
 - Reviewed airflow, velocity, capacity, pressure evidence, and system connectivity govern engineering checks. Duct diameter alone never implies airflow.
 - Manual geometry and professional judgment remain authoritative.
 - Proposed physical changes must be previewed, source-bound, revalidated when applied, and undoable.

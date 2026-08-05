@@ -29,7 +29,7 @@ Deliberately postponed: live co-editing, public broadcasting, automatic handwrit
 ### v132 — Finish the Job
 
 - Replaces the final **Materials & Print** tile with one **Finish the Job** workspace and always starts at the first incomplete task.
-- Reviews current takeoff quantities, flex rolls, air devices, T/Y fittings, and material allowance in one readable step.
+- Reviews current takeoff quantities, flex rolls, air devices, T Branch fittings, and material allowance in one readable step.
 - Records an immutable, system-scoped material-review receipt with the reviewer, time, exact takeoff fingerprint, line-item count, and allowance.
 - Marks that material review stale after a drawing, scale, quantity, or allowance change.
 - Shows only the unresolved plan and coordination holds, with a plain-language action for every gate.
@@ -146,7 +146,7 @@ Deliberately postponed: live co-editing, public broadcasting, automatic handwrit
 - Makes size-review state explicit. Unknown is not treated as reviewed, and changing a size makes it provisional again.
 - Omits already-correct sizes instead of turning them into no-op repairs.
 - Holds size application and purchasing quantities until the affected sheet scale is confirmed.
-- Keeps return strategies, new routes, trunk changes, T/Y placement, equipment moves, and professional judgment manual or confirm-on-plan.
+- Keeps return strategies, new routes, trunk changes, T Branch placement, equipment moves, and professional judgment manual or confirm-on-plan.
 - Derives the receipt's exact before-and-after fields from the applied result, including CFM source and fitting-port metadata, while keeping historical receipts readable.
 
 ### v122 — Smart Scale & Draw-First Workflow
@@ -177,9 +177,9 @@ Deliberately postponed: live co-editing, public broadcasting, automatic handwrit
 - Separates Confirmed, Found on plan, Suggested, and Not found facts.
 - Asks only for missing or conflicting information that controls the next operation.
 - Keeps Show source beside setup facts and problems.
-- Lets open T/Y ports match nearby unused existing run endpoints without creating branch stubs or rerouting ductwork.
+- Lets open T Branch ports match nearby unused existing run endpoints without creating branch stubs or rerouting ductwork.
 - Uses confirmed scale for physical Step 1 snap distances and explains every candidate match.
-- Keeps saved T/Y connections bound to the saved run.
+- Keeps saved T Branch connections bound to the saved run.
 - Applies only an approved, current repair batch; placed objects never move and one Undo restores the batch.
 
 ### v116.1 — Solo Operator Workflow
@@ -190,7 +190,7 @@ Deliberately postponed: live co-editing, public broadcasting, automatic handwrit
 - Plan Helper, Airflow & Duct Sizes, Materials, Check, Print & Share, and My HVAC Rules.
 - Find a tool starts with common actions and searches the full toolset as the user types.
 - Plan Helper now turns each finding into a clear problem, proposed fix, expected result, and complete affected-object list.
-- Builder Step 1 previews each loose equipment, can, grille, and saved T/Y connection; users choose exact fixes before one-Undo apply.
+- Builder Step 1 previews each loose equipment, can, grille, and saved T Branch connection; users choose exact fixes before one-Undo apply.
 - Step 1 keeps placed objects fixed, reserves run endpoints against reuse, and sends ambiguous or out-of-scope matches to manual review instead of guessing.
 - No repair is selected automatically; the user adds individual fixes or explicitly selects the current eligible set.
 - Prepared fixes are bound to both the evidence fingerprint and the exact repair-plan ID. Unchanged CFM proposals are omitted.
@@ -200,7 +200,7 @@ Deliberately postponed: live co-editing, public broadcasting, automatic handwrit
 
 ### v116 — My HVAC Rules
 
-Plan Helper evaluates the current system against **My HVAC Rules**. A dedicated workspace keeps locked safeguards, calculated checks, preferred drafting practices, and project-only exceptions visibly separate. It reviews flex limits, terminal connections, airflow-based sizing, run labels, bedroom return paths, T/Y strategy, and fresh-air controls, with evidence and plan links for each result.
+Plan Helper evaluates the current system against **My HVAC Rules**. A dedicated workspace keeps locked safeguards, calculated checks, preferred drafting practices, and project-only exceptions visibly separate. It reviews flex limits, terminal connections, airflow-based sizing, run labels, bedroom return paths, T Branch strategy, and fresh-air controls, with evidence and plan links for each result.
 
 Project numbers and internal release labels are not used as the user-facing rules name.
 
@@ -215,7 +215,7 @@ Project numbers and internal release labels are not used as the user-facing rule
 - Diameter never generates CFM.
 - Supply/return sizing requires an equipment-rooted connected path.
 - Fresh-air sizing remains manual until a real OA equipment/control-rooted path exists.
-- T/Y topology remains confirm-on-plan.
+- T Branch topology remains confirm-on-plan.
 - Velocity-only size changes require a separate recorded planning-override acknowledgment.
 
 ### v114 — Repair Receipts and Takeoff Intelligence
@@ -251,7 +251,7 @@ Project numbers and internal release labels are not used as the user-facing rule
 - Local and Google Drive PDF input.
 - Sheet navigation, calibration, zoom, tablet/stylus input, and bounded 4K rendering.
 - Editable supply, return, fresh-air, measurements, symbols, equipment, devices, and notes.
-- Run-first T/Y placement, fitting ports, snapping, connection repair, copy, resize, and undo/redo.
+- Run-first T Branch placement, fitting ports, snapping, connection repair, copy, resize, and undo/redo.
 - Separate systems and zones.
 
 ### Airflow and sizing
@@ -348,7 +348,7 @@ HVAC Plan Studio is not:
 - `app/contextActionWheel.ts` — object-specific icon, run, and fitting wheel contracts and keyboard navigation
 - `app/ductLabelEditing.ts` — bounded duct-label presentation sizing
 - `app/repairPlan.ts` — deterministic evidence-bound repair planner
-- `app/connectionRepair.ts` — deterministic preview-first endpoint and saved T/Y connection planner
+- `app/connectionRepair.ts` — deterministic preview-first endpoint and saved T Branch connection planner
 - `app/ductSizing.ts` — versioned sizing and pressure-screening calculations
 - `app/takeoffIntelligence.ts` — numeric before/after purchasing impact
 - `app/planReader.ts` — searchable-PDF evidence and viewport regions

@@ -6,7 +6,7 @@ Last revised: July 28, 2026
 
 HVAC Plan Studio is a plan-markup, airflow-coordination, review, takeoff, and field-release workspace built first for HVAC superintendents and one-person businesses. Larger-company administration remains a later-stage product area.
 
-The product keeps the source PDF and editable HVAC overlay together. A user can trace supply, return, and fresh-air systems; place equipment and air devices; connect T/Y fittings; coordinate room CFM; review connected-network sizing; prepare purchasing quantities; and release a controlled field package.
+The product keeps the source PDF and editable HVAC overlay together. A user can trace supply, return, and fresh-air systems; place equipment and air devices; connect T Branch fittings; coordinate room CFM; review connected-network sizing; prepare purchasing quantities; and release a controlled field package.
 
 The product is not an autonomous HVAC designer. It makes evidence, calculations, assumptions, object changes, and human decisions visible. Manual geometry remains authoritative, and every physical assistant change is previewed, fingerprint-bound, revalidated at commit time, and undoable.
 
@@ -47,7 +47,7 @@ Advanced coordination remains available without crowding the first screen.
 - Diameter never creates CFM. Reviewed airflow flows into the network; the network can then produce size candidates.
 - Terminal CFM changes and network-size changes are separate stages. New CFM invalidates old size candidates.
 - Equipment, walls, rooms, new routes, route endpoints, intermediate vertices, and cross-zone changes remain manual. Approved size fixes update size metadata without moving route points.
-- T/Y topology changes require confirmation on the live plan.
+- T Branch topology changes require confirmation on the live plan.
 - A changed evidence fingerprint applies zero stale actions.
 - A prepared batch is bound to the exact repair-plan ID as well as its evidence fingerprint.
 - No safe fix is selected automatically; the user chooses each fix or explicitly selects the compatible fixes in the current step.
@@ -391,9 +391,9 @@ The plan opens with useful setup information already organized, and Step 1 fixes
 - Plain-language fact states: Confirmed, Found on plan, Suggested, and Not found.
 - Exact review questions only when missing or conflicting information controls the next operation.
 - One Plan setup workspace with direct Show source actions.
-- Open T/Y ports can match nearby unused existing run endpoints using distance, direction, alignment, and size signals.
-- Confirmed drawing scale converts Step 1 limits to physical distances: 3 feet for terminals, 4 feet for equipment, and 2 feet for T/Y ports.
-- Saved T/Y connections remain bound to their saved run and never fall back to a different nearby run.
+- Open T Branch ports can match nearby unused existing run endpoints using distance, direction, alignment, and size signals.
+- Confirmed drawing scale converts Step 1 limits to physical distances: 3 feet for terminals, 4 feet for equipment, and 2 feet for T Branch ports.
+- Saved T Branch connections remain bound to their saved run and never fall back to a different nearby run.
 - Candidate explanations show same sheet/system, duct type, endpoint availability, distance, direction, and size evidence.
 - Apply remains fingerprint-bound and approval-first, creates no branch stub or reroute, moves no placed object, and produces one Undo.
 
@@ -405,7 +405,7 @@ Searchable PDF text can identify likely plan facts, but it cannot prove that eve
 
 - PDF viewing, sheet navigation, calibration, and bounded ultra-HD rendering.
 - Editable supply, return, fresh-air, measurement, symbol, and fitting geometry.
-- Run-first T/Y placement, snapping, connection repair, copy, sizing, and undo/redo.
+- Run-first T Branch placement, snapping, connection repair, copy, sizing, and undo/redo.
 - Project Home, guided setup, system workflow, and command navigation.
 - Supabase projects, members, named immutable revisions, approvals, RLS, and release integrity.
 - Google Drive source-plan import and verified package export.
@@ -423,8 +423,8 @@ A single review workspace organizes connection, airflow, return-path, coordinati
 
 - Open, critical, and full recommendation queues.
 - Observed condition, consequence, proposed repair, evidence, and deterministic extraction score.
-- Live-object focus and ghost T/Y previews.
-- Revalidation before a T/Y is armed on the live plan.
+- Live-object focus and ghost T Branch previews.
+- Revalidation before a T Branch is armed on the live plan.
 - Links to Plan Intelligence decisions and System Balance Studio.
 - Explicit protected boundaries for walls, units, routes, zones, and releases.
 
@@ -466,7 +466,7 @@ The assistant is more helpful without becoming uncontrolled: it can gather eligi
 - Fresh-air resizing remains manual until an actual equipment/control-rooted OA network exists.
 - Selected run sizes synchronize affected fitting-port sizes and disclose every connected endpoint that will realign.
 - CFM changes apply first; sizing remains blocked until the plan is rebuilt against the new airflow.
-- T/Y opportunities remain confirm-on-plan topology changes.
+- T Branch opportunities remain confirm-on-plan topology changes.
 - Reviewer identity, final confirmation, and a stronger velocity-only override are required at apply time.
 
 ### Commit-time gates
@@ -537,10 +537,10 @@ Turn proven HVAC drafting preferences into visible, evidence-linked QA rules and
 
 - Flex-heavy residential routing with minimal hard duct.
 - Main trunk deep first, then branch backward.
-- Blue supply, yellow T/Y branches, red return, and green fresh air.
+- Blue supply, yellow T Branch branches, red return, and green fresh air.
 - Square diffuser symbols and field-readable run-size labels.
 - 16-inch residential-flex maximum.
-- Gradual size progression and frequent reviewed T/Y use.
+- Gradual size progression and frequent reviewed T Branch use.
 - Separate systems and zones.
 - Original unit locations and floor-plan geometry preserved.
 - Bedroom return-path review.
@@ -568,8 +568,8 @@ Make the existing power understandable to a superintendent or one-person HVAC bu
 - A short list of common actions in Find a tool; typing still searches the complete professional toolset.
 - Plan Helper shows the problem, proposed fix, expected result, and every affected plan object before selection.
 - Every suggestion now identifies whether a fix is ready, needs an input, needs plan confirmation, or remains manual, with a direct next-step button.
-- Step 1 uses a per-connection review queue for equipment supply/return, supply cans, return grilles, and saved T/Y ports.
-- Connection fixes preserve placed objects, move only approved run endpoints, reject ambiguous or occupied matches, and never substitute a different run for a saved T/Y connection.
+- Step 1 uses a per-connection review queue for equipment supply/return, supply cans, return grilles, and saved T Branch ports.
+- Connection fixes preserve placed objects, move only approved run endpoints, reject ambiguous or occupied matches, and never substitute a different run for a saved T Branch connection.
 - Unchanged terminal CFM is not presented as a repair and does not unnecessarily block a current sizing review.
 - Repair-history Undo can target only the latest matching repair batch; Redo restores that batch receipt state.
 - Enterprise analytics, promotional, review-queue, and collaboration detail removed from the first view while the underlying cloud features remain available.
