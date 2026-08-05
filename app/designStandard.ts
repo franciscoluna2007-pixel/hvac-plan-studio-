@@ -201,8 +201,8 @@ export function buildDesignStandardProfile(input: BuildDesignStandardInput): Des
     rule({
       id: "reviewed-ty-strategy",
       level: "recommended",
-      title: "Use practical T/Y branch points",
-      standard: "Carry the trunk deep, branch backward, and prefer reviewable T/Y fittings over ambiguous line crossings.",
+      title: "Use practical T Branch points",
+      standard: "Carry the trunk deep, branch backward, and prefer reviewable T Branch fittings over ambiguous line crossings.",
       status: supplyRuns.length < 4
         ? "not-evaluated"
         : input.tyFittingIds.length < preferredTyMinimum
@@ -211,12 +211,12 @@ export function buildDesignStandardProfile(input: BuildDesignStandardInput): Des
       finding: supplyRuns.length < 4
         ? "The marked supply network is too small for a meaningful branch-strategy screen."
         : input.tyFittingIds.length < preferredTyMinimum
-          ? `${input.tyFittingIds.length} confirmed T/Y fitting${input.tyFittingIds.length === 1 ? "" : "s"} serve ${supplyRuns.length} supply runs; review branch clarity.`
-          : `${input.tyFittingIds.length} confirmed T/Y fittings provide a visible branch strategy.`,
-      action: "Use the branch pass to inspect existing run intersections and confirm only the T/Y fittings that belong on plan.",
+          ? `${input.tyFittingIds.length} confirmed T Branch fitting${input.tyFittingIds.length === 1 ? "" : "s"} serve ${supplyRuns.length} supply runs; review branch clarity.`
+          : `${input.tyFittingIds.length} confirmed T Branch fittings provide a visible branch strategy.`,
+      action: "Use the branch pass to inspect existing run intersections and confirm only the T Branch fittings that belong on plan.",
       evidence: [
         `${supplyRuns.length} supply runs`,
-        `${input.tyFittingIds.length} confirmed T/Y fittings`,
+        `${input.tyFittingIds.length} confirmed T Branch fittings`,
         "Existing geometry only; no invented branch stubs",
       ],
       drawingIds: input.tyFittingIds,

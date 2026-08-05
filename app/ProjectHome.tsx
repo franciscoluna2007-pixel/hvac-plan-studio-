@@ -372,7 +372,7 @@ export default function ProjectHome({
                   <b>01</b><span><strong>Source plan</strong><small>{hasPlan ? "Loaded and authoritative" : "Open the construction PDF"}</small></span>
                 </li>
                 <li className={hasPlan ? "active" : ""}>
-                  <b>02</b><span><strong>Draw &amp; detail</strong><small>Routes, symbols, and T/Y branches</small></span>
+                  <b>02</b><span><strong>Draw &amp; detail</strong><small>Routes, symbols, and T Branches</small></span>
                 </li>
                 <li>
                   <b>03</b><span><strong>Review systems</strong><small>Airflow, sizing, layers, and Fix Plan</small></span>

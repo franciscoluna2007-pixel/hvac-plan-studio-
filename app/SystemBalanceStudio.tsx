@@ -248,7 +248,7 @@ export default function SystemBalanceStudio({
             <div className="balance-section-heading"><span><strong>EQUIPMENT NETWORKS</strong><small>Physically aligned supply paths and branch health</small></span><button onClick={() => onOpenEngineering("system")}>Calculation assumptions</button></div>
             {model.networks.length ? model.networks.map((row) => <article className={row.balanced ? "clear" : "attention"} key={row.unitId}>
               <button onClick={() => onFocusDrawing(row.firstProblemDrawingId || row.unitId)}>
-                <span><strong>{row.unitLabel}</strong><small>{row.rootRunId ? `${row.runCount} runs · ${row.fittingCount} T/Y · ${row.terminalCount} diffusers` : "Supply plenum is not connected"}</small></span>
+                <span><strong>{row.unitLabel}</strong><small>{row.rootRunId ? `${row.runCount} runs · ${row.fittingCount} T Branch · ${row.terminalCount} diffusers` : "Supply plenum is not connected"}</small></span>
                 <b>{row.balanced ? "SCHEDULE ALIGNED" : row.rootRunId ? "REVIEW" : "DISCONNECTED"}</b>
               </button>
               <dl>

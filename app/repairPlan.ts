@@ -513,7 +513,7 @@ export function buildRepairPlan(input: {
         problem: "Two existing runs align for a junction, but no confirmed fitting connects them.",
         proposedFix: `Confirm one ${candidate.style === "wye45" ? "45-degree wye" : "90-degree tee"} at the highlighted junction.`,
         expectedResult: "Only the reviewed fitting is placed between the two existing runs. No new route or branch stub is invented.",
-        nextStepLabel: "Confirm T/Y on plan",
+        nextStepLabel: "Confirm T Branch on plan",
         evidenceFingerprint: candidate.evidenceFingerprint,
         evidence: ["Two existing supply runs", "Same system and sheet", "Fixed plan-space proximity check"],
         objectIds: [candidate.mainRunId, candidate.branchRunId],

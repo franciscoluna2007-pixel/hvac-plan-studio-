@@ -54,6 +54,37 @@ export function projectDirectBranchStation(
 
 export type DirectBranchInputType = "mouse" | "pen" | "touch";
 
+export function resolveDirectBranchIntent({
+  center,
+  mainAngle,
+  fallbackSide,
+  style,
+  intentPoint,
+  minimumDistance = 10,
+}: {
+  center: DirectBranchPoint;
+  mainAngle: number;
+  fallbackSide: 1 | -1;
+  style: "tee90" | "wye45";
+  intentPoint?: DirectBranchPoint;
+  minimumDistance?: number;
+}) {
+  const distance = intentPoint
+    ? Math.hypot(intentPoint.x - center.x, intentPoint.y - center.y)
+    : 0;
+  if (intentPoint && distance >= minimumDistance) {
+    const angle = Math.atan2(intentPoint.y - center.y, intentPoint.x - center.x);
+    const cross = Math.cos(mainAngle) * Math.sin(angle) - Math.sin(mainAngle) * Math.cos(angle);
+    return { angle, side: (cross >= 0 ? 1 : -1) as 1 | -1, followsPointer: true };
+  }
+  const offset = style === "tee90" ? Math.PI / 2 : Math.PI / 4;
+  return {
+    angle: mainAngle + fallbackSide * offset,
+    side: fallbackSide,
+    followsPointer: false,
+  };
+}
+
 export type DirectBranchTrunkCandidate<T extends DirectBranchRun> =
   DirectBranchProjection & {
     run: T;

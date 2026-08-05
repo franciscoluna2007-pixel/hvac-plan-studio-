@@ -493,7 +493,7 @@ export default function MarkupAssistantStudio({
         detail: item.detail,
         problem: item.reason,
         proposedFix: candidate
-          ? `Move only the ${candidate.end} endpoint of ${candidate.runSize}" ${item.ductType} run ${candidate.runId} onto this saved ${item.kind === "fitting" ? "T/Y port" : "equipment or terminal connection"}.`
+          ? `Move only the ${candidate.end} endpoint of ${candidate.runSize}" ${item.ductType} run ${candidate.runId} onto this saved ${item.kind === "fitting" ? "T Branch port" : "equipment or terminal connection"}.`
           : "Inspect the connection on the plan and identify the correct existing run endpoint.",
         expectedResult: candidate
           ? "The existing endpoint and saved connection agree. No route, branch stub, fitting, terminal, or new drawing object is created."
@@ -1178,7 +1178,7 @@ export default function MarkupAssistantStudio({
                 <button className="primary" onClick={() => {
                   chooseMode("prepare");
                 }}><ListChecks size={16} /> Open repair plan</button>
-                {active.action === "branch-pass" && <button onClick={() => onApplyRecommendation(active)}><Route size={16} /> Confirm T/Y on plan</button>}
+                {active.action === "branch-pass" && <button onClick={() => onApplyRecommendation(active)}><Route size={16} /> Confirm T Branch on plan</button>}
               </div>
             </> : <div className="markup-assistant-clear">
               <ShieldCheck size={36} />

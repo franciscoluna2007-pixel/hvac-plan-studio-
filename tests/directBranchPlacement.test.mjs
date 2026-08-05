@@ -10,6 +10,7 @@ const {
   directBranchStationClearance,
   projectDirectBranchStation,
   reserveDirectBranchPolylineSpan,
+  resolveDirectBranchIntent,
   resolveDirectBranchTrunkCandidate,
 } = await loadTypescriptModule(
   new URL("../app/directBranchPlacement.ts", import.meta.url),
@@ -18,6 +19,35 @@ const {
 const { fittingPortReachForVersion } = await loadTypescriptModule(
   new URL("../app/fittingInteractionGeometry.ts", import.meta.url),
 );
+
+test("press-drag-release intent freely aims the T Branch toward the release direction", () => {
+  const intent = resolveDirectBranchIntent({
+    center: { x: 100, y: 100 },
+    mainAngle: 0,
+    fallbackSide: 1,
+    style: "tee90",
+    intentPoint: { x: 127, y: 119 },
+    minimumDistance: 10,
+  });
+  assert.equal(intent.followsPointer, true);
+  assert.equal(intent.side, 1);
+  assert.ok(Math.abs(intent.angle - Math.atan2(19, 27)) < 1e-9);
+  assert.notEqual(intent.angle, Math.PI / 2);
+});
+
+test("a click without a directional drag keeps a predictable T Branch default", () => {
+  const intent = resolveDirectBranchIntent({
+    center: { x: 100, y: 100 },
+    mainAngle: 0,
+    fallbackSide: -1,
+    style: "wye45",
+    intentPoint: { x: 103, y: 101 },
+    minimumDistance: 10,
+  });
+  assert.equal(intent.followsPointer, false);
+  assert.equal(intent.side, -1);
+  assert.ok(Math.abs(intent.angle + Math.PI / 4) < 1e-9);
+});
 
 test("direct placement projects to the exact requested station without a hidden end margin", () => {
   const projection = projectDirectBranchStation(

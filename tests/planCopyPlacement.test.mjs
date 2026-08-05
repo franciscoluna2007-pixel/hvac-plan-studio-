@@ -152,3 +152,83 @@ test("measurement copies use the destination sheet scale", () => {
   assert.equal(placed.measurement.feet, 5);
   assert.equal(placed.size, "5.0 FT");
 });
+
+test("connected supply assemblies copy runs, labels, fittings, and terminal links together", () => {
+  const drawings = [
+    {
+      id: "run-a",
+      type: "supply",
+      points: [{ x: 0, y: 0 }, { x: 40, y: 0 }],
+      page: 1,
+      size: "12",
+      runNumber: "S-1",
+      labelOffset: { x: 4, y: -6 },
+      systemId: "system-1",
+    },
+    {
+      id: "fit-a",
+      type: "branch",
+      points: [{ x: 45, y: 0 }],
+      page: 1,
+      size: "12x10x8",
+      systemId: "system-1",
+      fitting: {
+        angle: 0,
+        branchAngle: Math.PI / 2,
+        side: 1,
+        style: "tee90",
+        connectedIds: ["run-a", "run-b", "run-c"],
+      },
+    },
+    { id: "run-b", type: "supply", points: [{ x: 50, y: 0 }, { x: 90, y: 0 }], page: 1, size: "10", runNumber: "S-2", systemId: "system-1" },
+    { id: "run-c", type: "supply", points: [{ x: 45, y: 5 }, { x: 45, y: 45 }], page: 1, size: "8", runNumber: "S-3", systemId: "system-1" },
+    {
+      id: "terminal-a",
+      type: "symbol",
+      points: [{ x: 45, y: 45 }],
+      page: 1,
+      size: "12x12",
+      systemId: "system-1",
+      symbol: { kind: "diffuser", label: "12x12 SUPPLY", rotation: 0, connectedRunId: "run-c", connectedEnd: "end" },
+    },
+  ];
+  const template = copy.buildPlanAssemblyCopyTemplate(drawings, ["run-a"], "pdf-a");
+  assert.equal(template.version, 2);
+  assert.deepEqual(template.sources.map((drawing) => drawing.id), ["run-a", "fit-a", "run-b", "run-c", "terminal-a"]);
+
+  const placed = copy.materializePlanAssemblyCopy(template, {
+    sourceFingerprint: "pdf-a",
+    page: 2,
+    point: { x: 300, y: 200 },
+    systemId: "system-2",
+    idFor: (sourceId) => `copy-${sourceId}`,
+  });
+  const fitting = placed.find((drawing) => drawing.fitting);
+  const terminal = placed.find((drawing) => drawing.symbol);
+  assert.deepEqual(fitting.fitting.connectedIds, ["copy-run-a", "copy-run-b", "copy-run-c"]);
+  assert.equal(terminal.symbol.connectedRunId, "copy-run-c");
+  assert.deepEqual(
+    placed.filter((drawing) => drawing.type === "supply").map((drawing) => [drawing.size, drawing.runNumber]),
+    [["12", "S-1"], ["10", "S-2"], ["8", "S-3"]],
+  );
+  assert.ok(placed.every((drawing) => drawing.page === 2 && drawing.systemId === "system-2"));
+});
+
+test("repeated assembly pastes remap every identity and never reconnect to the source", () => {
+  const drawings = [
+    { id: "a", type: "supply", points: [{ x: 0, y: 0 }, { x: 10, y: 0 }], page: 1, size: "10" },
+    { id: "fit", type: "branch", points: [{ x: 15, y: 0 }], page: 1, size: "10x8x6", fitting: { connectedIds: ["a", "b", "c"] } },
+    { id: "b", type: "supply", points: [{ x: 20, y: 0 }, { x: 30, y: 0 }], page: 1, size: "8" },
+    { id: "c", type: "supply", points: [{ x: 15, y: 5 }, { x: 15, y: 20 }], page: 1, size: "6" },
+  ];
+  const template = copy.buildPlanAssemblyCopyTemplate(drawings, ["a"], "pdf-a");
+  const first = copy.materializePlanAssemblyCopy(template, {
+    sourceFingerprint: "pdf-a", page: 1, point: { x: 100, y: 100 }, idFor: (id) => `one-${id}`,
+  });
+  const second = copy.materializePlanAssemblyCopy(template, {
+    sourceFingerprint: "pdf-a", page: 1, point: { x: 200, y: 200 }, idFor: (id) => `two-${id}`,
+  });
+  assert.equal(new Set([...first, ...second].map((drawing) => drawing.id)).size, 8);
+  assert.ok(first.find((drawing) => drawing.fitting).fitting.connectedIds.every((id) => id.startsWith("one-")));
+  assert.ok(second.find((drawing) => drawing.fitting).fitting.connectedIds.every((id) => id.startsWith("two-")));
+});

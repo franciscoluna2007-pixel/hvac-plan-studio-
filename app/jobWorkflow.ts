@@ -87,7 +87,7 @@ export function deriveDrawFirstWorkflow(
       title: "Connect and repair the system",
       detail: input.connectionProblems
         ? `${input.connectionProblems} connection${input.connectionProblems === 1 ? "" : "s"} need review`
-        : "Review equipment, cans, returns, and T/Y ports",
+        : "Review equipment, cans, returns, and T Branch ports",
       complete: false,
     };
   }
