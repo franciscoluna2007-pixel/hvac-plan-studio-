@@ -529,7 +529,7 @@ test("locks one deterministic T Branch trunk until release and keeps connections
 
   assert.match(placement, /const placement = resolveDirectBranchPlacement\(target, intentPoint\)/);
   assert.match(placementResolution, /queuedBranchRunId[\s\S]*?queuedBranchRoute\(/);
-  assert.match(placementResolution, /existingBranchRoute\(/);
+  assert.doesNotMatch(placementResolution, /existingBranchRoute\(/);
   assert.doesNotMatch(placement, /automaticBranchOpportunity\(point\)/);
   assert.doesNotMatch(preview, /automaticBranchOpportunity\(raw\)/);
   assert.doesNotMatch(placement, /existingBranchRoute\(/);
@@ -537,9 +537,11 @@ test("locks one deterministic T Branch trunk until release and keeps connections
   assert.doesNotMatch(preview, /mode: "three-runs"/);
   assert.match(placement, /buildDirectBranchGeometry\(\{/);
   assert.match(placement, /connectedIds: \[target\.drawing\.id, downstreamId, branchRunId\]/);
-  assert.match(placement, /const branchRun: Drawing = matchedRoute \?/);
+  assert.match(placement, /const branchRun: Drawing \| null = matchedRoute \?/);
+  assert.match(placement, /\.\.\.\(branchRun \? \[branchRun\] : \[\]\)/);
+  assert.match(placement, /setPendingBranchFittingId\(fittingId\)/);
   assert.doesNotMatch(placement, /beginPort3BranchDraft\(fitting, "direct-placement"\)/);
-  assert.match(placement, /all 3 ports connected/);
+  assert.doesNotMatch(placement, /all 3 ports connected/);
   assert.match(placement, /if \(!placement\.clearance\.valid\)/);
 
   assert.match(threeRun, /!assignedRuns\.has\(drawing\.id\)/);
@@ -552,7 +554,7 @@ test("locks one deterministic T Branch trunk until release and keeps connections
   assert.match(source, /function confirmExplicitThreeRunConnection\(\)/);
   assert.match(source, /function confirmExplicitThreeRunConnection[\s\S]*?existingThreeRunJunction\(option\.center, option\.clickedRunId\)/);
   assert.match(source, /function confirmExplicitThreeRunConnection[\s\S]*?commitExplicitThreeRunJunction\(refreshed\)/);
-  assert.match(source, /onClick=\{confirmExplicitThreeRunConnection\}/);
+  assert.doesNotMatch(source, /onClick=\{confirmExplicitThreeRunConnection\}/);
 
   assert.match(undoSource, /port3UndoDisposition\(\{/);
   assert.match(undoSource, /origin === "direct-placement"/);
@@ -578,11 +580,10 @@ test("keeps numbered-port repair controls for existing incomplete fittings", asy
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  assert.match(source, /className={`branch-workflow-hud/);
   assert.match(source, /candidateEndpoint:/);
-  assert.match(source, /THIS END MOVES TO PORT 3/);
-  assert.match(source, /BRANCH RUN SELECTED/);
-  assert.match(source, /Undo connection/);
+  assert.match(source, /className="branch-connection-cue"/);
+  assert.match(source, />Connect branch<\/text>/);
+  assert.match(source, /className="visually-hidden" aria-live="polite"/);
   assert.match(source, /connection-confirmed-label/);
   assert.match(styles, /\.branch-fitting \.connected-port \.fitting-port/);
   assert.match(styles, /\.branch-fitting \.disconnected-port \.fitting-port/);
@@ -608,41 +609,33 @@ test("keeps completed T Branch fittings readable and reveals numbered ports only
   assert.match(source, /className="fitting-hit"[\s\S]*?vectorEffect="non-scaling-stroke"/);
 });
 
-test("keeps optional junction suggestions separate from explicit connection", async () => {
+test("keeps junction analysis available without drawing a competing placement overlay", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
   assert.match(source, /type BranchOpportunity =/);
   assert.match(source, /function branchOpportunities\(\): BranchOpportunity\[\]/);
   assert.match(source, /function focusNextBranchOpportunity\(opportunities = branchOpportunities\(\)\)/);
-  assert.match(source, /className="branch-opportunity-marker"/);
-  assert.match(source, /!branchPreview && branchOpportunityList\.slice\(0, 1\)/);
-  assert.match(source, /scale\(\$\{fittingOverlayScale\(zoom\)\}\)/);
-  assert.match(source, /<circle cx="0" cy="0" r="4\.5"/);
-  assert.equal(source.match(/>OPTIONAL T BRANCH<\/text>/g)?.length, 1);
-  assert.match(styles, /\.branch-opportunity-marker circle/);
-  assert.match(styles, /\.branch-opportunity-marker \{ pointer-events: none; \}/);
-  assert.doesNotMatch(styles, /\.branch-opportunity-marker circle \{[^}]*drop-shadow/);
+  assert.doesNotMatch(source, /className="branch-opportunity-marker"/);
+  assert.doesNotMatch(source, />OPTIONAL T BRANCH<\/text>/);
   assert.match(source, /setExplicitThreeRunOption\(/);
-  assert.match(source, /onClick=\{confirmExplicitThreeRunConnection\}/);
-  assert.match(source, /Connect (?:these )?3 existing runs/i);
 });
 
-test("explains press-drag-release T Branch placement and connected branch fallback", async () => {
+test("uses one compact T Branch cue and keeps Port 3 explicit", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  assert.match(source, /DIRECT-PLACE T BRANCH/);
-  assert.match(source, /Press (?:on )?(?:the )?(?:blue )?trunk/i);
-  assert.match(source, /drag/i);
-  assert.match(source, /release/i);
-  assert.match(source, /Connect (?:these )?3 existing runs/i);
-  assert.match(source, /a connected branch run starts in your drag direction so all three ports stay live/);
-  assert.doesNotMatch(source, /click where a branch meets the trunk/i);
-  assert.doesNotMatch(source, /RUN-FIRST T Branch PASS/);
-  assert.doesNotMatch(source, /Pick next diffuser run/);
-  assert.doesNotMatch(source, /PORT 3 RUN ARMED/);
+  assert.doesNotMatch(source, /DIRECT-PLACE T BRANCH/);
+  assert.doesNotMatch(source, /a connected branch run starts in your drag direction/);
+  assert.doesNotMatch(source, /className={`branch-workflow-hud/);
+  assert.doesNotMatch(source, />SELECTED TRUNK<\/text>/);
+  assert.doesNotMatch(source, /RELEASE TO PLACE CONNECTED T BRANCH/);
+  assert.match(source, /className="branch-preview-instruction"/);
+  assert.match(source, /Release to place fitting/);
+  assert.match(source, /Draw from Port 3/);
+  assert.match(source, /Port 3 stays open until you connect or draw a branch/);
+  assert.match(source, /activeTool !== "branch" && <span>/);
   assert.match(styles, /\.branch-safe-mode/);
+  assert.match(styles, /\.branch-preview \.branch-preview-instruction/);
 });
 
 test("uses compact v4 T Branch geometry with a screen-stable preview cap", async () => {
@@ -654,12 +647,12 @@ test("uses compact v4 T Branch geometry with a screen-stable preview cap", async
   assert.match(source, /const displayPort = \(port: Point\) => \(\{/);
   assert.match(source, /center\.x \+ \(port\.x - center\.x\) \* ghostScale/);
   assert.match(source, /const inlet = displayPort\(naturalInlet\)/);
-  assert.match(source, /fontSize: `\$\{12 \* previewScale\}px`/);
+  assert.match(source, /const instructionWidth = Math\.max\(92/);
 });
 
 test("widens the desktop tool task dock without changing tablet or mobile drawers", async () => {
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  const readabilityOverrides = styles.slice(styles.lastIndexOf("/* Deterministic T Branch placement"));
+  const readabilityOverrides = styles.slice(styles.lastIndexOf("/* Deterministic T/Y placement"));
 
   assert.match(readabilityOverrides, /@media \(min-width: 1101px\)[\s\S]*?--deck-tools: 320px/);
   assert.match(readabilityOverrides, /\.left-panel \.left-panel-tabs button \{[^}]*font-size: 14px;/);

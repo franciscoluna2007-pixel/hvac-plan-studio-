@@ -58,5 +58,5 @@ test("run and fitting selections use object-specific wheels and duct labels pers
   assert.match(page, /Copy follows your mouse/);
   assert.match(page, /Mirror is limited to icons and measurements so duct routing stays intact/);
   assert.match(page, /disabled=\{!selectedRunHasLabel\}/);
-  assert.match(page, /!selectedContextWheelVisible/);
+  assert.match(page, /const selectedContextWheelVisible =/);
 });

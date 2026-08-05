@@ -15,6 +15,90 @@
   --orange: #ff8a3d;
 }
 
+/* Mouse-first canvas commands and minimal T Branch placement. */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.plan-context-menu {
+  position: absolute;
+  z-index: 42;
+  width: 176px;
+  padding: 6px;
+  display: grid;
+  gap: 5px;
+  color: #dcebf4;
+  border: 1px solid #42657a;
+  border-radius: 7px;
+  background: #081725f2;
+  box-shadow: 0 14px 34px #000b, inset 2px 0 #63ddfa;
+  backdrop-filter: blur(10px);
+}
+
+.plan-context-menu > span {
+  padding: 2px 5px 0;
+  color: #8eaaba;
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: .75px;
+}
+
+.plan-context-menu > button {
+  min-height: 34px;
+  padding: 0 9px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #06131b;
+  border: 1px solid #63ddfa;
+  border-radius: 5px;
+  background: #63ddfa;
+  font-size: 11px;
+  font-weight: 900;
+  text-align: left;
+}
+
+.plan-context-menu > button:hover,
+.plan-context-menu > button:focus-visible {
+  border-color: #b8f3ff;
+  background: #b8f3ff;
+  outline: 2px solid #d9f9ff;
+  outline-offset: 1px;
+}
+
+.branch-preview .preview-port.open {
+  fill: #fff8d8;
+  stroke: #b47d00;
+  filter: drop-shadow(0 0 3px #f5c543);
+}
+
+.branch-preview .branch-preview-instruction rect,
+.branch-connection-cue rect {
+  fill: #0b1720f2;
+  stroke: #c99d2d;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 4px 8px #0008);
+}
+
+.branch-preview .branch-preview-instruction text,
+.branch-connection-cue text {
+  fill: #fff2c4;
+  stroke: none;
+  font: 850 10px var(--font-geist-sans);
+  letter-spacing: .2px;
+}
+
+.branch-connection-cue { pointer-events: none; }
+
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; min-height: 100dvh; overflow: hidden; }
 button, input, select { font: inherit; }
