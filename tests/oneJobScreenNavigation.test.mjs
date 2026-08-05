@@ -7,10 +7,10 @@ const [page, assistant] = await Promise.all([
   readFile(new URL("../app/MarkupAssistantStudio.tsx", import.meta.url), "utf8"),
 ]);
 
-test("v129 exposes one consistently named Fix Plan route", () => {
-  assert.match(page, /id: "check",\s*label: "Fix Plan"/);
-  assert.match(page, /id: "markup-assistant",\s*label: "Open Fix Plan"/);
-  assert.match(page, />Fix Plan<\/button>/);
+test("exposes one consistently named Plan Check route", () => {
+  assert.match(page, /id: "check",\s*label: "Plan Check"/);
+  assert.match(page, /id: "markup-assistant",\s*label: "Open Plan Check"/);
+  assert.match(page, /<PlanCheckStrip/);
   assert.doesNotMatch(page, /label: "Fix Problems"/);
   assert.doesNotMatch(page, />Problems<\/button>/);
   assert.doesNotMatch(page, />Plan problems<\/button>/);
@@ -21,7 +21,7 @@ test("v129 exposes one consistently named Fix Plan route", () => {
   assert.doesNotMatch(page, /className="markup-assistant-launch"/);
 });
 
-test("issue routes retain their exact finding and drawing focus in Fix Plan", () => {
+test("issue routes retain their exact finding and drawing focus in Plan Check", () => {
   assert.match(
     page,
     /const recommendation = markupRecommendations\.find\(\(candidate\) =>\s*candidate\.findingId === issue\.id/,

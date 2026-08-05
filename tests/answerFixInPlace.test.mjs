@@ -7,10 +7,10 @@ const assistant = await readFile(new URL("app/MarkupAssistantStudio.tsx", root),
 const page = await readFile(new URL("app/page.tsx", root), "utf8");
 const css = await readFile(new URL("app/globals.css", root), "utf8");
 
-test("v130 keeps issue search, answers, exact preview, approval, and Undo in one Fix Plan card", () => {
-  assert.match(assistant, /One issue\. One answer\. One approved fix\./);
+test("keeps issue search, answers, exact preview, approval, and Undo in one Plan Check card", () => {
+  assert.match(assistant, /Review one item at a time/);
   assert.match(assistant, /role="search"/);
-  assert.match(assistant, /Ask Fix Plan/);
+  assert.match(assistant, /Find an item/);
   assert.match(assistant, /rankFixPlanActions\(visibleFixActions, fixQuery\)\.slice\(0, 3\)/);
   assert.match(assistant, /EXACT CHANGE PREVIEW/);
   assert.match(assistant, /Answer here/);
@@ -42,7 +42,7 @@ test("v130 answers are source-bound and handled-elsewhere never clears review", 
   assert.match(page, /isFixPlanAnswerStale\(\{/);
   assert.match(page, /fixPlanAnswerCompletesReview\(\{/);
   assert.match(page, /status === "handled-elsewhere"/);
-  assert.match(page, /remains open in Fix Plan/);
+  assert.match(page, /remains open in Plan Check/);
   assert.match(page, /version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9;/);
   assert.match(
     page,
@@ -59,9 +59,10 @@ test("Fix Plan can reach system-only evidence and keeps its markers visible", ()
   assert.doesNotMatch(page, /const selectable = activeReviewedIssueRows\.filter\(\(row\) => !row\.resolvedByDecision && row\.issue\.drawingId\)/);
 });
 
-test("Fix Plan launch is a separate pressed action instead of a fifth selected tab", () => {
+test("Plan Check launch is an advisory strip instead of a fifth selected tab", () => {
   assert.match(page, /className="right-tablist" role="tablist"/);
-  assert.match(page, /aria-pressed=\{showMarkupAssistant\} className=\{`right-fix-plan/);
+  assert.match(page, /<PlanCheckStrip/);
+  assert.match(page, /onReview=\{\(\) => openMarkupAssistant\("fix-plan"\)\}/);
   assert.doesNotMatch(page, /role="tab" aria-selected=\{showMarkupAssistant\}/);
   assert.match(css, /\.right-tablist \{/);
 });
@@ -69,7 +70,7 @@ test("Fix Plan launch is a separate pressed action instead of a fifth selected t
 test("v130 uses a desktop sidecar and a mobile bottom sheet", () => {
   assert.match(assistant, /fix-plan-sidecar/);
   assert.match(css, /\.markup-assistant-overlay\.fix-plan-sidecar \{/);
-  assert.match(css, /width: min\(580px, 44vw\)/);
+  assert.match(css, /width: min\(430px, 40vw\)/);
   assert.match(css, /height: min\(72vh, 760px\)/);
 });
 

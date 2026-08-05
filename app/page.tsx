@@ -46,6 +46,7 @@ import {
   type Port3BranchDraftState,
 } from "./port3BranchDraft";
 import SystemBalanceStudio from "./SystemBalanceStudio";
+import PlanCheckStrip from "./PlanCheckStrip";
 import MarkupAssistantStudio, {
   type FixPlanIssueAnswer,
   type PlanHelperPrimaryView,
@@ -265,6 +266,7 @@ import {
   Home as HomeIcon,
   Grid3X3,
   Gauge,
+  ListChecks,
   Lock,
   Minimize2,
   MousePointer2,
@@ -283,6 +285,7 @@ import {
   Save,
   Scissors,
   Search,
+  ShieldCheck,
   ShieldAlert,
   Sparkles,
   StickyNote,
@@ -1699,6 +1702,7 @@ function HVACPlanStudioApp() {
   const [returnToFinishGateId, setReturnToFinishGateId] = useState<string | null>(null);
   const [showSystemBalanceStudio, setShowSystemBalanceStudio] = useState(false);
   const [showMarkupAssistant, setShowMarkupAssistant] = useState(false);
+  const [planCheckIgnored, setPlanCheckIgnored] = useState(false);
   const [assistantInitialView, setAssistantInitialView] = useState<PlanHelperPrimaryView>("setup");
   const [activeMarkupRecommendation, setActiveMarkupRecommendation] = useState<MarkupRecommendation | undefined>();
   const [assistantFocusedRecommendationId, setAssistantFocusedRecommendationId] = useState("");
@@ -2228,6 +2232,12 @@ function HVACPlanStudioApp() {
     () => reviewSummary(activeReviewedIssueRows),
     [activeReviewedIssueRows],
   );
+  const planCheckRows = activeReviewedIssueRows.filter((row) => !row.resolvedByDecision);
+  const planCheckCount = planCheckRows.length;
+  const planCheckHasPlanTarget = planCheckRows.some((row) => Boolean(row.issue.drawingId));
+  useEffect(() => {
+    setPlanCheckIgnored(false);
+  }, [activeSystem, planCheckCount]);
   const activeValidationDashboard = useMemo(
     () => validationDashboard(activeValidationIssues),
     [activeSystem, activeValidationIssues, drawings, roomAirflowTargets],
@@ -7086,7 +7096,7 @@ function HVACPlanStudioApp() {
     );
     if (assistant && target.mode === "close-occluder") {
       setShowMarkupAssistant(false);
-      setBranchMessage("Fix Plan closed so the selected location can use the full drawing area");
+      setBranchMessage("Plan Check closed so the selected location can use the full drawing area");
     }
     updateCamera({
       x: target.x - point.x * zoomRef.current,
@@ -7266,7 +7276,7 @@ function HVACPlanStudioApp() {
       issue.severity === "critical"
         ? `${issue.title} was documented, but remains a release blocker until the drawing condition is fixed`
         : status === "handled-elsewhere"
-          ? `${issue.title} was documented elsewhere and remains open in Fix Plan`
+          ? `${issue.title} was documented elsewhere and remains open in Plan Check`
           : `${issue.title} review decision recorded`,
     );
     return true;
@@ -8404,7 +8414,7 @@ function HVACPlanStudioApp() {
         detail: cloudGateDetail,
       }] : []),
     ];
-    const gatesClear = gates.every((gate) => gate.clear);
+    const gatesClear = gates.every((gate) => ["critical", "warning"].includes(gate.id) || gate.clear);
     const latestRelease = latestSystemRelease();
     const signature = systemDrawingSignature();
     const releaseSignature = systemReleaseSignature();
@@ -13962,7 +13972,7 @@ function HVACPlanStudioApp() {
     },
     {
       id: "check",
-      label: "Fix Plan",
+      label: "Plan Check",
       detail: !pdf
         ? "Available after the plan is opened"
         : activeBuilderSummary.audit.counts.critical || activeBuilderSummary.audit.counts.warning
@@ -14678,7 +14688,7 @@ function HVACPlanStudioApp() {
   function applyDetectedPlanScale(candidate: PlanScaleCandidate, page: number) {
     goToPage(page);
     if (applyResolvedScale(candidate, page)) {
-      setBranchMessage(`${candidate.label} confirmed for sheet ${page} · Plan Helper stayed open`);
+      setBranchMessage(`${candidate.label} confirmed for sheet ${page} · Plan Check stayed open`);
       return;
     }
     startPlanScaleCalibration(page, candidate.label);
@@ -14953,7 +14963,7 @@ function HVACPlanStudioApp() {
     },
     {
       id: "markup-assistant",
-      label: "Open Fix Plan",
+      label: "Open Plan Check",
       detail: `${markupAssistantSummary.open} item${markupAssistantSummary.open === 1 ? "" : "s"} to review · nothing changes until approval`,
       group: "Systems",
       recommended: true,
@@ -15036,15 +15046,15 @@ function HVACPlanStudioApp() {
           : `Saved locally${lastSavedTime ? ` at ${lastSavedTime}` : ""}`;
 
   /*
-   * THESIS: Galvanized Daylight frames the authoritative plan like a clean fabrication bench in clear jobsite light.
-   * OWN-WORLD: Matte graphite, galvanized plate, exact plan white, safety orange, pressed controls, and hard seams.
-   * STORY: Open the source plan, choose the operation, draw and inspect HVAC work, then advance the unchanged traveler.
-   * FIRST VIEWPORT: Graphite job bar, galvanized destination rail, compact tool dock, dominant white plan, ledger inspector.
-   * FORM: User-approved Concept A, implemented as a presentation layer over the frozen command-deck behavior.
-   * FINISH: agency-signoff fidelity across desktop, tablet, mobile, dialogs, selection, and drawing states.
+   * THESIS: The plan is the work; four clear destinations frame it without competing for attention.
+   * OWN-WORLD: Pure white, neutral gray, Helvetica-style type, Yves Klein Blue, and disciplined one-pixel rules.
+   * STORY: Open plan, draw HVAC, review materials, then export or share; Plan Check stays optional and advisory.
+   * FIRST VIEWPORT: Compact job bar, four-step workflow rail, precise tool dock, dominant white plan, quiet inspector.
+   * FORM: Swiss operate mode with the workflow index as the defining structural move.
+   * FINISH: First-pass review build; drawing behavior frozen and no external release performed.
    */
   return (
-    <main data-layout="command-deck" data-visual-world="patternmakers-layout-table" data-presentation="galvanized-daylight" className={`app-shell field-first-workspace layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${fieldRedline.open ? "redline-open" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showFinishJobStudio ? "finish-job-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${packagePrintReleased ? "package-print-released" : "package-print-draft"}`}>
+    <main data-layout="command-deck" data-visual-world="patternmakers-layout-table" data-presentation="galvanized-daylight" className={`app-shell swiss-plan-workspace field-first-workspace layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${fieldRedline.open ? "redline-open" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showFinishJobStudio ? "finish-job-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${packagePrintReleased ? "package-print-released" : "package-print-draft"}`}>
       <input
         ref={inputRef}
         className="file-input"
@@ -15126,10 +15136,10 @@ function HVACPlanStudioApp() {
           aria-label="Close open workspace drawer"
           onClick={() => { setLeftPanelOpen(false); setRightPanelOpen(false); }}
         />}
-        <nav className="command-rail" aria-label="Field command rail" data-command-rail>
+        <nav className="command-rail" aria-label="Plan workflow" data-command-rail>
           <div className="command-rail-group command-rail-main">
             <button type="button" onClick={() => setShowProjectHome(true)} title="Open current job">
-              <HomeIcon size={18} /><span>Job</span>
+              <HomeIcon size={18} /><span>Open plan</span>
             </button>
             <button
               type="button"
@@ -15138,8 +15148,29 @@ function HVACPlanStudioApp() {
               onClick={() => { setLeftPanelView("draw"); openToolsPanel(); }}
               title="Open drawing tools"
             >
-              <Route size={18} /><span>Draw</span>
+              <Route size={18} /><span>Draw HVAC</span>
             </button>
+            <button
+              type="button"
+              className={rightPanelOpen && rightTab === "takeoff" ? "active" : ""}
+              aria-pressed={rightPanelOpen && rightTab === "takeoff"}
+              onClick={() => { setRightTab("takeoff"); openInspectorPanel(); }}
+              title="Open material list"
+            >
+              <ListChecks size={18} /><span>Materials</span>
+            </button>
+            <button
+              type="button"
+              className={showFinishJobStudio ? "active" : ""}
+              aria-pressed={showFinishJobStudio}
+              disabled={!pdf}
+              onClick={openFinishJobStudio}
+              title="Export or share the plan"
+            >
+              <FileText size={18} /><span>Export</span>
+            </button>
+          </div>
+          <div className="command-rail-group command-rail-review">
             <button
               type="button"
               className={leftPanelOpen && leftPanelView === "symbols" ? "active" : ""}
@@ -15158,17 +15189,6 @@ function HVACPlanStudioApp() {
               title="Edit the selected object"
             >
               <MousePointer2 size={18} /><span>Selected</span>
-            </button>
-          </div>
-          <div className="command-rail-group command-rail-review">
-            <button
-              type="button"
-              className={rightPanelOpen && rightTab === "builder" ? "active" : ""}
-              aria-pressed={rightPanelOpen && rightTab === "builder"}
-              onClick={() => { setRightTab("builder"); openInspectorPanel(); }}
-              title="Open current job step"
-            >
-              <ShieldAlert size={18} /><span>Review</span>
             </button>
             <button
               type="button"
@@ -15844,7 +15864,7 @@ function HVACPlanStudioApp() {
             {workspaceLayout !== "desktop" && <>
               <button className="tablet-quick-action" onClick={() => void openFromDrive()}><HardDrive size={15} /> Drive</button>
               <button className="tablet-quick-action" disabled={!pdf} onClick={() => openAIPlanReader("setup")}><ScanSearch size={15} /> Plan setup</button>
-              <button className="tablet-quick-action" disabled={!pdf} onClick={() => openMarkupAssistant("fix-plan")}><Sparkles size={15} /> Fix Plan</button>
+              <button className="tablet-quick-action" disabled={!pdf} onClick={() => openMarkupAssistant("fix-plan")}><ShieldCheck size={15} /> Plan Check</button>
             </>}
             <div className="canvas-edit-actions" role="group" aria-label="Edit history">
               <button aria-label="Undo" onClick={undo} disabled={!undoStack.length}><Undo2 size={16} /></button>
@@ -15970,9 +15990,9 @@ function HVACPlanStudioApp() {
             <span><Ruler size={17} /></span>
             <div>
               <strong>Confirm the recommended scale</strong>
-              <small>Pick two plan points exactly {referenceFeet} ft apart. Plan Helper will reopen when you finish.</small>
+              <small>Pick two plan points exactly {referenceFeet} ft apart. Plan Check will reopen when you finish.</small>
             </div>
-            <button onClick={cancelPlanScaleCalibration}>Cancel &amp; return to Plan Helper</button>
+            <button onClick={cancelPlanScaleCalibration}>Cancel &amp; return to Plan Check</button>
           </div>}
 
           <div
@@ -16957,9 +16977,17 @@ function HVACPlanStudioApp() {
               <button role="tab" aria-selected={rightTab === "rooms"} className={rightTab === "rooms" ? "active" : ""} onClick={() => openSystemBalanceWorkspace("system")}>Airflow</button>
               <button role="tab" aria-selected={rightTab === "takeoff"} className={rightTab === "takeoff" ? "active" : ""} onClick={() => setRightTab("takeoff")}>Materials</button>
             </div>
-            <button type="button" aria-pressed={showMarkupAssistant} className={`right-fix-plan ${showMarkupAssistant ? "active" : ""}`} onClick={() => openMarkupAssistant("fix-plan")}>Fix Plan</button>
             <button className="right-collapse" aria-label="Collapse inspector" aria-controls="workspace-inspector-panel" aria-expanded={rightPanelOpen} onClick={() => setRightPanelOpen(false)}><PanelRightClose size={15} /></button>
           </div>
+          <PlanCheckStrip
+            count={planCheckCount}
+            ignored={planCheckIgnored}
+            canShowOnPlan={planCheckHasPlanTarget}
+            onReview={() => openMarkupAssistant("fix-plan")}
+            onShowOnPlan={selectNextValidationIssue}
+            onIgnore={() => setPlanCheckIgnored(true)}
+            onRestore={() => setPlanCheckIgnored(false)}
+          />
           {rightTab === "builder" ? <div className="system-builder-panel">
             <div className="builder-hero">
               <div className="builder-hero-heading">
@@ -17043,7 +17071,7 @@ function HVACPlanStudioApp() {
                   }}
                 >
                   {activeConnectionRepairIssues.length
-                    ? `Open ${activeConnectionRepairIssues.length} connection fix${activeConnectionRepairIssues.length === 1 ? "" : "es"} in Fix Plan`
+                    ? `Review ${activeConnectionRepairIssues.length} connection item${activeConnectionRepairIssues.length === 1 ? "" : "s"}`
                     : "All saved connections are aligned"}
                 </button> : <div className="connection-repair-review">
                   <div className="connection-review-heading">
@@ -17183,13 +17211,13 @@ function HVACPlanStudioApp() {
 
               <div className={`builder-action-card ${planSetupComplete && fieldFirstStep === "check" ? "current" : "other-step"} ${activeBuilderSummary.audit.counts.critical ? "critical" : activeBuilderSummary.audit.counts.warning ? "attention" : "complete"}`}>
                 <div className="builder-action-icon"><ShieldAlert size={17} /></div>
-                <span><i>STEP 3</i><strong>Fix Plan</strong><small>Review disconnected cans, airflow balance, velocity, size progression, return paths, elevations, fresh air, controls, and accidental zone connections one item at a time.</small></span>
+                <span><i>STEP 3</i><strong>Plan Check</strong><small>{activeBuilderSummary.audit.counts.critical + activeBuilderSummary.audit.counts.warning} item{activeBuilderSummary.audit.counts.critical + activeBuilderSummary.audit.counts.warning === 1 ? "" : "s"} to review.</small></span>
                 <div className="builder-audit-strip">
                   <b>{activeBuilderSummary.audit.score} score</b>
                   <span>{activeBuilderSummary.audit.counts.critical} critical</span>
                   <span>{activeBuilderSummary.audit.counts.warning} warnings</span>
                 </div>
-                <button className="builder-primary-action" onClick={openSystemAuditWorkflow}>Open Fix Plan</button>
+                <button className="builder-primary-action" onClick={openSystemAuditWorkflow}>Review items</button>
               </div>
 
               <div className={`builder-action-card ${planSetupComplete && fieldFirstStep === "finish" ? "current" : "other-step"} ${activeBuilderSummary.packageSummary.ready ? "complete" : "attention"}`}>
@@ -18580,7 +18608,7 @@ function HVACPlanStudioApp() {
         onRecordIssueAnswer={(input) => {
           const issue = activeValidationIssues.find((candidate) => candidate.id === input.issueId);
           if (!issue) {
-            setBranchMessage("That issue changed with the plan. Refresh Fix Plan before recording an answer.");
+            setBranchMessage("That item changed with the plan. Refresh Plan Check before recording an answer.");
             return false;
           }
           return resolveReviewIssue(issue, input.status, {

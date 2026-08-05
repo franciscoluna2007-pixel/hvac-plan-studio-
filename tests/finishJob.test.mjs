@@ -61,6 +61,20 @@ test("keeps technical holds separate without waiving checklist or cloud release 
   assert.equal(result.jobReady, false);
 });
 
+test("keeps Plan Check findings advisory in the finish flow", () => {
+  const result = model({
+    materialReviewCurrent: true,
+    gates: [
+      { id: "critical", label: "Critical review", clear: false, detail: "1 open" },
+      { id: "warning", label: "Warnings", clear: false, detail: "2 open" },
+      { id: "checklist", label: "Checklist", clear: true, detail: "8/8" },
+    ],
+    checklistComplete: 8,
+  });
+  assert.deepEqual(result.technicalHolds, []);
+  assert.equal(result.currentStep, "revision");
+});
+
 test("provides a plain-language action for every current release gate", () => {
   const ids = [
     "materials", "runs", "critical", "warning", "connections", "elevations",
