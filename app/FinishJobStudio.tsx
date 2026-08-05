@@ -9,8 +9,10 @@ import {
   Copy,
   Download,
   FileCheck2,
+  Mail,
   PackageCheck,
   Printer,
+  Send,
   ShieldCheck,
   Wrench,
   X,
@@ -90,6 +92,9 @@ type Props = {
   onNoteChange: (value: string) => void;
   onIssue: (approvalFingerprint: string) => void;
   onOpenPrint: () => void;
+  onPrintPlanSet: () => Promise<void>;
+  onExportPdf: () => Promise<void>;
+  onCreateEmailDraft: (input: { recipient: string; subject: string; message: string }) => Promise<void>;
   onCopySummary: () => void;
   onDownloadMaterials: () => void;
   onDownloadRuns: () => void;
@@ -165,6 +170,9 @@ export default function FinishJobStudio({
   onNoteChange,
   onIssue,
   onOpenPrint,
+  onPrintPlanSet,
+  onExportPdf,
+  onCreateEmailDraft,
   onCopySummary,
   onDownloadMaterials,
   onDownloadRuns,
@@ -174,12 +182,19 @@ export default function FinishJobStudio({
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const [activeStep, setActiveStep] = useState<FinishJobStepId>(model.currentStep);
   const [materialReviewer, setMaterialReviewer] = useState(materialReview?.reviewedBy || reviewedBy);
+  const [showEmail, setShowEmail] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState("");
+  const [emailSubject, setEmailSubject] = useState(`${projectName} HVAC plan set`);
+  const [emailMessage, setEmailMessage] = useState(`Attached is the reviewed HVAC plan set for ${projectName}.`);
+  const [emailConfirmed, setEmailConfirmed] = useState(false);
+  const [outputBusy, setOutputBusy] = useState<"print" | "pdf" | "email" | null>(null);
 
   const activeStepModel = useMemo(
     () => model.steps.find((step) => step.id === activeStep) || model.steps[0],
     [activeStep, model.steps],
   );
   const openHolds = model.technicalHolds;
+  const finalOutputReady = release.released && !release.stale;
 
   useEffect(() => {
     if (!open) return;
@@ -305,7 +320,7 @@ export default function FinishJobStudio({
               <article><small>Line items</small><strong>{materialRows.length}</strong><span>Current system</span></article>
               <article><small>25-ft flex rolls</small><strong>{materialFlexRolls}</strong><span>Allowance included</span></article>
               <article><small>Air devices</small><strong>{materialDeviceCount}</strong><span>Supply + return</span></article>
-              <article><small>T/Y fittings</small><strong>{materialFittingCount}</strong><span>Saved geometry</span></article>
+              <article><small>T Branch fittings</small><strong>{materialFittingCount}</strong><span>Saved geometry</span></article>
             </div>
 
             <div className="finish-material-control">
@@ -443,9 +458,61 @@ export default function FinishJobStudio({
               <span><strong>A current issued revision is required for final output.</strong><small>You can still print a clearly watermarked draft from the package composer.</small></span>
             </div>}
             <div className="finish-output-actions">
-              <button className="primary" onClick={onOpenPrint}><Printer size={18} /> Print / Save as PDF</button>
+              <button className="primary" disabled={!finalOutputReady || Boolean(outputBusy)} onClick={async () => {
+                setOutputBusy("print");
+                try { await onPrintPlanSet(); } finally { setOutputBusy(null); }
+              }}><Printer size={18} /> {outputBusy === "print" ? "Preparing plan set..." : "Print plan set"}</button>
+              <button disabled={!finalOutputReady || Boolean(outputBusy)} onClick={async () => {
+                setOutputBusy("pdf");
+                try { await onExportPdf(); } finally { setOutputBusy(null); }
+              }}><Download size={18} /> {outputBusy === "pdf" ? "Building PDF..." : "Download PDF"}</button>
+              <button disabled={!finalOutputReady || Boolean(outputBusy)} onClick={() => {
+                setShowEmail((current) => !current);
+                setEmailConfirmed(false);
+              }}><Mail size={18} /> Email plan</button>
+              <button onClick={onOpenPrint}><PackageCheck size={18} /> Package options</button>
               <button disabled={!release.released || release.stale} onClick={onCopySummary}><Copy size={18} /> Copy revision summary</button>
             </div>
+            {showEmail && <div className="finish-email-review" aria-label="Review plan email">
+              <div className="finish-email-heading">
+                <Mail size={18} />
+                <span><strong>Review the email</strong><small>The generated PDF plan set will be attached.</small></span>
+              </div>
+              <label>Recipient
+                <input type="email" value={emailRecipient} onChange={(event) => {
+                  setEmailRecipient(event.target.value);
+                  setEmailConfirmed(false);
+                }} placeholder="foreman@example.com" />
+              </label>
+              <label>Subject
+                <input value={emailSubject} onChange={(event) => {
+                  setEmailSubject(event.target.value);
+                  setEmailConfirmed(false);
+                }} />
+              </label>
+              <label>Message
+                <textarea value={emailMessage} onChange={(event) => {
+                  setEmailMessage(event.target.value);
+                  setEmailConfirmed(false);
+                }} />
+              </label>
+              <div className="finish-email-attachment"><FileCheck2 size={16} /><span><strong>{projectName}-{release.revision || "review"}.pdf</strong><small>All plan sheets. Title block and scale appear on the cover sheet only.</small></span></div>
+              <label className={`finish-email-confirm ${emailConfirmed ? "checked" : ""}`}>
+                <input type="checkbox" checked={emailConfirmed} onChange={(event) => setEmailConfirmed(event.target.checked)} />
+                <span>{emailConfirmed ? <Check size={15} /> : null}</span>
+                <strong>I reviewed the recipient, message, and attachment.</strong>
+              </label>
+              <button className="primary finish-email-create" disabled={!emailConfirmed || !emailRecipient.trim() || !emailSubject.trim() || Boolean(outputBusy)} onClick={async () => {
+                setOutputBusy("email");
+                try {
+                  await onCreateEmailDraft({ recipient: emailRecipient, subject: emailSubject, message: emailMessage });
+                  setEmailConfirmed(false);
+                } finally {
+                  setOutputBusy(null);
+                }
+              }}><Send size={17} /> {outputBusy === "email" ? "Attaching plan..." : "Create attached email draft"}</button>
+              <p>Nothing sends automatically. Open the downloaded attached draft in your email app, review it again, and press Send there.</p>
+            </div>}
             <div className="finish-output-downloads">
               <button onClick={onDownloadMaterials}><Download size={15} /><span><strong>Purchase list</strong><small>Current material CSV</small></span></button>
               <button onClick={onDownloadRuns}><Download size={15} /><span><strong>Run schedule</strong><small>Current system CSV</small></span></button>

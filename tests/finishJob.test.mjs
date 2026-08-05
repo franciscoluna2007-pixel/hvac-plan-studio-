@@ -161,6 +161,20 @@ test("keeps Finish the Job readable, keyboard-contained, and mobile-safe", () =>
   assert.match(styles, /font-size: 14px/);
 });
 
+test("provides print-ready PDF and review-confirmed attached email output", () => {
+  assert.match(studio, /Print plan set/);
+  assert.match(studio, /const finalOutputReady = release\.released && !release\.stale/);
+  assert.match(studio, /Download PDF/);
+  assert.match(studio, /Email plan/);
+  assert.match(studio, /I reviewed the recipient, message, and attachment\./);
+  assert.match(studio, /disabled=\{!emailConfirmed \|\| !emailRecipient\.trim\(\)/);
+  assert.match(studio, /Nothing sends automatically/);
+  assert.match(studio, /The generated PDF plan set will be attached/);
+  assert.match(page, /generatePlanSetPdf\(\{/);
+  assert.match(page, /buildPlanEmailMessage\(\{/);
+  assert.match(page, /new Blob\(\[email\], \{ type: "message\/rfc822;charset=utf-8" \}\)/);
+});
+
 test("forces stale selected output sections to print as a draft and excludes transient plan marks", () => {
   assert.match(composer, /selectedSectionHolds/);
   assert.match(composer, /selectedOutputIsReady\(selectedSections, sectionReadiness\)/);

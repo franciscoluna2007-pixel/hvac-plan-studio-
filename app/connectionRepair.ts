@@ -475,7 +475,7 @@ export function buildConnectionRepairPlan(input: {
         ...base,
         status: "blocked",
         reason: target.kind === "fitting"
-          ? "The saved T/Y run is missing or belongs to another sheet, system, or duct type."
+          ? "The saved T Branch run is missing or belongs to another sheet, system, or duct type."
           : !target.savedEnd
             ? "The saved run end is missing. Choose the connection on the plan."
             : "The saved run is missing or belongs to another sheet, system, or duct type.",
@@ -526,7 +526,7 @@ export function buildConnectionRepairPlan(input: {
         ...base,
         status: "ready",
         reason: target.kind === "fitting"
-          ? "The saved run end can snap back to this exact T/Y port."
+          ? "The saved run end can snap back to this exact T Branch port."
           : "The saved run end can snap back without moving the placed object.",
         saved,
         candidates: [savedMatch],

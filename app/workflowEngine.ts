@@ -67,7 +67,7 @@ type SystemWorkflowInput = {
 
 const definitions: Array<Omit<WorkflowStage, "status" | "detail">> = [
   { id: "runs", number: 1, label: "Draw runs", shortLabel: "Runs", actionLabel: "Continue drawing runs" },
-  { id: "branches", number: 2, label: "Place T/Y fittings", shortLabel: "T/Y", actionLabel: "Open branch placement" },
+  { id: "branches", number: 2, label: "Place T Branch fittings", shortLabel: "T Branch", actionLabel: "Open branch placement" },
   { id: "connections", number: 3, label: "Connect equipment & cans", shortLabel: "Connect", actionLabel: "Review connections" },
   { id: "airflow", number: 4, label: "Balance CFM & sizes", shortLabel: "Airflow", actionLabel: "Open airflow balancing" },
   { id: "review", number: 5, label: "Review the plan", shortLabel: "Review", actionLabel: "Open HVAC plan review" },
@@ -108,7 +108,7 @@ export function buildSystemWorkflow(input: SystemWorkflowInput) {
         : "Draw supply, return, or fresh-air runs first",
       branches: input.fittings
         ? `${input.fittings} fitting${input.fittings === 1 ? "" : "s"} placed`
-        : "Split the finished runs with T/Y fittings",
+        : "Split the finished runs with T Branch fittings",
       connections: input.openConnections || input.brokenPorts
         ? `${input.openConnections} open device${input.openConnections === 1 ? "" : "s"} · ${input.brokenPorts} broken port${input.brokenPorts === 1 ? "" : "s"}`
         : input.devices

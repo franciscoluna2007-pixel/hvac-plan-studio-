@@ -57,7 +57,7 @@ test("symbol placement stays armed and does not auto-open selection actions", ()
   assert.doesNotMatch(placement, /selectOnly\(symbol\.id\)/);
 });
 
-test("missed releases stay safe and raw plan input drives T/Y, icon, and run placement", () => {
+test("missed releases stay safe and raw plan input drives T Branch, icon, and run placement", () => {
   const completion = page.slice(
     page.indexOf("function completeStalePlanPointerInteraction"),
     page.indexOf("function beginEditTransaction"),
@@ -86,7 +86,7 @@ test("missed releases stay safe and raw plan input drives T/Y, icon, and run pla
     page.indexOf("function finishDirectBranchPlacementGesture"),
     page.indexOf("function placeSmartBranch"),
   );
-  assert.match(release, /placeSmartBranch\(releasePoint, target\)/);
+  assert.match(release, /placeSmartBranch\(gesture\.station, target, releasePoint\)/);
   assert.match(placement, /placeSymbol\(activeTool as SymbolKind, rawPoint\)/);
   assert.match(placement, /setDraft\(\(points\) => \[\.\.\.points, point\]\)/);
 });
@@ -225,11 +225,11 @@ test("touch direct-edit routing is mode-aware instead of creating placement dead
   );
   assert.match(
     page,
-    /className={`branch-fitting[\s\S]*?data-plan-edit-control="hvac"/,
+    /className={`branch-fitting[\s\S]*?data-plan-edit-control=\{isCopyPreview \? undefined : "hvac"\}/,
   );
   assert.match(
     page,
-    /return <g key=\{drawing\.id\} data-plan-edit-control="hvac" className=/,
+    /return <g key=\{drawing\.id\} data-plan-edit-control=\{isCopyPreview \? undefined : "hvac"\}/,
   );
   assert.match(
     canvas,

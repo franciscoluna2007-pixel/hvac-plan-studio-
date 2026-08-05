@@ -35,6 +35,7 @@ import {
   directBranchEndpointsFitPorts,
   projectDirectBranchStation,
   reserveDirectBranchPolylineSpan,
+  resolveDirectBranchIntent,
   resolveDirectBranchTrunkCandidate,
   type DirectBranchInputType,
 } from "./directBranchPlacement";
@@ -159,9 +160,20 @@ import {
 } from "./ductLabelEditing";
 import {
   buildStandalonePlanCopyTemplate,
+  buildPlanAssemblyCopyTemplate,
+  materializePlanAssemblyCopy,
   materializeStandalonePlanCopy,
-  type StandalonePlanCopyTemplate,
+  type PlanCopyTemplate,
 } from "./planCopyPlacement";
+import { cameraForCursorZoom, wheelZoomFactor } from "./canvasViewportZoom";
+import { fittingMainAngleForBranchHandle, rotateFittingNetwork } from "./fittingRotation";
+import {
+  blobToBase64,
+  buildPlanEmailMessage,
+  downloadBlob,
+  generatePlanSetPdf,
+  type PlanSetDrawing,
+} from "./planSetExport";
 import {
   buildFieldRedlineExportPlan,
   downloadFieldRedlineExportArtifact,
@@ -291,7 +303,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 const tools = [
   { id: "select", label: "Select", icon: MousePointer2 },
   { id: "supply", label: "Supply run", icon: Route, tone: "blue" },
-  { id: "branch", label: "T / Y branch", icon: DraftingCompass, tone: "yellow" },
+  { id: "branch", label: "T Branch", icon: DraftingCompass, tone: "yellow" },
   { id: "return", label: "Return duct", icon: Wind, tone: "red" },
   { id: "fresh", label: "Fresh air", icon: AirVent, tone: "green" },
   { id: "diffuser", label: "Diffuser", icon: Grid3X3 },
@@ -1050,6 +1062,7 @@ type DragState =
   | ({ kind: "symbol-label"; drawingId: string; start: Point; originalOffset: Point; before: Drawing[] } & EditPointer)
   | ({ kind: "symbol-label-resize"; drawingId: string; anchor: Point; startDistance: number; originalScale: number; before: Drawing[] } & EditPointer)
   | ({ kind: "fitting"; drawingId: string; start: Point; originalCenter: Point; originalPorts: Point[]; connectedIds: string[]; before: Drawing[] } & EditPointer)
+  | ({ kind: "fitting-rotate"; drawingId: string; center: Point; before: Drawing[] } & EditPointer)
   | ({ kind: "symbol"; drawingId: string; before: Drawing[] } & EditPointer)
   | ({ kind: "symbol-resize"; drawingId: string; center: Point; rotation: number; halfWidth: number; halfHeight: number; cornerX: -1 | 1; cornerY: -1 | 1; before: Drawing[] } & EditPointer)
   | ({ kind: "group"; start: Point; ids: string[]; originals: Record<string, Point[]>; before: Drawing[] } & EditPointer);
@@ -1091,6 +1104,7 @@ type DirectBranchPlacementGesture = {
   endpointIndex?: number;
   fittingId?: string;
   queuedRunId?: string;
+  station: Point;
   latestPoint: Point;
   sourceFingerprint: string;
 };
@@ -1119,6 +1133,7 @@ type BranchPreview = {
   candidateEndpoint?: Point;
   candidateProjected?: Point;
   candidateEndpointDistance?: number;
+  branchEnd?: Point;
 };
 
 type EditTransactionSnapshot = {
@@ -1637,8 +1652,8 @@ function HVACPlanStudioApp() {
   const [port3BranchDraft, setPort3BranchDraft] = useState<Port3BranchDraftState | null>(null);
   const [symbolPreview, setSymbolPreview] = useState<{ kind: SymbolKind; point: Point } | null>(null);
   const [copyPlacement, setCopyPlacement] = useState<{
-    template: StandalonePlanCopyTemplate<Drawing>;
-    preview: Drawing | null;
+    template: PlanCopyTemplate<Drawing>;
+    preview: Drawing[];
     placedIds: string[];
   } | null>(null);
   const [branchMessage, setBranchMessage] = useState("");
@@ -2057,7 +2072,7 @@ function HVACPlanStudioApp() {
     pdfStageRef.current.style.transform = `translate3d(${camera.x}px, ${camera.y}px, 0)`;
   }, [camera.x, camera.y, pdf, renderSize.height, renderSize.width]);
   const cameraRef = useRef(camera);
-  const clipboardRef = useRef<StandalonePlanCopyTemplate<Drawing> | null>(null);
+  const clipboardRef = useRef<PlanCopyTemplate<Drawing> | null>(null);
   const placementWheelAtRef = useRef(0);
 
   useEffect(() => {
@@ -3260,13 +3275,12 @@ function HVACPlanStudioApp() {
     const viewportBounds = viewport.getBoundingClientRect();
     const localX = clientX - viewportBounds.left;
     const localY = clientY - viewportBounds.top;
-    const currentZoom = zoomRef.current;
-    const planX = (localX - cameraRef.current.x) / currentZoom;
-    const planY = (localY - cameraRef.current.y) / currentZoom;
-    updateCamera({
-      x: localX - planX * normalizedZoom,
-      y: localY - planY * normalizedZoom,
-    });
+    updateCamera(cameraForCursorZoom({
+      camera: cameraRef.current,
+      cursor: { x: localX, y: localY },
+      currentZoom: zoomRef.current,
+      nextZoom: normalizedZoom,
+    }));
     zoomRef.current = normalizedZoom;
     setZoom(normalizedZoom);
   }
@@ -3275,15 +3289,19 @@ function HVACPlanStudioApp() {
     if (!pdf) return;
     event.preventDefault();
     if (touchGestureRef.current || panRef.current || activeEditPointerIdRef.current !== null) return;
-    if (copyPlacement) {
-      if (!event.deltaY || !copyPlacement.template.source.symbol) return;
+    if (
+      event.altKey &&
+      copyPlacement?.template.version === 1 &&
+      copyPlacement.template.source.symbol
+    ) {
+      if (!event.deltaY) return;
       const now = performance.now();
       if (now - placementWheelAtRef.current < 55) return;
       placementWheelAtRef.current = now;
       const step = event.shiftKey ? 45 : 15;
       const direction = event.deltaY > 0 ? 1 : -1;
       setCopyPlacement((current) => {
-        if (!current?.template.source.symbol) return current;
+        if (current?.template.version !== 1 || !current.template.source.symbol) return current;
         const rotation =
           (
             Number(current.template.source.symbol.rotation || 0) +
@@ -3302,20 +3320,14 @@ function HVACPlanStudioApp() {
               },
             },
           },
-          preview: current.preview?.symbol
-            ? {
-                ...current.preview,
-                symbol: {
-                  ...current.preview.symbol,
-                  rotation,
-                },
-              }
-            : current.preview,
+          preview: current.preview.map((drawing) => drawing.symbol
+            ? { ...drawing, symbol: { ...drawing.symbol, rotation } }
+            : drawing),
         };
       });
       return;
     }
-    if (symbolPreview && symbolTools.includes(activeTool as SymbolKind)) {
+    if (event.altKey && symbolPreview && symbolTools.includes(activeTool as SymbolKind)) {
       if (!event.deltaY) return;
       const now = performance.now();
       if (now - placementWheelAtRef.current < 55) return;
@@ -3325,9 +3337,11 @@ function HVACPlanStudioApp() {
       setPlacementRotation((current) => (current + direction * step + 360) % 360);
       return;
     }
-    const delta = event.deltaMode === 1 ? event.deltaY * 18 : event.deltaY;
-    const sensitivity = event.ctrlKey ? .004 : .0018;
-    const nextZoom = clampZoom(+(zoomRef.current * Math.exp(-delta * sensitivity)).toFixed(3));
+    const nextZoom = clampZoom(+(zoomRef.current * wheelZoomFactor({
+      deltaY: event.deltaY,
+      deltaMode: event.deltaMode,
+      ctrlKey: event.ctrlKey,
+    })).toFixed(3));
     zoomAtPoint(nextZoom, event.clientX, event.clientY);
   }
 
@@ -4260,7 +4274,7 @@ function HVACPlanStudioApp() {
   }
 
   function resolveLockedDirectBranchTarget(
-    point: Point,
+    _point: Point,
     gesture: DirectBranchPlacementGesture,
   ): ReturnType<typeof nearestSupplySegment> {
     const drawing = drawings.find((candidate) => candidate.id === gesture.drawingId);
@@ -4278,12 +4292,11 @@ function HVACPlanStudioApp() {
       gesture.segmentIndex >= drawing.points.length - 1
     ) return null;
     const projection = projectDirectBranchStation(
-      point,
+      gesture.station,
       drawing.points[gesture.segmentIndex],
       drawing.points[gesture.segmentIndex + 1],
     );
-    const pickRadiusPx = gesture.pointerType === "touch" ? 24 : 14;
-    if (!projection || projection.distance > pickRadiusPx / Math.max(.25, zoom)) return null;
+    if (!projection) return null;
     return {
       ...projection,
       drawing,
@@ -4335,7 +4348,7 @@ function HVACPlanStudioApp() {
     const angle = Math.atan2(neighbor.y - endpoint.y, neighbor.x - endpoint.x);
     const divergence = Math.abs(Math.sin(angle - mainAngle));
     if (divergence < .12) {
-      setBranchMessage("That branch runs almost parallel with the trunk · choose a clearer T/Y location");
+      setBranchMessage("That branch runs almost parallel with the trunk · choose a clearer T Branch location");
       return null;
     }
     const cross = Math.cos(mainAngle) * Math.sin(angle) - Math.sin(mainAngle) * Math.cos(angle);
@@ -4549,7 +4562,7 @@ function HVACPlanStudioApp() {
       mode: "split-trunk",
     });
     setSnapMarker(opportunity.center);
-    setBranchMessage(`Suggested junction ${index + 1} of ${opportunities.length} · click the highlighted T/Y to confirm`);
+    setBranchMessage(`Suggested junction ${index + 1} of ${opportunities.length} · click the highlighted T Branch to confirm`);
     const viewport = canvasViewportRef.current;
     if (viewport) updateCamera({
       x: viewport.clientWidth / 2 - opportunity.center.x * zoomRef.current,
@@ -6763,7 +6776,7 @@ function HVACPlanStudioApp() {
       if (attachment.detached) issues.push({
         severity: "warning",
         title: "Duct pulled away from fitting",
-        detail: `${attachment.detached} associated T/Y port${attachment.detached === 1 ? " is" : "s are"} no longer aligned. Select the run and use Repair nearby connections.`,
+        detail: `${attachment.detached} associated T Branch port${attachment.detached === 1 ? " is" : "s are"} no longer aligned. Select the run and use Repair nearby connections.`,
         drawingId: drawing.id,
       });
     }
@@ -7404,8 +7417,8 @@ function HVACPlanStudioApp() {
             id: `fitting:${drawing.id}:${port}`,
             kind: "fitting",
             drawingId: drawing.id,
-            label: `${drawing.roomName || "T/Y fitting"} · Port ${port + 1}`,
-            detail: runId ? "Saved T/Y connection" : "Open T/Y port",
+            label: `${drawing.roomName || "T Branch fitting"} · Port ${port + 1}`,
+            detail: runId ? "Saved T Branch connection" : "Open T Branch port",
             page: drawing.page,
             systemId: drawingSystem(drawing),
             ductType: "supply",
@@ -7570,7 +7583,7 @@ function HVACPlanStudioApp() {
       if (currentRunId !== candidate.runId) {
         changes.push({
           objectId: target.id,
-          field: `T/Y port ${item.port + 1} run reference`,
+          field: `T Branch port ${item.port + 1} run reference`,
           before: currentRunId || "Not connected",
           after: candidate.runId,
         });
@@ -7580,7 +7593,7 @@ function HVACPlanStudioApp() {
       if (target.fitting[sizeField] !== candidate.runSize) {
         changes.push({
           objectId: target.id,
-          field: `T/Y port ${item.port + 1} size`,
+          field: `T Branch port ${item.port + 1} size`,
           before: `${target.fitting[sizeField]}"`,
           after: `${candidate.runSize}"`,
         });
@@ -7667,7 +7680,7 @@ function HVACPlanStudioApp() {
           drawing.fitting
         );
         if (!fitting?.fitting || operation.port == null) {
-          setBranchMessage("A reviewed T/Y fitting changed. Refresh Step 1 before applying.");
+          setBranchMessage("A reviewed T Branch fitting changed. Refresh Step 1 before applying.");
           return false;
         }
         fitting.fitting.connectedIds[operation.port] = run.id;
@@ -8192,11 +8205,11 @@ function HVACPlanStudioApp() {
           ? freshControls > 0
           : !hasFittingProblem && startCovered && endCovered;
         const detail = hasFittingProblem
-          ? "Open or detached T/Y port"
+          ? "Open or detached T Branch port"
           : run.type === "supply" && openEnds
-            ? `Open ${openEnds} endpoint — connect to equipment supply plenum, T/Y port, or supply terminal`
+            ? `Open ${openEnds} endpoint — connect to equipment supply plenum, T Branch port, or supply terminal`
             : run.type === "return" && openEnds
-              ? `Open ${openEnds} endpoint — connect to equipment return plenum, T/Y port, or return grille`
+              ? `Open ${openEnds} endpoint — connect to equipment return plenum, T Branch port, or return grille`
               : run.type === "fresh" && !freshControls
                 ? "No motorized OA damper on run"
                 : "Verified";
@@ -9398,17 +9411,26 @@ function HVACPlanStudioApp() {
       points: Point[];
       reversed: boolean;
     },
+    intentPoint?: Point,
   ) {
     const center = target.point;
     const matchedRoute = queuedBranchRunId
       ? queuedBranchRoute(center, target.drawing.id, target.angle)
-      : null;
+      : existingBranchRoute(center, target.drawing.id, target.angle, target.drawing.size);
     if (queuedBranchRunId && !matchedRoute) return null;
     const downstreamSize = steppedSize(target.drawing.size, 1);
     const branchSize = matchedRoute?.drawing.size || steppedSize(target.drawing.size, 2);
-    const fittingSide = matchedRoute?.side || target.side;
-    const defaultBranchOffset = branchStyle === "tee90" ? Math.PI / 2 : Math.PI / 4;
-    const branchAngle = matchedRoute?.angle ?? target.angle + fittingSide * defaultBranchOffset;
+    const preferredStyle = branchStyle === "tee90" ? "tee90" : "wye45";
+    const intent = resolveDirectBranchIntent({
+      center,
+      mainAngle: target.angle,
+      fallbackSide: target.side,
+      style: preferredStyle,
+      intentPoint,
+      minimumDistance: 10 / Math.max(.25, zoom),
+    });
+    const fittingSide = matchedRoute?.side || intent.side;
+    const branchAngle = matchedRoute?.angle ?? intent.angle;
     const resolvedStyle = branchStyle === "auto"
       ? automaticBranchStyle(target.angle, branchAngle)
       : branchStyle;
@@ -9609,11 +9631,11 @@ function HVACPlanStudioApp() {
       setBranchPreview(null);
       setSnapMarker(rawTarget.point);
       setExplicitThreeRunOption(null);
-      setBranchMessage("Branch run is armed · choose the main trunk for the T/Y");
+      setBranchMessage("Branch run is armed · choose the main trunk for the T Branch");
       return;
     }
     const target = orientMainTowardAirflow(rawTarget);
-    const placement = resolveDirectBranchPlacement(target);
+    const placement = resolveDirectBranchPlacement(target, gesture?.latestPoint || point);
     if (!placement) {
       setBranchPreview(null);
       setSnapMarker(target.point);
@@ -9653,6 +9675,10 @@ function HVACPlanStudioApp() {
       branchRunId: placement.matchedRoute?.drawing.id,
       runIds: [target.drawing.id, ...(placement.matchedRoute ? [placement.matchedRoute.drawing.id] : [])],
       mode: "split-trunk",
+      branchEnd: {
+        x: placement.branchPort.x + Math.cos(placement.branchAngle) * 34,
+        y: placement.branchPort.y + Math.sin(placement.branchAngle) * 34,
+      },
     });
     setSnapMarker(placement.center);
     setBranchMessage(!placement.clearance.valid
@@ -9661,7 +9687,7 @@ function HVACPlanStudioApp() {
         ? `Release to place ${placement.resolvedStyle === "tee90" ? "the tee" : "the wye"} at this exact station`
         : threeRunMatch
           ? "Press-drag-release to split here, or explicitly connect the three nearby ends"
-          : "Press, move along this run, and release at the exact T/Y station");
+          : "Press the run, drag toward the new branch, and release to place the connected T Branch");
   }
 
   function beginDirectBranchPlacementGesture(
@@ -9684,6 +9710,7 @@ function HVACPlanStudioApp() {
         segmentIndex: candidate.segmentIndex,
         endpointIndex: candidate.endpointIndex,
         fittingId: pendingBranchFittingId,
+        station: candidate.point,
         latestPoint: point,
         sourceFingerprint: directBranchRunFingerprint(candidate.drawing),
       };
@@ -9707,6 +9734,7 @@ function HVACPlanStudioApp() {
       drawingId: target.drawing.id,
       segmentIndex: target.segmentIndex,
       queuedRunId: queuedBranchRunId || undefined,
+      station: target.point,
       latestPoint: point,
       sourceFingerprint: directBranchRunFingerprint(target.drawing),
     };
@@ -9761,13 +9789,14 @@ function HVACPlanStudioApp() {
       setBranchMessage("Nothing placed · keep the pen close to the selected trunk and release again");
       return true;
     }
-    placeSmartBranch(releasePoint, target);
+    placeSmartBranch(gesture.station, target, releasePoint);
     return true;
   }
 
   function placeSmartBranch(
     point: Point,
     lockedTarget?: NonNullable<ReturnType<typeof nearestSupplySegment>>,
+    intentPoint?: Point,
   ) {
     setBranchPlacementResult(null);
     const rawTarget = lockedTarget || resolveDeterministicDirectBranchTarget(point, "mouse");
@@ -9776,11 +9805,11 @@ function HVACPlanStudioApp() {
       return;
     }
     if (queuedBranchRunId && rawTarget.drawing.id === queuedBranchRunId) {
-      setBranchMessage("That is the branch run already armed for Port 3 · click the main trunk where the T/Y belongs");
+      setBranchMessage("That is the branch run already armed for Port 3 · click the main trunk where the T Branch belongs");
       return;
     }
     const target = orientMainTowardAirflow(rawTarget);
-    const placement = resolveDirectBranchPlacement(target);
+    const placement = resolveDirectBranchPlacement(target, intentPoint);
     if (!placement) return;
     if (!placement.clearance.valid) {
       setBranchMessage("Move farther from the run end or unsafe bend so both trunk ports fit");
@@ -9824,10 +9853,28 @@ function HVACPlanStudioApp() {
       cfm: target.drawing.cfm,
       cfmSource: target.drawing.cfmSource,
     };
-    const branchRun: Drawing | null = matchedRoute ? {
+    const branchRunId = matchedRoute?.drawing.id || crypto.randomUUID();
+    const branchRun: Drawing = matchedRoute ? {
       ...matchedRoute.drawing,
       points: geometry.branchPoints!,
-    } : null;
+    } : {
+      id: branchRunId,
+      type: "supply",
+      points: [
+        branchPort,
+        {
+          x: branchPort.x + Math.cos(branchAngle) * 34,
+          y: branchPort.y + Math.sin(branchAngle) * 34,
+        },
+      ],
+      size: branchSize,
+      lineWeight: target.drawing.lineWeight,
+      page: pageNumber,
+      cfm: 0,
+      cfmSource: "planning-seed",
+      systemId: drawingSystem(target.drawing),
+      elevation: target.drawing.elevation,
+    };
     const fitting: Drawing = {
       id: fittingId,
       type: "branch",
@@ -9846,30 +9893,26 @@ function HVACPlanStudioApp() {
         upstreamSize: target.drawing.size,
         downstreamSize,
         branchSize,
-        connectedIds: geometry.connectedIds,
+        connectedIds: [target.drawing.id, downstreamId, branchRunId],
       },
     };
     setHistory([
-      ...drawings.filter((drawing) => drawing.id !== target.drawing.id && drawing.id !== branchRun?.id),
+      ...drawings.filter((drawing) => drawing.id !== target.drawing.id && drawing.id !== branchRun.id),
       upstream,
       downstream,
-      ...(branchRun ? [branchRun] : []),
+      branchRun,
       fitting,
     ]);
     setActiveSystem(drawingSystem(target.drawing));
     setSelectedId(fittingId);
+    activatePlanTool("select");
     setQueuedBranchRunId(null);
     setBranchHoverRunId(null);
     setBranchPreview(null);
     setExplicitThreeRunOption(null);
-    if (branchRun) {
-      const completionMessage = `${resolvedStyle === "tee90" ? "90° tee" : "45° wye"} placed · all three runs connected`;
-      setBranchMessage(completionMessage);
-      setBranchPlacementResult({ fittingId, message: completionMessage });
-      return;
-    }
-    beginPort3BranchDraft(fitting, "direct-placement");
-    setBranchMessage(`${resolvedStyle === "tee90" ? "90° tee" : "45° wye"} placed here · draw Port 3 or keep it open`);
+    const completionMessage = "T Branch placed - trunk split at the exact station - all 3 ports connected";
+    setBranchMessage(completionMessage);
+    setBranchPlacementResult({ fittingId, message: completionMessage });
   }
 
   function updateFittingPortSize(port: 0 | 1 | 2, size: string) {
@@ -10372,7 +10415,7 @@ function HVACPlanStudioApp() {
     setSelectedIds([drawing.id, secondId]);
     setSelectedId(secondId);
     setSplitMode(false);
-    setBranchMessage("Run split into 2 editable sections · connected T/Y ports preserved");
+    setBranchMessage("Run split into 2 editable sections · connected T Branch ports preserved");
   }
 
   function joinSelectedRuns() {
@@ -10445,7 +10488,7 @@ function HVACPlanStudioApp() {
     });
     setHistory(synchronizeFittingSizes(updated, drawings));
     selectOnly(firstRun.id);
-    setBranchMessage(`2 ${firstRun.type} runs joined · T/Y relationships transferred`);
+    setBranchMessage(`2 ${firstRun.type} runs joined · T Branch relationships transferred`);
   }
 
   function continueFittingOutlet(port: 1 | 2) {
@@ -10876,43 +10919,22 @@ function HVACPlanStudioApp() {
     }
     const rawPoint = canvasPoint(event);
     if (copyPlacement) {
-      if (drawingLocked(copyPlacement.template.source)) {
-        setBranchMessage("Unlock the destination HVAC layer before placing the copied item");
+      if (copyTemplateDrawings(copyPlacement.template).some(drawingLocked)) {
+        setBranchMessage("Unlock the destination HVAC layer before placing the copied assembly");
         return;
       }
-      const id = crypto.randomUUID();
-      const placed = materializeStandalonePlanCopy(
-        copyPlacement.template,
-        {
-          sourceFingerprint: pdfFingerprint,
-          page: pageNumber,
-          point: rawPoint,
-          id,
-          systemId: activeSystem,
-          feetPerUnit: scaleFeetPerUnit,
-        },
-      );
-      if (!placed) {
+      const placed = materializePlanCopy(copyPlacement.template, rawPoint);
+      if (!placed?.length) {
         setCopyPlacement(null);
-        setBranchMessage("This copied item no longer matches the open PDF. Copy it again.");
+        setBranchMessage("This copied assembly no longer matches the open PDF. Copy it again.");
         return;
       }
-      setHistory([...drawings, placed]);
+      setHistory([...drawings, ...placed]);
       setCopyPlacement((current) => current
         ? {
             ...current,
-            preview: materializeStandalonePlanCopy(
-              current.template,
-              {
-                sourceFingerprint: pdfFingerprint,
-                page: pageNumber,
-                point: rawPoint,
-                id: "copy-place-preview",
-                systemId: activeSystem,
-                feetPerUnit: scaleFeetPerUnit,
-              },
-            ),
-            placedIds: [...current.placedIds, id],
+            preview: materializePlanCopy(current.template, rawPoint, true) || [],
+            placedIds: [...current.placedIds, ...placed.map((drawing) => drawing.id)],
           }
         : null);
       setBranchMessage("Placed · move and click again · Esc or right-click finishes");
@@ -11105,7 +11127,7 @@ function HVACPlanStudioApp() {
       setQueuedBranchRunId(null);
       setBranchHoverRunId(null);
       setActiveTool("branch");
-      setBranchMessage("T/Y placement undone · click the blue trunk to place it again");
+      setBranchMessage("T Branch placement undone · click the blue trunk to place it again");
     }
     const reversibleRecord = undoableAssistantRepairRecord(previous);
     const reversibleRoomMarkup = undoableRoomMarkupRecord(previous);
@@ -11286,7 +11308,7 @@ function HVACPlanStudioApp() {
       clearDeletedDrawingState([fitting.id]);
       setHistory(removeDeletedDrawingReferences(drawings, [fitting.id]));
       activatePlanTool("select");
-      setBranchMessage("T/Y fitting deleted · incomplete routes kept in place · Undo restores it");
+      setBranchMessage("T Branch fitting deleted · incomplete routes kept in place · Undo restores it");
       return;
     }
     const upstreamEndsAtPort = Math.hypot(
@@ -11336,22 +11358,74 @@ function HVACPlanStudioApp() {
     clearDeletedDrawingState([fitting.id]);
     setHistory([...retained, healedMain]);
     activatePlanTool("select");
-    setBranchMessage("T/Y fitting deleted · main run healed · branch route kept · Undo restores it");
+    setBranchMessage("T Branch fitting deleted · main run healed · branch route kept · Undo restores it");
   }
 
-  function selectedStandaloneCopyTemplate() {
+  function copyTemplateDrawings(template: PlanCopyTemplate<Drawing>) {
+    return template.version === 2 ? template.sources : [template.source];
+  }
+
+  function materializePlanCopy(
+    template: PlanCopyTemplate<Drawing>,
+    point: Point,
+    preview = false,
+  ) {
+    if (template.version === 2) {
+      const placementId = preview ? "preview" : crypto.randomUUID();
+      return materializePlanAssemblyCopy(template, {
+        sourceFingerprint: pdfFingerprint,
+        page: pageNumber,
+        point,
+        systemId: activeSystem,
+        feetPerUnit: scaleFeetPerUnit,
+        idFor: (_sourceId, index) => preview
+          ? `copy-place-preview-${index}`
+          : `${placementId}-${index}-${crypto.randomUUID()}`,
+      });
+    }
+    const placed = materializeStandalonePlanCopy(template, {
+      sourceFingerprint: pdfFingerprint,
+      page: pageNumber,
+      point,
+      id: preview ? "copy-place-preview-0" : crypto.randomUUID(),
+      systemId: activeSystem,
+      feetPerUnit: scaleFeetPerUnit,
+    });
+    return placed ? [placed] : null;
+  }
+
+  function selectedPlanCopyTemplate(): PlanCopyTemplate<Drawing> | null {
+    const selected = drawings.find((drawing) => drawing.id === selectedId);
+    const selectedDrawings = drawings.filter((drawing) => selectedIds.includes(drawing.id));
+    const selectionSeeds = selectedIds.length ? selectedIds : selected ? [selected.id] : [];
+    const routeSelection = [selected, ...selectedDrawings].some((drawing) =>
+      drawing?.type === "supply" || Boolean(drawing?.fitting));
+    if (routeSelection) {
+      if (selectedDrawings.some(drawingLocked)) {
+        setBranchMessage("Unlock this HVAC layer before copying the supply-run assembly");
+        return null;
+      }
+      const template = buildPlanAssemblyCopyTemplate(
+        drawings,
+        selectionSeeds,
+        pdfFingerprint,
+      );
+      if (!template) {
+        setBranchMessage("Select a connected supply run or T Branch before copying the assembly");
+      }
+      return template;
+    }
     if (selectedIds.length > 1) {
-      setBranchMessage("Copy & place one standalone item at a time; connected duct networks stay protected");
+      setBranchMessage("Select one standalone icon or measurement, or select a connected supply-run assembly");
       return null;
     }
-    const selected = drawings.find((drawing) => drawing.id === selectedId);
     if (!selected) return null;
     if (drawingLocked(selected)) {
       setBranchMessage("Unlock this HVAC layer before copying the item");
       return null;
     }
     if (!selected.symbol && !selected.measurement) {
-      setBranchMessage("Copy & place works for diffusers, grilles, equipment, notes, controls, and measurements. Connected duct routes and T/Y fittings stay protected.");
+      setBranchMessage("Copy & place works for icons, measurements, and connected supply-run assemblies");
       return null;
     }
     const template = buildStandalonePlanCopyTemplate(selected, pdfFingerprint);
@@ -11363,7 +11437,7 @@ function HVACPlanStudioApp() {
   }
 
   function armCopyPlacement(
-    template: StandalonePlanCopyTemplate<Drawing>,
+    template: PlanCopyTemplate<Drawing>,
   ) {
     if (template.sourceFingerprint !== pdfFingerprint) {
       clipboardRef.current = null;
@@ -11372,6 +11446,7 @@ function HVACPlanStudioApp() {
       return;
     }
     if (
+      template.version === 1 &&
       template.source.measurement &&
       template.sourcePage !== pageNumber &&
       !scaleVerified
@@ -11379,7 +11454,7 @@ function HVACPlanStudioApp() {
       setBranchMessage("Confirm this sheet scale before placing a copied measurement here.");
       return;
     }
-    if (drawingLocked(template.source)) {
+    if (copyTemplateDrawings(template).some(drawingLocked)) {
       setBranchMessage("Unlock the destination HVAC layer before placing the copied item");
       return;
     }
@@ -11388,30 +11463,34 @@ function HVACPlanStudioApp() {
     selectOnly(null);
     setCopyPlacement({
       template,
-      preview: null,
+      preview: [],
       placedIds: [],
     });
-    setBranchMessage("Copy follows your mouse · click to place as many as you need · Esc or right-click finishes");
+    setBranchMessage(template.version === 2
+      ? "Supply-run assembly follows your mouse - click to place repeatedly - Esc or right-click finishes"
+      : "Copy follows your mouse - click to place repeatedly - Esc or right-click finishes");
   }
 
   function copySelected() {
-    const template = selectedStandaloneCopyTemplate();
+    const template = selectedPlanCopyTemplate();
     if (!template) return;
     clipboardRef.current = template;
-    setBranchMessage("Copied · press Ctrl+V or choose Copy & place to position it with the mouse");
+    setBranchMessage(template.version === 2
+      ? "Supply-run assembly copied - press Ctrl+V or choose Copy & place"
+      : "Copied - press Ctrl+V or choose Copy & place to position it with the mouse");
   }
 
   function pasteDrawing() {
     const template = clipboardRef.current;
     if (!template) {
-      setBranchMessage("Select and copy a diffuser, grille, equipment item, note, control, or measurement first");
+      setBranchMessage("Select and copy an icon, measurement, or connected supply-run assembly first");
       return;
     }
     armCopyPlacement(template);
   }
 
   function duplicateSelected() {
-    const template = selectedStandaloneCopyTemplate();
+    const template = selectedPlanCopyTemplate();
     if (!template) return;
     clipboardRef.current = template;
     armCopyPlacement(template);
@@ -11656,7 +11735,7 @@ function HVACPlanStudioApp() {
     setHistory(drawings.map((drawing) =>
       drawing.id === selected.id ? { ...drawing, lineWeight } : drawing
     ));
-    setBranchMessage(`${selected.type === "return" ? "Return" : "Supply"} run line weight set to ${lineWeight.toFixed(2)} mm · connected T/Y leg matched automatically`);
+    setBranchMessage(`${selected.type === "return" ? "Return" : "Supply"} run line weight set to ${lineWeight.toFixed(2)} mm · connected T Branch leg matched automatically`);
   }
 
   function adjustSelectedRunLabelScale(direction: -1 | 1) {
@@ -12179,6 +12258,7 @@ function HVACPlanStudioApp() {
       toggleSelection(drawing.id);
       return;
     }
+    if (!beginEditTransaction(event.pointerId)) return;
     if (selectedIds.length > 1 && isSelected(drawing.id)) {
       startGroupDrag(event, drawing.id);
       return;
@@ -12290,6 +12370,28 @@ function HVACPlanStudioApp() {
     };
     setSelectedId(drawing.id);
     setActiveSystem(drawingSystem(drawing));
+  }
+
+  function startFittingRotation(
+    event: PointerEvent<SVGGElement>,
+    drawing: Drawing,
+  ) {
+    if (activeTool !== "select" || !drawing.fitting || event.button !== 0 || drawingLocked(drawing)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!beginEditTransaction(event.pointerId)) return;
+    event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      kind: "fitting-rotate",
+      drawingId: drawing.id,
+      center: { ...drawing.points[0] },
+      before: drawings,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+    };
+    selectOnly(drawing.id);
+    setActiveSystem(drawingSystem(drawing));
+    setBranchMessage("Drag the round handle to rotate this T Branch freely");
   }
 
   function startSymbolDrag(event: PointerEvent<SVGGElement>, drawing: Drawing) {
@@ -12477,17 +12579,7 @@ function HVACPlanStudioApp() {
     const raw = canvasPoint(event);
     const drag = dragRef.current;
     if (copyPlacement && !drag) {
-      const preview = materializeStandalonePlanCopy(
-        copyPlacement.template,
-        {
-          sourceFingerprint: pdfFingerprint,
-          page: pageNumber,
-          point: raw,
-          id: "copy-place-preview",
-          systemId: activeSystem,
-          feetPerUnit: scaleFeetPerUnit,
-        },
-      );
+      const preview = materializePlanCopy(copyPlacement.template, raw, true) || [];
       setCopyPlacement((current) => current
         ? { ...current, preview }
         : null);
@@ -12582,6 +12674,24 @@ function HVACPlanStudioApp() {
               points: drawing.points.map((point, index) =>
                 index === (firstDistance <= lastDistance ? 0 : lastIndex) ? nextPort : point),
             };
+          }));
+        } else if (drag.kind === "fitting-rotate") {
+          const originalFitting = drag.before.find((drawing) => drawing.id === drag.drawingId)?.fitting;
+          const originalAngle = originalFitting?.angle || 0;
+          const originalBranchAngle = originalFitting?.branchAngle ??
+            originalAngle + (originalFitting?.side || 1) *
+              (originalFitting?.style === "tee90" ? Math.PI / 2 : Math.PI / 4);
+          const nextAngle = fittingMainAngleForBranchHandle({
+            center: drag.center,
+            pointer: raw,
+            mainAngle: originalAngle,
+            branchAngle: originalBranchAngle,
+          });
+          setDrawings((current) => rotateFittingNetwork({
+            drawings: current,
+            fittingId: drag.drawingId,
+            nextAngle,
+            portsFor: (drawing) => fittingPortPoints(drawing as Drawing),
           }));
         } else if (drag.kind === "symbol-resize") {
           const radians = drag.rotation * Math.PI / 180;
@@ -12728,6 +12838,8 @@ function HVACPlanStudioApp() {
           : `${repaired.connected} of 3 nearby ports reattached`);
         return repaired.drawings;
       });
+    } else if (drag.kind === "fitting-rotate") {
+      setBranchMessage("T Branch rotated - all connected run ends stayed attached");
     } else if (drag.kind === "point" || drag.kind === "line") {
       setDrawings((current) => {
         const result = repairFittingsAfterRunEdit(current, drag.drawingId);
@@ -14604,6 +14716,73 @@ function HVACPlanStudioApp() {
     window.setTimeout(() => window.print(), 80);
   }
 
+  async function buildCurrentPlanSetPdf() {
+    if (!pdf) throw new Error("Open a plan PDF before creating the plan set");
+    const revision = activeFieldPackage.latestRelease?.revision || releaseRevision || "review";
+    return generatePlanSetPdf({
+      pdf,
+      drawings: drawings.filter((drawing) =>
+        drawing.systemId === activeSystem || (!drawing.systemId && Boolean(drawing.symbol)),
+      ) as unknown as PlanSetDrawing[],
+      identity: {
+        projectName: fileName,
+        systemName: systemLabel(activeSystem),
+        revision,
+        scale: scaleLabel,
+      },
+    });
+  }
+
+  async function downloadCurrentPlanSetPdf() {
+    try {
+      const output = await buildCurrentPlanSetPdf();
+      downloadBlob(output.blob, output.filename);
+      setBranchMessage(`PDF ready: ${output.filename}`);
+    } catch (error) {
+      setBranchMessage(error instanceof Error ? error.message : "The plan-set PDF could not be created");
+    }
+  }
+
+  async function printCurrentPlanSetPdf() {
+    try {
+      const output = await buildCurrentPlanSetPdf();
+      const url = URL.createObjectURL(output.blob);
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (!opened) {
+        downloadBlob(output.blob, output.filename);
+        setBranchMessage("The browser blocked the print tab. The print-ready PDF was downloaded instead.");
+      } else {
+        setBranchMessage("Print-ready plan set opened. Use the PDF viewer Print command.");
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      setBranchMessage(error instanceof Error ? error.message : "The print-ready plan set could not be created");
+    }
+  }
+
+  async function createCurrentPlanEmailDraft(input: {
+    recipient: string;
+    subject: string;
+    message: string;
+  }) {
+    try {
+      const output = await buildCurrentPlanSetPdf();
+      const pdfBase64 = await blobToBase64(output.blob);
+      const email = buildPlanEmailMessage({
+        to: input.recipient,
+        subject: input.subject,
+        message: input.message,
+        filename: output.filename,
+        pdfBase64,
+      });
+      const draftName = output.filename.replace(/\.pdf$/i, ".eml");
+      downloadBlob(new Blob([email], { type: "message/rfc822;charset=utf-8" }), draftName);
+      setBranchMessage(`Attached email draft ready: ${draftName}. Open it, review once more, then press Send.`);
+    } catch (error) {
+      setBranchMessage(error instanceof Error ? error.message : "The attached email draft could not be created");
+    }
+  }
+
   async function copyCurrentFinishJobSummary() {
     if (!activeFieldPackage.released || activeFieldPackage.stale) {
       setBranchMessage("Issue the current revision before copying its controlled summary");
@@ -14674,7 +14853,7 @@ function HVACPlanStudioApp() {
     },
     {
       id: "branch-pass",
-      label: "Place a T/Y fitting",
+      label: "Place a T Branch fitting",
       detail: "Click the blue trunk exactly where the fitting belongs",
       group: "Draw",
       shortcut: "B",
@@ -14965,7 +15144,7 @@ function HVACPlanStudioApp() {
               <small>{selectedRun ? "Selected runs update immediately." : "Draw first. New supply and return runs stay unlabeled until you confirm a size."}</small>
             </div>
             <div className={`branch-designer ${activeTool === "branch" ? "active" : ""}`}>
-              <div className="library-title"><DraftingCompass size={14} /><span>DIRECT-PLACE T/Y</span><b>YOU CHOOSE THE STATION</b></div>
+              <div className="library-title"><DraftingCompass size={14} /><span>DIRECT-PLACE T BRANCH</span><b>YOU CHOOSE THE STATION</b></div>
               <div className="branch-safe-mode" role="status">
                 <CheckCircle2 size={15} />
                 <span>
@@ -14983,10 +15162,10 @@ function HVACPlanStudioApp() {
                 setBranchHoverRunId(null);
                 setBranchPreview(null);
                 setBranchPlacementResult(null);
-                setBranchMessage("Click the blue trunk exactly where the T/Y belongs");
+                setBranchMessage("Click the blue trunk exactly where the T Branch belongs");
               }}>
                 <span className="mini-fitting wye45"><i /><i /><i /></span>
-                Place T/Y
+                Place T Branch
               </button>
               {port3BranchDraft && <div className="branch-link-step">
                 <b>PORT 3 · DRAW THE BRANCH</b>
@@ -14999,7 +15178,7 @@ function HVACPlanStudioApp() {
                 <span>Click anywhere on the blue run that should connect to Port 3.</span>
                 <button onClick={leavePort3BranchOpen}>Leave Port 3 open for now</button>
               </div>}
-              <small>If no branch endpoint is clearly local, Redline still places the fitting there and opens Port 3 for you to draw.</small>
+              <small>If no branch endpoint is clearly local, a connected branch run starts in your drag direction so all three ports stay live.</small>
             </div>
             <div className="symbol-library">
               <div className="library-title"><Sparkles size={14} /><span>HVAC SYMBOL LIBRARY</span><b>{symbolPresets.length}+ presets</b></div>
@@ -15281,7 +15460,7 @@ function HVACPlanStudioApp() {
                   <span>COMPLETE SYSTEM PATH</span>
                   <b>{symbolTrace.runCount ? "● TRACE ACTIVE" : "● NOT CONNECTED"}</b>
                 </div>
-                <strong>{symbolTrace.runCount} runs · {symbolTrace.fittingCount} T/Y · {symbolTrace.terminalCount} terminals</strong>
+                <strong>{symbolTrace.runCount} runs · {symbolTrace.fittingCount} T Branch · {symbolTrace.terminalCount} terminals</strong>
                 <small>{symbolTrace.runCount
                   ? "The full connected path is highlighted on the plan."
                   : "Attach this object manually to include it in the airflow network."}</small>
@@ -15295,7 +15474,7 @@ function HVACPlanStudioApp() {
               <fieldset className="fitting-edit-fieldset" disabled={selectedPort3FittingLocked}>
               <div className="network-trace-summary">
                 <span>CONNECTED NETWORK</span>
-                <strong>{branchTrace.runCount} runs · {branchTrace.fittingCount} T/Y · {Math.round(branchTrace.totalCfm)} CFM</strong>
+                <strong>{branchTrace.runCount} runs · {branchTrace.fittingCount} T Branch · {Math.round(branchTrace.totalCfm)} CFM</strong>
                 <small>{branchHealth.attached}/{branchHealth.total} fitting ports attached · Red guides preview repairs</small>
                 {(branchHealth.detached > 0 || branchHealth.missing > 0) && <div className="network-health-warning">
                   {branchHealth.detached > 0 && <b>{branchHealth.detached} detached</b>}
@@ -15419,7 +15598,7 @@ function HVACPlanStudioApp() {
                   <option value="0.2">0.20 mm · Standard</option>
                   <option value="0.3">0.30 mm · Bold</option>
                 </select>
-                <small>Supply and return only · every connected T/Y leg matches this weight automatically.</small>
+                <small>Supply and return only · every connected T Branch leg matches this weight automatically.</small>
               </label>}
               {selectedRun && <div className="engineering-properties">
                 {["supply", "return"].includes(selectedRun.type) && <div className={`run-detail-editor ${selectedRun.runNumber && selectedRun.sizeReviewed === true ? "complete" : "attention"}`}>
@@ -15468,7 +15647,7 @@ function HVACPlanStudioApp() {
                       {runTrace.sourceConnected || selectedRun?.type !== "supply" ? "● CONNECTED" : "● NO UNIT SOURCE"}
                     </b>
                   </div>
-                  <strong>{runTrace.runCount} runs · {runTrace.fittingCount} T/Y · {runTrace.terminalCount} terminals</strong>
+                  <strong>{runTrace.runCount} runs · {runTrace.fittingCount} T Branch · {runTrace.terminalCount} terminals</strong>
                   <small>{Math.round(runTrace.totalCfm)} CFM on selected run · Full path highlighted</small>
                 </div>
                 <div className={`run-connection-card ${runAttachment.detached ? "needs-repair" : ""}`}>
@@ -15632,10 +15811,10 @@ function HVACPlanStudioApp() {
               className={`display-toggle ${showFittingLabels ? "active" : ""}`}
               disabled={!pdf}
               onClick={() => setShowFittingLabels((visible) => !visible)}
-              title="Show or hide T/Y fitting names and three-size labels"
+              title="Show or hide T Branch fitting names and three-size labels"
               aria-pressed={showFittingLabels}
             >
-              <DraftingCompass size={14} /> T/Y Text
+              <DraftingCompass size={14} /> T Branch Text
             </button>
             <button
               className={`sheets-button ${showSheetNavigator ? "active" : ""}`}
@@ -15718,7 +15897,7 @@ function HVACPlanStudioApp() {
             }}
           >
             {selectedId && planSelectionActionsVisible && !selectedContextWheelVisible && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
-              <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T/Y FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : "DUCT RUN"}{selectedDrawingLocked ? selectedPort3FittingLocked ? " · FINISH PORT 3 FIRST" : " · LAYER LOCKED" : ""}</strong>
+              <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T BRANCH FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : "DUCT RUN"}{selectedDrawingLocked ? selectedPort3FittingLocked ? " · FINISH PORT 3 FIRST" : " · LAYER LOCKED" : ""}</strong>
               {!selectedDrawingLocked && selectedIds.length === 1 && !selectedDrawing?.symbol && !selectedDrawing?.measurement && <select
                 aria-label="Quick duct size"
                 value={selectedDrawing?.fitting?.upstreamSize || selectedDrawing?.size || ductSize}
@@ -15861,7 +16040,7 @@ function HVACPlanStudioApp() {
             </div>}
             {pdf && activeTool === "branch" && <div className={`branch-workflow-hud ${pendingBranchFittingId ? "awaiting-branch" : ""} ${queuedBranchRunId ? "run-armed" : ""} ${branchPlacementResult ? "complete" : ""}`} aria-live="polite" data-canvas-ui>
               <div className="branch-workflow-heading">
-                <span><DraftingCompass size={14} /> DIRECT-PLACE T/Y</span>
+                <span><DraftingCompass size={14} /> DIRECT-PLACE T BRANCH</span>
                 <b>{branchPlacementResult
                   ? "CONNECTED"
                   : pendingBranchFittingId
@@ -15870,7 +16049,7 @@ function HVACPlanStudioApp() {
                       ? "3-RUN OPTION"
                     : branchPreview?.matchedExisting ? "JUNCTION FOUND" : "READY"}</b>
               </div>
-              <strong className="branch-workflow-message">{branchPlacementResult?.message || branchMessage || "Press the trunk, drag along it, and release at the exact station"}</strong>
+              <strong className="branch-workflow-message">{branchPlacementResult?.message || branchMessage || "Press the trunk, drag toward the next connection, and release"}</strong>
               {!pendingBranchFittingId && !branchPlacementResult && <small>Release splits only the selected trunk. Existing runs connect only when you explicitly choose them.</small>}
               {explicitThreeRunOption && !pendingBranchFittingId && !branchPlacementResult && <div className="branch-workflow-actions">
                 <button type="button" className="primary" onClick={confirmExplicitThreeRunConnection}>Connect these 3 existing runs</button>
@@ -16023,7 +16202,7 @@ function HVACPlanStudioApp() {
                         setBranchPreview(null);
                         setSymbolPreview(null);
                         setCopyPlacement((current) => current
-                          ? { ...current, preview: null }
+                          ? { ...current, preview: [] }
                           : null);
                       }
                     }}
@@ -16089,14 +16268,14 @@ function HVACPlanStudioApp() {
                         />
                       </RedlineCanvasErrorBoundary>
                     </g>}
-                    {[...drawings, ...(copyPlacement?.preview ? [copyPlacement.preview] : [])].filter((drawing) => {
+                    {[...drawings, ...(copyPlacement?.preview || [])].filter((drawing) => {
                       if (drawing.page !== pageNumber) return false;
                       const layer = drawingLayer(drawing);
                       return !layer || visibleLayers[layer];
                     }).map((drawing) => {
                       if (drawing.measurement) {
                         if (!showLengthLabels) return null;
-                        const isCopyPreview = drawing.id === "copy-place-preview";
+                        const isCopyPreview = drawing.id.startsWith("copy-place-preview-");
                         const [a, b] = drawing.points;
                         const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
                         return <g
@@ -16118,7 +16297,7 @@ function HVACPlanStudioApp() {
                         </g>;
                       }
                       if (drawing.symbol) {
-                        const isCopyPreview = drawing.id === "copy-place-preview";
+                        const isCopyPreview = drawing.id.startsWith("copy-place-preview-");
                         return <g
                           key={drawing.id}
                           className={isCopyPreview ? "copy-place-preview" : undefined}
@@ -16127,6 +16306,7 @@ function HVACPlanStudioApp() {
                         >{renderSymbol(drawing)}</g>;
                       }
                       if (drawing.fitting) {
+                        const isCopyPreview = drawing.id.startsWith("copy-place-preview-");
                         const center = drawing.points[0];
                         const axis = drawing.fitting.angle;
                         const branchAxis = drawing.fitting.branchAngle ?? axis + drawing.fitting.side * (drawing.fitting.style === "tee90" ? Math.PI / 2 : Math.PI / 4);
@@ -16156,11 +16336,17 @@ function HVACPlanStudioApp() {
                           x: center.x + Math.cos(labelAngle) * 18 * fittingChromeScale,
                           y: center.y + Math.sin(labelAngle) * 18 * fittingChromeScale,
                         };
+                        const rotationHandlePoint = {
+                          x: center.x + Math.cos(branchAxis) * 34 * fittingChromeScale,
+                          y: center.y + Math.sin(branchAxis) * 34 * fittingChromeScale,
+                        };
                         return <g
                           key={drawing.id}
-                          className={`branch-fitting ${fittingFullyConnected ? "complete-fitting" : "open-fitting"} ${showPortGuides ? "showing-port-guides" : ""} ${activeTrace.fittingIds.has(drawing.id) ? "traced-fitting" : ""} ${isSelected(drawing.id) ? "selected-fitting" : ""} ${branchPlacementResult?.fittingId === drawing.id ? "connection-confirmed" : ""}`}
-                          data-plan-edit-control="hvac"
-                          onPointerDown={(event) => startFittingDrag(event, drawing)}
+                          className={`branch-fitting ${fittingFullyConnected ? "complete-fitting" : "open-fitting"} ${showPortGuides ? "showing-port-guides" : ""} ${activeTrace.fittingIds.has(drawing.id) ? "traced-fitting" : ""} ${isSelected(drawing.id) ? "selected-fitting" : ""} ${branchPlacementResult?.fittingId === drawing.id ? "connection-confirmed" : ""} ${isCopyPreview ? "copy-place-preview" : ""}`}
+                          data-plan-edit-control={isCopyPreview ? undefined : "hvac"}
+                          aria-hidden={isCopyPreview || undefined}
+                          style={isCopyPreview ? { pointerEvents: "none" } : undefined}
+                          onPointerDown={isCopyPreview ? undefined : (event) => startFittingDrag(event, drawing)}
                         >
                           <path
                             className="fitting-hit"
@@ -16183,17 +16369,30 @@ function HVACPlanStudioApp() {
                             key={`flow-${index}`}
                             d={`M ${arrow.left.x} ${arrow.left.y} L ${arrow.tip.x} ${arrow.tip.y} L ${arrow.right.x} ${arrow.right.y}`}
                           />)}
-                          {showPortGuides && [inlet, outlet, branchPort].map((port, index) => <g
-                            className={`${portStates[index].connected ? "connected-port" : "disconnected-port"} ${portStates[index].overloaded ? "overloaded-port" : ""}`}
+                          {[inlet, outlet, branchPort].map((port, index) => <g
+                            className={`${showPortGuides ? "detailed-port" : "status-port"} ${portStates[index].connected ? "connected-port" : "disconnected-port"} ${portStates[index].overloaded ? "overloaded-port" : ""}`}
                             key={index}
                             transform={`translate(${port.x} ${port.y}) scale(${fittingChromeScale})`}
                           >
-                            <circle className="fitting-port" cx="0" cy="0" r="5" />
-                            <text className="port-number" x="0" y="2.7" textAnchor="middle">{index + 1}</text>
-                            <text className="fitting-port-size" x="0" y="-9" textAnchor="middle">{portSizes[index]}&quot;</text>
-                            {showCfmLabels && <text className="fitting-port-cfm" x="0" y="14" textAnchor="middle">{portStates[index].cfm} CFM</text>}
-                            <text className="port-role" x="0" y={showCfmLabels ? 23 : 15} textAnchor="middle">{["IN", "OUT", "BRANCH"][index]}</text>
+                            <circle className="fitting-port" cx="0" cy="0" r={showPortGuides ? 5 : 3.5} />
+                            {showPortGuides && <>
+                              <text className="port-number" x="0" y="2.7" textAnchor="middle">{index + 1}</text>
+                              <text className="fitting-port-size" x="0" y="-9" textAnchor="middle">{portSizes[index]}&quot;</text>
+                              {showCfmLabels && <text className="fitting-port-cfm" x="0" y="14" textAnchor="middle">{portStates[index].cfm} CFM</text>}
+                              <text className="port-role" x="0" y={showCfmLabels ? 23 : 15} textAnchor="middle">{["IN", "OUT", "BRANCH"][index]}</text>
+                            </>}
                           </g>)}
+                          {isSelected(drawing.id) && planSelectionActionsVisible && <g className="fitting-rotation-control">
+                            <line x1={branchPort.x} y1={branchPort.y} x2={rotationHandlePoint.x} y2={rotationHandlePoint.y} />
+                            <g
+                              transform={`translate(${rotationHandlePoint.x} ${rotationHandlePoint.y}) scale(${fittingChromeScale})`}
+                              onPointerDown={(event) => startFittingRotation(event, drawing)}
+                            >
+                              <circle className="rotation-handle-hit" cx="0" cy="0" r="13" />
+                              <circle className="rotation-handle" cx="0" cy="0" r="6" />
+                              <title>Drag to rotate this T Branch freely</title>
+                            </g>
+                          </g>}
                           {showFittingLabels && <text
                             className="fitting-label"
                             x="0"
@@ -16211,6 +16410,7 @@ function HVACPlanStudioApp() {
                           >✓ 3 / 3 CONNECTED</text>}
                         </g>;
                       }
+                      const isCopyPreview = drawing.id.startsWith("copy-place-preview-");
                       const path = drawing.points.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
                       const middle = drawing.points[Math.floor(drawing.points.length / 2)];
                       const runLabelPoint = {
@@ -16247,13 +16447,15 @@ function HVACPlanStudioApp() {
                         drawing.elevation ? `EL ${drawing.elevation}` : "",
                       ].filter(Boolean).join(" · ");
                       const runLabelScale = normalizedDuctLabelScale(drawing.labelScale);
-                      return <g key={drawing.id} data-plan-edit-control="hvac" className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${runSelected ? "selected-drawing" : ""} ${branchCandidateClass} ${assistantPreviewClass}`.trim()} onPointerDown={(event) => {
+                      return <g key={drawing.id} data-plan-edit-control={isCopyPreview ? undefined : "hvac"} aria-hidden={isCopyPreview || undefined} style={isCopyPreview ? { pointerEvents: "none" } : undefined} className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${runSelected ? "selected-drawing" : ""} ${branchCandidateClass} ${assistantPreviewClass} ${isCopyPreview ? "copy-place-preview" : ""}`.trim()} onPointerDown={isCopyPreview ? undefined : (event) => {
                         if (event.button !== 0 || panRef.current || activeTool !== "select" || drawingLocked(drawing)) return;
                         event.stopPropagation();
                         event.shiftKey ? toggleSelection(drawing.id) : selectOnly(drawing.id);
                       }}>
-                        <path className="hit-line" d={path} onPointerDown={(event) => startLineDrag(event, drawing)} />
-                        <path className="duct-line" d={path} stroke={drawingColors[drawing.type as DrawType]} style={{ strokeWidth: runStrokeWidth(drawing.lineWeight) }} />
+                        <path className="hit-line" d={path} onPointerDown={isCopyPreview ? undefined : (event) => startLineDrag(event, drawing)}>
+                          <title>Drag this supply run to move it. Connected fittings repair when you release.</title>
+                        </path>
+                        <path className="duct-line" pointerEvents="none" d={path} stroke={drawingColors[drawing.type as DrawType]} style={{ strokeWidth: runStrokeWidth(drawing.lineWeight) }} />
                         {showRunNodeHandles && drawing.points.map((point, index) => {
                           const endpoint = index === 0 || index === drawing.points.length - 1;
                           return <g
@@ -16500,7 +16702,7 @@ function HVACPlanStudioApp() {
                       transform={`translate(${opportunity.center.x} ${opportunity.center.y}) scale(${fittingOverlayScale(zoom)})`}
                     >
                       <circle cx="0" cy="0" r="4.5" />
-                      <text className="branch-opportunity-label" x="8" y="-7">OPTIONAL T/Y</text>
+                      <text className="branch-opportunity-label" x="8" y="-7">OPTIONAL T BRANCH</text>
                     </g>)}
                     {branchPreview && (() => {
                       const center = branchPreview.center;
@@ -16549,9 +16751,10 @@ function HVACPlanStudioApp() {
                         </>}
                         <circle cx={center.x} cy={center.y} r={12 * previewScale} />
                         <path d={`M ${inlet.x} ${inlet.y} L ${center.x} ${center.y} L ${outlet.x} ${outlet.y} M ${center.x} ${center.y} L ${branchPort.x} ${branchPort.y}`} />
+                        {branchPreview.branchEnd && <path className="branch-intent-guide" d={`M ${branchPort.x} ${branchPort.y} L ${branchPreview.branchEnd.x} ${branchPreview.branchEnd.y}`} />}
                         {[inlet, outlet, branchPort].map((port, index) => <g key={index}>
                           <circle
-                            className={`preview-port ${index < 2 || branchPreview.matchedExisting ? "ready" : "missing"}`}
+                            className={`preview-port ${branchPreview.valid ? "ready" : "missing"}`}
                             cx={port.x}
                             cy={port.y}
                             r={4.5 * previewScale}
@@ -16570,7 +16773,7 @@ function HVACPlanStudioApp() {
                               : "SELECT ANY BLUE BRANCH RUN"
                             : branchPreview.matchedExisting
                               ? `RELEASE TO CONNECT · ${previewStyle === "tee90" ? "TEE" : "WYE"}`
-                              : "RELEASE TO PLACE"} · {branchPreview.portSizes.join("×")}
+                              : "RELEASE TO PLACE CONNECTED T BRANCH"} · {branchPreview.portSizes.join("×")}
                         </text>
                       </g>;
                     })()}
@@ -16699,7 +16902,7 @@ function HVACPlanStudioApp() {
                     <b>3</b><span><strong>Add returns</strong><small>{activeReturnRunsForWorkflow.length} red runs · {activeReturnDevicesForWorkflow.length} grilles</small></span>
                   </div>
                   <div className={drawFirstWorkflow.stage === "connections" ? "active" : drawFirstWorkflow.stage === "complete" ? "complete" : ""}>
-                    <b>4</b><span><strong>Connect &amp; repair</strong><small>Equipment, cans, and T/Y ports</small></span>
+                    <b>4</b><span><strong>Connect &amp; repair</strong><small>Equipment, cans, and T Branch ports</small></span>
                   </div>
                 </div>
                 <div className="draw-first-actions">
@@ -16790,7 +16993,7 @@ function HVACPlanStudioApp() {
                     })}
                     {!activeConnectionRepairIssues.length && <div className="connection-review-clear">
                       <CheckCircle2 size={18} />
-                      <span><strong>No loose saved connections</strong><small>Every unit connection, can, grille, and saved T/Y port is aligned.</small></span>
+                      <span><strong>No loose saved connections</strong><small>Every unit connection, can, grille, and saved T Branch port is aligned.</small></span>
                     </div>}
                   </div>
 
@@ -16817,7 +17020,7 @@ function HVACPlanStudioApp() {
 
               <div className={`builder-action-card ${planSetupComplete && fieldFirstStep === "airflow" ? "current" : "other-step"} ${airflowStepComplete ? "complete" : "attention"}`}>
                 <div className="builder-action-icon"><Gauge size={17} /></div>
-                <span><i>STEP 2</i><strong>Calculate CFM &amp; review duct sizes</strong><small>Propagates reviewed terminal airflow through continuous T/Y paths and prepares velocity-screened candidates using your limits and 16″ residential maximum.</small></span>
+                <span><i>STEP 2</i><strong>Calculate CFM &amp; review duct sizes</strong><small>Propagates reviewed terminal airflow through continuous T Branch paths and prepares velocity-screened candidates using your limits and 16″ residential maximum.</small></span>
                 <div className={`system-airflow-setup ${!activeAirflowSetup.primaryUnit ? "missing-unit" : ""}`}>
                   <div className="airflow-setup-heading">
                     <span><Wind size={15} /><strong>SYSTEM AIRFLOW SETUP</strong></span>
@@ -17158,7 +17361,7 @@ function HVACPlanStudioApp() {
                 </button>;
               })}
             </div>
-            <div className="takeoff-note">Review-only. The panel follows connected runs and T/Y relationships; it never changes duct sizes, routes, CFM, or fittings automatically.</div>
+            <div className="takeoff-note">Review-only. The panel follows connected runs and T Branch relationships; it never changes duct sizes, routes, CFM, or fittings automatically.</div>
           </div> : rightTab === "takeoff" ? <div className="takeoff-panel">
             <div className="production-hero">
               <div>
@@ -17185,7 +17388,7 @@ function HVACPlanStudioApp() {
               <div className="material-summary-grid production-metrics">
                 <div><span>25-ft flex rolls</span><strong>{materialSummary().flexBoxes}</strong><small>Every started 25 ft counts</small></div>
                 <div><span>Air devices</span><strong>{materialSummary().deviceCount}</strong><small>Supply + return faces</small></div>
-                <div><span>T/Y fittings</span><strong>{materialSummary().fittingCount}</strong><small>Saved plan geometry</small></div>
+                <div><span>T Branch fittings</span><strong>{materialSummary().fittingCount}</strong><small>Saved plan geometry</small></div>
                 <div className={materialSummary().holds.length ? "attention" : "good"}><span>Fabrication holds</span><strong>{materialSummary().holds.length}</strong><small>{materialSummary().holds.length ? "Resolve before order" : "No active holds"}</small></div>
               </div>
               <div className="production-readiness-card">
@@ -17716,7 +17919,7 @@ function HVACPlanStudioApp() {
                     <AlertTriangle size={13} />
                     <span><strong>{issue.title}</strong><small>{issue.detail}</small></span>
                   </button>
-                )) : <div className="progression-clear"><CheckCircle2 size={17} /> Connected T/Y sizes progress correctly.</div>}
+                )) : <div className="progression-clear"><CheckCircle2 size={17} /> Connected T Branch sizes progress correctly.</div>}
               </div>}
               <p>Checks for downstream size growth, overly aggressive reductions, and CFM that does not reconcile across a fitting.</p>
             </div>
@@ -17777,7 +17980,7 @@ function HVACPlanStudioApp() {
             <div className="takeoff-note">Design-intent review only. Engineering objects and scheduled values govern. Field verify before fabrication and final balance.</div>
             </>}
           </div>}
-          <div className="status-card"><span className="pulse" /><div><strong>{splitMode ? "Split run mode" : calibrating && pdf ? "Scale calibration" : activeTool === "measure" && pdf ? "Measurement tool" : symbolTools.includes(activeTool as SymbolKind) && pdf ? "HVAC symbol placement" : activeTool === "branch" && pdf ? pendingBranchFittingId ? "Choose branch run" : queuedBranchRunId ? "Branch matched" : "Direct-place T/Y" : continuingRunId ? "Extending connected branch run" : draft.length ? "Drawing in progress" : pdf ? "Construction plan loaded" : "Drawing engine ready"}</strong><small>{splitMode ? "Click the duct centerline where you want two editable sections · Esc cancels" : calibrating && pdf ? `Pick two points exactly ${referenceFeet} ft apart` : activeTool === "measure" && pdf ? "Pick two points to place a field dimension" : symbolTools.includes(activeTool as SymbolKind) && pdf ? `Wheel rotates preview · Shift+wheel 45° · ${placementRotation}° · click places` : activeTool === "branch" && pdf ? branchMessage || "Click the blue trunk exactly where the T/Y belongs" : continuingRunId ? "Left-click: add route points · Shift: lock 45°/90° · Right-click: finish on the same run" : draft.length ? "Left-click: add point · Shift: lock 45°/90° · Right-click: finish · Esc: cancel" : pdf ? `${pdf.numPages} page PDF · ${drawings.length} drawing objects` : "Upload a plan to start drafting"}</small></div></div>
+          <div className="status-card"><span className="pulse" /><div><strong>{splitMode ? "Split run mode" : calibrating && pdf ? "Scale calibration" : activeTool === "measure" && pdf ? "Measurement tool" : symbolTools.includes(activeTool as SymbolKind) && pdf ? "HVAC symbol placement" : activeTool === "branch" && pdf ? pendingBranchFittingId ? "Choose branch run" : queuedBranchRunId ? "Branch matched" : "Direct-place T Branch" : continuingRunId ? "Extending connected branch run" : draft.length ? "Drawing in progress" : pdf ? "Construction plan loaded" : "Drawing engine ready"}</strong><small>{splitMode ? "Click the duct centerline where you want two editable sections · Esc cancels" : calibrating && pdf ? `Pick two points exactly ${referenceFeet} ft apart` : activeTool === "measure" && pdf ? "Pick two points to place a field dimension" : symbolTools.includes(activeTool as SymbolKind) && pdf ? `Wheel rotates preview · Shift+wheel 45° · ${placementRotation}° · click places` : activeTool === "branch" && pdf ? branchMessage || "Click the blue trunk exactly where the T Branch belongs" : continuingRunId ? "Left-click: add route points · Shift: lock 45°/90° · Right-click: finish on the same run" : draft.length ? "Left-click: add point · Shift: lock 45°/90° · Right-click: finish · Esc: cancel" : pdf ? `${pdf.numPages} page PDF · ${drawings.length} drawing objects` : "Upload a plan to start drafting"}</small></div></div>
         </aside>
       </section>
 
@@ -18354,7 +18557,7 @@ function HVACPlanStudioApp() {
             runIds: [opportunity.mainRunId, opportunity.branchRunId],
             mode: "attach-run",
           });
-          setBranchMessage("Approved T/Y preview armed · click the highlighted junction to confirm placement · Undo remains available");
+          setBranchMessage("Approved T Branch preview armed · click the highlighted junction to confirm placement · Undo remains available");
         }}
       />
       {showSystemBalanceStudio && <SystemBalanceStudio
@@ -18445,6 +18648,9 @@ function HVACPlanStudioApp() {
         }}
         onIssue={(fingerprint) => void issueSystemRelease(fingerprint)}
         onOpenPrint={openFieldPackageFromFinish}
+        onPrintPlanSet={printCurrentPlanSetPdf}
+        onExportPdf={downloadCurrentPlanSetPdf}
+        onCreateEmailDraft={createCurrentPlanEmailDraft}
         onCopySummary={() => void copyCurrentFinishJobSummary()}
         onDownloadMaterials={exportPurchaseSheetCsv}
         onDownloadRuns={exportFieldRunScheduleCsv}

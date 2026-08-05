@@ -269,7 +269,7 @@ test("provides a searchable HVAC catalog and wheel rotation before placement", a
   assert.match(source, /function symbolFamily\(preset: SymbolPreset\)/);
   assert.match(source, /className="symbol-catalog-grid"/);
   assert.match(source, /Search name, size or family/);
-  assert.match(source, /if \(symbolPreview && symbolTools\.includes\(activeTool as SymbolKind\)\)/);
+  assert.match(source, /if \(event\.altKey && symbolPreview && symbolTools\.includes\(activeTool as SymbolKind\)\)/);
   assert.match(source, /setPlacementRotation\(\(current\) => \(current \+ direction \* step \+ 360\) % 360\)/);
   assert.match(source, /rotation: placementRotation/);
   assert.match(source, /Shift\+wheel 45°/);
@@ -301,8 +301,8 @@ test("controls fitting text, connects equipment at plenums, and repositions plan
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
   assert.match(source, /const \[showFittingLabels, setShowFittingLabels\] = useState\(false\)/);
-  assert.match(source, /Show or hide T\/Y fitting names and three-size labels/);
-  assert.match(source, /<DraftingCompass size=\{14\} \/> T\/Y Text/);
+  assert.match(source, /Show or hide T Branch fitting names and three-size labels/);
+  assert.match(source, /<DraftingCompass size=\{14\} \/> T Branch Text/);
   assert.match(source, /\{showFittingLabels && <text/);
   assert.match(source, /function equipmentPlenumPorts\(selected: Drawing\)/);
   assert.match(source, /returnRunId\?: string/);
@@ -461,7 +461,7 @@ test("uses nominal icon sizes, accurate equipment identities, and selected place
   assert.ok(mark.byteLength > 500);
 });
 
-test("locks one deterministic T/Y trunk until release and keeps connections explicit", async () => {
+test("locks one deterministic T Branch trunk until release and keeps connections explicit", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const pointerDown = source.slice(
     source.indexOf("function handleDrawingClick"),
@@ -524,21 +524,22 @@ test("locks one deterministic T/Y trunk until release and keeps connections expl
   // Release is the sole direct-placement commit point; cancellation is mutation-free.
   assert.match(release, /finishDirectBranchPlacementGesture\(event, cancelled\)/);
   assert.match(gestureFinish, /if \(cancelled\)[\s\S]*?return true;/);
-  assert.match(gestureFinish, /placeSmartBranch\(releasePoint, target\)/);
+  assert.match(gestureFinish, /placeSmartBranch\(gesture\.station, target, releasePoint\)/);
   assert.equal(gestureFinish.match(/placeSmartBranch\(/g)?.length, 1);
 
-  assert.match(placement, /const placement = resolveDirectBranchPlacement\(target\)/);
+  assert.match(placement, /const placement = resolveDirectBranchPlacement\(target, intentPoint\)/);
   assert.match(placementResolution, /queuedBranchRunId[\s\S]*?queuedBranchRoute\(/);
-  assert.doesNotMatch(placementResolution, /existingBranchRoute\(/);
+  assert.match(placementResolution, /existingBranchRoute\(/);
   assert.doesNotMatch(placement, /automaticBranchOpportunity\(point\)/);
   assert.doesNotMatch(preview, /automaticBranchOpportunity\(raw\)/);
   assert.doesNotMatch(placement, /existingBranchRoute\(/);
   assert.doesNotMatch(placement, /existingThreeRunJunction\(/);
   assert.doesNotMatch(preview, /mode: "three-runs"/);
   assert.match(placement, /buildDirectBranchGeometry\(\{/);
-  assert.match(placement, /connectedIds: geometry\.connectedIds/);
-  assert.match(placement, /beginPort3BranchDraft\(fitting, "direct-placement"\)/);
-  assert.match(placement, /draw Port 3 or keep it open/);
+  assert.match(placement, /connectedIds: \[target\.drawing\.id, downstreamId, branchRunId\]/);
+  assert.match(placement, /const branchRun: Drawing = matchedRoute \?/);
+  assert.doesNotMatch(placement, /beginPort3BranchDraft\(fitting, "direct-placement"\)/);
+  assert.match(placement, /all 3 ports connected/);
   assert.match(placement, /if \(!placement\.clearance\.valid\)/);
 
   assert.match(threeRun, /!assignedRuns\.has\(drawing\.id\)/);
@@ -587,13 +588,14 @@ test("keeps numbered-port repair controls for existing incomplete fittings", asy
   assert.match(styles, /\.branch-fitting \.disconnected-port \.fitting-port/);
 });
 
-test("keeps completed T/Y fittings readable and reveals numbered ports only while connecting", async () => {
+test("keeps completed T Branch fittings readable and reveals numbered ports only while connecting", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
   assert.match(source, /const fittingFullyConnected = portStates\.every\(\(state\) => state\.connected\)/);
   assert.match(source, /const showPortGuides =[\s\S]*?pendingBranchFittingId === drawing\.id \|\|[\s\S]*?port3BranchDraft\?\.fittingId === drawing\.id/);
-  assert.match(source, /\{showPortGuides && \[inlet, outlet, branchPort\]\.map/);
+  assert.match(source, /\{\[inlet, outlet, branchPort\]\.map/);
+  assert.match(source, /showPortGuides \? "detailed-port" : "status-port"/);
   assert.match(source, /const selectedRunChromeVisible = runSelected && planSelectionActionsVisible/);
   assert.match(source, /const showRunNodeHandles = selectedRunChromeVisible \|\| Boolean\(branchCandidateClass\)/);
   assert.match(source, /\{showRunNodeHandles && drawing\.points\.map/);
@@ -617,7 +619,7 @@ test("keeps optional junction suggestions separate from explicit connection", as
   assert.match(source, /!branchPreview && branchOpportunityList\.slice\(0, 1\)/);
   assert.match(source, /scale\(\$\{fittingOverlayScale\(zoom\)\}\)/);
   assert.match(source, /<circle cx="0" cy="0" r="4\.5"/);
-  assert.equal(source.match(/>OPTIONAL T\/Y<\/text>/g)?.length, 1);
+  assert.equal(source.match(/>OPTIONAL T BRANCH<\/text>/g)?.length, 1);
   assert.match(styles, /\.branch-opportunity-marker circle/);
   assert.match(styles, /\.branch-opportunity-marker \{ pointer-events: none; \}/);
   assert.doesNotMatch(styles, /\.branch-opportunity-marker circle \{[^}]*drop-shadow/);
@@ -626,16 +628,16 @@ test("keeps optional junction suggestions separate from explicit connection", as
   assert.match(source, /Connect (?:these )?3 existing runs/i);
 });
 
-test("explains press-drag-release T/Y placement and the open Port 3 fallback", async () => {
+test("explains press-drag-release T Branch placement and connected branch fallback", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  assert.match(source, /DIRECT-PLACE T\/Y/);
+  assert.match(source, /DIRECT-PLACE T BRANCH/);
   assert.match(source, /Press (?:on )?(?:the )?(?:blue )?trunk/i);
   assert.match(source, /drag/i);
   assert.match(source, /release/i);
   assert.match(source, /Connect (?:these )?3 existing runs/i);
-  assert.match(source, /Redline still places the fitting there and opens Port 3 for you to draw/);
+  assert.match(source, /a connected branch run starts in your drag direction so all three ports stay live/);
   assert.doesNotMatch(source, /click where a branch meets the trunk/i);
   assert.doesNotMatch(source, /RUN-FIRST T\/Y PASS/);
   assert.doesNotMatch(source, /Pick next diffuser run/);
@@ -822,12 +824,12 @@ test("reserves occupied run endpoints and never prepares the same endpoint twice
   assert.equal(prepareConnectionRepairBatch(plan, [unbound.id], plan.fingerprint).ok, false);
 });
 
-test("makes STEP 1 preview-first and preserves placed objects and saved T/Y topology", async () => {
+test("makes STEP 1 preview-first and preserves placed objects and saved T Branch topology", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const repair = await readFile(new URL("../app/connectionRepair.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  assert.match(page, /Equipment, cans, and T\/Y ports/);
+  assert.match(page, /Equipment, cans, and T Branch ports/);
   assert.match(page, /Open \$\{activeConnectionRepairIssues\.length\} connection fix/);
   assert.match(page, /Add this fix/);
   assert.match(page, /Apply \{selectedReadyConnectionRepairIds\.length\} selected · one Undo/);
@@ -835,7 +837,7 @@ test("makes STEP 1 preview-first and preserves placed objects and saved T/Y topo
   assert.match(page, /run\.points\[endpointIndex\] = \{ \.\.\.operation\.to \}/);
   assert.doesNotMatch(page, /device\.points = \[\{ \.\.\.nearest\.endpoint \}\]/);
   assert.doesNotMatch(page, /function repairActiveSystemNetwork[\s\S]{0,500}reattachFittingIn/);
-  assert.match(repair, /The saved run end can snap back to this exact T\/Y port/);
+  assert.match(repair, /The saved run end can snap back to this exact T Branch port/);
   assert.match(repair, /run\.page === target\.page/);
   assert.match(repair, /run\.systemId === target\.systemId/);
   assert.match(repair, /run\.type === target\.ductType/);
@@ -856,7 +858,7 @@ test("deletes runs and icons without leaving the page or broken drawing referenc
   assert.match(source, /Run deleted · connected icons and fitting ports safely detached · Undo restores it/);
 });
 
-test("deletes connected or open-Port-3 T/Y fittings and heals the clicked trunk", async () => {
+test("deletes connected or open-Port-3 T Branch fittings and heals the clicked trunk", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const deletion = source.slice(
     source.indexOf("function removeFittingAndHeal"),
@@ -871,14 +873,14 @@ test("deletes connected or open-Port-3 T/Y fittings and heals the clicked trunk"
   assert.match(deletion, /clearDeletedDrawingState\(\[fitting\.id\]\)/);
   assert.match(deletion, /setHistory\(\[\.\.\.retained, healedMain\]\)/);
   assert.doesNotMatch(deletion, /connectedIds\[2\].*required|if \(!.*connectedIds\[2\]\).*return/);
-  assert.match(source, /T\/Y fitting deleted · incomplete routes kept in place · Undo restores it/);
-  assert.match(source, /T\/Y fitting deleted · main run healed · branch route kept · Undo restores it/);
+  assert.match(source, /T Branch fitting deleted · incomplete routes kept in place · Undo restores it/);
+  assert.match(source, /T Branch fitting deleted · main run healed · branch route kept · Undo restores it/);
   assert.doesNotMatch(source, /setSelectedId\(branchId\)/);
   assert.match(source, /selectedDrawing\?\.fitting \? <div className="fitting-properties">/);
   assert.match(source, /\{selectedRun && <div className="engineering-properties">/);
 });
 
-test("keeps the workspace recoverable and matches T/Y legs to run line weights", async () => {
+test("keeps the workspace recoverable and matches T Branch legs to run line weights", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
@@ -895,7 +897,7 @@ test("keeps the workspace recoverable and matches T/Y legs to run line weights",
   assert.match(source, /function fittingPortVisual\(fitting: Drawing, port: 0 \| 1 \| 2\)/);
   assert.match(source, /strokeWidth: portVisuals\[0\]\.strokeWidth/);
   assert.match(source, /portSizes\.join\("×"\)/);
-  assert.match(source, /connected T\/Y leg matched automatically/);
+  assert.match(source, /connected T Branch leg matched automatically/);
   assert.match(source, /lineWeight: normalizedRunLineWeight\(drawing\.lineWeight\)/);
   assert.match(styles, /\.line-weight-control/);
   assert.match(styles, /\.workspace-recovery-screen/);
@@ -1040,7 +1042,7 @@ test("blocks orphan runs and preserves device face and neck sizes in takeoff", a
   assert.match(source, /coveredEndpoints\.has\(endpointKey\(run\.id, "start"\)\)/);
   assert.match(source, /coveredEndpoints\.has\(endpointKey\(run\.id, "end"\)\)/);
   assert.match(source, /connected: connection\.connected/);
-  assert.match(source, /Open or detached T\/Y port/);
+  assert.match(source, /Open or detached T Branch port/);
   assert.match(source, /const neckSize = drawing\.symbol\?\.neckSize/);
   assert.match(source, /Supply can \/ plenum box", size: `Ø\$\{group\.neckSize\}" neck`/);
   assert.match(source, /`\$\{group\.size\} face · match \$\{group\.label\.toLowerCase\(\)\}`/);
@@ -1092,8 +1094,8 @@ test("keeps the reader foundation and adds v120 smart plan setup without removin
   assert.match(page, /runTouchesPoint\(symbol\.symbol\?\.connectedRunId, "supply", plenums\.supply, symbol\.symbol\?\.connectedEnd\)/);
   assert.match(page, /runTouchesPoint\(symbol\.symbol\?\.returnRunId, "return", plenums\.return, symbol\.symbol\?\.returnEnd\)/);
   assert.match(page, /symbol\.symbol\?\.returnRunId/);
-  assert.match(page, /equipment supply plenum, T\/Y port, or supply terminal/);
-  assert.match(page, /equipment return plenum, T\/Y port, or return grille/);
+  assert.match(page, /equipment supply plenum, T Branch port, or supply terminal/);
+  assert.match(page, /equipment return plenum, T Branch port, or return grille/);
   assert.match(page, /instanceKey: `port-\$\{port \+ 1\}`/);
   assert.match(page, /legacyId: `review-\$\{stableTextHash/);
   assert.match(page, /reviewDecisionForIssue/);

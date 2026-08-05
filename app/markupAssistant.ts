@@ -188,7 +188,7 @@ export function buildMarkupRecommendations(input: {
       evidenceFingerprint: branchEvidenceFingerprint,
       severity: "info",
       category: "Branch strategy",
-      title: `T/Y junction opportunity ${index + 1}`,
+      title: `T Branch junction opportunity ${index + 1}`,
       detail: `Two already-drawn supply runs align for a reviewable ${opportunity.style === "wye45" ? "45° wye" : "90° tee"} junction. No duct or fitting has been placed.`,
       whyItMatters: "Reviewing junctions after the runs are drawn preserves the trunk-first workflow and avoids invented branch stubs.",
       proposedAction: "Open the run-first branch pass, inspect the highlighted junction, and place only the fitting you approve.",

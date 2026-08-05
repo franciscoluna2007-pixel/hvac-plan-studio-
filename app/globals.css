@@ -446,7 +446,8 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .selection-box.crossing text { fill: #168957; }
 .duct-line, .draft-drawing polyline { fill: none; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .draft-drawing polyline { stroke-width: 4; stroke-dasharray: 8 5; }
-.hit-line { fill: none; stroke: transparent; stroke-width: 18; vector-effect: non-scaling-stroke; cursor: pointer; }
+.hit-line { fill: none; stroke: transparent; stroke-width: 22; vector-effect: non-scaling-stroke; cursor: grab; pointer-events: stroke; }
+.hit-line:active { cursor: grabbing; }
 .drawing-layer text { fill: #05080d; paint-order: stroke; stroke: white; stroke-width: 4px; stroke-linejoin: round; font: 700 13px var(--font-geist-sans), sans-serif; pointer-events: none; }
 .drawing-layer text.run-label { pointer-events: all; cursor: grab; user-select: none; }
 .drawing-layer text.run-label:hover,
@@ -525,6 +526,9 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .branch-fitting .port-role { fill: #5a4710; stroke: white; stroke-width: 2.5px; font: 900 5.5px var(--font-geist-sans); letter-spacing: .5px; }
 .branch-fitting .connected-port .fitting-port { fill: #dfffee; stroke: #0b995d; }
 .branch-fitting .disconnected-port .fitting-port { fill: #ffe1e3; stroke: #c82431; stroke-dasharray: 2 1; filter: drop-shadow(0 0 3px #ef4444); }
+.branch-fitting .status-port { pointer-events: none; }
+.branch-fitting .status-port.connected-port .fitting-port { filter: drop-shadow(0 0 2px #0b995d); }
+.branch-fitting .status-port.disconnected-port .fitting-port { stroke-width: 2.5; }
 .branch-fitting .disconnected-port .port-number { fill: #9a1620; }
 .branch-fitting .overloaded-port .fitting-port { fill: #ffe3e3; stroke: #c81e2b; }
 .branch-fitting .overloaded-port .fitting-port-size,
@@ -546,6 +550,10 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .selected-fitting > path { stroke-width: 8; filter: drop-shadow(0 0 4px white); }
 .branch-fitting.connection-confirmed .fitting-leg { stroke: #26b978; filter: drop-shadow(0 0 3px #39d98a); }
 .branch-fitting .connection-confirmed-label { fill: #087346; stroke: white; stroke-width: 3px; font: 900 8px var(--font-geist-sans); letter-spacing: .6px; }
+.fitting-rotation-control > line { stroke: #0b7f9d; stroke-width: 1.5; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; pointer-events: none; }
+.fitting-rotation-control .rotation-handle-hit { fill: transparent; stroke: transparent; pointer-events: all; cursor: grab; }
+.fitting-rotation-control .rotation-handle { fill: #fff; stroke: #0b7f9d; stroke-width: 2.5; vector-effect: non-scaling-stroke; pointer-events: none; filter: drop-shadow(0 1px 2px #0b51664d); }
+.fitting-rotation-control:active .rotation-handle-hit { cursor: grabbing; }
 .branch-opportunity-marker { pointer-events: none; }
 .branch-opportunity-marker circle { fill: #39d98a1a; stroke: #0b8b57; stroke-width: 1.25; stroke-dasharray: 2 2; vector-effect: non-scaling-stroke; }
 .branch-opportunity-marker text { fill: #087346; stroke: white; stroke-width: 1.5px; paint-order: stroke; font: 900 7px var(--font-geist-sans); }
@@ -561,6 +569,7 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .branch-preview .preview-port-role { fill: #5a4300; stroke: white; stroke-width: 2.4px; font: 900 5.5px var(--font-geist-sans); letter-spacing: .6px; }
 .branch-preview .preview-trunk-label, .branch-preview .preview-run-label { fill: #096f91; stroke: white; stroke-width: 3px; font: 900 7px var(--font-geist-sans); letter-spacing: .7px; }
 .branch-preview > path.candidate-endpoint-guide { stroke: #19a96b; stroke-width: 2.5; stroke-dasharray: 5 4; opacity: 1; filter: drop-shadow(0 0 3px #39d98a); }
+.branch-preview > path.branch-intent-guide { stroke: #0b7f9d; stroke-width: 2; stroke-dasharray: 4 3; opacity: .86; }
 .branch-preview .candidate-endpoint { fill: #dfffee; stroke: #07945a; stroke-width: 2.5; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 4px #39d98a); }
 .branch-preview .candidate-endpoint-label { fill: #087346; stroke: white; stroke-width: 3px; font: 900 7px var(--font-geist-sans); letter-spacing: .5px; }
 .branch-preview.invalid > circle:first-child { fill: #dd394414; stroke: #dd3944; }
@@ -15458,11 +15467,21 @@ textarea:focus-visible,
   }
 
   .finish-revision-fields,
-  .finish-output-actions {
+  .finish-output-actions,
+  .finish-email-review {
     grid-template-columns: 1fr;
   }
 
   .finish-revision-fields label.wide {
+    grid-column: auto;
+  }
+
+  .finish-email-heading,
+  .finish-email-attachment,
+  .finish-email-review > label:nth-of-type(3),
+  .finish-email-confirm,
+  .finish-email-create,
+  .finish-email-review > p {
     grid-column: auto;
   }
 
@@ -16519,6 +16538,105 @@ textarea:focus-visible,
     display: none !important;
   }
 }
+
+.finish-email-review {
+  margin-top: 12px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 11px;
+  border: 1px solid #315268;
+  border-radius: 12px;
+  background: #0b1a25;
+}
+
+.finish-email-heading,
+.finish-email-attachment {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.finish-email-heading span,
+.finish-email-attachment span {
+  min-width: 0;
+}
+
+.finish-email-heading strong,
+.finish-email-heading small,
+.finish-email-attachment strong,
+.finish-email-attachment small {
+  display: block;
+}
+
+.finish-email-heading strong { color: #eef7fa; font-size: 14px; }
+.finish-email-heading small,
+.finish-email-attachment small { margin-top: 2px; color: #89a2b1; font-size: 12px; }
+
+.finish-email-review > label:not(.finish-email-confirm) {
+  display: grid;
+  gap: 5px;
+  color: #a8beca;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.finish-email-review > label:nth-of-type(3) { grid-column: 1 / -1; }
+
+.finish-email-review input,
+.finish-email-review textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 10px;
+  color: #edf7f8;
+  border: 1px solid #365164;
+  border-radius: 8px;
+  background: #07131c;
+  font: inherit;
+  font-size: 14px;
+}
+
+.finish-email-review textarea { min-height: 76px; resize: vertical; }
+.finish-email-review input:focus-visible,
+.finish-email-review textarea:focus-visible { outline: 2px solid #5dd7e9; outline-offset: 2px; }
+
+.finish-email-attachment {
+  padding: 10px;
+  color: #8ce5bd;
+  border: 1px solid #285746;
+  border-radius: 9px;
+  background: #0b211a;
+}
+
+.finish-email-attachment strong { color: #d8f4e7; font-size: 13px; }
+
+.finish-email-confirm {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  color: #d6e5e9;
+  cursor: pointer;
+}
+
+.finish-email-confirm input { position: absolute; opacity: 0; pointer-events: none; }
+.finish-email-confirm > span {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #547080;
+  border-radius: 5px;
+  background: #07131c;
+}
+.finish-email-confirm.checked > span { color: #071b14; border-color: #5bd99a; background: #5bd99a; }
+.finish-email-confirm:focus-within > span { outline: 2px solid #5dd7e9; outline-offset: 2px; }
+.finish-email-confirm strong { font-size: 13px; }
+
+.finish-email-create { min-height: 46px; grid-column: 1 / -1; justify-content: center; }
+.finish-email-review > p { grid-column: 1 / -1; margin: 0; color: #8199a7; font-size: 12px; line-height: 1.45; }
 
 /* v149 — Field Command Console
    Calm layered surfaces frame the source plan. Raised treatment is reserved
