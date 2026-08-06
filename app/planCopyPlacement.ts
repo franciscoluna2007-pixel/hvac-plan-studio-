@@ -127,9 +127,11 @@ export function buildPlanAssemblyCopyTemplate<
   const sources = drawings
     .filter((drawing) => drawing.page === sourcePage && ids.has(drawing.id))
     .filter((drawing) =>
-      drawing.type === "supply" || Boolean(drawing.fitting) || Boolean(drawing.symbol))
+      ["supply", "return"].includes(drawing.type) ||
+      Boolean(drawing.fitting) ||
+      Boolean(drawing.symbol))
     .map(clone);
-  if (!sources.some((drawing) => drawing.type === "supply")) return null;
+  if (!sources.some((drawing) => ["supply", "return"].includes(drawing.type))) return null;
   const points = sources.flatMap((drawing) => drawing.points);
   if (!points.length) return null;
   return {

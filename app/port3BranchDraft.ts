@@ -10,6 +10,7 @@ export type Port3BranchDraftState = {
   systemId: string;
   anchor: Port3Point;
   origin?: "existing-fitting" | "direct-placement";
+  networkKind?: "supply" | "return";
 };
 
 export function port3UndoDisposition({
@@ -34,6 +35,7 @@ type Port3Fitting = {
 
 export type Port3ConnectableDrawing = {
   id: string;
+  type?: string;
   points: Port3Point[];
   size: string;
   page: number;
@@ -93,7 +95,8 @@ export function commitPort3Branch<T extends Port3ConnectableDrawing>({
     fitting.page !== draft.page ||
     fitting.systemId !== draft.systemId ||
     run.page !== draft.page ||
-    run.systemId !== draft.systemId
+    run.systemId !== draft.systemId ||
+    (draft.networkKind != null && run.type !== draft.networkKind)
   ) {
     return { ok: false, reason: "wrong-context" };
   }

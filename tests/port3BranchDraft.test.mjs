@@ -121,6 +121,17 @@ test("existing-run attachment rejects near-parallel branch geometry", () => {
   assert.equal(branchLeavesTrunkAtClearAngle(0, Math.PI / 2), true);
 });
 
+test("return Port 3 commit follows the same atomic path and rejects cross-network routes", () => {
+  const { draft, fitting, run } = fixture();
+  const returnDraft = { ...draft, networkKind: "return" };
+  const returnRun = { ...run, type: "return" };
+  const result = commitPort3Branch({ drawings: [fitting], draft: returnDraft, run: returnRun });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.drawings[0].fitting.connectedIds, ["upstream", "downstream", "branch-1"]);
+  assert.equal(result.drawings[1].type, "return");
+  assert.equal(commitPort3Branch({ drawings: [fitting], draft: returnDraft, run }).reason, "wrong-context");
+});
+
 test("one Undo rolls a newly direct-placed fitting back through history", () => {
   assert.equal(port3UndoDisposition({
     draftPointCount: 1,

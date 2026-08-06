@@ -44,6 +44,8 @@ test("all standalone HVAC symbols can become immutable mouse templates", () => {
     "returnGrille",
     "equipment",
     "fan",
+    "rangeHood",
+    "dryerVent",
     "damper",
     "motorDamper",
     "reducer",
@@ -231,4 +233,21 @@ test("repeated assembly pastes remap every identity and never reconnect to the s
   assert.equal(new Set([...first, ...second].map((drawing) => drawing.id)).size, 8);
   assert.ok(first.find((drawing) => drawing.fitting).fitting.connectedIds.every((id) => id.startsWith("one-")));
   assert.ok(second.find((drawing) => drawing.fitting).fitting.connectedIds.every((id) => id.startsWith("two-")));
+});
+
+test("connected return assemblies use the same immutable copy path", () => {
+  const drawings = [
+    { id: "return-a", type: "return", points: [{ x: 0, y: 0 }, { x: 40, y: 0 }], page: 1, size: "12" },
+    { id: "fit", type: "branch", points: [{ x: 45, y: 0 }], page: 1, size: "12x10x8", fitting: { connectedIds: ["return-a", "return-b", "return-c"] } },
+    { id: "return-b", type: "return", points: [{ x: 50, y: 0 }, { x: 90, y: 0 }], page: 1, size: "10" },
+    { id: "return-c", type: "return", points: [{ x: 45, y: 5 }, { x: 45, y: 45 }], page: 1, size: "8" },
+  ];
+  const template = copy.buildPlanAssemblyCopyTemplate(drawings, ["return-a"], "pdf-a");
+  assert.equal(template.version, 2);
+  assert.deepEqual(template.sources.map((drawing) => drawing.id), ["return-a", "fit", "return-b", "return-c"]);
+  const placed = copy.materializePlanAssemblyCopy(template, {
+    sourceFingerprint: "pdf-a", page: 1, point: { x: 200, y: 200 }, idFor: (id) => `copy-${id}`,
+  });
+  assert.equal(placed.filter((drawing) => drawing.type === "return").length, 3);
+  assert.deepEqual(placed.find((drawing) => drawing.fitting).fitting.connectedIds, ["copy-return-a", "copy-return-b", "copy-return-c"]);
 });

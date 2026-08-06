@@ -335,7 +335,7 @@ test("Port 3 routes resolve once, lock their fitting, and use the live fitting a
   );
   assert.match(
     activatePlanTool,
-    /port3BranchDraft && tool !== "supply"[\s\S]*?!port3BranchResolvedRef\.current[\s\S]*?finishDrawing\(\)/,
+    /port3BranchDraft && tool !== \(port3BranchDraft\.networkKind \|\| "supply"\)[\s\S]*?!port3BranchResolvedRef\.current[\s\S]*?finishDrawing\(\)/,
   );
 
   const finishDrawing = page.slice(

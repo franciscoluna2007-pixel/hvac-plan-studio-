@@ -54,6 +54,8 @@ export function projectDirectBranchStation(
 
 export type DirectBranchInputType = "mouse" | "pen" | "touch";
 
+export type DirectBranchNetworkKind = "supply" | "return";
+
 export function resolveDirectBranchIntent({
   center,
   mainAngle,
@@ -115,6 +117,7 @@ export function resolveDirectBranchTrunkCandidate<T extends DirectBranchRun>({
   inputType,
   radiusPx,
   ambiguityPx = 6,
+  networkKinds = ["supply"],
 }: {
   point: DirectBranchPoint;
   runs: readonly T[];
@@ -126,6 +129,7 @@ export function resolveDirectBranchTrunkCandidate<T extends DirectBranchRun>({
   inputType: DirectBranchInputType;
   radiusPx?: Partial<Record<DirectBranchInputType, number>>;
   ambiguityPx?: number;
+  networkKinds?: readonly DirectBranchNetworkKind[];
 }): DirectBranchTrunkCandidate<T> | null {
   const resolvedZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
   const resolvedRadiusPx = radiusPx?.[inputType] ?? DIRECT_BRANCH_PICK_RADIUS_PX[inputType];
@@ -136,7 +140,7 @@ export function resolveDirectBranchTrunkCandidate<T extends DirectBranchRun>({
     if (
       run.id === ignoredRunId ||
       run.page !== page ||
-      run.type !== "supply" ||
+      !networkKinds.includes(run.type as DirectBranchNetworkKind) ||
       run.eligible === false ||
       run.visible === false ||
       run.locked === true ||
@@ -472,6 +476,7 @@ export function chooseSafeLocalBranchEndpoint<T extends DirectBranchRun>({
   radiusPx,
   ambiguityPx,
   resolveBranchPort,
+  networkKind = "supply",
 }: {
   center: DirectBranchPoint;
   mainRunId: string;
@@ -483,6 +488,7 @@ export function chooseSafeLocalBranchEndpoint<T extends DirectBranchRun>({
   runs: readonly T[];
   radiusPx: number;
   ambiguityPx: number;
+  networkKind?: DirectBranchNetworkKind;
   resolveBranchPort: (candidate: {
     run: T;
     endpointIndex: number;
@@ -497,7 +503,7 @@ export function chooseSafeLocalBranchEndpoint<T extends DirectBranchRun>({
       run.eligible === false ||
       assignedRunIds.has(run.id) ||
       run.page !== page ||
-      run.type !== "supply" ||
+      run.type !== networkKind ||
       run.systemId !== systemId ||
       run.points.length < 2
     ) continue;
