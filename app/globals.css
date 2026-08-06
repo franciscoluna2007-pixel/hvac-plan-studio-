@@ -23336,6 +23336,145 @@ footer {
   background: color-mix(in srgb, var(--material-critical) 8%, var(--material-panel));
 }
 
+.material-order-header {
+  padding: 18px 16px 14px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--material-line, #d5d7da);
+}
+
+.material-order-header strong,
+.material-order-header small {
+  display: block;
+}
+
+.material-order-header strong {
+  color: var(--material-ink, #111318);
+  font-size: 20px;
+  letter-spacing: -.02em;
+}
+
+.material-order-header small {
+  margin-top: 4px;
+  color: var(--material-muted, #5d626b);
+  font-size: 12px;
+}
+
+.material-order-header > b {
+  color: var(--material-blue, #002fa7);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.material-advisory {
+  width: calc(100% - 24px);
+  margin: 2px 12px 10px;
+  padding: 10px 11px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-align: left;
+  color: var(--material-warning, #9a5b00);
+  border: 1px solid color-mix(in srgb, var(--material-warning, #9a5b00) 34%, var(--material-line, #d5d7da));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--material-warning, #9a5b00) 6%, var(--material-panel, #fff));
+}
+
+.material-advisory span,
+.material-advisory strong,
+.material-advisory small {
+  display: block;
+}
+
+.material-advisory small {
+  margin-top: 2px;
+  color: inherit;
+  font-size: 11px;
+}
+
+.material-order-list {
+  border-top: 1px solid var(--material-line, #d5d7da);
+}
+
+.material-order-group + .material-order-group {
+  border-top: 8px solid var(--material-panel-muted, #f4f5f6);
+}
+
+.material-order-group h3 {
+  margin: 0;
+  padding: 10px 12px 7px;
+  color: var(--material-muted, #5d626b);
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.material-order-group .takeoff-row {
+  min-height: 54px;
+  padding: 9px 12px;
+  color: var(--material-ink, #111318);
+  border-color: var(--material-line, #d5d7da);
+}
+
+.material-order-group .takeoff-row strong {
+  color: var(--material-ink, #111318);
+  font-size: 13px;
+}
+
+.material-order-group .takeoff-row small,
+.material-order-group .takeoff-row em {
+  display: block;
+  margin-top: 3px;
+  color: var(--material-muted, #5d626b);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.material-order-group .takeoff-row b {
+  color: var(--material-blue, #002fa7);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.material-breakdown-toggle {
+  min-height: 36px;
+  margin: 12px;
+  padding: 0 12px;
+  color: var(--material-blue, #002fa7);
+  border: 1px solid var(--material-blue-line, #91a7d8);
+  border-radius: 8px;
+  background: var(--material-blue-soft, #edf2ff);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.finish-plan-check-action {
+  min-height: 34px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--material-blue, #002fa7);
+  border: 1px solid var(--material-blue-line, #91a7d8);
+  border-radius: 8px;
+  background: var(--material-blue-soft, #edf2ff);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .takeoff-panel .takeoff-note {
+  margin: 12px;
+  padding: 0;
+  color: var(--material-muted);
+  border: 0;
+  background: transparent;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-tabs {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   border-color: var(--material-line);

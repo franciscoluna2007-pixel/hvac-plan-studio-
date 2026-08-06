@@ -37,6 +37,7 @@ export type FinishJobMaterialRow = {
   size: string;
   quantity: string;
   note: string;
+  breakdown?: string;
 };
 
 type ChecklistItem = {
@@ -73,6 +74,7 @@ type Props = {
   materialFittingCount: number;
   materialHoldCount: number;
   materialReview?: MaterialReview;
+  planCheckCount: number;
   checklist: ChecklistItem[];
   release: ReleaseSummary;
   revision: string;
@@ -97,6 +99,7 @@ type Props = {
   onCreateEmailDraft: (input: { recipient: string; subject: string; message: string }) => Promise<void>;
   onCopySummary: () => void;
   onDownloadMaterials: () => void;
+  onOpenPlanCheck: () => void;
   onDownloadRuns: () => void;
   onDownloadRelease: () => void;
 };
@@ -151,6 +154,7 @@ export default function FinishJobStudio({
   materialFittingCount,
   materialHoldCount,
   materialReview,
+  planCheckCount,
   checklist,
   release,
   revision,
@@ -175,6 +179,7 @@ export default function FinishJobStudio({
   onCreateEmailDraft,
   onCopySummary,
   onDownloadMaterials,
+  onOpenPlanCheck,
   onDownloadRuns,
   onDownloadRelease,
 }: Props) {
@@ -262,6 +267,9 @@ export default function FinishJobStudio({
           </div>
         </div>
         <div className="finish-job-header-status" aria-live="polite">
+          <button className="finish-plan-check-action" disabled={issuing} onClick={onOpenPlanCheck}>
+            <ShieldCheck size={15} /> Check plan{planCheckCount ? ` · ${planCheckCount}` : ""}
+          </button>
           <span><b>{model.progress}%</b><small>{model.jobReady ? "READY" : `${5 - model.completedSteps} LEFT`}</small></span>
           <button disabled={issuing} aria-label="Close Finish the Job" onClick={onClose}><X size={19} /></button>
         </div>
@@ -341,7 +349,7 @@ export default function FinishJobStudio({
               <summary><PackageCheck size={16} /> Review all {materialRows.length} material items</summary>
               <div>
                 {materialRows.map((row, index) => <article key={`${row.item}-${row.size}-${index}`}>
-                  <span><i>{row.category}</i><strong>{row.item}</strong><small>{row.size} · {row.note}</small></span>
+                  <span><i>{row.category}</i><strong>{row.item}</strong><small>{row.size}</small></span>
                   <b>{row.quantity}</b>
                 </article>)}
               </div>
