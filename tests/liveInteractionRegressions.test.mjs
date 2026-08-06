@@ -74,13 +74,23 @@ test("right-clicking a plan item opens the primary compact Copy menu without sta
     "function handleViewportPointerMoveCapture",
   );
   assert.match(viewportDown, /closest\("\[data-plan-drawing-id\]"\)/);
-  assert.match(viewportDown, /event\.button === 2[\s\S]*?setPlanContextMenu\(/);
-  assert.match(viewportDown, /if \(!selectedIds\.includes\(planDrawingId\)\) selectOnly\(planDrawingId\)/);
+  assert.match(viewportDown, /event\.button === 2[\s\S]*?openPlanContextMenu\(/);
+  assert.match(page, /if \(!selectedIds\.includes\(drawing\.id\)\) selectOnly\(drawing\.id\)/);
   assert.match(page, /className="plan-context-menu"/);
   assert.match(page, /role="menuitem"/);
+  assert.match(page, /ref=\{planContextMenuRef\}/);
+  assert.match(page, /closePlanContextMenu\(true\)/);
   assert.match(page, /<Copy size=\{15\} \/> Copy/);
   assert.match(page, /data-plan-drawing-id=\{preview \? undefined : drawing\.id\}/);
   assert.match(page, /data-plan-drawing-id=\{isCopyPreview \? undefined : drawing\.id\}/);
+});
+
+test("core plan objects expose selection and context-menu keyboard access", () => {
+  assert.match(page, /function handlePlanDrawingKeyDown/);
+  assert.match(page, /event\.key === "ContextMenu" \|\| \(event\.shiftKey && event\.key === "F10"\)/);
+  assert.match(page, /aria-label=\{preview \? undefined : planDrawingAccessibleLabel\(drawing\)\}/);
+  assert.match(page, /tabIndex=\{isCopyPreview \? undefined : 0\}/);
+  assert.match(page, /aria-pressed=\{isCopyPreview \? undefined : runSelected\}/);
 });
 
 test("T Branch placement never manufactures a surprise third run", () => {

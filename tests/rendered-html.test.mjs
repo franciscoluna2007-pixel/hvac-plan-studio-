@@ -186,8 +186,8 @@ test("leads solo HVAC operators through four job steps and keeps Field Redline s
   assert.match(page, /id: "field-redline",\s*label: "Open Field Redline Studio"/);
   assert.match(page, /className="field-first-guide"/);
   assert.match(page, /const \[rightPanelOpen, setRightPanelOpen\] = useState\(false\)/);
-  assert.match(page, /function openToolsPanel\(\) \{\s*setLeftPanelOpen\(true\);\s*setRightPanelOpen\(false\)/);
-  assert.match(page, /function openInspectorPanel\(\) \{\s*setRightPanelOpen\(true\);\s*setLeftPanelOpen\(false\)/);
+  assert.match(page, /function openToolsPanel\(\) \{\s*setLeftPanelOpen\(true\);\s*if \(workspaceLayout !== "desktop"\) setRightPanelOpen\(false\)/);
+  assert.match(page, /function openInspectorPanel\(\) \{\s*setRightPanelOpen\(true\);\s*if \(workspaceLayout !== "desktop"\) setLeftPanelOpen\(false\)/);
   assert.match(page, /left-panel-tabs/);
   assert.match(home, /WORKFLOW/);
   assert.match(home, /Open plan/);
@@ -829,11 +829,10 @@ test("makes STEP 1 preview-first and preserves placed objects and saved T Branch
   const repair = await readFile(new URL("../app/connectionRepair.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  assert.match(page, /Equipment, cans, and T Branch ports/);
-  assert.match(page, /Review \$\{activeConnectionRepairIssues\.length\} connection item/);
-  assert.match(page, /Add this fix/);
-  assert.match(page, /Apply \{selectedReadyConnectionRepairIds\.length\} selected · one Undo/);
-  assert.match(page, /0<\/strong> placed objects move/);
+  assert.match(page, /connectionRepairItems=\{activeConnectionRepairIssues\}/);
+  assert.match(page, /onChooseConnectionCandidate=\{\(itemId, candidateId\) =>/);
+  assert.match(page, /onApplyConnectionRepair=\{\(input\) =>/);
+  assert.doesNotMatch(page, /Add this fix|selectedReadyConnectionRepairIds\.length\} selected/);
   assert.match(page, /run\.points\[endpointIndex\] = \{ \.\.\.operation\.to \}/);
   assert.doesNotMatch(page, /device\.points = \[\{ \.\.\.nearest\.endpoint \}\]/);
   assert.doesNotMatch(page, /function repairActiveSystemNetwork[\s\S]{0,500}reattachFittingIn/);
@@ -1151,7 +1150,7 @@ test("ships v112 System Balance Studio with reviewed calculations and manual geo
   const model = await readFile(new URL("../app/systemBalance.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  assert.match(page, /import SystemBalanceStudio from "\.\/SystemBalanceStudio"/);
+  assert.match(page, /dynamic\(\(\) => import\("\.\/SystemBalanceStudio"\)/);
   assert.match(page, /<SystemBalanceStudio/);
   assert.match(page, /function buildSystemBalanceModel\(\): SystemBalanceModel/);
   assert.match(page, /function openSystemBalanceStudio\(\)/);
@@ -1178,7 +1177,8 @@ test("ships v112 System Balance Studio with reviewed calculations and manual geo
   assert.match(page, /openSizeRecommendations: model\.runs\.length/);
   assert.match(page, /evidenceFingerprint: model\.evidenceFingerprint/);
   assert.match(page, /function exportSystemBalanceRunCsv\(\)/);
-  assert.match(page, /showSystemBalanceStudio && <SystemBalanceStudio/);
+  assert.match(page, /mountSystemBalanceStudio && <SystemBalanceStudio/);
+  assert.match(page, /open=\{showSystemBalanceStudio\}/);
   assert.doesNotMatch(page, /const activeSystemBalanceModel = buildSystemBalanceModel\(\)/);
   assert.match(studio, /AIRFLOW &amp; DUCT SIZES/);
   assert.match(studio, /TRANSPARENT DUCT SIZE REVIEW · V112/);
@@ -1375,7 +1375,8 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   const roadmap = await readFile(new URL("../ROADMAP.md", import.meta.url), "utf8");
 
-  assert.match(page, /import MarkupAssistantStudio, \{[\s\S]{0,100}type PlanHelperPrimaryView,[\s\S]{0,40}\} from "\.\/MarkupAssistantStudio"/);
+  assert.match(page, /import type \{ FixPlanIssueAnswer, PlanHelperPrimaryView \} from "\.\/MarkupAssistantStudio"/);
+  assert.match(page, /dynamic\(\(\) => import\("\.\/MarkupAssistantStudio"\)/);
   assert.match(page, /buildRepairPlan/);
   assert.match(page, /buildTakeoffImpact/);
   assert.match(page, /buildAdvancedPlanIntelligence/);
@@ -1390,31 +1391,28 @@ test("ships the v113-v115 Guided Repair Plan as a stale-safe, one-Undo workflow"
   assert.match(studio, /PLAN CHECK/);
   assert.match(studio, /item\{combinedFixActions\.length === 1 \? "" : "s"\} to review/);
   assert.match(studio, /aria-modal="false"/);
-  assert.match(studio, /Check only/);
-  assert.match(studio, /Prepare fixes/);
-  assert.match(studio, /Apply approved fixes/);
-  assert.match(studio, /GUIDED REPAIR PLAN/);
-  assert.match(studio, /This repair plan is stale\./);
-  assert.match(studio, /MATERIAL IMPACT/);
-  assert.match(studio, /Before → after purchasing impact/);
-  assert.match(studio, /ONE CONTROLLED TRANSACTION/);
-  assert.match(studio, /I reviewed each selected problem, proposed fix, expected result, and affected plan object/);
-  assert.match(studio, /Nothing is selected automatically\. Connection, airflow, and size steps never mix\./);
-  assert.match(studio, /Select safe fixes in this step \(\$\{readyActions\.length\}\)/);
+  assert.match(studio, /className="fix-plan-unified" aria-label="Plan Check"/);
+  assert.match(studio, /1 · WHERE/);
+  assert.match(studio, /2 · WHAT IS WRONG/);
+  assert.match(studio, /4 · EXPECTED RESULT/);
+  assert.match(studio, /className="repair-plan-stale" role="alert"/);
+  assert.match(studio, /FINAL CHECK · ONE UNDO/);
+  assert.match(studio, /Apply this fix · one Undo/);
+  assert.match(studio, /I reviewed the problem, proposed fix, result, and affected object/);
+  assert.match(studio, /visibleFixActions\.find\(\(action\) => action\.id === activeFixId\)/);
+  assert.match(studio, /Yes · fix this/);
+  assert.match(studio, /No · leave for later/);
   assert.match(studio, /\["do-first", "Do first"/);
   assert.match(studio, /\["can-fix", "Can fix"/);
   assert.match(studio, /\["needs-answer", "Needs answer"/);
   assert.match(studio, /return "READY TO APPLY"/);
   assert.match(studio, /return "NEEDS ONE ANSWER"/);
   assert.match(studio, /return "CONFIRM ON PLAN"/);
-  assert.match(studio, /REVIEWED FIELD CHANGES/);
-  assert.match(studio, /NO ROUTE MOVEMENT/);
-  assert.match(studio, /PROBLEM/);
-  assert.match(studio, /PROPOSED FIX/);
-  assert.match(studio, /EXPECTED RESULT/);
-  assert.match(studio, /AFFECTED PLAN OBJECTS/);
+  assert.match(studio, /approveSingleAction\(activeFixAction\)/);
+  assert.match(studio, /This records a job condition; it does not change the drawing/);
+  assert.match(studio, /3 · HOW I WOULD FIX IT/);
+  assert.match(studio, /affected plan object/);
   assert.match(studio, /preparedRepairPlanId !== repairPlan\.id/);
-  assert.match(studio, /autonomyMode !== "guided"/);
   assert.match(studio, /onApplyRepairPlan/);
   assert.match(studio, /onUndoRepairBatch/);
   assert.match(studio, /REPAIR HISTORY &amp; UNDO/);
@@ -2238,8 +2236,8 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(helper, /scale\.conflict\s*\? `\$\{scale\.candidates\.length\} scales found`/);
   assert.doesNotMatch(helper, />V(?:113|114|120)</);
   assert.ok(
-    helper.indexOf('id="assistant-panel-repair-plan"') < helper.indexOf('className="assistant-mode-strip"'),
-    "fix permission controls should live inside the Fixes panel",
+    helper.indexOf('id="assistant-panel-repair-plan"') < helper.indexOf('className="fix-plan-inline-approval"'),
+    "fix permission controls should live inside the unified Plan Check panel",
   );
 
   assert.match(styles, /\.builder-workflow \.builder-action-card\.other-step \{\s*display: none;/);
@@ -2262,8 +2260,8 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(drawingScale, /candidate\.ratio && candidate\.ratio > 0\s*\? candidate\.ratio\s*: scaleRatioFromLabel\(candidate\.label\)/);
   assert.match(drawingScale, /ratio \/ \(12 \* PDF_POINTS_PER_INCH \* viewportScale\)/);
 
-  assert.match(helper, /Nothing is selected automatically/);
+  assert.match(helper, /Yes · fix this/);
   assert.match(helper, /preparedRepairPlanId !== repairPlan\.id/);
-  assert.match(helper, /autonomyMode !== "guided"/);
+  assert.match(helper, /approveSingleAction\(activeFixAction\)/);
   assert.match(helper, /onUndoRepairBatch/);
 });

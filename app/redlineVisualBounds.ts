@@ -4,6 +4,7 @@ import type {
   RedlinePoint,
   RedlineStrokeAnnotation,
 } from "./redlineDomain";
+import { isRedlineStrokeAnnotation } from "./redlineDomain";
 
 export type RedlineCanvasBounds = {
   x: number;
@@ -252,7 +253,7 @@ export function redlineAnnotationVisualBounds(
   zoom = 1,
 ): RedlineCanvasBounds {
   const size = redlineCanvasPageSize(width, height);
-  if (annotation.kind === "ink" || annotation.kind === "highlighter") {
+  if (isRedlineStrokeAnnotation(annotation)) {
     return redlineStrokeVisualBounds(annotation, size, zoom);
   }
 

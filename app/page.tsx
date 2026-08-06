@@ -1,19 +1,15 @@
 "use client";
 
 import { ChangeEvent, Component, DragEvent, ErrorInfo, KeyboardEvent as ReactKeyboardEvent, PointerEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import * as pdfjsLib from "pdfjs-dist";
 import { checkDriveConfiguration, loadPdfFromDriveId, pickPdfFromDrive, saveProjectPackageToDrive } from "./googleDrive";
-import CloudProjectsPanel, { type CloudProjectRisk } from "./CloudProjectsPanel";
-import AIPlanWorkspace from "./AIPlanWorkspace";
-import FieldPackageComposer from "./FieldPackageComposer";
-import FinishJobStudio from "./FinishJobStudio";
-import GuidedProjectSetup, { type ProjectSetupValues } from "./GuidedProjectSetup";
+import type { CloudProjectRisk } from "./CloudProjectsPanel";
+import type { ProjectSetupValues } from "./GuidedProjectSetup";
 import ProjectCommandPalette, { type ProjectCommand } from "./ProjectCommandPalette";
 import ProjectHome from "./ProjectHome";
 import SymbolActionWheel from "./PlanSymbolActionWheel";
-import FieldRedlineStudio, {
-  type RedlineStudioDialogState,
-} from "./FieldRedlineStudio";
+import type { RedlineStudioDialogState } from "./FieldRedlineStudio";
 import RedlineActionWheel from "./RedlineActionWheel";
 import RedlineCanvasLayer from "./RedlineCanvasLayer";
 import { redlineSelectionVisualBounds } from "./redlineVisualBounds";
@@ -45,12 +41,8 @@ import {
   port3UndoDisposition,
   type Port3BranchDraftState,
 } from "./port3BranchDraft";
-import SystemBalanceStudio from "./SystemBalanceStudio";
 import PlanCheckStrip from "./PlanCheckStrip";
-import MarkupAssistantStudio, {
-  type FixPlanIssueAnswer,
-  type PlanHelperPrimaryView,
-} from "./MarkupAssistantStudio";
+import type { FixPlanIssueAnswer, PlanHelperPrimaryView } from "./MarkupAssistantStudio";
 import { type FieldPackageSectionId } from "./fieldPackage";
 import {
   FINISH_JOB_VERSION,
@@ -303,6 +295,29 @@ import {
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
+function DeferredStudioLoading() {
+  return <div className="deferred-studio-loading" role="status">Opening workspace…</div>;
+}
+
+const AIPlanWorkspace = dynamic(() => import("./AIPlanWorkspace"), { ssr: false, loading: DeferredStudioLoading });
+const CloudProjectsPanel = dynamic(() => import("./CloudProjectsPanel"), { ssr: false, loading: DeferredStudioLoading });
+const FieldPackageComposer = dynamic(() => import("./FieldPackageComposer"), { ssr: false, loading: DeferredStudioLoading });
+const FieldRedlineStudio = dynamic(() => import("./FieldRedlineStudio"), { ssr: false, loading: DeferredStudioLoading });
+const FinishJobStudio = dynamic(() => import("./FinishJobStudio"), { ssr: false, loading: DeferredStudioLoading });
+const GuidedProjectSetup = dynamic(() => import("./GuidedProjectSetup"), { ssr: false, loading: DeferredStudioLoading });
+const MarkupAssistantStudio = dynamic(() => import("./MarkupAssistantStudio"), { ssr: false, loading: DeferredStudioLoading });
+const SystemBalanceStudio = dynamic(() => import("./SystemBalanceStudio"), { ssr: false, loading: DeferredStudioLoading });
+
+function useDeferredStudioMount(visible: boolean) {
+  const [mounted, setMounted] = useState(visible);
+  useEffect(() => {
+    if (!visible || mounted) return;
+    const timer = window.setTimeout(() => setMounted(true), 0);
+    return () => window.clearTimeout(timer);
+  }, [mounted, visible]);
+  return mounted || visible;
+}
+
 const tools = [
   { id: "select", label: "Select", icon: MousePointer2 },
   { id: "supply", label: "Supply run", icon: Route, tone: "blue" },
@@ -333,7 +348,6 @@ const layers = [
 type LayerId = typeof layers[number]["id"];
 const defaultVisibleLayers: Record<LayerId, boolean> = { supply: true, branch: true, return: true, fresh: true, notes: true };
 const defaultLockedLayers: Record<LayerId, boolean> = { supply: false, branch: false, return: false, fresh: false, notes: false };
-const showLegacyConnectionRepairPanel = false;
 
 type Point = { x: number; y: number };
 type SnapKind = "endpoint" | "fitting port" | "equipment port" | "intersection" | "midpoint" | "nearest" | "grid";
@@ -1024,7 +1038,9 @@ const defaultScaleFeetPerUnit = 1 / 24.3;
 const defaultScaleLabel = '1/4" = 1\'-0"';
 const allowedResidentialFlexSizes = ["4", "6", "7", "8", "10", "12", "14", "16"];
 
-function isPrimaryAirflowEquipment(drawing?: Drawing) {
+function isPrimaryAirflowEquipment(
+  drawing?: Drawing,
+): drawing is Drawing & { symbol: SymbolMeta & { kind: "equipment" } } {
   return Boolean(
     drawing?.symbol?.kind === "equipment" &&
     primaryAirflowEquipmentVariants.has(drawing.symbol.variant || "")
@@ -1665,6 +1681,8 @@ function HVACPlanStudioApp() {
     x: number;
     y: number;
   } | null>(null);
+  const planContextMenuRef = useRef<HTMLDivElement>(null);
+  const planContextMenuTriggerRef = useRef<SVGGElement | null>(null);
   const [branchMessage, setBranchMessage] = useState("");
   const [branchPlacementResult, setBranchPlacementResult] = useState<{ fittingId: string; message: string } | null>(null);
   const [branchOpportunityCursor, setBranchOpportunityCursor] = useState(0);
@@ -1904,6 +1922,21 @@ function HVACPlanStudioApp() {
     onExport: exportFieldRedlines,
     onIssueDraft: handleFieldRedlineIssueDraft,
   });
+  const mountAIPlanWorkspace = useDeferredStudioMount(showPlanIntelligence);
+  const mountCloudProjectsPanel = useDeferredStudioMount(showCloudProjects);
+  const mountFieldPackageComposer = useDeferredStudioMount(showFieldPackageComposer);
+  const mountFieldRedlineStudio = useDeferredStudioMount(fieldRedline.open);
+  const mountFinishJobStudio = useDeferredStudioMount(showFinishJobStudio);
+  const mountGuidedProjectSetup = useDeferredStudioMount(showProjectSetup);
+  const mountMarkupAssistantStudio = useDeferredStudioMount(showMarkupAssistant);
+  const mountSystemBalanceStudio = useDeferredStudioMount(showSystemBalanceStudio);
+  useEffect(() => {
+    if (!planContextMenu) return;
+    const frame = window.requestAnimationFrame(() => {
+      planContextMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [planContextMenu]);
   const redlineOwnsCanvas = fieldRedline.open;
   const planToolAcceptsDirectTouch =
     !redlineOwnsCanvas &&
@@ -2108,7 +2141,7 @@ function HVACPlanStudioApp() {
       setRenderQuality(preferences.renderQuality);
       setWorkspaceDensity(coarse && preferences.density === "compact" ? "comfortable" : preferences.density);
       setLeftPanelOpen(closeConflictingTabletDrawers ? false : preferences.leftPanelOpen);
-      setRightPanelOpen(false);
+      setRightPanelOpen(closeConflictingTabletDrawers ? false : preferences.rightPanelOpen);
     };
     applyPreferences(loadLocalWorkspacePreferences());
     void loadCloudWorkspacePreferences().then((cloudPreferences) => {
@@ -2407,6 +2440,76 @@ function HVACPlanStudioApp() {
     if (!drawing) return false;
     const layer = drawingLayer(drawing);
     return Boolean(layer && lockedLayers[layer]);
+  }
+
+  function planDrawingAccessibleLabel(drawing: Drawing) {
+    if (drawing.fitting) return `T Branch fitting, ${drawing.fitting.upstreamSize} by ${drawing.fitting.downstreamSize} by ${drawing.fitting.branchSize}`;
+    if (drawing.symbol) return `${displayedSymbolLabel(drawing) || drawing.symbol.kind} HVAC symbol`;
+    if (drawing.measurement) return `${drawing.measurement.feet.toFixed(1)} foot measurement`;
+    return `${drawing.size} inch ${drawing.type} duct run`;
+  }
+
+  function planDrawingSupportsCopyMenu(drawing: Drawing) {
+    return !drawingLocked(drawing) && Boolean(
+      drawing.type === "supply" ||
+      drawing.fitting ||
+      drawing.symbol ||
+      drawing.measurement
+    );
+  }
+
+  function closePlanContextMenu(restoreFocus = false) {
+    const trigger = planContextMenuTriggerRef.current;
+    setPlanContextMenu(null);
+    if (restoreFocus && trigger) {
+      window.requestAnimationFrame(() => trigger.focus());
+    }
+  }
+
+  function openPlanContextMenu(
+    drawing: Drawing,
+    clientX: number,
+    clientY: number,
+    trigger?: SVGGElement | null,
+  ) {
+    const viewport = canvasViewportRef.current;
+    if (!viewport || !planDrawingSupportsCopyMenu(drawing)) return false;
+    const viewportBounds = viewport.getBoundingClientRect();
+    if (!selectedIds.includes(drawing.id)) selectOnly(drawing.id);
+    planContextMenuTriggerRef.current = trigger || null;
+    setPlanContextMenu({
+      drawingId: drawing.id,
+      x: Math.min(
+        Math.max(8, clientX - viewportBounds.left),
+        Math.max(8, viewportBounds.width - 184),
+      ),
+      y: Math.min(
+        Math.max(8, clientY - viewportBounds.top),
+        Math.max(8, viewportBounds.height - 70),
+      ),
+    });
+    return true;
+  }
+
+  function handlePlanDrawingKeyDown(
+    event: ReactKeyboardEvent<SVGGElement>,
+    drawing: Drawing,
+  ) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectOnly(drawing.id);
+      return;
+    }
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      event.preventDefault();
+      const bounds = event.currentTarget.getBoundingClientRect();
+      openPlanContextMenu(
+        drawing,
+        bounds.left + bounds.width / 2,
+        bounds.top + bounds.height / 2,
+        event.currentTarget,
+      );
+    }
   }
 
   function toggleLayerLock(layerId: LayerId) {
@@ -3735,7 +3838,7 @@ function HVACPlanStudioApp() {
 
   function handleViewportPointerDownCapture(event: PointerEvent<HTMLDivElement>) {
     if (isCanvasUiTarget(event.target)) return;
-    if (planContextMenu && event.button === 0) setPlanContextMenu(null);
+    if (planContextMenu && event.button === 0) closePlanContextMenu();
     const planEditControl = event.target instanceof Element
       ? event.target.closest("[data-plan-edit-control]")
       : null;
@@ -3760,36 +3863,19 @@ function HVACPlanStudioApp() {
       planDrawingId
     ) {
       const drawing = drawings.find((item) => item.id === planDrawingId);
-      const copyable = Boolean(
-        drawing &&
-        !drawingLocked(drawing) &&
-        (
-          drawing.type === "supply" ||
-          drawing.fitting ||
-          drawing.symbol ||
-          drawing.measurement
-        )
-      );
-      if (copyable) {
+      if (drawing && planDrawingSupportsCopyMenu(drawing)) {
         event.preventDefault();
         event.stopPropagation();
-        if (!selectedIds.includes(planDrawingId)) selectOnly(planDrawingId);
-        const viewportBounds = event.currentTarget.getBoundingClientRect();
-        setPlanContextMenu({
-          drawingId: planDrawingId,
-          x: Math.min(
-            Math.max(8, event.clientX - viewportBounds.left),
-            Math.max(8, viewportBounds.width - 184),
-          ),
-          y: Math.min(
-            Math.max(8, event.clientY - viewportBounds.top),
-            Math.max(8, viewportBounds.height - 70),
-          ),
-        });
+        openPlanContextMenu(
+          drawing,
+          event.clientX,
+          event.clientY,
+          planDrawingControl instanceof SVGGElement ? planDrawingControl : null,
+        );
         return;
       }
     }
-    if (planContextMenu && event.button === 2) setPlanContextMenu(null);
+    if (planContextMenu && event.button === 2) closePlanContextMenu();
     if (redlineOwnsCanvas && event.pointerType !== "touch") {
       if (fieldRedline.pendingCopy && event.button === 2) {
         event.preventDefault();
@@ -3865,7 +3951,7 @@ function HVACPlanStudioApp() {
           y: event.clientY,
         });
         capturePlanPointer(event.currentTarget, event.pointerId);
-        if (touchPointersRef.current.size === 2) beginTouchGesture();
+        beginTouchGesture();
         return;
       }
       if (pendingRoomMarkupCandidateId) {
@@ -4122,12 +4208,12 @@ function HVACPlanStudioApp() {
 
   function openToolsPanel() {
     setLeftPanelOpen(true);
-    setRightPanelOpen(false);
+    if (workspaceLayout !== "desktop") setRightPanelOpen(false);
   }
 
   function openInspectorPanel() {
     setRightPanelOpen(true);
-    setLeftPanelOpen(false);
+    if (workspaceLayout !== "desktop") setLeftPanelOpen(false);
   }
 
   function goToPage(page: number) {
@@ -10232,14 +10318,15 @@ function HVACPlanStudioApp() {
     const threshold = 7 / zoom;
     let closestX: { value: number; distance: number } | null = null;
     let closestY: { value: number; distance: number } | null = null;
-    drawings.filter((drawing) => drawing.page === pageNumber && drawing.id !== ignoredId).forEach((drawing) => {
-      drawing.points.forEach((vertex) => {
+    for (const drawing of drawings) {
+      if (drawing.page !== pageNumber || drawing.id === ignoredId) continue;
+      for (const vertex of drawing.points) {
         const dx = Math.abs(vertex.x - point.x);
         const dy = Math.abs(vertex.y - point.y);
         if (dx <= threshold && (!closestX || dx < closestX.distance)) closestX = { value: vertex.x, distance: dx };
         if (dy <= threshold && (!closestY || dy < closestY.distance)) closestY = { value: vertex.y, distance: dy };
-      });
-    });
+      }
+    }
     return [
       ...(closestX ? [{ axis: "x" as const, value: closestX.value }] : []),
       ...(closestY ? [{ axis: "y" as const, value: closestY.value }] : []),
@@ -10455,7 +10542,8 @@ function HVACPlanStudioApp() {
   function splitRunAtPoint(drawing: Drawing, rawPoint: Point) {
     if (drawing.points.length < 2 || drawingLocked(drawing)) return;
     let best: { point: Point; segmentIndex: number; distance: number } | null = null;
-    drawing.points.slice(0, -1).forEach((a, segmentIndex) => {
+    for (let segmentIndex = 0; segmentIndex < drawing.points.length - 1; segmentIndex += 1) {
+      const a = drawing.points[segmentIndex];
       const b = drawing.points[segmentIndex + 1];
       const dx = b.x - a.x;
       const dy = b.y - a.y;
@@ -10464,7 +10552,7 @@ function HVACPlanStudioApp() {
       const point = { x: a.x + amount * dx, y: a.y + amount * dy };
       const distance = Math.hypot(rawPoint.x - point.x, rawPoint.y - point.y);
       if (!best || distance < best.distance) best = { point, segmentIndex, distance };
-    });
+    }
     if (!best) return;
     const first = drawing.points[0];
     const last = drawing.points[drawing.points.length - 1];
@@ -10545,9 +10633,11 @@ function HVACPlanStudioApp() {
     };
     const updated = drawings.filter((drawing) => drawing.id !== secondRun.id).map((drawing) => {
       if (drawing.id === firstRun.id) return joined;
-      const supplyConnected = drawing.symbol?.connectedRunId === firstRun.id || drawing.symbol?.connectedRunId === secondRun.id;
-      const returnConnected = drawing.symbol?.returnRunId === firstRun.id || drawing.symbol?.returnRunId === secondRun.id;
+      const symbol = drawing.symbol;
+      const supplyConnected = symbol?.connectedRunId === firstRun.id || symbol?.connectedRunId === secondRun.id;
+      const returnConnected = symbol?.returnRunId === firstRun.id || symbol?.returnRunId === secondRun.id;
       if (supplyConnected || returnConnected) {
+        if (!symbol) return drawing;
         const ports = isPrimaryAirflowEquipment(drawing) ? equipmentPlenumPorts(drawing) : null;
         const supplyAnchor = ports?.supply || drawing.points[0];
         const returnAnchor = ports?.return || drawing.points[0];
@@ -10555,15 +10645,15 @@ function HVACPlanStudioApp() {
         return {
           ...drawing,
           symbol: {
-            ...drawing.symbol,
-            connectedRunId: supplyConnected ? firstRun.id : drawing.symbol?.connectedRunId,
+            ...symbol,
+            connectedRunId: supplyConnected ? firstRun.id : symbol.connectedRunId,
             connectedEnd: supplyConnected
               ? Math.hypot(supplyAnchor.x - joined.points[0].x, supplyAnchor.y - joined.points[0].y) <= Math.hypot(supplyAnchor.x - joinedEnd.x, supplyAnchor.y - joinedEnd.y) ? "start" : "end"
-              : drawing.symbol?.connectedEnd,
-            returnRunId: returnConnected ? firstRun.id : drawing.symbol?.returnRunId,
+              : symbol.connectedEnd,
+            returnRunId: returnConnected ? firstRun.id : symbol.returnRunId,
             returnEnd: returnConnected
               ? Math.hypot(returnAnchor.x - joined.points[0].x, returnAnchor.y - joined.points[0].y) <= Math.hypot(returnAnchor.x - joinedEnd.x, returnAnchor.y - joinedEnd.y) ? "start" : "end"
-              : drawing.symbol?.returnEnd,
+              : symbol.returnEnd,
           },
         };
       }
@@ -12978,8 +13068,6 @@ function HVACPlanStudioApp() {
     const displayLabel = displayedSymbolLabel(drawing);
     const selected = isSelected(drawing.id);
     const { width: symbolWidth, height: symbolHeight } = symbolDimensions(drawing.size);
-    const grilleLines = Array.from({ length: Math.max(3, Math.min(8, Math.round(symbolWidth / 5))) }, (_, index) =>
-      -symbolWidth / 2 + ((index + 1) * symbolWidth) / (Math.max(3, Math.min(8, Math.round(symbolWidth / 5))) + 1));
     const artworkClass = `hvac-symbol symbol-${kind} variant-${variant || "standard"} ${drawing.symbol.connectedRunId ? "terminal-linked" : ""} ${activeTraceSymbolIds.has(drawing.id) ? "traced-symbol" : ""} ${preview ? "symbol-preview" : ""} ${selected ? "selected-symbol" : ""}`;
     const verticalEquipment = kind === "equipment" && ["vertical-air-handler", "vertical-furnace"].includes(variant || "");
     const labelY = symbolLabelBaseY(drawing);
@@ -13004,11 +13092,18 @@ function HVACPlanStudioApp() {
       22 / Math.max(.25, zoom),
     );
     const labelStrokeWidth = Math.max(1.1, 2.6 * labelScale);
-    if (variant !== "__legacy") return <g
+    return <g
       className={artworkClass}
       transform={`translate(${center.x} ${center.y})`}
       data-plan-edit-control={preview ? undefined : "hvac"}
       data-plan-drawing-id={preview ? undefined : drawing.id}
+      tabIndex={preview ? undefined : 0}
+      role={preview ? undefined : "button"}
+      aria-label={preview ? undefined : planDrawingAccessibleLabel(drawing)}
+      aria-pressed={preview ? undefined : selected}
+      aria-disabled={preview ? undefined : drawingLocked(drawing)}
+      onFocus={preview ? undefined : () => selectOnly(drawing.id)}
+      onKeyDown={preview ? undefined : (event) => handlePlanDrawingKeyDown(event, drawing)}
       onPointerDown={preview ? undefined : (event) => startSymbolDrag(event, drawing)}
     >
       <g transform={`rotate(${rotation})`}>
@@ -13129,124 +13224,6 @@ function HVACPlanStudioApp() {
       </g>
     </g>;
 
-    // Compatibility renderer for any deliberately imported legacy symbol variant.
-    return <g
-      className={`hvac-symbol symbol-${kind} ${drawing.symbol.connectedRunId ? "terminal-linked" : ""} ${activeTraceSymbolIds.has(drawing.id) ? "traced-symbol" : ""} ${preview ? "symbol-preview" : ""} ${selected ? "selected-symbol" : ""}`}
-      transform={`translate(${center.x} ${center.y}) rotate(${rotation})`}
-      data-plan-edit-control={preview ? undefined : "hvac"}
-      data-plan-drawing-id={preview ? undefined : drawing.id}
-      onPointerDown={preview ? undefined : (event) => startSymbolDrag(event, drawing)}
-    >
-      <circle className="symbol-hit" cx="0" cy="0" r="24" />
-      {kind === "diffuser" && variant === "round" ? <>
-        <circle cx="0" cy="0" r="11" /><circle cx="0" cy="0" r="6" /><path d="M -8 0 L 8 0 M 0 -8 L 0 8" />
-      </> : kind === "diffuser" && variant === "slot" ? <>
-        <rect x="-18" y="-6" width="36" height="12" rx="1" /><path d="M -14 -2 L 14 -2 M -14 2 L 14 2" />
-      </> : kind === "diffuser" && ["register", "floor", "boot"].includes(variant || "") ? <>
-        <rect x={-symbolWidth / 2} y={-symbolHeight / 2} width={symbolWidth} height={symbolHeight} rx={variant === "boot" ? 4 : 1} />
-        {grilleLines.map((lineX, index) => <line key={index} x1={lineX} y1={-symbolHeight / 2 + 3} x2={lineX} y2={symbolHeight / 2 - 3} />)}
-        {variant === "boot" && <path d={`M ${-symbolWidth / 2 + 2} ${symbolHeight / 2} L ${-symbolWidth / 2 + 6} ${symbolHeight / 2 + 5} L ${symbolWidth / 2 - 6} ${symbolHeight / 2 + 5} L ${symbolWidth / 2 - 2} ${symbolHeight / 2}`} />}
-      </> : kind === "diffuser" && <>
-        <rect x={-symbolWidth / 2} y={-symbolHeight / 2} width={symbolWidth} height={symbolHeight} rx="1" />
-        <path d={variant === "1way" ? `M ${-symbolWidth / 2 + 3} ${symbolHeight / 2 - 3} L ${symbolWidth / 2 - 3} ${-symbolHeight / 2 + 3}` : variant === "2way" ? `M ${-symbolWidth / 2 + 3} ${symbolHeight / 2 - 3} L ${symbolWidth / 2 - 3} ${-symbolHeight / 2 + 3} M ${symbolWidth / 2 - 3} ${symbolHeight / 2 - 3} L ${-symbolWidth / 2 + 3} ${-symbolHeight / 2 + 3}` : variant === "3way" ? `M ${-symbolWidth / 2 + 3} ${symbolHeight / 2 - 3} L ${symbolWidth / 2 - 3} ${-symbolHeight / 2 + 3} M ${symbolWidth / 2 - 3} ${symbolHeight / 2 - 3} L ${-symbolWidth / 2 + 3} ${-symbolHeight / 2 + 3} M 0 ${-symbolHeight / 2 + 2} L 0 ${symbolHeight / 2 - 2}` : `M ${-symbolWidth / 2 + 3} ${-symbolHeight / 2 + 3} L ${symbolWidth / 2 - 3} ${symbolHeight / 2 - 3} M ${symbolWidth / 2 - 3} ${-symbolHeight / 2 + 3} L ${-symbolWidth / 2 + 3} ${symbolHeight / 2 - 3} M 0 ${-symbolHeight / 2 + 2} L 0 ${symbolHeight / 2 - 2} M ${-symbolWidth / 2 + 2} 0 L ${symbolWidth / 2 - 2} 0`} />
-      </>}
-      {kind === "returnGrille" && <>
-        <rect x={-symbolWidth / 2} y={-symbolHeight / 2} width={symbolWidth} height={symbolHeight} rx={variant === "filter" ? 3 : 1} />
-        {variant === "eggcrate"
-          ? <>{grilleLines.map((lineX, index) => <line key={`v-${index}`} x1={lineX} y1={-symbolHeight / 2 + 2} x2={lineX} y2={symbolHeight / 2 - 2} />)}{[-.25, 0, .25].map((amount, index) => <line key={`h-${index}`} x1={-symbolWidth / 2 + 2} y1={amount * symbolHeight} x2={symbolWidth / 2 - 2} y2={amount * symbolHeight} />)}</>
-          : variant === "transfer"
-            ? <path d={`M ${-symbolWidth / 2 + 3} ${-symbolHeight / 4} L ${symbolWidth / 2 - 3} ${-symbolHeight / 4} M ${-symbolWidth / 2 + 3} ${symbolHeight / 4} L ${symbolWidth / 2 - 3} ${symbolHeight / 4}`} />
-            : variant === "floor"
-              ? grilleLines.map((lineX, index) => <line key={index} x1={lineX} y1={-symbolHeight / 2 + 2} x2={lineX + 3} y2={symbolHeight / 2 - 2} />)
-              : grilleLines.map((lineX, index) => <line key={index} x1={lineX} y1={-symbolHeight / 2 + 3} x2={lineX} y2={symbolHeight / 2 - 3} />)}
-        {variant === "filter" && <rect x={-symbolWidth / 2 + 3} y={-symbolHeight / 2 + 3} width={symbolWidth - 6} height={symbolHeight - 6} rx="1" />}
-      </>}
-      {["diffuser", "returnGrille"].includes(kind) && <>
-        <circle className="can-neck-point" cx="0" cy="0" r="3.5" />
-        {drawing.symbol.connectedRunId && <circle className="terminal-link-ring" cx="0" cy="0" r="6" />}
-        {selected && <text className="can-neck-label" x="6" y="4">Ø{drawing.symbol.neckSize || "8"} NECK</text>}
-      </>}
-      {kind === "equipment" && variant === "furnace" ? <>
-        <rect x="-18" y="-15" width="36" height="30" rx="2" />
-        <path d="M -13 -9 L 13 -9 M -13 9 L 13 9 M -7 5 C -12 0 -6 -7 0 -10 C 1 -4 9 -1 6 5 C 4 10 -3 11 -7 5 Z" />
-        <text className="equipment-code" x="9" y="6" textAnchor="middle">F</text>
-      </> : kind === "equipment" && variant === "air-handler" ? <>
-        <rect x="-22" y="-12" width="44" height="24" rx="2" />
-        <circle cx="-10" cy="0" r="7" /><path d="M -10 -6 L -7 1 L -14 3 Z M 2 -7 L 17 -7 L 17 7 L 2 7 M 5 -4 L 14 4 M 14 -4 L 5 4" />
-      </> : kind === "equipment" && variant === "fan-coil" ? <>
-        <rect x="-20" y="-11" width="40" height="22" rx="6" />
-        <circle cx="-9" cy="0" r="6" /><path d="M -9 -5 L -6 1 L -12 2 Z M 2 -6 C 7 -2 7 2 2 6 M 8 -6 C 13 -2 13 2 8 6" />
-      </> : kind === "equipment" && variant === "package" ? <>
-        <rect x="-23" y="-14" width="46" height="28" rx="2" />
-        <path d="M -18 -8 L -2 -8 L -2 8 L -18 8 Z M 4 -8 L 18 -8 L 18 8 L 4 8 Z M -15 -4 L -5 4 M -5 -4 L -15 4" />
-        <circle cx="11" cy="0" r="5" />
-      </> : kind === "equipment" && ["heat-pump", "condenser"].includes(variant || "") ? <>
-        <circle cx="0" cy="0" r="15" /><circle cx="0" cy="0" r="3" />
-        <path d="M 0 -3 C 11 -12 14 -1 5 2 M 3 2 C 7 14 -6 14 -5 4 M -3 1 C -15 -2 -9 -13 -2 -7" />
-        <rect x="-19" y="-19" width="38" height="38" rx="3" />
-      </> : kind === "equipment" && variant === "mini-split" ? <>
-        <rect x="-24" y="-8" width="48" height="16" rx="5" />
-        <path d="M -17 1 L 17 1 M -13 5 C -8 10 -3 10 0 5 M 2 5 C 7 10 12 10 15 5" />
-      </> : kind === "equipment" && ["erv", "hrv"].includes(variant || "") ? <>
-        <rect x="-21" y="-13" width="42" height="26" rx="2" />
-        <path d="M -16 -7 L 16 7 M -16 7 L 16 -7 M -21 -5 L -27 -5 M -21 5 L -27 5 M 21 -5 L 27 -5 M 21 5 L 27 5" />
-        <text className="equipment-code" x="0" y="4" textAnchor="middle">{variant === "hrv" ? "H" : "E"}</text>
-      </> : kind === "equipment" && variant === "rtu" ? <>
-        <rect x="-24" y="-15" width="48" height="30" rx="2" />
-        <path d="M -18 -9 L -3 -9 L -3 9 L -18 9 Z M 4 -9 L 18 -9 L 18 9 L 4 9 Z" />
-        <circle cx="11" cy="0" r="5" /><path d="M 8 -3 L 14 3 M 14 -3 L 8 3" />
-      </> : kind === "equipment" && variant === "makeup-air" ? <>
-        <path d="M -24 -12 L 16 -12 L 24 0 L 16 12 L -24 12 Z" />
-        <path d="M -17 -6 L -5 -6 L -5 6 L -17 6 M 1 0 L 16 0 M 10 -5 L 16 0 L 10 5" />
-      </> : kind === "equipment" && variant === "humidifier" ? <>
-        <rect x="-15" y="-15" width="30" height="30" rx="5" />
-        <path d="M 0 -10 C -8 0 -8 3 -8 6 C -8 12 8 12 8 6 C 8 2 5 -2 0 -10 Z M -4 5 C -2 8 2 8 4 5" />
-      </> : kind === "equipment" && variant === "dehumidifier" ? <>
-        <rect x="-21" y="-11" width="42" height="22" rx="4" />
-        <circle cx="-10" cy="0" r="6" /><path d="M 6 -7 C 0 1 1 7 6 7 C 11 7 12 1 6 -7 Z" />
-      </> : kind === "equipment" && variant === "boiler" ? <>
-        <circle cx="0" cy="0" r="15" /><path d="M -8 6 C -12 0 -5 -7 0 -11 C 1 -4 9 -1 7 6 C 5 12 -5 12 -8 6 Z M -18 -5 L -13 -5 M 13 -5 L 18 -5" />
-        <text className="equipment-code" x="0" y="6" textAnchor="middle">B</text>
-      </> : kind === "equipment" && <>
-        <rect x="-20" y="-12" width="40" height="24" rx="2" />
-        <path d="M -14 -7 L 9 -7 L 14 0 L 9 7 L -14 7 Z" />
-        <circle cx="-20" cy="0" r="3" />
-        <circle cx="20" cy="0" r="3" />
-      </>}
-      {kind === "fan" && <>
-        <circle cx="0" cy="0" r="11" />
-        <circle cx="0" cy="0" r="2.5" />
-        <path d="M 0 -2 C 8 -10 12 -3 6 2 M 2 1 C 5 12 -4 12 -5 5 M -2 1 C -12 -1 -8 -10 -2 -7" />
-      </>}
-      {kind === "damper" && <>
-        <circle cx="0" cy="0" r="10" />
-        <path d="M -11 0 L 11 0 M -7 7 L 7 -7" />
-      </>}
-      {kind === "motorDamper" && <>
-        <rect x="-14" y="-8" width="28" height="16" rx="2" />
-        <path d="M -10 5 L 10 -5 M 0 -8 L 0 -14 L 10 -14" />
-      </>}
-      {kind === "reducer" && <>
-        <path d="M -15 -10 L -15 10 L 15 6 L 15 -6 Z" />
-        <path d="M -8 0 L 8 0" />
-      </>}
-      {kind === "thermostat" && <>
-        <rect x="-9" y="-11" width="18" height="22" rx="3" />
-        <text className="symbol-letter" x="0" y="4" textAnchor="middle">T</text>
-      </>}
-      {kind === "smoke" && <>
-        <rect x="-12" y="-9" width="24" height="18" rx="2" />
-        <circle cx="0" cy="0" r="4" />
-        <path d="M -8 -5 L -4 -5 M 4 -5 L 8 -5" />
-      </>}
-      {kind === "airflow" && <path className="airflow-arrow" d="M -18 0 L 16 0 M 8 -7 L 16 0 L 8 7" />}
-      {kind === "note" && <>
-        <rect x="-11" y="-10" width="22" height="20" rx="2" />
-        <path d="M -7 -5 L 7 -5 M -7 0 L 7 0 M -7 5 L 3 5" />
-      </>}
-      <text className="symbol-label" x="0" y={kind === "equipment" ? -27 : kind === "airflow" ? -10 : ["diffuser", "returnGrille"].includes(kind) ? -symbolHeight / 2 - 7 : -16} textAnchor="middle">{displayLabel}</text>
-      {selected && <circle className="rotation-ring" cx="0" cy="0" r="23" />}
-    </g>;
   }
 
   useEffect(() => {
@@ -13394,7 +13371,7 @@ function HVACPlanStudioApp() {
       }
       if (planContextMenu && event.key === "Escape") {
         event.preventDefault();
-        setPlanContextMenu(null);
+        closePlanContextMenu(true);
         return;
       }
       if (event.key === "Escape") {
@@ -13764,7 +13741,7 @@ function HVACPlanStudioApp() {
   const runAttachment = runAttachmentStatus(selectedRun);
   const symbolTrace = symbolNetworkTrace(selectedDrawing?.symbol ? selectedDrawing : undefined);
   const activeTrace = selectedFitting ? branchTrace : selectedRun ? runTrace : symbolTrace;
-  const activeTraceSymbolIds = "symbolIds" in activeTrace ? activeTrace.symbolIds : new Set<string>();
+  const activeTraceSymbolIds = selectedDrawing?.symbol ? symbolTrace.symbolIds : new Set<string>();
   const activeAirflowSetup = airflowSetupSummary();
   const activeSystemScaleStatus = systemScaleStatus(activeSystem);
   const activeMaterialRows = useMemo(
@@ -15047,14 +15024,14 @@ function HVACPlanStudioApp() {
 
   /*
    * THESIS: The plan is the work; four clear destinations frame it without competing for attention.
-   * OWN-WORLD: Pure white, neutral gray, Helvetica-style type, Yves Klein Blue, and disciplined one-pixel rules.
+   * OWN-WORLD: Calm cool-neutral material surfaces, exact plan white, precise type, and one disciplined cobalt blue.
    * STORY: Open plan, draw HVAC, review materials, then export or share; Plan Check stays optional and advisory.
-   * FIRST VIEWPORT: Compact job bar, four-step workflow rail, precise tool dock, dominant white plan, quiet inspector.
-   * FORM: Swiss operate mode with the workflow index as the defining structural move.
-   * FINISH: First-pass review build; drawing behavior frozen and no external release performed.
+   * FIRST VIEWPORT: Premium job bar, four-step workflow rail, quiet tool dock, dominant white plan, restrained inspector.
+   * FORM: Traverse Material mode with dimensional chrome and progressive drawers around the unchanged plan.
+   * FINISH: Selected Material direction promoted with cobalt UI accents; drawing behavior remains frozen.
    */
   return (
-    <main data-layout="command-deck" data-visual-world="patternmakers-layout-table" data-presentation="galvanized-daylight" className={`app-shell swiss-plan-workspace field-first-workspace layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${fieldRedline.open ? "redline-open" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showFinishJobStudio ? "finish-job-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${packagePrintReleased ? "package-print-released" : "package-print-draft"}`}>
+    <main data-layout="command-deck" data-visual-world="material-traverse" data-presentation="material-cobalt" className={`app-shell swiss-plan-workspace field-first-workspace layout-${workspaceLayout} density-${workspaceDensity} render-${renderQuality} ${workspaceLayout !== "desktop" ? "tablet-layout" : ""} ${fieldMode ? "field-mode" : ""} ${fieldRedline.open ? "redline-open" : ""} ${leftPanelOpen ? "" : "left-closed"} ${rightPanelOpen ? "" : "right-closed"} ${showCloudProjects ? "cloud-open" : ""} ${showProjectHome ? "project-home-open" : ""} ${showPlanIntelligence ? "plan-intelligence-open" : ""} ${showFieldPackageComposer ? "field-package-open" : ""} ${showFinishJobStudio ? "finish-job-open" : ""} ${showSystemBalanceStudio ? "system-balance-open" : ""} ${showMarkupAssistant ? "markup-assistant-open" : ""} ${["rooms", "checks"].includes(rightTab) && rightPanelOpen ? "wide-inspector" : ""} ${packagePrintClasses} ${packagePrintReleased ? "package-print-released" : "package-print-draft"}`}>
       <input
         ref={inputRef}
         className="file-input"
@@ -16018,6 +15995,7 @@ function HVACPlanStudioApp() {
                 contextDrawing?.type === "supply" || contextDrawing?.fitting,
               );
               return contextDrawing ? <div
+                ref={planContextMenuRef}
                 className="plan-context-menu"
                 role="menu"
                 aria-label={copiesAssembly ? "Supply assembly actions" : "Selected plan item actions"}
@@ -16025,7 +16003,13 @@ function HVACPlanStudioApp() {
                 style={{ left: planContextMenu.x, top: planContextMenu.y }}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  setPlanContextMenu(null);
+                  closePlanContextMenu(true);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  closePlanContextMenu(true);
                 }}
               >
                 <span>{copiesAssembly ? "SUPPLY ASSEMBLY" : contextDrawing.symbol ? "HVAC SYMBOL" : "PLAN ITEM"}</span>
@@ -16033,7 +16017,7 @@ function HVACPlanStudioApp() {
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    setPlanContextMenu(null);
+                    closePlanContextMenu();
                     duplicateSelected();
                   }}
                 ><Copy size={15} /> Copy</button>
@@ -16408,8 +16392,15 @@ function HVACPlanStudioApp() {
                           className={`measurement ${isSelected(drawing.id) ? "selected-measurement" : ""} ${isCopyPreview ? "copy-place-preview" : ""}`}
                           data-plan-edit-control={isCopyPreview ? undefined : "hvac"}
                           data-plan-drawing-id={isCopyPreview ? undefined : drawing.id}
+                          tabIndex={isCopyPreview ? undefined : 0}
+                          role={isCopyPreview ? undefined : "button"}
+                          aria-label={isCopyPreview ? undefined : planDrawingAccessibleLabel(drawing)}
+                          aria-pressed={isCopyPreview ? undefined : isSelected(drawing.id)}
+                          aria-disabled={isCopyPreview ? undefined : drawingLocked(drawing)}
                           aria-hidden={isCopyPreview || undefined}
                           style={isCopyPreview ? { pointerEvents: "none" } : undefined}
+                          onFocus={isCopyPreview ? undefined : () => selectOnly(drawing.id)}
+                          onKeyDown={isCopyPreview ? undefined : (event) => handlePlanDrawingKeyDown(event, drawing)}
                           onPointerDown={(event) => {
                           if (event.button !== 0 || panRef.current || activeTool !== "select" || drawingLocked(drawing)) return;
                           event.stopPropagation();
@@ -16471,8 +16462,15 @@ function HVACPlanStudioApp() {
                           className={`branch-fitting ${fittingFullyConnected ? "complete-fitting" : "open-fitting"} ${showPortGuides ? "showing-port-guides" : ""} ${activeTrace.fittingIds.has(drawing.id) ? "traced-fitting" : ""} ${isSelected(drawing.id) ? "selected-fitting" : ""} ${branchPlacementResult?.fittingId === drawing.id ? "connection-confirmed" : ""} ${isCopyPreview ? "copy-place-preview" : ""}`}
                           data-plan-edit-control={isCopyPreview ? undefined : "hvac"}
                           data-plan-drawing-id={isCopyPreview ? undefined : drawing.id}
+                          tabIndex={isCopyPreview ? undefined : 0}
+                          role={isCopyPreview ? undefined : "button"}
+                          aria-label={isCopyPreview ? undefined : planDrawingAccessibleLabel(drawing)}
+                          aria-pressed={isCopyPreview ? undefined : isSelected(drawing.id)}
+                          aria-disabled={isCopyPreview ? undefined : drawingLocked(drawing)}
                           aria-hidden={isCopyPreview || undefined}
                           style={isCopyPreview ? { pointerEvents: "none" } : undefined}
+                          onFocus={isCopyPreview ? undefined : () => selectOnly(drawing.id)}
+                          onKeyDown={isCopyPreview ? undefined : (event) => handlePlanDrawingKeyDown(event, drawing)}
                           onPointerDown={isCopyPreview ? undefined : (event) => startFittingDrag(event, drawing)}
                         >
                           <path
@@ -16574,7 +16572,7 @@ function HVACPlanStudioApp() {
                         drawing.elevation ? `EL ${drawing.elevation}` : "",
                       ].filter(Boolean).join(" · ");
                       const runLabelScale = normalizedDuctLabelScale(drawing.labelScale);
-                      return <g key={drawing.id} data-plan-edit-control={isCopyPreview ? undefined : "hvac"} data-plan-drawing-id={isCopyPreview ? undefined : drawing.id} aria-hidden={isCopyPreview || undefined} style={isCopyPreview ? { pointerEvents: "none" } : undefined} className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${runSelected ? "selected-drawing" : ""} ${branchCandidateClass} ${assistantPreviewClass} ${isCopyPreview ? "copy-place-preview" : ""}`.trim()} onPointerDown={isCopyPreview ? undefined : (event) => {
+                      return <g key={drawing.id} data-plan-edit-control={isCopyPreview ? undefined : "hvac"} data-plan-drawing-id={isCopyPreview ? undefined : drawing.id} tabIndex={isCopyPreview ? undefined : 0} role={isCopyPreview ? undefined : "button"} aria-label={isCopyPreview ? undefined : planDrawingAccessibleLabel(drawing)} aria-pressed={isCopyPreview ? undefined : runSelected} aria-disabled={isCopyPreview ? undefined : drawingLocked(drawing)} aria-hidden={isCopyPreview || undefined} style={isCopyPreview ? { pointerEvents: "none" } : undefined} className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${runSelected ? "selected-drawing" : ""} ${branchCandidateClass} ${assistantPreviewClass} ${isCopyPreview ? "copy-place-preview" : ""}`.trim()} onFocus={isCopyPreview ? undefined : () => selectOnly(drawing.id)} onKeyDown={isCopyPreview ? undefined : (event) => handlePlanDrawingKeyDown(event, drawing)} onPointerDown={isCopyPreview ? undefined : (event) => {
                         if (event.button !== 0 || panRef.current || activeTool !== "select" || drawingLocked(drawing)) return;
                         event.stopPropagation();
                         event.shiftKey ? toggleSelection(drawing.id) : selectOnly(drawing.id);
@@ -16911,13 +16909,20 @@ function HVACPlanStudioApp() {
                     })()}
                     {symbolPreview && (() => {
                       const preset = symbolPresets.find((item) => item.id === activePresetId && item.kind === symbolPreview.kind);
-                      const fallback = {
+                      const fallback: Record<SymbolKind, { label: string; size: string; cfm: number; elevation: string }> = {
                         diffuser: { label: "12×12 SUPPLY", size: "12×12", cfm: 225, elevation: "CEILING" },
                         returnGrille: { label: "14×14 RETURN", size: "14×14", cfm: 1200, elevation: "CEILING" },
                         equipment: { label: `${systemLabel(activeSystem).toUpperCase()} · 3 TON AHU`, size: "3 TON", cfm: 1200, elevation: "" },
                         fan: { label: "EF-1", size: "EF-1", cfm: 80, elevation: "CEILING" },
-                      }[symbolPreview.kind];
-                      const selected = preset || fallback;
+                        damper: { label: "VD · ACCESSIBLE", size: "VD", cfm: 0, elevation: "" },
+                        motorDamper: { label: "MOTORIZED OA DAMPER · 24V NC", size: "OA", cfm: 0, elevation: "" },
+                        reducer: { label: "REDUCER · FIELD VERIFY", size: "TRANSITION", cfm: 0, elevation: "" },
+                        thermostat: { label: "T-STAT", size: "24V", cfm: 0, elevation: "" },
+                        smoke: { label: "DUCT SMOKE · BEFORE 1ST TAKEOFF", size: "SD", cfm: 0, elevation: "" },
+                        airflow: { label: "AIRFLOW", size: "FLOW", cfm: 0, elevation: "" },
+                        note: { label: "FIELD VERIFY BEFORE FABRICATION", size: "NOTE", cfm: 0, elevation: "" },
+                      };
+                      const selected = preset || fallback[symbolPreview.kind];
                       const equipmentType = symbolPreview.kind === "equipment" ? equipmentTypeName(preset?.variant || "air-handler") : "";
                       return renderSymbol({
                         id: "symbol-preview",
@@ -17063,7 +17068,7 @@ function HVACPlanStudioApp() {
                   <b className="blocked">{activeConnectionRepairPlan.counts.blocked} need a manual check</b>
                   <b className="healthy">{activeConnectionRepairPlan.counts.healthy} already connected</b>
                 </div>
-                {!showLegacyConnectionRepairPanel ? <button
+                <button
                   className="builder-primary-action connection-review-launch"
                   disabled={!activeConnectionRepairIssues.length}
                   onClick={() => {
@@ -17073,89 +17078,8 @@ function HVACPlanStudioApp() {
                   {activeConnectionRepairIssues.length
                     ? `Review ${activeConnectionRepairIssues.length} connection item${activeConnectionRepairIssues.length === 1 ? "" : "s"}`
                     : "All saved connections are aligned"}
-                </button> : <div className="connection-repair-review">
-                  <div className="connection-review-heading">
-                    <div>
-                      <strong>Connection review</strong>
-                      <small>Red is the loose run end. Green is where it will connect.</small>
-                    </div>
-                    <button onClick={() => setConnectionReviewOpen(false)} aria-label="Close connection review"><X size={15} /></button>
-                  </div>
-
-                  {connectionReviewStale && <div className="connection-review-stale">
-                    <AlertTriangle size={15} />
-                    <span><strong>The plan changed</strong><small>Refresh this review before selecting or applying fixes.</small></span>
-                    <button onClick={refreshConnectionRepairReview}>Refresh</button>
-                  </div>}
-
-                  <div className="connection-repair-list">
-                    {activeConnectionRepairIssues.map((item) => {
-                      const selected = selectedReadyConnectionRepairIds.includes(item.id);
-                      const distanceLabel = connectionRepairDistance(item);
-                      return <article className={`connection-repair-row ${item.status} ${focusedConnectionRepairId === item.id ? "focused" : ""}`} key={item.id}>
-                        <button className="connection-repair-focus" onClick={() => focusConnectionRepair(item)}>
-                          <span className="connection-repair-state" aria-hidden="true">
-                            {item.status === "ready" ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
-                          </span>
-                          <span>
-                            <strong>{item.label}</strong>
-                            <small>{item.detail} · Sheet {item.page}</small>
-                            <em>{item.reason}{distanceLabel ? ` · ${distanceLabel}` : ""}</em>
-                          </span>
-                          <b>{item.status === "ready" ? "READY" : item.status === "choice" ? "CHOOSE A RUN" : "CHECK ON PLAN"}</b>
-                        </button>
-
-                        {item.status === "choice" && <div className="connection-candidate-choices">
-                          {item.candidates.map((candidate) => <button
-                            className={connectionCandidateChoices[item.id] === candidate.id ? "selected" : ""}
-                            key={candidate.id}
-                            disabled={connectionReviewStale}
-                            aria-pressed={connectionCandidateChoices[item.id] === candidate.id}
-                            onClick={() => chooseConnectionCandidate(item, candidate.id)}
-                          >
-                            Use {candidate.runSize}&quot; run · {candidate.end} end · {connectionRepairDistanceValue(candidate.distance, item.page)}
-                            <small>{candidate.signals.join(" · ")}</small>
-                          </button>)}
-                        </div>}
-
-                        <div className="connection-repair-row-actions">
-                          <button onClick={() => focusConnectionRepair(item)}>Show on plan</button>
-                          {item.status === "ready" && <button
-                            className={selected ? "selected" : ""}
-                            disabled={connectionReviewStale}
-                            aria-pressed={selected}
-                            onClick={() => toggleConnectionRepair(item)}
-                          >
-                            {selected ? "Selected" : "Add this fix"}
-                          </button>}
-                        </div>
-                      </article>;
-                    })}
-                    {!activeConnectionRepairIssues.length && <div className="connection-review-clear">
-                      <CheckCircle2 size={18} />
-                      <span><strong>No loose saved connections</strong><small>Every unit connection, can, grille, and saved T Branch port is aligned.</small></span>
-                    </div>}
-                  </div>
-
-                  <div className="connection-repair-scope">
-                    <span><strong>{selectedReadyConnectionRepairIds.length}</strong> run endpoint{selectedReadyConnectionRepairIds.length === 1 ? "" : "s"} will move</span>
-                    <span><strong>0</strong> placed objects move</span>
-                    <span><strong>0</strong> runs created</span>
-                  </div>
-                  <div className="connection-repair-footer">
-                    <button
-                      disabled={connectionReviewStale || !activeConnectionRepairPlan.counts.ready}
-                      onClick={selectAllReadyConnectionRepairs}
-                    >Select ready fixes</button>
-                    <button
-                      className="apply"
-                      disabled={connectionReviewStale || !selectedReadyConnectionRepairIds.length}
-                      onClick={applySelectedConnectionRepairs}
-                    >
-                      Apply {selectedReadyConnectionRepairIds.length} selected · one Undo
-                    </button>
-                  </div>
-                </div>}</>}
+                </button>
+                </>}
               </div>
 
               <div className={`builder-action-card ${planSetupComplete && fieldFirstStep === "airflow" ? "current" : "other-step"} ${airflowStepComplete ? "complete" : "attention"}`}>
@@ -18124,7 +18048,7 @@ function HVACPlanStudioApp() {
         </aside>
       </section>
 
-      {fieldRedline.activeLayer && <FieldRedlineStudio
+      {mountFieldRedlineStudio && fieldRedline.activeLayer && <FieldRedlineStudio
         open={fieldRedline.open}
         jobName={fileName}
         sheetLabel={`Sheet ${pageNumber} of ${pdf?.numPages || 1}`}
@@ -18440,13 +18364,13 @@ function HVACPlanStudioApp() {
           setShowCloudProjects(true);
         }}
       />
-      {showProjectSetup && <GuidedProjectSetup
-        open
+      {mountGuidedProjectSetup && <GuidedProjectSetup
+        open={showProjectSetup}
         driveConfigured={driveConfigured}
         onCancel={() => setShowProjectSetup(false)}
         onStart={startGuidedProject}
       />}
-      <AIPlanWorkspace
+      {mountAIPlanWorkspace && <AIPlanWorkspace
         open={showPlanIntelligence}
         initialView={planWorkspaceInitialView}
         autoRun
@@ -18514,8 +18438,8 @@ function HVACPlanStudioApp() {
             setBranchMessage("The review decision is saved locally, but cloud sync needs edit access.");
           }
         }}
-      />
-      <MarkupAssistantStudio
+      />}
+      {mountMarkupAssistantStudio && <MarkupAssistantStudio
         key={`plan-helper:${assistantFocusedRecommendationId || "general"}`}
         open={showMarkupAssistant}
         initialView={assistantInitialView}
@@ -18699,8 +18623,8 @@ function HVACPlanStudioApp() {
           });
           setBranchMessage("Approved T Branch preview armed · click the highlighted junction to confirm placement · Undo remains available");
         }}
-      />
-      {showSystemBalanceStudio && <SystemBalanceStudio
+      />}
+      {mountSystemBalanceStudio && <SystemBalanceStudio
         open={showSystemBalanceStudio}
         projectName={fileName}
         model={buildSystemBalanceModel()}
@@ -18723,7 +18647,7 @@ function HVACPlanStudioApp() {
         onExportRooms={exportRoomScheduleCsv}
         onExportRuns={exportSystemBalanceRunCsv}
       />}
-      {showFinishJobStudio && <FinishJobStudio
+      {mountFinishJobStudio && <FinishJobStudio
         open={showFinishJobStudio}
         projectName={fileName}
         systemName={systemLabel(activeSystem)}
@@ -18796,7 +18720,7 @@ function HVACPlanStudioApp() {
         onDownloadRuns={exportFieldRunScheduleCsv}
         onDownloadRelease={exportReleaseManifestCsv}
       />}
-      <FieldPackageComposer
+      {mountFieldPackageComposer && <FieldPackageComposer
         open={showFieldPackageComposer}
         projectName={fileName}
         systemName={systemLabel(activeSystem)}
@@ -18819,8 +18743,8 @@ function HVACPlanStudioApp() {
         onDownloadManifest={exportReleaseManifestCsv}
         onDownloadRuns={exportFieldRunScheduleCsv}
         onDownloadTakeoff={exportPurchaseSheetCsv}
-      />
-      <CloudProjectsPanel
+      />}
+      {mountCloudProjectsPanel && <CloudProjectsPanel
         open={showCloudProjects}
         currentName={fileName}
         currentSourceFileName={pdf ? sourceFileName || `${fileName}.pdf` : undefined}
@@ -18854,7 +18778,7 @@ function HVACPlanStudioApp() {
           const returningToFinish = resumeFinishJobFromGate();
           if (!pdf && !returningToFinish) setShowProjectHome(true);
         }}
-      />
+      />}
       <ProjectCommandPalette
         open={showCommandPalette}
         commands={projectCommands}

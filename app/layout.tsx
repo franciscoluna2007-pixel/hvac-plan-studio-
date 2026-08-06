@@ -80,9 +80,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${patternCondensed.variable} antialiased`}
       >
         <template
-          data-impeccable-direction="galvanized-daylight"
+          data-impeccable-direction="material-cobalt"
           dangerouslySetInnerHTML={{
-            __html: "<!-- THESIS: the source plan is the white workpiece on a clean fabrication bench. OWN-WORLD: matte graphite, galvanized plate, exact plan white, safety orange, pressed controls, hard seams. STORY: open, choose, draw, inspect, advance. FIRST VIEWPORT: graphite job bar, horizontal destination rail, compact tool dock, white plan, ledger inspector, unchanged traveler. FORM: approved Concept A, presentation-only over frozen behavior. FINISH: agency-signoff fidelity across desktop, tablet, and mobile. -->",
+            __html: "<!-- THESIS: the source plan remains the work while calm Material chrome makes daily drafting faster to read. OWN-WORLD: cool-neutral surfaces, exact plan white, disciplined cobalt, precise type, shallow functional depth. STORY: Open Plan, Draw HVAC, Materials, Export; Plan Check remains compact and optional. FIRST VIEWPORT: premium job bar, segmented workflow, dominant plan, progressive tool and detail surfaces. FORM: selected Traverse Material direction, presentation-only over frozen behavior. FINISH: coherent desktop, tablet, and mobile production UI. -->",
           }}
         />
         {children}
