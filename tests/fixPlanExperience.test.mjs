@@ -23,7 +23,8 @@ test("the one-card flow answers where, wrong, fix, result, yes, and no", () => {
   assert.match(assistant, /Yes · fix this/);
   assert.match(assistant, /No · leave for later/);
   assert.match(assistant, /Apply this fix · one Undo/);
-  assert.match(assistant, /showLegacyRepairPlan = false/);
+  assert.doesNotMatch(assistant, /showLegacyRepairPlan/);
+  assert.doesNotMatch(assistant, /selectAllReadyActions|allReadySelected|repairGroups|toggleAction/);
 });
 
 test("connection choices and endpoint repairs live inside the same Fix Plan", () => {
@@ -34,6 +35,7 @@ test("connection choices and endpoint repairs live inside the same Fix Plan", ()
   assert.match(page, /connectionRepairItems=\{activeConnectionRepairIssues\}/);
   assert.match(page, /applyConnectionRepairSelection\(\[input\.itemId\], input\.evidenceFingerprint, \{/);
   assert.match(page, /openMarkupAssistant\("fix-plan"\)/);
+  assert.doesNotMatch(page, /showLegacyConnectionRepairPanel/);
 });
 
 test("the assistant review layer is transient, page-scoped, pointer-inert, and omitted from print", () => {

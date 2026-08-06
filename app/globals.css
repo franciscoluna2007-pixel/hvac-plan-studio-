@@ -541,6 +541,13 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .drawing-layer text.run-label.custom-position { fill: #087da2; }
 .drawing-layer text.run-label:active { cursor: grabbing; }
 .selected-drawing .duct-line { filter: drop-shadow(0 0 4px #fff); stroke-width: 7; }
+[data-plan-drawing-id]:focus-visible { outline: none; }
+[data-plan-drawing-id]:focus-visible .duct-line,
+[data-plan-drawing-id]:focus-visible .fitting-leg,
+[data-plan-drawing-id]:focus-visible .measurement-hit,
+[data-plan-drawing-id]:focus-visible .symbol-visual {
+  filter: drop-shadow(0 0 4px #2563eb) drop-shadow(0 0 2px #fff);
+}
 .traced-run .duct-line {
   stroke: #20c7f4 !important;
   stroke-width: 7;
@@ -21973,5 +21980,1427 @@ footer {
 @media print {
   .app-shell.swiss-plan-workspace .plan-check-strip {
     display: none !important;
+  }
+}
+.deferred-studio-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  background: rgb(248 250 252 / 92%);
+  color: #0b1324;
+  font: 700 0.78rem/1.2 var(--font-sans, Arial, sans-serif);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Material Cobalt — selected Traverse treatment promoted to production.
+   This layer changes application chrome only. The source PDF, saved drawing
+   colors, SVG paint order, geometry, controllers, and reducers remain owned by
+   their existing implementation. */
+.app-shell.swiss-plan-workspace[data-visual-world="material-traverse"][data-presentation="material-cobalt"] {
+  --material-plan: #ffffff;
+  --material-shell: #edf0ee;
+  --material-panel: #fbfcfb;
+  --material-panel-muted: #e3e7e4;
+  --material-line: #d7ddd8;
+  --material-line-strong: #aab3ac;
+  --material-ink: #202421;
+  --material-muted: #667069;
+  --material-blue: #002fa7;
+  --material-blue-hover: #00288f;
+  --material-blue-pressed: #001f73;
+  --material-blue-soft: #e9efff;
+  --material-blue-line: #a9bcee;
+  --material-success: #39705d;
+  --material-warning: #a77a28;
+  --material-critical: #a63e32;
+  --material-redline: #a84537;
+  --material-shadow-panel: 0 8px 24px rgb(34 42 37 / 7%);
+  --material-shadow-plan: 0 16px 36px rgb(32 40 35 / 18%), 0 2px 6px rgb(32 40 35 / 8%);
+
+  --swiss-paper: var(--material-plan) !important;
+  --swiss-field: var(--material-shell) !important;
+  --swiss-line: var(--material-line) !important;
+  --swiss-line-strong: var(--material-line-strong) !important;
+  --swiss-ink: var(--material-ink) !important;
+  --swiss-muted: var(--material-muted) !important;
+  --swiss-blue: var(--material-blue) !important;
+  --swiss-blue-soft: var(--material-blue-soft) !important;
+  --gd-plan: var(--material-plan) !important;
+  --gd-shell: var(--material-shell) !important;
+  --gd-metal: var(--material-panel-muted) !important;
+  --gd-metal-light: var(--material-panel) !important;
+  --gd-metal-dark: var(--material-line-strong) !important;
+  --gd-ink: var(--material-ink) !important;
+  --gd-muted: var(--material-muted) !important;
+  --gd-active: var(--material-blue) !important;
+  --gd-active-deep: var(--material-blue-pressed) !important;
+  --gd-active-soft: var(--material-blue-soft) !important;
+  --gd-confirm: var(--material-success) !important;
+  --gd-warning: var(--material-warning) !important;
+  --gd-critical: var(--material-critical) !important;
+  --gd-focus: var(--material-blue) !important;
+
+  grid-template-rows: 72px minmax(0, 1fr) 28px;
+  color: var(--material-ink) !important;
+  background: var(--material-shell) !important;
+  font-family: var(--font-geist-sans), "Segoe UI", sans-serif !important;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] ::selection {
+  color: var(--material-ink);
+  background: var(--material-blue-soft);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(button, input, select, textarea) {
+  font-family: var(--font-geist-sans), "Segoe UI", sans-serif !important;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(button, input, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--material-blue) !important;
+  outline-offset: 2px !important;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] button {
+  transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 100ms ease;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] button:disabled {
+  opacity: .46;
+  cursor: not-allowed;
+}
+
+/* Premium job bar and cobalt identity. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) > .topbar,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-header {
+  min-height: 72px;
+  padding-inline: 18px;
+  grid-template-columns: minmax(220px, 260px) minmax(280px, 1fr) auto;
+  gap: 16px;
+  color: var(--material-ink);
+  border-color: var(--material-line);
+  background: rgb(252 253 252 / 96%);
+  box-shadow: 0 5px 18px rgb(38 46 40 / 7%);
+  backdrop-filter: blur(14px);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .brand {
+  height: 54px;
+  padding-right: 14px;
+  border-right: 1px solid var(--material-line);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.brand-mark, .project-home-brand > span) {
+  width: 42px;
+  height: 42px;
+  color: #fff;
+  border: 1px solid var(--material-blue-pressed);
+  border-radius: 11px;
+  background: var(--material-blue);
+  box-shadow: 0 5px 12px rgb(0 47 167 / 22%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.brand strong, .project-home-brand strong) {
+  color: var(--material-blue);
+  font-size: 16px;
+  font-weight: 760;
+  letter-spacing: -.025em;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.brand span, .project-home-brand small) {
+  color: var(--material-muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-breadcrumb strong {
+  color: var(--material-ink);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .topbar :is(.top-actions > button, .system-switcher) {
+  min-height: 38px;
+  color: var(--material-ink) !important;
+  border: 1px solid var(--material-line) !important;
+  border-radius: 8px !important;
+  background: var(--material-panel) !important;
+  box-shadow: 0 1px 2px rgb(32 40 35 / 5%) !important;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .topbar :is(.top-actions > button, .system-switcher):hover:not(:disabled) {
+  color: var(--material-blue) !important;
+  border-color: var(--material-blue-line) !important;
+  background: var(--material-blue-soft) !important;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .topbar .top-actions > .top-save-button,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.home-primary, .primary-button, .builder-primary-action, .field-first-primary),
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-studio button.primary {
+  color: #fff !important;
+  border-color: var(--material-blue) !important;
+  background: var(--material-blue) !important;
+  box-shadow: 0 3px 9px rgb(0 47 167 / 18%) !important;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .topbar .top-actions > .top-save-button:hover:not(:disabled),
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.home-primary, .primary-button, .builder-primary-action, .field-first-primary):hover:not(:disabled),
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-studio button.primary:hover:not(:disabled) {
+  color: #fff !important;
+  border-color: var(--material-blue-hover) !important;
+  background: var(--material-blue-hover) !important;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .topbar .top-actions > .top-save-button:active:not(:disabled),
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.home-primary, .primary-button, .builder-primary-action, .field-first-primary):active:not(:disabled),
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-studio button.primary:active:not(:disabled) {
+  background: var(--material-blue-pressed) !important;
+}
+
+/* Traverse composition: one segmented workflow above the canvas-first row. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) > .workspace {
+  grid-template-areas:
+    "rail rail rail"
+    "tools canvas inspector";
+  grid-template-columns: 260px minmax(520px, 1fr) 288px;
+  grid-template-rows: 52px minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px 12px 12px;
+  background: var(--material-shell);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode).left-closed > .workspace {
+  grid-template-areas: "rail rail" "canvas inspector";
+  grid-template-columns: minmax(560px, 1fr) 288px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode).right-closed > .workspace {
+  grid-template-areas: "rail rail" "tools canvas";
+  grid-template-columns: 260px minmax(560px, 1fr);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode).left-closed.right-closed > .workspace {
+  grid-template-areas: "rail" "canvas";
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode).wide-inspector > .workspace {
+  grid-template-columns: 250px minmax(500px, 1fr) 380px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail {
+  grid-area: rail;
+  counter-reset: material-workflow;
+  min-width: 0;
+  width: 100%;
+  height: 52px;
+  min-height: 52px;
+  padding: 5px;
+  flex-direction: row;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid rgb(255 255 255 / 75%);
+  border-radius: 12px 12px 6px 6px;
+  background: rgb(252 253 252 / 92%);
+  box-shadow: 0 7px 20px rgb(34 42 37 / 8%);
+  scrollbar-width: thin;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail-group {
+  flex-direction: row;
+  gap: 4px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail-main {
+  counter-reset: material-workflow;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail-main > button {
+  counter-increment: material-workflow;
+  min-width: 126px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail-main > button::before {
+  content: "0" counter(material-workflow);
+  color: var(--material-blue);
+  font: 700 10px/1 var(--font-geist-mono), monospace;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail-review {
+  margin-left: auto;
+  padding: 0 0 0 4px;
+  border-top: 0;
+  border-left: 1px solid var(--material-line);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail-settings {
+  margin: 0;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail button {
+  width: auto;
+  min-width: 48px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--material-muted);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 680;
+  white-space: nowrap;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail button:hover:not(:disabled) {
+  color: var(--material-blue);
+  border-color: var(--material-blue-line);
+  background: var(--material-blue-soft);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail button.active:not(.redline) {
+  color: #fff;
+  border-color: var(--material-blue);
+  background: var(--material-blue);
+  box-shadow: 0 2px 6px rgb(0 47 167 / 18%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail button.active:not(.redline)::before {
+  color: #fff;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail button.redline.active {
+  color: #fff;
+  border-color: var(--material-redline);
+  background: var(--material-redline);
+  box-shadow: 0 2px 6px rgb(168 69 55 / 18%);
+}
+
+/* Material tool and details surfaces keep the plan dominant. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) :is(.left-panel, .right-panel) {
+  min-width: 0;
+  color: var(--material-ink);
+  border: 1px solid var(--material-line);
+  border-radius: 0 0 12px 12px;
+  background: rgb(251 252 251 / 96%);
+  box-shadow: var(--material-shadow-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.left-panel, .right-panel) :is(.panel-heading, .left-panel-tabs, .right-tabs) {
+  color: var(--material-ink);
+  border-color: var(--material-line);
+  background: var(--material-panel);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel-tabs button,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-tabs button,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel .panel-heading button {
+  min-height: 36px;
+  color: var(--material-muted);
+  border-color: transparent;
+  border-radius: 7px;
+  background: transparent;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.left-panel-tabs, .right-tabs) button.active {
+  color: var(--material-blue);
+  border-color: var(--material-blue-line);
+  background: var(--material-blue-soft);
+  box-shadow: inset 0 -2px var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel.view-draw .tool-list {
+  gap: 6px;
+  padding: 8px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel.view-draw .tool {
+  min-height: 48px;
+  color: var(--material-ink);
+  border: 1px solid var(--material-line);
+  border-radius: 8px;
+  background: var(--material-panel);
+  box-shadow: 0 1px 2px rgb(32 40 35 / 4%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel.view-draw .tool:hover:not(:disabled) {
+  color: var(--material-blue);
+  border-color: var(--material-blue-line);
+  background: var(--material-blue-soft);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel.view-draw .tool.active {
+  color: var(--material-blue);
+  border-color: var(--material-blue);
+  background: var(--material-blue-soft);
+  box-shadow: 0 1px 3px rgb(0 47 167 / 10%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel.view-draw .tool-icon.blue { color: var(--blue); }
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel.view-draw .tool-icon.yellow { color: var(--yellow); }
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel.view-draw .tool-icon.red { color: var(--red); }
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel.view-draw .tool-icon.green { color: var(--green); }
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel.view-draw .tool-icon.orange { color: var(--orange); }
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel.view-draw .tool.active kbd { color: var(--material-blue); }
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-panel :is(
+  .builder-hero,
+  .smart-plan-preflight,
+  .panel-section,
+  .builder-workflow,
+  .builder-action-card,
+  .plan-summary,
+  .status-card,
+  .fitting-properties,
+  .run-connection-card
+) {
+  border-color: var(--material-line);
+  border-radius: 8px;
+  background: var(--material-panel);
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-panel .builder-action-card.current {
+  background: var(--material-blue-soft);
+  box-shadow: inset 0 0 0 1px var(--material-blue-line);
+}
+
+/* Exact-white plan on a quiet neutral work surface. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) .canvas-area {
+  min-width: 0;
+  grid-template-rows: 50px minmax(0, 1fr);
+  border: 1px solid var(--material-line);
+  border-radius: 0 0 12px 12px;
+  background: var(--material-panel-muted);
+  box-shadow: var(--material-shadow-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) .canvas-toolbar {
+  min-height: 50px;
+  padding: 6px 8px;
+  gap: 4px;
+  color: var(--material-ink);
+  border-color: var(--material-line);
+  background: rgb(251 252 251 / 94%);
+  box-shadow: 0 3px 12px rgb(34 42 37 / 5%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .canvas-toolbar button,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.canvas-edit-actions, .page-controls, .scale) {
+  min-height: 34px;
+  color: var(--material-ink);
+  border: 1px solid var(--material-line);
+  border-radius: 7px;
+  background: var(--material-panel);
+  box-shadow: 0 1px 2px rgb(32 40 35 / 4%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .canvas-toolbar button:hover:not(:disabled) {
+  color: var(--material-blue);
+  border-color: var(--material-blue-line);
+  background: var(--material-blue-soft);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .canvas-toolbar button.active {
+  color: var(--material-blue);
+  border-color: var(--material-blue);
+  background: var(--material-blue-soft);
+  box-shadow: inset 0 -2px var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) .canvas {
+  border-radius: 0 0 11px 11px;
+  background-color: #d7dcd8;
+  background-image:
+    linear-gradient(rgb(32 40 35 / 5%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(32 40 35 / 5%) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) .canvas.grid-hidden {
+  background: #d7dcd8;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.plan-sheet, .pdf-stage canvas) {
+  background: var(--material-plan) !important;
+  background-image: none !important;
+  filter: none !important;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .pdf-stage {
+  box-shadow: var(--material-shadow-plan);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] > footer {
+  min-height: 28px;
+  color: var(--material-muted);
+  border-color: var(--material-line);
+  background: var(--material-panel-muted);
+}
+
+/* Project Home uses the same real workflow and saved-job content. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-overlay {
+  grid-template-rows: 72px minmax(0, 1fr);
+  color: var(--material-ink);
+  background: var(--material-shell);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-scroll {
+  background: var(--material-shell);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-nav {
+  align-self: center;
+  padding: 4px;
+  border: 1px solid var(--material-line);
+  border-radius: 10px;
+  background: var(--material-panel-muted);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-nav button {
+  min-height: 36px;
+  color: var(--material-muted);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-nav button.active {
+  color: #fff;
+  background: var(--material-blue);
+  box-shadow: 0 2px 6px rgb(0 47 167 / 16%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-hero {
+  min-height: 0;
+  padding: 40px 32px;
+  color: var(--material-ink);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-hero::before {
+  display: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-hero h1 {
+  max-width: 14ch;
+  color: var(--material-ink);
+  font-size: clamp(42px, 5vw, 68px);
+  line-height: .98;
+  letter-spacing: -.055em;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-hero-copy > p {
+  max-width: 58ch;
+  color: var(--material-muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(
+  .home-command-preview,
+  .project-home-plan-sources,
+  .home-project-cards > button,
+  .project-home-empty
+) {
+  color: var(--material-ink);
+  border: 1px solid var(--material-line);
+  border-radius: 12px;
+  background: var(--material-panel);
+  box-shadow: var(--material-shadow-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .home-command-preview :is(header, footer),
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .home-command-preview li {
+  border-color: var(--material-line);
+  background: transparent;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .home-command-preview li.active {
+  background: var(--material-blue-soft);
+  box-shadow: inset 0 0 0 1px var(--material-blue-line);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .home-command-preview li.active b,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-plan-source-buttons button.recommended {
+  color: #fff;
+  border-color: var(--material-blue);
+  background: var(--material-blue);
+}
+
+/* Materials/Export finish surface: open rows, strong hierarchy, one cobalt action. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-overlay {
+  padding: 24px;
+  background: rgb(32 36 33 / 42%);
+  backdrop-filter: blur(8px);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-studio {
+  max-width: 1180px;
+  max-height: min(900px, calc(100dvh - 48px));
+  color: var(--material-ink);
+  border: 1px solid var(--material-line);
+  border-radius: 16px;
+  background: var(--material-panel);
+  box-shadow: 0 24px 60px rgb(32 40 35 / 22%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-studio :is(
+  .finish-job-header,
+  .finish-job-steps,
+  .finish-job-workspace,
+  .finish-job-footer,
+  .finish-job-section-heading
+) {
+  color: var(--material-ink);
+  border-color: var(--material-line);
+  background: var(--material-panel);
+  background-image: none;
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-brand > span {
+  color: #fff;
+  border-color: var(--material-blue);
+  background: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-progress {
+  background: var(--material-panel-muted);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-progress > i {
+  background: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-steps button {
+  color: var(--material-ink);
+  border-color: transparent;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-steps button.active {
+  color: var(--material-blue);
+  border-color: var(--material-blue-line);
+  background: var(--material-blue-soft);
+  box-shadow: inset 0 0 0 1px var(--material-blue-line);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-steps button.complete b,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.finish-clear-state, .finish-review-receipt.current) {
+  color: var(--material-success);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(
+  .finish-material-metrics article,
+  .finish-material-control,
+  .finish-material-list,
+  .finish-review-receipt,
+  .finish-release-state,
+  .finish-output-actions,
+  .finish-output-downloads
+) {
+  border-color: var(--material-line);
+  border-radius: 10px;
+  background: var(--material-panel);
+  box-shadow: 0 2px 8px rgb(34 42 37 / 5%);
+}
+
+/* Plan Check stays a compact, optional sidecar. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .plan-check-strip {
+  color: var(--material-ink);
+  border-color: var(--material-line);
+  background: var(--material-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .plan-check-strip > span svg {
+  color: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .plan-check-strip > div button:first-child {
+  color: #fff;
+  border-color: var(--material-blue);
+  background: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .markup-assistant-overlay.fix-plan-sidecar {
+  color: var(--material-ink);
+  border-color: var(--material-line);
+  background: var(--material-panel);
+  box-shadow: -12px 0 32px rgb(32 40 35 / 14%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .markup-assistant-brand > span {
+  color: #fff;
+  border-radius: 9px;
+  background: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .assistant-workspace-tabs button.active {
+  color: var(--material-blue);
+  background: var(--material-blue-soft);
+  box-shadow: inset 0 -2px var(--material-blue);
+}
+
+@media (max-width: 1180px) and (min-width: 1101px) {
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) > .workspace {
+    grid-template-columns: 226px minmax(430px, 1fr) 250px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail-main > button {
+    min-width: 108px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail button {
+    padding-inline: 8px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] {
+    grid-template-rows: 64px minmax(0, 1fr) 28px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) > .topbar {
+    min-height: 64px;
+    grid-template-columns: minmax(190px, 1fr) auto;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-name {
+    display: none;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) > .workspace,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode).left-closed > .workspace,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode).right-closed > .workspace,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode).left-closed.right-closed > .workspace,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode).wide-inspector > .workspace {
+    grid-template-areas: "rail" "canvas";
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: 54px minmax(0, 1fr);
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail {
+    height: 54px;
+    min-height: 54px;
+    border-radius: 10px 10px 5px 5px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail button {
+    min-height: 42px;
+    height: 42px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"].tablet-layout :is(.left-panel, .right-panel) {
+    top: 118px;
+    bottom: 28px;
+    width: min(380px, 88vw);
+    border-radius: 0 12px 12px 0;
+    background: rgb(251 252 251 / 98%);
+    box-shadow: 12px 0 28px rgb(30 38 33 / 18%);
+    backdrop-filter: blur(12px);
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"].tablet-layout .right-panel {
+    border-radius: 12px 0 0 12px;
+    box-shadow: -12px 0 28px rgb(30 38 33 / 18%);
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .workspace-drawer-scrim {
+    inset: 118px 0 28px;
+    background: rgb(32 36 33 / 38%);
+    backdrop-filter: blur(3px);
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] {
+    grid-template-rows: 58px minmax(0, 1fr) 28px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) > .topbar {
+    min-height: 58px;
+    padding-inline: 8px;
+    gap: 6px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .brand {
+    height: 48px;
+    padding-right: 8px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .brand-mark {
+    width: 38px;
+    height: 38px;
+    border-radius: 9px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .brand strong {
+    max-width: 116px;
+    overflow: hidden;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .brand span,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .studio-save-state,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .top-actions .command-button,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .top-actions .cloud-button,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .top-history-button span,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .top-save-button span {
+    display: none;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .topbar .top-actions > button {
+    min-width: 42px;
+    min-height: 42px;
+    padding: 0 10px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) > .workspace,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode).left-closed > .workspace,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode).right-closed > .workspace,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode).left-closed.right-closed > .workspace {
+    grid-template-rows: 58px minmax(0, 1fr);
+    gap: 4px;
+    padding: 6px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail {
+    height: 58px;
+    min-height: 58px;
+    padding: 5px;
+    border-radius: 9px 9px 4px 4px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail-main > button {
+    min-width: 92px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail button {
+    min-width: 48px;
+    min-height: 48px;
+    height: 48px;
+    padding: 0 8px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail-review {
+    margin-left: 0;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail-review button span,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail-settings span {
+    display: none;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"].tablet-layout :is(.left-panel, .right-panel) {
+    top: 116px;
+    width: 100vw;
+    border-radius: 0;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .workspace-drawer-scrim {
+    inset: 116px 0 28px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) .canvas-area,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) :is(.left-panel, .right-panel) {
+    border-radius: 0 0 9px 9px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-overlay {
+    grid-template-rows: 58px minmax(0, 1fr);
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-header {
+    min-height: 58px;
+    padding-inline: 8px;
+    grid-template-columns: 1fr auto;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-nav {
+    display: none;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-hero {
+    padding: 28px 16px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-hero h1 {
+    font-size: clamp(38px, 12vw, 52px);
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-overlay {
+    padding: 0;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-studio {
+    width: 100vw;
+    height: 100dvh;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .plan-check-strip {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .plan-check-strip > div {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-studio :is(h2, h3, strong, b, p, small, span, label, legend) {
+  color: var(--material-ink);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-studio :is(
+  .finish-job-brand small,
+  .finish-job-section-heading small
+) {
+  color: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-studio :is(
+  .finish-job-brand p,
+  .finish-job-steps button small,
+  .finish-job-section-heading p,
+  .finish-material-metrics small,
+  .finish-material-metrics span,
+  .finish-job-footer small
+) {
+  color: var(--material-muted);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-header-status > span,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-header-status button,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-footer > button:not(.primary) {
+  color: var(--material-ink);
+  border-color: var(--material-line);
+  border-radius: 8px;
+  background: var(--material-panel-muted);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-header-status b {
+  color: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-steps button > b {
+  color: var(--material-muted);
+  border-color: var(--material-line-strong);
+  background: var(--material-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-steps button.active > b {
+  color: #fff;
+  border-color: var(--material-blue);
+  background: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-safety,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-guardrail {
+  color: var(--material-blue);
+  border-color: var(--material-blue-line);
+  border-radius: 10px;
+  background: var(--material-blue-soft);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-safety :is(strong, small),
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-guardrail span {
+  color: inherit;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-section-heading > span {
+  color: #fff;
+  background: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-section-heading > em.open {
+  color: var(--material-warning);
+  border-color: color-mix(in srgb, var(--material-warning) 42%, var(--material-line));
+  background: color-mix(in srgb, var(--material-warning) 8%, var(--material-panel));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.finish-inline-warning, .finish-issue-blocked) {
+  color: var(--material-warning);
+  border-color: color-mix(in srgb, var(--material-warning) 42%, var(--material-line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--material-warning) 8%, var(--material-panel));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.finish-inline-warning, .finish-issue-blocked) :is(strong, small, span) {
+  color: inherit;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-empty {
+  color: var(--material-muted);
+  border-color: var(--material-line-strong);
+  border-radius: 12px;
+  background: var(--material-panel-muted);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-empty strong {
+  color: var(--material-ink);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-material-control :is(button, select),
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-studio :is(input, select, textarea) {
+  color: var(--material-ink);
+  border-color: var(--material-line-strong);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .finish-job-footer {
+  color: var(--material-ink);
+  background: var(--material-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .repair-plan-workspace,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fix-plan-unified {
+  color: var(--material-ink);
+  background: var(--material-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fix-plan-sidecar :is(
+  .fix-plan-heading,
+  .fix-plan-search,
+  .fix-plan-progress,
+  .fix-plan-issue,
+  .fix-plan-exact-preview,
+  .fix-plan-decision,
+  .fix-plan-answer,
+  .fix-plan-inline-approval,
+  .assistant-suggestion-layer-control,
+  .room-markup-workspace,
+  .room-markup-room-card,
+  .room-markup-candidate,
+  .room-markup-final,
+  .markup-assistant-footer
+) {
+  color: var(--material-ink);
+  border-color: var(--material-line);
+  background: var(--material-panel);
+  background-image: none;
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fix-plan-sidecar :is(
+  .fix-plan-heading,
+  .fix-plan-issue,
+  .fix-plan-decision,
+  .assistant-suggestion-layer-control,
+  .room-markup-workspace,
+  .room-markup-room-card,
+  .room-markup-candidate,
+  .markup-assistant-footer
+) :is(h2, h3, strong, b, p, small, span, label) {
+  color: inherit;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fix-plan-counts span {
+  color: var(--material-ink);
+  border-color: var(--material-blue-line);
+  background: var(--material-blue-soft);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fix-plan-counts b {
+  color: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fix-plan-search :is(input, button) {
+  color: var(--material-ink);
+  border-color: var(--material-line-strong);
+  background: #fff;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fix-plan-search button:not(:disabled),
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .room-markup-entry-actions > button.primary,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .room-markup-workspace button.primary {
+  color: #fff;
+  border-color: var(--material-blue);
+  background: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .assistant-suggestion-layer-control.room-markup-entry {
+  color: var(--material-warning);
+  border-color: color-mix(in srgb, var(--material-warning) 42%, var(--material-line));
+  background: color-mix(in srgb, var(--material-warning) 7%, var(--material-panel));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .markup-assistant-footer {
+  color: var(--material-muted);
+  border-top: 1px solid var(--material-line);
+  background: var(--material-panel-muted);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .markup-assistant-footer strong {
+  color: var(--material-ink);
+}
+
+@media (max-width: 1100px) {
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail {
+    position: static;
+    inset: auto;
+    z-index: auto;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .topbar .top-actions > .top-save-button {
+    display: inline-flex !important;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .topbar .top-actions > .top-history-button {
+    display: none !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .brand > div:last-child {
+    display: block;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .top-actions {
+    gap: 4px;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .topbar .top-actions > button {
+    width: 42px;
+    min-width: 42px;
+    padding: 0 !important;
+    justify-content: center;
+    font-size: 0 !important;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(
+    .command-rail button,
+    .left-panel-tabs button,
+    .right-tabs button,
+    .canvas-toolbar button,
+    .top-actions > button
+  ) {
+    min-height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] *,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] *::before,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media print {
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] {
+    color: #000;
+    background: #fff !important;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .command-rail {
+    display: none !important;
+  }
+}
+
+/* Bounded Material follow-up: normalize retained operational subpanels while
+   preserving their real content and domain status colors. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel :is(
+  .run-size-default,
+  .branch-designer,
+  .symbol-library,
+  .panel-section
+) {
+  color: var(--material-ink);
+  border: 1px solid var(--material-line);
+  border-radius: 10px;
+  background: var(--material-panel);
+  background-image: none;
+  box-shadow: 0 2px 8px rgb(34 42 37 / 5%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel .run-size-default {
+  box-shadow: 0 2px 8px rgb(34 42 37 / 5%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel .branch-designer.active {
+  border-color: var(--material-blue-line);
+  background: var(--material-blue-soft);
+  box-shadow: inset 0 0 0 1px var(--material-blue-line);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel :is(.run-size-default, .branch-designer) :is(span, strong, b, label) {
+  color: var(--material-ink);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel :is(.run-size-default, .branch-designer) small {
+  color: var(--material-muted);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .left-panel :is(.run-size-default, .branch-designer) select {
+  color: var(--material-ink);
+  border-color: var(--material-line-strong);
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: inset 0 1px 2px rgb(32 40 35 / 7%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .branch-safe-mode {
+  color: var(--material-success);
+  border-color: color-mix(in srgb, var(--material-success) 42%, var(--material-line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--material-success) 7%, var(--material-panel));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .branch-safe-mode small {
+  color: var(--material-success) !important;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .branch-arm {
+  color: #fff !important;
+  border: 1px solid var(--material-blue) !important;
+  border-radius: 8px !important;
+  background: var(--material-blue) !important;
+  background-image: none !important;
+  box-shadow: 0 3px 9px rgb(0 47 167 / 18%) !important;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .branch-arm:hover:not(:disabled) {
+  background: var(--material-blue-hover) !important;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-tabs .right-tablist {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-tabs .right-tablist button {
+  min-width: 0;
+  padding-inline: 4px;
+  font-size: 10px;
+  line-height: 1.1;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .plan-check-strip {
+  min-height: auto;
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .plan-check-strip > div {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .plan-check-strip button {
+  min-width: 0;
+  padding-inline: 5px;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-panel :is(.builder-hero, .smart-plan-preflight, .builder-workflow, .builder-action-card) {
+  color: var(--material-ink);
+  border-color: var(--material-line);
+  background: var(--material-panel);
+  background-image: none;
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .builder-hero-heading > span {
+  color: #fff;
+  background: var(--material-blue);
+  background-image: none;
+  box-shadow: 0 3px 9px rgb(0 47 167 / 16%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-panel :is(
+  .builder-hero-heading,
+  .smart-plan-preflight,
+  .builder-action-card
+) :is(strong, b, span, p, small, dt, dd, label) {
+  color: inherit;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-panel .smart-plan-preflight > dl > div {
+  color: var(--material-ink);
+  border: 1px solid var(--material-line);
+  border-radius: 7px;
+  background: var(--material-panel-muted);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-panel .smart-plan-preflight button:not(.secondary) {
+  color: #fff;
+  border-color: var(--material-blue);
+  border-radius: 8px;
+  background: var(--material-blue);
+  background-image: none;
+  box-shadow: 0 3px 9px rgb(0 47 167 / 16%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .builder-action-card.attention {
+  border-color: color-mix(in srgb, var(--material-warning) 42%, var(--material-line));
+  background: color-mix(in srgb, var(--material-warning) 7%, var(--material-panel));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .builder-action-card.critical {
+  border-color: color-mix(in srgb, var(--material-critical) 42%, var(--material-line));
+  background: color-mix(in srgb, var(--material-critical) 7%, var(--material-panel));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .builder-action-card.complete {
+  border-color: color-mix(in srgb, var(--material-success) 42%, var(--material-line));
+  background: color-mix(in srgb, var(--material-success) 6%, var(--material-panel));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .takeoff-panel {
+  color: var(--material-ink);
+  background: var(--material-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-hero {
+  color: var(--material-ink);
+  border-color: var(--material-line);
+  background: var(--material-panel);
+  background-image: none;
+  box-shadow: var(--material-shadow-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-kicker {
+  color: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-hero > div > strong {
+  color: var(--material-ink);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-hero > div > small {
+  color: var(--material-muted);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-hero > b.hold {
+  color: var(--material-critical);
+  border-color: color-mix(in srgb, var(--material-critical) 38%, var(--material-line));
+  background: color-mix(in srgb, var(--material-critical) 8%, var(--material-panel));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-tabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-color: var(--material-line);
+  background: var(--material-panel-muted);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-tabs button {
+  min-height: 34px;
+  color: var(--material-muted);
+  border-radius: 6px;
+  background: transparent;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-tabs button.active {
+  color: var(--material-blue);
+  border: 1px solid var(--material-blue-line);
+  background: var(--material-blue-soft);
+  background-image: none;
+  box-shadow: inset 0 -2px var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-project-strip span,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .material-summary-grid > div {
+  color: var(--material-ink);
+  border-color: var(--material-line);
+  border-radius: 8px;
+  background: var(--material-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-project-strip :is(b, small),
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .material-summary-grid > div :is(span, strong, small) {
+  color: inherit;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .material-summary-grid > div.attention {
+  color: var(--material-warning);
+  border-color: color-mix(in srgb, var(--material-warning) 42%, var(--material-line));
+  background: color-mix(in srgb, var(--material-warning) 7%, var(--material-panel));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.production-readiness-card, .production-guardrail, .production-controls, .production-list, .empty-takeoff) {
+  color: var(--material-ink);
+  border-color: var(--material-line);
+  border-radius: 9px;
+  background: var(--material-panel);
+  background-image: none;
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-readiness-card > label.clear {
+  color: var(--material-success);
+  border-color: color-mix(in srgb, var(--material-success) 42%, var(--material-line));
+  background: color-mix(in srgb, var(--material-success) 7%, var(--material-panel));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-readiness-card > label.hold {
+  color: var(--material-warning);
+  border-color: color-mix(in srgb, var(--material-warning) 42%, var(--material-line));
+  background: color-mix(in srgb, var(--material-warning) 7%, var(--material-panel));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-readiness-card label :is(b, small) {
+  color: inherit;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-guardrail {
+  color: var(--material-blue);
+  background: var(--material-blue-soft);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-guardrail :is(strong, small) {
+  color: inherit;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fabrication-holds {
+  color: var(--material-critical);
+  border-color: color-mix(in srgb, var(--material-critical) 42%, var(--material-line));
+  background: color-mix(in srgb, var(--material-critical) 7%, var(--material-panel));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fabrication-holds :is(strong, small) {
+  color: inherit;
+}
+
+@media (max-width: 640px) {
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-tabs .right-tablist button {
+    min-height: 44px;
+    font-size: 11px;
   }
 }

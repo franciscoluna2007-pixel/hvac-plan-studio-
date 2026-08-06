@@ -3,6 +3,7 @@ import type {
   RedlinePageBinding,
   RedlinePoint,
 } from "./redlineDomain";
+import { isRedlineStrokeAnnotation } from "./redlineDomain";
 import {
   redlineAnnotationVisualBounds,
   redlineCanvasArrowHeadPoints,
@@ -443,7 +444,7 @@ function annotationIntersectsEraser(
     Math.max(0, finite(annotation.style.strokeWidth, 0)) / 2;
   const hitRadius = eraserRadius + strokePadding;
 
-  if (annotation.kind === "ink" || annotation.kind === "highlighter") {
+  if (isRedlineStrokeAnnotation(annotation)) {
     const points = annotation.points.map((point) =>
       physicalPoint(point, aspectRatio));
     if (!points.length) return false;

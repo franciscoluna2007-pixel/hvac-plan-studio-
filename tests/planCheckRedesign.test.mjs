@@ -40,11 +40,11 @@ test("uses factual Plan Check language and keeps details user-invoked", () => {
   assert.doesNotMatch(assistant, /NOTHING CHANGES WITHOUT APPROVAL/);
 });
 
-test("applies the scoped Swiss presentation without changing plan drawing colors", () => {
-  assert.match(styles, /--swiss-paper: #ffffff/);
-  assert.match(styles, /--swiss-field: #f7f7f8/);
-  assert.match(styles, /--swiss-blue: #002fa7/);
-  assert.match(styles, /"Helvetica Neue", Helvetica, Arial, sans-serif/);
-  assert.match(styles, /\.app-shell\.swiss-plan-workspace :is\(\.plan-sheet, \.pdf-stage canvas\)/);
+test("applies the scoped Material Cobalt presentation without changing plan drawing colors", () => {
+  assert.match(styles, /--material-plan: #ffffff/);
+  assert.match(styles, /--material-shell: #edf0ee/);
+  assert.match(styles, /--material-blue: #002fa7/);
+  assert.match(styles, /font-family: var\(--font-geist-sans\)/);
+  assert.match(styles, /data-presentation="material-cobalt"[\s\S]*?:is\(\.plan-sheet, \.pdf-stage canvas\)/);
   assert.doesNotMatch(styles, /\.app-shell\.swiss-plan-workspace[\s\S]*?drawingColors/);
 });

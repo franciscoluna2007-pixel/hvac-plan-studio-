@@ -18,6 +18,15 @@ if [[ ! -x "${vinext}" ]]; then
   exit 69
 fi
 
+typescript="${SITES_PROJECT_ROOT}/node_modules/typescript/bin/tsc"
+if [[ ! -f "${typescript}" ]]; then
+  echo "TypeScript is unavailable. Run npm run install:ci and wait for it to finish before building." >&2
+  exit 69
+fi
+
+echo "Running strict TypeScript release gate..."
+node "${typescript}" --noEmit --incremental false --pretty false
+
 echo "Running bounded vinext build..."
 timeout \
   --signal=TERM \
