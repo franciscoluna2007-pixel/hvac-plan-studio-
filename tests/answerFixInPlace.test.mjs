@@ -59,10 +59,11 @@ test("Fix Plan can reach system-only evidence and keeps its markers visible", ()
   assert.doesNotMatch(page, /const selectable = activeReviewedIssueRows\.filter\(\(row\) => !row\.resolvedByDecision && row\.issue\.drawingId\)/);
 });
 
-test("Plan Check launch is an advisory strip instead of a fifth selected tab", () => {
+test("Plan Check launch is an optional Finish action instead of a persistent inspector strip", () => {
   assert.match(page, /className="right-tablist" role="tablist"/);
-  assert.match(page, /<PlanCheckStrip/);
-  assert.match(page, /onReview=\{\(\) => openMarkupAssistant\("fix-plan"\)\}/);
+  assert.doesNotMatch(page, /<PlanCheckStrip/);
+  assert.match(page, /onOpenPlanCheck=\{\(\) => \{/);
+  assert.match(page, /openMarkupAssistant\("fix-plan"\)/);
   assert.doesNotMatch(page, /role="tab" aria-selected=\{showMarkupAssistant\}/);
   assert.match(css, /\.right-tablist \{/);
 });

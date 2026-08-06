@@ -10,7 +10,8 @@ const [page, assistant] = await Promise.all([
 test("exposes one consistently named Plan Check route", () => {
   assert.match(page, /id: "check",\s*label: "Plan Check"/);
   assert.match(page, /id: "markup-assistant",\s*label: "Open Plan Check"/);
-  assert.match(page, /<PlanCheckStrip/);
+  assert.match(page, /planCheckCount=\{planCheckCount\}/);
+  assert.match(page, /onOpenPlanCheck=\{\(\) => \{/);
   assert.doesNotMatch(page, /label: "Fix Problems"/);
   assert.doesNotMatch(page, />Problems<\/button>/);
   assert.doesNotMatch(page, />Plan problems<\/button>/);

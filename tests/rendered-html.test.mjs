@@ -218,13 +218,13 @@ test("keeps the accurate manual takeoff engine while v106 removes field operatio
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   const migration = await readFile(new URL("../supabase/migrations/20260724210000_field_production_takeoff_center.sql", import.meta.url), "utf8");
 
-  assert.match(page, /V106 · PLAN INTELLIGENCE/);
-  assert.match(page, /HVAC Takeoff Center/);
+  assert.match(page, /combined into simple order quantities/);
+  assert.match(page, /material-order-list/);
   assert.doesNotMatch(page, />Field<\/button>/);
   assert.doesNotMatch(page, /Field mode<\/button>/);
-  assert.match(page, /Flex quantity uses your rule/);
+  assert.match(page, /Every started 25 ft of flex counts as one box/);
   assert.match(page, /Math\.ceil\(orderLength \/ 25\)/);
-  assert.match(page, /Your drawing stays manual/);
+  assert.match(page, /Materials and exports remain available/);
   assert.match(page, /createTakeoffPackage/);
   assert.match(page, /saveProjectPackageToDrive/);
   assert.match(cloud, /saveCloudTakeoffPackage/);

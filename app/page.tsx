@@ -15,6 +15,7 @@ import RedlineCanvasLayer from "./RedlineCanvasLayer";
 import { redlineSelectionVisualBounds } from "./redlineVisualBounds";
 import { trackProductEvent } from "./productAnalytics";
 import { compactTerminalPlanLabel } from "./terminalPlanLabel";
+import { allocateBranchAirflow } from "./airflowBudget";
 import {
   BRANCH_ATTACH_RADIUS_PX,
   BRANCH_AUTO_MATCH_RADIUS_PX,
@@ -48,7 +49,6 @@ import {
   port3UndoDisposition,
   type Port3BranchDraftState,
 } from "./port3BranchDraft";
-import PlanCheckStrip from "./PlanCheckStrip";
 import type { FixPlanIssueAnswer, PlanHelperPrimaryView } from "./MarkupAssistantStudio";
 import { type FieldPackageSectionId } from "./fieldPackage";
 import {
@@ -1510,6 +1510,9 @@ type TakeoffRow = {
   size: string;
   quantity: string;
   note: string;
+  orderCount: number;
+  orderUnit: "box" | "each" | "lot";
+  breakdown?: string;
 };
 
 type TakeoffPackageRecord = {
@@ -1754,7 +1757,6 @@ function HVACPlanStudioApp() {
   const [returnToFinishGateId, setReturnToFinishGateId] = useState<string | null>(null);
   const [showSystemBalanceStudio, setShowSystemBalanceStudio] = useState(false);
   const [showMarkupAssistant, setShowMarkupAssistant] = useState(false);
-  const [planCheckIgnored, setPlanCheckIgnored] = useState(false);
   const [assistantInitialView, setAssistantInitialView] = useState<PlanHelperPrimaryView>("setup");
   const [activeMarkupRecommendation, setActiveMarkupRecommendation] = useState<MarkupRecommendation | undefined>();
   const [assistantFocusedRecommendationId, setAssistantFocusedRecommendationId] = useState("");
@@ -1882,7 +1884,8 @@ function HVACPlanStudioApp() {
   const [releaseRecords, setReleaseRecords] = useState<SystemReleaseRecord[]>([]);
   const [takeoffPackageRecords, setTakeoffPackageRecords] = useState<TakeoffPackageRecord[]>([]);
   const [materialReviewRecords, setMaterialReviewRecords] = useState<MaterialReviewRecord[]>([]);
-  const [takeoffView, setTakeoffView] = useState<"overview" | "materials" | "installer" | "packages">("overview");
+  const [takeoffView, setTakeoffView] = useState<"overview" | "materials" | "installer" | "packages">("materials");
+  const [showMaterialBreakdown, setShowMaterialBreakdown] = useState(false);
   const [takeoffPackageName, setTakeoffPackageName] = useState("");
   const [takeoffRevision, setTakeoffRevision] = useState("");
   const [takeoffPreparedBy, setTakeoffPreparedBy] = useState("");
@@ -2301,10 +2304,6 @@ function HVACPlanStudioApp() {
   );
   const planCheckRows = activeReviewedIssueRows.filter((row) => !row.resolvedByDecision);
   const planCheckCount = planCheckRows.length;
-  const planCheckHasPlanTarget = planCheckRows.some((row) => Boolean(row.issue.drawingId));
-  useEffect(() => {
-    setPlanCheckIgnored(false);
-  }, [activeSystem, planCheckCount]);
   const activeValidationDashboard = useMemo(
     () => validationDashboard(activeValidationIssues),
     [activeSystem, activeValidationIssues, drawings, roomAirflowTargets],
@@ -5507,6 +5506,18 @@ function HVACPlanStudioApp() {
     }
     returnCalculated.forEach((cfm, runId) => calculated.set(runId, cfm));
     returnCalculatedSources.forEach((sources, runId) => calculatedSources.set(runId, sources));
+    const allocated = allocateBranchAirflow(
+      runs.map((run) => ({
+        id: run.id,
+        childIds: children.get(run.id) || [],
+        scheduledCfm: calculated.get(run.id) || 0,
+        manualCfm: run.cfmSource === "manual" ? Math.max(0, run.cfm || 0) : 0,
+      })),
+      [...equipmentRun.entries()].map(([equipmentId, runId]) => ({
+        runId,
+        availableCfm: Math.max(0, drawings.find((drawing) => drawing.id === equipmentId)?.cfm || 0),
+      })),
+    );
     const rootedTerminalRun = new Map<string, string>();
     drawings.filter((drawing) => ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "")).forEach((terminal) => {
       const runId = terminalRun.get(terminal.id);
@@ -5517,6 +5528,7 @@ function HVACPlanStudioApp() {
     return {
       calculated,
       calculatedSources,
+      allocated,
       terminalRun,
       rootedTerminalRun,
       equipmentRun,
@@ -5537,7 +5549,7 @@ function HVACPlanStudioApp() {
     if (drawing.cfmSource === "manual") {
       return Math.max(propagated, Math.max(0, drawing.cfm ?? 0));
     }
-    return propagated || Math.max(0, drawing.cfm ?? 0);
+    return propagated || airflowNetwork().allocated.get(drawing.id) || Math.max(0, drawing.cfm ?? 0);
   }
 
   function branchNetworkTrace(fitting?: Drawing) {
@@ -8115,8 +8127,11 @@ function HVACPlanStudioApp() {
         category: "Duct",
         item: name,
         size: `${total.size}"`,
-        quantity: `${total.length.toFixed(1)} LF`,
-        note: `${rolls} × 25-ft ${rolls === 1 ? "box" : "boxes"} · includes ${materialWastePercent}% allowance`,
+        quantity: `${rolls} × 25-ft ${rolls === 1 ? "box" : "boxes"}`,
+        note: `${total.length.toFixed(1)} LF measured · ${materialWastePercent}% allowance`,
+        orderCount: rolls,
+        orderUnit: "box",
+        breakdown: `${total.length.toFixed(1)} LF measured on the plan; ${(orderLength).toFixed(1)} LF after allowance.`,
       });
     }
     const activeSymbols = drawings.filter((drawing) => drawingSystem(drawing) === systemId && drawing.symbol);
@@ -8139,30 +8154,43 @@ function HVACPlanStudioApp() {
     });
     [...groupedSymbols.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.size.localeCompare(b.size)).forEach((group) => {
       const category = ["diffuser", "returnGrille"].includes(group.kind) ? "Air devices" : group.kind === "equipment" ? "Equipment" : "Accessories";
-      rows.push({ category, item: group.label, size: group.size, quantity: `${group.count} EA`, note: `${group.variant.replaceAll("-", " ")} style · field label governs` });
-      if (group.kind === "diffuser") rows.push({ category: "Air devices", item: "Supply can / plenum box", size: `Ø${group.neckSize}" neck`, quantity: `${group.count} EA`, note: `${group.size} face · match ${group.label.toLowerCase()}` });
-      if (group.kind === "returnGrille") rows.push({ category: "Air devices", item: "Return can / box", size: `Ø${group.neckSize}" neck`, quantity: `${group.count} EA`, note: `${group.size} face · match ${group.label.toLowerCase()}` });
+      rows.push({ category, item: group.label, size: group.size, quantity: `${group.count} each`, note: "", orderCount: group.count, orderUnit: "each", breakdown: `${group.variant.replaceAll("-", " ")} style · field label governs` });
+      if (group.kind === "diffuser") rows.push({ category: "Air devices", item: "Supply can / plenum box", size: `Ø${group.neckSize}" neck`, quantity: `${group.count} each`, note: "", orderCount: group.count, orderUnit: "each", breakdown: `${group.size} face · match ${group.label.toLowerCase()}` });
+      if (group.kind === "returnGrille") rows.push({ category: "Air devices", item: "Return can / box", size: `Ø${group.neckSize}" neck`, quantity: `${group.count} each`, note: "", orderCount: group.count, orderUnit: "each", breakdown: `${group.size} face · match ${group.label.toLowerCase()}` });
     });
-    rows.push(...buildDedicatedExhaustTakeoffRows(activeSymbols));
+    rows.push(...buildDedicatedExhaustTakeoffRows(activeSymbols).map((row) => ({
+      ...row,
+      quantity: `${Number(row.quantity.match(/^\d+/)?.[0]) || 0} each`,
+      note: "",
+      orderCount: Number(row.quantity.match(/^\d+/)?.[0]) || 0,
+      orderUnit: "each" as const,
+      breakdown: row.note,
+    })));
     const fittingGroups = new Map<string, number>();
     drawings.filter((drawing) => drawingSystem(drawing) === systemId && drawing.fitting).forEach((drawing) => {
       const fitting = drawing.fitting!;
       const size = `${fitting.upstreamSize}×${fitting.downstreamSize}×${fitting.branchSize}`;
-      const key = `${fitting.style === "tee90" ? "Tee" : "Wye"} ${size}`;
+      const key = `${fitting.style}|${size}`;
       fittingGroups.set(key, (fittingGroups.get(key) || 0) + 1);
     });
     fittingGroups.forEach((count, key) => {
-      const [item, size] = key.split(" ");
-      rows.push({ category: "Fittings", item: `${item} branch fitting`, size, quantity: `${count} EA`, note: "Verify orientation before shop release" });
+      const [style, size] = key.split("|");
+      rows.push({ category: "Fittings", item: "T Branch", size: size.split("×").map((value) => `${value}\"`).join(" × "), quantity: `${count} each`, note: "", orderCount: count, orderUnit: "each", breakdown: `${style === "tee90" ? "90° tee" : "45° wye"} · verify orientation before fabrication.` });
     });
-    if (ductTotals.size) rows.push({ category: "Installation", item: "Hangers, strap, sealant, mastic & fasteners", size: "—", quantity: "1 LOT", note: "Field verify structure and support spacing" });
-    return rows;
+    if (ductTotals.size) rows.push({ category: "Accessories", item: "Hangers, strap, sealant, mastic & fasteners", size: "As required", quantity: "1 lot", note: "", orderCount: 1, orderUnit: "lot", breakdown: "Field verify structure and support spacing." });
+    const categoryOrder = new Map(["Duct", "Fittings", "Air devices", "Equipment", "Accessories"].map((category, index) => [category, index]));
+    const largestSize = (value: string) => Math.max(0, ...[...value.matchAll(/\d+(?:\.\d+)?/g)].map((match) => Number(match[0])));
+    return rows.sort((a, b) =>
+      (categoryOrder.get(a.category) ?? 99) - (categoryOrder.get(b.category) ?? 99) ||
+      largestSize(b.size) - largestSize(a.size) ||
+      a.item.localeCompare(b.item)
+    );
   }
 
   function materialSummary(systemId = activeSystem, rows = buildTakeoff(systemId)) {
-    const flexBoxes = rows.filter((row) => row.item.includes("flex duct")).reduce((total, row) => total + (Number(row.note.match(/^(\d+)/)?.[1]) || 0), 0);
-    const deviceCount = rows.filter((row) => row.category === "Air devices" && !row.item.includes("can") && !row.item.includes("box")).reduce((total, row) => total + (Number(row.quantity.match(/^(\d+)/)?.[1]) || 0), 0);
-    const fittingCount = rows.filter((row) => row.category === "Fittings").reduce((total, row) => total + (Number(row.quantity.match(/^(\d+)/)?.[1]) || 0), 0);
+    const flexBoxes = rows.filter((row) => row.item.includes("flex duct")).reduce((total, row) => total + row.orderCount, 0);
+    const deviceCount = rows.filter((row) => row.category === "Air devices" && !row.item.includes("can") && !row.item.includes("box")).reduce((total, row) => total + row.orderCount, 0);
+    const fittingCount = rows.filter((row) => row.category === "Fittings").reduce((total, row) => total + row.orderCount, 0);
     const holds = systemId === activeSystem
       ? activeValidationIssues.filter((issue) => issue.severity !== "info" && ["Coordination", "Connections"].includes(issueCategory(issue.title)))
       : [];
@@ -8340,12 +8368,15 @@ function HVACPlanStudioApp() {
       ? activeFieldPackage.status
       : "DRAFT — NOT FOR INSTALLATION";
     const csv = [
-      ["Package status", packageStatus, "", "", "", ""],
-      ["Drawing scale", activeScaleStatus.verified ? activeScaleStatus.detail : `UNVERIFIED — ${activeScaleStatus.detail}`, "", "", "", ""],
-      ["Drawing signature", systemDrawingSignature(), "", "", "", ""],
+      ["HVAC MATERIAL ORDER LIST", systemLabel(activeSystem), "", ""],
+      ["Status", packageStatus, "", ""],
+      ["Scale", activeScaleStatus.verified ? activeScaleStatus.detail : `UNVERIFIED — ${activeScaleStatus.detail}`, "", ""],
       [],
-      ["System", "Category", "Item", "Size", "Order Quantity", "Purchasing / Fabrication Note"],
-      ...rows.map((row) => [systemLabel(activeSystem), row.category, row.item, row.size, row.quantity, row.note]),
+      ["Category", "Item", "Size", "Order quantity"],
+      ...rows.map((row) => [row.category, row.item, row.size, row.quantity]),
+      [],
+      ["Breakdown (reference only)", "", "", ""],
+      ...rows.filter((row) => row.breakdown).map((row) => [row.category, `${row.item} ${row.size}`, row.breakdown || "", ""]),
     ].map((row) => row.map(quote).join(",")).join("\n");
     const link = document.createElement("a");
     const objectUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -12703,12 +12734,15 @@ function HVACPlanStudioApp() {
         preset.variant === variant &&
         preset.label === label
       );
-    return compactTerminalPlanLabel({
+    const compactLabel = compactTerminalPlanLabel({
       kind,
       size: drawing.size,
       label,
       usesCatalogLabel,
     });
+    return isPrimaryAirflowEquipment(drawing) && (drawing.cfm || 0) > 0
+      ? `${compactLabel} · ${Math.round(drawing.cfm || 0)} CFM`
+      : compactLabel;
   }
 
   function symbolLabelBaseY(drawing: Drawing) {
@@ -15879,8 +15913,9 @@ function HVACPlanStudioApp() {
                 <div className="engineering-grid">
                   <div><span>Length</span><strong>{scaleStateForPage(selectedRun.page).verified ? `${drawingLengthFeet(selectedRun)} LF` : "SCALE UNVERIFIED"}</strong></div>
                   <div><span>Connected airflow</span><strong>{runAirflow(selectedRun)} CFM</strong></div>
+                  <div><span>Suggested size</span><strong>{recommendedDuctSize(runAirflow(selectedRun), selectedRun.type === "return" ? "return" : "supply")}&quot; · review</strong></div>
                   <div><span>Velocity</span><strong>{velocityFpm(selectedRun.size, runAirflow(selectedRun))} FPM</strong></div>
-                  <div><span>Source</span><strong>{selectedRun.cfmSource === "manual" ? "MANUAL" : airflowNetwork().calculated.get(selectedRun.id) ? "TERMINAL SCHEDULE" : "PLANNING"}</strong></div>
+                  <div><span>Source</span><strong>{selectedRun.cfmSource === "manual" ? "MANUAL" : airflowNetwork().calculated.get(selectedRun.id) ? "TERMINAL SCHEDULE" : airflowNetwork().allocated.get(selectedRun.id) ? "BALANCED BUDGET" : "PLANNING"}</strong></div>
                   <div><span>Friction rate</span><strong>{runPressure(selectedRun).frictionRate.toFixed(2)} /100 FT</strong></div>
                   <div><span>Segment loss</span><strong>{scaleStateForPage(selectedRun.page).verified ? `${runPressure(selectedRun).pressureDrop.toFixed(2)} IN. W.G.` : "SCALE UNVERIFIED"}</strong></div>
                 </div>
@@ -17085,15 +17120,6 @@ function HVACPlanStudioApp() {
             </div>
             <button className="right-collapse" aria-label="Collapse inspector" aria-controls="workspace-inspector-panel" aria-expanded={rightPanelOpen} onClick={() => setRightPanelOpen(false)}><PanelRightClose size={15} /></button>
           </div>
-          <PlanCheckStrip
-            count={planCheckCount}
-            ignored={planCheckIgnored}
-            canShowOnPlan={planCheckHasPlanTarget}
-            onReview={() => openMarkupAssistant("fix-plan")}
-            onShowOnPlan={selectNextValidationIssue}
-            onIgnore={() => setPlanCheckIgnored(true)}
-            onRestore={() => setPlanCheckIgnored(false)}
-          />
           {rightTab === "builder" ? <div className="system-builder-panel">
             <div className="builder-hero">
               <div className="builder-hero-heading">
@@ -17528,42 +17554,13 @@ function HVACPlanStudioApp() {
             </div>
             <div className="takeoff-note">Review-only. The panel follows connected runs and T Branch relationships; it never changes duct sizes, routes, CFM, or fittings automatically.</div>
           </div> : rightTab === "takeoff" ? <div className="takeoff-panel">
-            <div className="production-hero">
+            <div className="material-order-header">
               <div>
-                <span className="production-kicker"><CloudUpload size={12} /> V106 · PLAN INTELLIGENCE</span>
-                <strong>HVAC Takeoff Center</strong>
-                <small>{systemLabel(activeSystem)} · source-backed material quantities and review</small>
+                <strong>Materials</strong>
+                <small>{systemLabel(activeSystem)} · combined into simple order quantities</small>
               </div>
-              <b className={materialSummary().holds.length ? "hold" : buildTakeoff().length ? "ready" : "empty"}>
-                {materialSummary().holds.length ? `${materialSummary().holds.length} HOLD` : buildTakeoff().length ? "READY" : "EMPTY"}
-              </b>
+              <b>{buildTakeoff().length} items</b>
             </div>
-            <nav className="production-tabs" role="tablist" aria-label="HVAC Takeoff Center">
-              {([
-                ["overview", "Overview"],
-                ["materials", "Materials"],
-              ] as const).map(([view, label]) => <button role="tab" aria-selected={takeoffView === view} className={takeoffView === view ? "active" : ""} onClick={() => setTakeoffView(view)} key={view}>{label}</button>)}
-            </nav>
-            {takeoffView === "overview" && <>
-              <div className="production-project-strip">
-                <span><b>{projectProductionSummary().systems}</b><small>Active systems</small></span>
-                <span><b>{projectProductionSummary().lineItems}</b><small>Project line items</small></span>
-                <span><b>{projectProductionSummary().flexRolls}</b><small>25-ft flex rolls</small></span>
-              </div>
-              <div className="material-summary-grid production-metrics">
-                <div><span>25-ft flex rolls</span><strong>{materialSummary().flexBoxes}</strong><small>Every started 25 ft counts</small></div>
-                <div><span>Air devices</span><strong>{materialSummary().deviceCount}</strong><small>Supply + return faces</small></div>
-                <div><span>T Branch fittings</span><strong>{materialSummary().fittingCount}</strong><small>Saved plan geometry</small></div>
-                <div className={materialSummary().holds.length ? "attention" : "good"}><span>Fabrication holds</span><strong>{materialSummary().holds.length}</strong><small>{materialSummary().holds.length ? "Resolve before order" : "No active holds"}</small></div>
-              </div>
-              <div className="production-readiness-card">
-                <div className="field-section-heading"><strong>PRODUCTION READINESS</strong><span>{activeSystemScaleStatus.verified && !materialSummary().holds.length ? "REVIEWED" : "CHECK"}</span></div>
-                <label className={activeSystemScaleStatus.verified ? "clear" : "hold"}>{activeSystemScaleStatus.verified ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}<span><b>Drawing scale</b><small>{activeSystemScaleStatus.detail}</small></span></label>
-                <label className={activeFieldPackage.connectionProblems ? "hold" : "clear"}>{activeFieldPackage.connectionProblems ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}<span><b>Connections</b><small>{activeFieldPackage.connectionProblems ? `${activeFieldPackage.connectionProblems} open or detached connection${activeFieldPackage.connectionProblems === 1 ? "" : "s"}` : "Saved run and fitting connections are complete"}</small></span></label>
-                <label className={materialSummary().holds.length ? "hold" : "clear"}>{materialSummary().holds.length ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}<span><b>Fabrication coordination</b><small>{materialSummary().holds.length ? "Clear the highlighted plan issues before fabrication" : "No active coordination holds"}</small></span></label>
-              </div>
-              <div className="production-guardrail"><ShieldAlert size={15} /><span><strong>Your drawing stays manual.</strong><small>Add field numbers and confirm sizes after drawing. Connection, route, return, and repair decisions still require approval.</small></span></div>
-            </>}
             {takeoffView === "materials" && <>
               <div className="material-controls production-controls">
                 <label>Material allowance
@@ -17571,21 +17568,24 @@ function HVACPlanStudioApp() {
                     {[0, 5, 10, 15, 20].map((value) => <option value={value} key={value}>{value}% waste</option>)}
                   </select>
                 </label>
-                <button disabled={!buildTakeoff().length} onClick={exportPurchaseSheetCsv}><Save size={13} /> Purchase CSV</button>
+                <button disabled={!buildTakeoff().length} onClick={exportPurchaseSheetCsv}><Save size={13} /> Download list</button>
               </div>
-              {materialSummary().holds.length > 0 && <div className="fabrication-holds">
-                <div><ShieldAlert size={15} /><span><strong>DO NOT FABRICATE YET</strong><small>Resolve these coordination items first</small></span></div>
-                {materialSummary().holds.slice(0, 5).map((issue, index) => <button key={`${issue.title}-hold-${index}`} onClick={() => focusReviewIssue(issue)}>
-                  <AlertTriangle size={11} /><span><strong>{issue.title}</strong><small>{issue.detail}</small></span>
-                </button>)}
-              </div>}
-              {buildTakeoff().length ? <div className="takeoff-list production-list">
-                {buildTakeoff().map((row, index) => <div className="takeoff-row" key={`${row.item}-${row.size}-${index}`}>
-                  <div><i>{row.category}</i><strong>{row.item}</strong><small>{row.size} · {row.note}</small></div>
-                  <b>{row.quantity}</b>
-                </div>)}
+              {materialSummary().holds.length > 0 && <button className="material-advisory" onClick={() => openMarkupAssistant("fix-plan")}>
+                <AlertTriangle size={14} /><span><strong>{materialSummary().holds.length} item{materialSummary().holds.length === 1 ? "" : "s"} need review</strong><small>Materials and exports remain available.</small></span>
+              </button>}
+              {buildTakeoff().length ? <div className="material-order-list">
+                {[...new Set(buildTakeoff().map((row) => row.category))].map((category) => <section className="material-order-group" key={category}>
+                  <h3>{category}</h3>
+                  {buildTakeoff().filter((row) => row.category === category).map((row, index) => <div className="takeoff-row" key={`${row.item}-${row.size}-${index}`}>
+                    <div><strong>{row.item}</strong><small>{row.size}</small>{showMaterialBreakdown && row.breakdown && <em>{row.breakdown}</em>}</div>
+                    <b>{row.quantity}</b>
+                  </div>)}
+                </section>)}
               </div> : <div className="empty-takeoff">Draw ductwork or place HVAC symbols to build the takeoff.</div>}
-              <div className="takeoff-note">Flex quantity uses your rule: total measured length by size, plus the selected allowance, divided into 25-ft rolls; every started roll counts as one.</div>
+              {buildTakeoff().length > 0 && <button className="material-breakdown-toggle" onClick={() => setShowMaterialBreakdown((visible) => !visible)} aria-expanded={showMaterialBreakdown}>
+                {showMaterialBreakdown ? "Hide breakdown" : "View breakdown"}
+              </button>}
+              <div className="takeoff-note">Every started 25 ft of flex counts as one box. Field-verify sizes before ordering.</div>
             </>}
             {takeoffView === "installer" && <div className="production-installer-sheet">
               <div className="installer-sheet-title"><span><b>INSTALLER SHEET</b><small>{fileName} · {systemLabel(activeSystem)}</small></span><button onClick={openFieldPackageComposer}><FileText size={13} /> Compose PDF</button></div>
@@ -18189,10 +18189,10 @@ function HVACPlanStudioApp() {
           <span>Approximate quantities · field verify before ordering</span>
         </div>
         <table className="package-print-section package-section-materials">
-          <thead><tr><th>Category</th><th>Item</th><th>Size</th><th>Quantity</th><th>Field note</th></tr></thead>
+          <thead><tr><th>Category</th><th>Item</th><th>Size</th><th>Order quantity</th></tr></thead>
           <tbody>
             {buildTakeoff().map((row, index) => <tr key={`${row.item}-print-${index}`}>
-              <td>{row.category}</td><td>{row.item}</td><td>{row.size}</td><td>{row.quantity}</td><td>{row.note}</td>
+              <td>{row.category}</td><td>{row.item}</td><td>{row.size}</td><td>{row.quantity}</td>
             </tr>)}
           </tbody>
         </table>
@@ -18765,6 +18765,7 @@ function HVACPlanStudioApp() {
           reviewedAt: activeMaterialReview.reviewedAt,
           current: activeMaterialReviewCurrent,
         } : undefined}
+        planCheckCount={planCheckCount}
         checklist={fieldChecklistItems.map((item) => ({
           ...item,
           checked: Boolean(activeFieldChecklist()[item.id]),
@@ -18818,6 +18819,10 @@ function HVACPlanStudioApp() {
         onCreateEmailDraft={createCurrentPlanEmailDraft}
         onCopySummary={() => void copyCurrentFinishJobSummary()}
         onDownloadMaterials={exportPurchaseSheetCsv}
+        onOpenPlanCheck={() => {
+          setShowFinishJobStudio(false);
+          openMarkupAssistant("fix-plan");
+        }}
         onDownloadRuns={exportFieldRunScheduleCsv}
         onDownloadRelease={exportReleaseManifestCsv}
       />}

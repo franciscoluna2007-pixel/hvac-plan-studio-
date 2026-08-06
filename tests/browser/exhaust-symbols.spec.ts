@@ -82,13 +82,13 @@ test("Range Hood and Dryer Vent place, copy/Undo, serialize, and count independe
   await expect(hoods).toHaveCount(1);
 
   await page.getByRole("button", { name: "Materials", exact: true }).click();
-  await page.getByRole("tablist", { name: "HVAC Takeoff Center" }).getByRole("tab", { name: "Materials", exact: true }).click();
+  await expect(page.getByText("combined into simple order quantities")).toBeVisible();
   const hoodRow = page.locator(".takeoff-row").filter({ hasText: "Range Hood" });
   const dryerRow = page.locator(".takeoff-row").filter({ hasText: "Dryer Vent" });
   await expect(hoodRow).toBeVisible();
   await expect(dryerRow).toBeVisible();
-  await expect(hoodRow).toContainText("1 EA");
-  await expect(dryerRow).toContainText("1 EA");
+  await expect(hoodRow).toContainText("1 each");
+  await expect(dryerRow).toContainText("1 each");
   await expect(hoodRow).not.toContainText("LF");
   await expect(dryerRow).not.toContainText("LF");
 });

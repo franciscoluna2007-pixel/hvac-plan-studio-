@@ -147,9 +147,13 @@ test("desktop review covers Project Home, Materials, Export, and compact Plan Ch
 
   await page.getByRole("button", { name: "Materials", exact: true }).click();
   await expect(page.getByRole("complementary", { name: "HVAC plan inspector" })).toBeVisible();
+  await expect(page.getByText("combined into simple order quantities")).toBeVisible();
+  await expect(page.locator(".plan-check-strip")).toHaveCount(0);
   await page.screenshot({ path: path.join(reviewDir, "material-desktop-materials.png"), fullPage: false });
 
-  await page.getByRole("button", { name: "Review", exact: true }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Finish the Job" })).toBeVisible();
+  await page.getByRole("button", { name: /Check plan/ }).click();
   await expect(page.locator(".markup-assistant-studio").getByRole("heading", { name: /items? to review/ })).toBeVisible();
   await page.screenshot({ path: path.join(reviewDir, "material-desktop-plan-check.png"), fullPage: false });
   await page.getByRole("button", { name: "Close Plan Check" }).click();

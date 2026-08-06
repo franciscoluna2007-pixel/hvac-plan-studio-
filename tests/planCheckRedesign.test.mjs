@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const [page, strip, assistant, styles] = await Promise.all([
+const [page, finish, assistant, styles] = await Promise.all([
   readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../app/PlanCheckStrip.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../app/FinishJobStudio.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/MarkupAssistantStudio.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
 ]);
@@ -20,16 +20,12 @@ test("centers the workspace on the approved four-step workflow", () => {
   assert.match(styles, /\.command-rail-main > button::before/);
 });
 
-test("keeps Plan Check compact, optional, and plan-linked", () => {
-  assert.match(strip, /Plan Check/);
-  assert.match(strip, /item\$\{count === 1 \? "" : "s"\} to review/);
-  assert.match(strip, /"Review"/);
-  assert.match(strip, /Show on plan/);
-  assert.match(strip, /Ignore for now/);
-  assert.match(strip, /aria-live="polite"/);
-  assert.match(page, /onShowOnPlan=\{selectNextValidationIssue\}/);
-  assert.match(page, /onIgnore=\{\(\) => setPlanCheckIgnored\(true\)\}/);
-  assert.match(styles, /\.plan-check-strip\.ignored/);
+test("keeps Plan Check optional inside Export instead of occupying the workspace", () => {
+  assert.match(finish, /finish-plan-check-action/);
+  assert.match(finish, /Check plan\{planCheckCount/);
+  assert.match(page, /planCheckCount=\{planCheckCount\}/);
+  assert.match(page, /onOpenPlanCheck=\{\(\) => \{/);
+  assert.doesNotMatch(page, /<PlanCheckStrip/);
 });
 
 test("uses factual Plan Check language and keeps details user-invoked", () => {
