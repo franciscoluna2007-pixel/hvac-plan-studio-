@@ -391,6 +391,53 @@ test("trunk resolver excludes ineligible context and is deterministic across run
   }
 });
 
+test("return trunks use the same selected-run resolver without changing the supply default", () => {
+  const runs = [
+    { id: "supply", type: "supply", page: 1, systemId: "system-a", eligible: true, points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] },
+    { id: "return", type: "return", page: 1, systemId: "system-a", eligible: true, points: [{ x: 0, y: 3 }, { x: 100, y: 3 }] },
+  ];
+
+  const legacySupply = resolveDirectBranchTrunkCandidate({
+    point: { x: 25, y: 2 }, runs, page: 1, activeSystemId: "system-a", zoom: 1, inputType: "mouse",
+  });
+  assert.equal(legacySupply.run.id, "supply");
+
+  const selectedReturn = resolveDirectBranchTrunkCandidate({
+    point: { x: 25, y: 2 },
+    runs,
+    page: 1,
+    activeSystemId: "system-a",
+    selectedRunId: "return",
+    networkKinds: ["supply", "return"],
+    zoom: 1,
+    inputType: "mouse",
+  });
+  assert.equal(selectedReturn.run.id, "return");
+  assert.deepEqual(selectedReturn.point, { x: 25, y: 3 });
+});
+
+test("return Port 3 endpoint matching excludes a closer supply endpoint", () => {
+  const base = { page: 1, systemId: "system-a", eligible: true };
+  const result = chooseSafeLocalBranchEndpoint({
+    center: { x: 40, y: 0 },
+    mainRunId: "return-main",
+    mainAngle: 0,
+    page: 1,
+    systemId: "system-a",
+    networkKind: "return",
+    zoom: 1,
+    assignedRunIds: new Set(),
+    runs: [
+      { ...base, id: "supply-closer", type: "supply", points: [{ x: 40, y: 11 }, { x: 40, y: 40 }] },
+      { ...base, id: "return-branch", type: "return", points: [{ x: 40, y: 14 }, { x: 40, y: 44 }] },
+    ],
+    radiusPx: 18,
+    ambiguityPx: 6,
+    resolveBranchPort: () => ({ x: 40, y: 10 }),
+  });
+  assert.equal(result.run.id, "return-branch");
+});
+
 test("polyline span crosses collinear vertices while preserving the exact station", () => {
   const center = { x: 30, y: 0 };
   const result = reserveDirectBranchPolylineSpan({

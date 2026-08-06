@@ -108,7 +108,7 @@ test("right-click Copy supports repeated paste and Escape exit", async ({ page }
   const center = await centerOf(run.locator("path.hit-line"));
   await page.mouse.click(center.x, center.y, { button: "right" });
 
-  const menu = page.getByRole("menu", { name: "Supply assembly actions" });
+  const menu = page.getByRole("menu", { name: "Duct assembly actions" });
   await expect(menu).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "Copy" })).toBeFocused();
   await menu.getByRole("menuitem", { name: "Copy" }).click();
