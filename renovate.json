@@ -1,0 +1,21 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:best-practices"],
+  "automerge": false,
+  "dependencyDashboard": true,
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 4,
+  "packageRules": [
+    {
+      "description": "Require explicit approval before major upgrades",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Group non-major development tooling updates",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "development tooling"
+    }
+  ]
+}
