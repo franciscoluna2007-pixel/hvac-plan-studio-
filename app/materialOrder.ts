@@ -30,6 +30,16 @@ export type MaterialRigidRunInput = {
   construction: "rectangular" | "round-metal" | "spiral";
   size: string;
   lengthFeet: number | null;
+  lengthStatus?: "ready" | "scale-required" | "takeout-required";
+};
+
+export type MaterialRigidFittingInput = {
+  id: string;
+  networkKind: "supply" | "return" | "fresh";
+  construction: "rectangular" | "round-metal" | "spiral";
+  size: string;
+  angleDegrees: 45 | 90;
+  rectangularStyle?: "radius" | "square";
 };
 
 export type MaterialSymbolInput = {
@@ -52,6 +62,7 @@ export type MaterialFittingInput = {
 type MaterialOrderInput = {
   runs: readonly MaterialRunInput[];
   rigidRuns?: readonly MaterialRigidRunInput[];
+  rigidFittings?: readonly MaterialRigidFittingInput[];
   symbols: readonly MaterialSymbolInput[];
   fittings: readonly MaterialFittingInput[];
   allowancePercent: number;
@@ -89,6 +100,7 @@ function alreadyIncludesBox(kind: string, variant: string) {
 export function buildMaterialOrder({
   runs,
   rigidRuns = [],
+  rigidFittings = [],
   symbols,
   fittings,
   allowancePercent,
@@ -147,6 +159,7 @@ export function buildMaterialOrder({
     size: string;
     lengthFeet: number;
     hasUnverifiedLength: boolean;
+    hasMissingTakeout: boolean;
     networkKinds: Set<MaterialRigidRunInput["networkKind"]>;
     sourceDrawingIds: string[];
   }>();
@@ -157,10 +170,14 @@ export function buildMaterialOrder({
       size: run.size,
       lengthFeet: 0,
       hasUnverifiedLength: false,
+      hasMissingTakeout: false,
       networkKinds: new Set<MaterialRigidRunInput["networkKind"]>(),
       sourceDrawingIds: [],
     };
-    if (run.lengthFeet == null) current.hasUnverifiedLength = true;
+    if (run.lengthFeet == null) {
+      if (run.lengthStatus === "takeout-required") current.hasMissingTakeout = true;
+      else current.hasUnverifiedLength = true;
+    }
     else current.lengthFeet += Math.max(0, run.lengthFeet);
     current.networkKinds.add(run.networkKind);
     current.sourceDrawingIds.push(run.id);
@@ -174,17 +191,20 @@ export function buildMaterialOrder({
   for (const group of rigidGroups.values()) {
     const sources = sourceLabel(group.networkKinds);
     const sourceDrawingIds = [...new Set(group.sourceDrawingIds)];
-    if (group.hasUnverifiedLength) {
+    if (group.hasUnverifiedLength || group.hasMissingTakeout) {
+      const takeoutRequired = group.hasMissingTakeout && !group.hasUnverifiedLength;
       rows.push({
         id: `rigid:${group.construction}:${group.size}`,
         category: "Duct",
         item: rigidItemNames[group.construction],
         size: group.size,
-        quantity: "Scale required",
-        note: "Verify every source sheet scale before ordering",
+        quantity: takeoutRequired ? "Takeout required" : "Scale required",
+        note: takeoutRequired
+          ? "Enter every connected fitting takeout before ordering"
+          : "Verify every source sheet scale before ordering",
         orderCount: 0,
         orderUnit: "lot",
-        breakdown: `${sources} · ${sourceDrawingIds.length} source ${sourceDrawingIds.length === 1 ? "segment" : "segments"} · no length or stock quantity inferred`,
+        breakdown: `${sources} · ${sourceDrawingIds.length} source ${sourceDrawingIds.length === 1 ? "segment" : "segments"} · ${takeoutRequired ? "finished length blocked until takeouts are entered" : "no length or stock quantity inferred"}`,
         sourceDrawingIds,
       });
       continue;
@@ -206,6 +226,29 @@ export function buildMaterialOrder({
       allowancePercent,
       orderLengthFeet,
       packageLengthFeet: rigidStockLengthFeet,
+    });
+  }
+
+  const rigidFittingGroups = new Map<string, MaterialRigidFittingInput[]>();
+  for (const fitting of rigidFittings) {
+    const key = [fitting.construction, fitting.size, fitting.angleDegrees, fitting.rectangularStyle || "metal"].join("|");
+    rigidFittingGroups.set(key, [...(rigidFittingGroups.get(key) || []), fitting]);
+  }
+  for (const group of rigidFittingGroups.values()) {
+    const first = group[0];
+    const construction = rigidItemNames[first.construction].replace(/ duct$| pipe$/i, "");
+    const style = first.construction === "rectangular" ? ` ${first.rectangularStyle}` : "";
+    rows.push({
+      id: `rigid-fitting:${first.construction}:${first.size}:${first.angleDegrees}:${first.rectangularStyle || "metal"}`,
+      category: "Fittings",
+      item: `${first.angleDegrees}° ${construction}${style} elbow`,
+      size: first.size,
+      quantity: `${group.length}`,
+      note: "Explicit plan fittings",
+      orderCount: group.length,
+      orderUnit: "each",
+      breakdown: `${sourceLabel(new Set(group.map((fitting) => fitting.networkKind)))} · ${group.length} plan ${group.length === 1 ? "fitting" : "fittings"}`,
+      sourceDrawingIds: group.map((fitting) => fitting.id),
     });
   }
 

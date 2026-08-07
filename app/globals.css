@@ -577,6 +577,26 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .rigid-endpoint-hit { fill: transparent; stroke: transparent; cursor: grab; pointer-events: all; }
 .rigid-endpoint { fill: #fff; stroke: #002fa7; stroke-width: 3; vector-effect: non-scaling-stroke; }
 .rigid-preview { pointer-events: none; opacity: .78; }
+.rigid-elbow-body,
+.rigid-elbow-edge,
+.rigid-elbow-hit { fill: none; stroke-linecap: butt; stroke-linejoin: round; }
+.rigid-elbow-body { opacity: .24; }
+.rigid-elbow-edge { stroke: #243143; stroke-width: 1.4; vector-effect: non-scaling-stroke; pointer-events: none; }
+.rigid-elbow-hit { stroke: transparent; stroke-width: 28; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: pointer; }
+.rigid-elbow-port-status circle { vector-effect: non-scaling-stroke; stroke: #fff; stroke-width: 2; }
+.rigid-elbow-port-status .connected { fill: #16835b; }
+.rigid-elbow-port-status .open { fill: #c62828; }
+.rigid-continuation-control { cursor: crosshair; }
+.rigid-continuation-hit { fill: transparent; stroke: transparent; pointer-events: all; }
+.rigid-continuation-dot {
+  fill: #c62828;
+  stroke: #fff;
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 3px #002fa7);
+}
+.selected-rigid .rigid-elbow-edge,
+.rigid-elbow:focus-visible .rigid-elbow-edge { filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 3px #002fa7); }
 .drawing-layer text { fill: #05080d; paint-order: stroke; stroke: white; stroke-width: 4px; stroke-linejoin: round; font: 700 13px var(--font-geist-sans), sans-serif; pointer-events: none; }
 .drawing-layer text.run-label { pointer-events: all; cursor: grab; user-select: none; }
 .drawing-layer text.run-label:hover,
@@ -25378,6 +25398,9 @@ footer {
 .rigid-draw-action { color: #fff; border-color: #00257f; background: #002fa7; }
 .rigid-duct-tool > small,
 .rigid-properties > small { color: var(--operational-muted); font-size: 14px; line-height: 1.45; }
+.rigid-elbow-editor { margin: 0; padding: 12px; display: grid; gap: 10px; border: 1px solid var(--material-line); }
+.rigid-elbow-editor legend { padding: 0 5px; color: var(--operational-ink); font-size: 15px; font-weight: 800; }
+.rigid-elbow-editor > small { color: var(--operational-muted); font-size: 14px; line-height: 1.45; }
 
 .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .selected-drawing .duct-line {
   stroke-width: inherit;
@@ -25634,6 +25657,7 @@ footer {
 @media print {
   .branch-fitting :is(.status-port, .detailed-port),
   .rigid-duct :is(.rigid-hit, .rigid-centerline, .rigid-endpoint, .rigid-endpoint-hit),
+  .rigid-elbow :is(.rigid-elbow-hit, .rigid-elbow-port-status, .rigid-continuation-control),
   .rigid-preview,
   .selected-object-status,
   .fitting-rotation-inspector {

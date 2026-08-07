@@ -99,7 +99,7 @@ test("loaded plan supports true-width rigid placement, edit, one Undo, copy, sch
     const key = Object.keys(localStorage).find((item) => item.startsWith("hvac-plan-studio:rigid-phase1-fixture"));
     return key ? JSON.parse(localStorage.getItem(key) || "{}").version : null;
   });
-  expect(storedVersion).toBe(10);
+  expect(storedVersion).toBe(11);
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => {

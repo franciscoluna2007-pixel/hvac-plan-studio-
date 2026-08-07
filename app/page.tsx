@@ -70,6 +70,21 @@ import {
   migrateSavedProject,
 } from "./projectSchema";
 import {
+  createRigidElbow,
+  createRigidContinuation,
+  emptyRigidStraightTopology,
+  inboundAngleForStraight,
+  normalizeRigidElbowMeta,
+  normalizeRigidStraightTopology,
+  projectRigidContinuationPoint,
+  rigidElbowGeometry,
+  rigidFinishedStraightLength,
+  rigidStraightHasConnection,
+  type RigidElbowMetaV1,
+  type RigidStraightPortId,
+  type RigidStraightTopologyV1,
+} from "./rigidTopology";
+import {
   branchLeavesTrunkAtClearAngle,
   commitPort3Branch,
   port3UndoDisposition,
@@ -1041,7 +1056,7 @@ type FittingMeta = {
 };
 type Drawing = {
   id: string;
-  type: DrawType | "symbol" | "measurement" | "rigid";
+  type: DrawType | "symbol" | "measurement" | "rigid" | "rigid-fitting";
   points: Point[];
   size: string;
   lineWeight?: number;
@@ -1050,6 +1065,8 @@ type Drawing = {
   symbol?: SymbolMeta;
   measurement?: MeasurementMeta;
   rigid?: RigidStraightMetaV1;
+  rigidTopology?: RigidStraightTopologyV1;
+  rigidFitting?: RigidElbowMetaV1;
   cfm?: number;
   cfmSource?: "planning-seed" | "manual" | "room-target";
   systemId?: string;
@@ -1195,6 +1212,10 @@ type RigidPlacementGesture = {
   pointerId: number;
   start: Point;
   latestPoint: Point;
+  rigid: RigidStraightMetaV1;
+  sourceElbowId?: string;
+  minimumLengthUnits?: number;
+  commitThresholdUnits?: number;
 };
 
 type ExplicitThreeRunOption = {
@@ -1279,7 +1300,7 @@ type SheetScaleState = {
 };
 
 type SavedProject = {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
   fileName: string;
   drawings: Drawing[];
   rigidDrawingQuarantine?: unknown[];
@@ -1722,7 +1743,17 @@ function HVACPlanStudioApp() {
   const [rigidWidthInches, setRigidWidthInches] = useState(12);
   const [rigidHeightInches, setRigidHeightInches] = useState(8);
   const [rigidDiameterInches, setRigidDiameterInches] = useState(8);
-  const [rigidPreview, setRigidPreview] = useState<{ start: Point; end: Point } | null>(null);
+  const [rigidPreview, setRigidPreview] = useState<{
+    start: Point;
+    end: Point;
+    rigid: RigidStraightMetaV1;
+  } | null>(null);
+  const [rigidElbowPort, setRigidElbowPort] = useState<RigidStraightPortId>("end");
+  const [rigidElbowAngle, setRigidElbowAngle] = useState<45 | 90>(90);
+  const [rigidElbowTurn, setRigidElbowTurn] = useState<"left" | "right">("right");
+  const [rigidElbowStyle, setRigidElbowStyle] = useState<"radius" | "square">("radius");
+  const [rigidElbowInletTakeout, setRigidElbowInletTakeout] = useState(12);
+  const [rigidElbowOutletTakeout, setRigidElbowOutletTakeout] = useState(12);
   const [runLineWeights, setRunLineWeights] = useState({ supply: 0.1, return: 0.1 });
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [undoStack, setUndoStack] = useState<Drawing[][]>([]);
@@ -2525,6 +2556,7 @@ function HVACPlanStudioApp() {
 
   function drawingLayer(drawing: Drawing): LayerId | null {
     if (drawing.rigid) return drawing.rigid.networkKind;
+    if (drawing.rigidFitting) return drawing.rigidFitting.networkKind;
     if (drawing.type === "supply" || drawing.symbol?.kind === "diffuser") return "supply";
     if (drawing.type === "branch" || ["damper", "reducer"].includes(drawing.symbol?.kind || "")) return "branch";
     if (drawing.type === "return" || drawing.symbol?.kind === "returnGrille") return "return";
@@ -2542,6 +2574,7 @@ function HVACPlanStudioApp() {
 
   function planDrawingAccessibleLabel(drawing: Drawing) {
     if (drawing.rigid) return `${rigidConstructionLabel(drawing.rigid.construction)}, ${rigidSizeLabel(drawing.rigid)}, ${drawing.rigid.networkKind} rigid duct`;
+    if (drawing.rigidFitting) return `${drawing.rigidFitting.angleDegrees} degree ${rigidConstructionLabel(drawing.rigidFitting.construction)} elbow, ${drawing.rigidFitting.networkKind}`;
     if (drawing.fitting) return `T Branch fitting, ${drawing.fitting.upstreamSize} by ${drawing.fitting.downstreamSize} by ${drawing.fitting.branchSize}`;
     if (drawing.symbol) return `${displayedSymbolLabel(drawing) || drawing.symbol.kind} HVAC symbol`;
     if (drawing.measurement) return `${drawing.measurement.feet.toFixed(1)} foot measurement`;
@@ -2552,6 +2585,7 @@ function HVACPlanStudioApp() {
     return !drawingLocked(drawing) && Boolean(
       isBranchNetworkKind(drawing.type) ||
       drawing.rigid ||
+      drawing.rigidFitting ||
       drawing.fitting ||
       drawing.symbol ||
       drawing.measurement
@@ -2661,7 +2695,7 @@ function HVACPlanStudioApp() {
         drawingSystem(drawing) === systemId &&
         (
           ["supply", "return", "fresh"].includes(drawing.type) ||
-          drawing.type === "rigid" ||
+          ["rigid", "rigid-fitting"].includes(drawing.type) ||
           ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") ||
           isPrimaryAirflowEquipment(drawing)
         )
@@ -8242,14 +8276,34 @@ function HVACPlanStudioApp() {
         )
         .map((drawing) => {
           const scale = scaleStateForPage(drawing.page);
+          const centerlineFeet = rigidHorizontalLengthFeet(drawing.points, scale.feetPerUnit, scale.verified);
+          const finished = rigidFinishedStraightLength(
+            centerlineFeet,
+            normalizeRigidStraightTopology(drawing.rigidTopology),
+          );
           return {
             id: drawing.id,
             networkKind: drawing.rigid.networkKind,
             construction: drawing.rigid.construction,
             size: rigidSizeLabel(drawing.rigid),
-            lengthFeet: rigidHorizontalLengthFeet(drawing.points, scale.feetPerUnit, scale.verified),
+            lengthFeet: finished?.finishedFeet ?? null,
+            lengthStatus: !scale.verified
+              ? "scale-required" as const
+              : finished?.status === "takeout-required"
+                ? "takeout-required" as const
+                : "ready" as const,
           };
         }),
+      rigidFittings: systemDrawings
+        .filter((drawing): drawing is Drawing & { rigidFitting: RigidElbowMetaV1 } => Boolean(drawing.rigidFitting))
+        .map((drawing) => ({
+          id: drawing.id,
+          networkKind: drawing.rigidFitting.networkKind,
+          construction: drawing.rigidFitting.construction,
+          size: rigidSizeLabel({ ...drawing.rigidFitting, kind: "straight" }),
+          angleDegrees: drawing.rigidFitting.angleDegrees,
+          rectangularStyle: drawing.rigidFitting.rectangularStyle,
+        })),
       symbols: systemDrawings
         .filter((drawing): drawing is Drawing & { symbol: SymbolMeta } => Boolean(drawing.symbol))
         .map((drawing) => ({
@@ -11309,10 +11363,56 @@ function HVACPlanStudioApp() {
     if (!rigid || !beginEditTransaction(event.pointerId)) return;
     const start = snapPoint(rawPoint);
     capturePlanPointer(event.currentTarget, event.pointerId);
-    rigidPlacementGestureRef.current = { pointerId: event.pointerId, start, latestPoint: start };
-    setRigidPreview({ start, end: start });
+    rigidPlacementGestureRef.current = { pointerId: event.pointerId, start, latestPoint: start, rigid };
+    setRigidPreview({ start, end: start, rigid });
     setSnapMarker(start);
     event.preventDefault();
+  }
+
+  function beginRigidContinuation(
+    event: PointerEvent<SVGElement>,
+    fitting: Drawing & { rigidFitting: RigidElbowMetaV1 },
+  ) {
+    if (event.button !== 0 || activeTool !== "select" || drawingLocked(fitting)) return;
+    const scale = scaleStateForPage(fitting.page);
+    if (!scale.verified) {
+      setBranchMessage("Verify this sheet scale before continuing true-width rigid duct.");
+      return;
+    }
+    const continuation = createRigidContinuation({
+      elbowId: fitting.id,
+      elbow: fitting.rigidFitting,
+      straightId: crypto.randomUUID(),
+    });
+    const vertex = fitting.points[0];
+    const projection = vertex && projectRigidContinuationPoint({
+      vertex,
+      elbow: fitting.rigidFitting,
+      pointer: vertex,
+      feetPerUnit: scale.feetPerUnit,
+    });
+    if (!continuation || !projection) {
+      setBranchMessage(fitting.rigidFitting.ports.outlet.connectedTo
+        ? "This elbow outlet already has a rigid connection."
+        : "Enter a valid outlet takeout before continuing this elbow.");
+      return;
+    }
+    if (!beginEditTransaction(event.pointerId)) return;
+    event.stopPropagation();
+    event.preventDefault();
+    capturePlanPointer(event.currentTarget, event.pointerId);
+    rigidPlacementGestureRef.current = {
+      pointerId: event.pointerId,
+      start: { ...vertex },
+      latestPoint: { ...projection.outlet },
+      rigid: continuation.straight,
+      sourceElbowId: fitting.id,
+      minimumLengthUnits: projection.outletDistance,
+      commitThresholdUnits: 8 / Math.max(.1, zoomRef.current),
+    };
+    setRigidPreview({ start: vertex, end: projection.outlet, rigid: continuation.straight });
+    setSnapMarker(projection.outlet);
+    setBranchMessage("Drag from the open elbow outlet to set the next straight length · release to place");
   }
 
   function finishRigidPlacement(event: PointerEvent<SVGSVGElement>, cancelled: boolean) {
@@ -11323,13 +11423,66 @@ function HVACPlanStudioApp() {
     setSnapMarker(null);
     setSnapInfo(null);
     setAlignmentGuides([]);
-    if (cancelled || Math.hypot(gesture.latestPoint.x - gesture.start.x, gesture.latestPoint.y - gesture.start.y) < 2) {
+    const lengthUnits = Math.hypot(
+      gesture.latestPoint.x - gesture.start.x,
+      gesture.latestPoint.y - gesture.start.y,
+    );
+    const requiredLength = gesture.sourceElbowId
+      ? (gesture.minimumLengthUnits || 0) + (gesture.commitThresholdUnits || 0)
+      : 2;
+    if (cancelled || lengthUnits < requiredLength) {
       restoreEditTransaction(event.pointerId);
       return true;
     }
-    const rigid = normalizeRigidStraightMeta(currentRigidStraightMeta());
+    const rigid = normalizeRigidStraightMeta(gesture.rigid);
     if (!rigid) {
       restoreEditTransaction(event.pointerId);
+      return true;
+    }
+    if (gesture.sourceElbowId) {
+      const elbow = drawings.find((drawing) =>
+        drawing.id === gesture.sourceElbowId && drawing.rigidFitting
+      );
+      if (!elbow?.rigidFitting) {
+        restoreEditTransaction(event.pointerId);
+        return true;
+      }
+      const straightId = crypto.randomUUID();
+      const continuation = createRigidContinuation({
+        elbowId: elbow.id,
+        elbow: elbow.rigidFitting,
+        straightId,
+      });
+      if (!continuation) {
+        restoreEditTransaction(event.pointerId);
+        setBranchMessage("The elbow outlet changed before the continuation was placed. Try again.");
+        return true;
+      }
+      const drawing: Drawing = {
+        id: straightId,
+        type: "rigid",
+        points: [gesture.start, gesture.latestPoint],
+        size: rigidSizeLabel(continuation.straight),
+        page: elbow.page,
+        systemId: elbow.systemId,
+        rigid: continuation.straight,
+        rigidTopology: continuation.topology,
+      };
+      setHistory([
+        ...drawings.map((candidate) => candidate.id === elbow.id
+          ? { ...candidate, rigidFitting: continuation.elbow }
+          : candidate),
+        drawing,
+      ]);
+      setSelectedId(drawing.id);
+      setSelectedIds([drawing.id]);
+      activeEditPointerIdRef.current = null;
+      editTransactionRef.current = null;
+      const finished = rigidFinishedStraightLength(
+        rigidHorizontalLengthFeet(drawing.points, scaleStateForPage(elbow.page).feetPerUnit),
+        continuation.topology,
+      );
+      setBranchMessage(`${rigidConstructionLabel(rigid.construction)} continuation placed · ${finished?.finishedFeet?.toFixed(1) || "0.0"} finished LF · one Undo removes it`);
       return true;
     }
     const drawing: Drawing = {
@@ -11340,6 +11493,7 @@ function HVACPlanStudioApp() {
       page: pageNumber,
       systemId: activeSystem,
       rigid,
+      rigidTopology: emptyRigidStraightTopology(),
     };
     setHistory([...drawings, drawing]);
     setSelectedId(drawing.id);
@@ -11670,7 +11824,16 @@ function HVACPlanStudioApp() {
           drawing.fitting &&
           connectedIds?.some((id, index) => id !== drawing.fitting?.connectedIds[index]),
         );
-        if (!symbolDisconnected && !returnDisconnected && !fittingDisconnected) return drawing;
+        const rigidTopology = drawing.rigid
+          ? normalizeRigidStraightTopology(drawing.rigidTopology)
+          : undefined;
+        const rigidDisconnected = Boolean(rigidTopology && (["start", "end"] as const).some((portId) =>
+          rigidTopology.ports[portId].connectedTo && deleted.has(rigidTopology.ports[portId].connectedTo!.drawingId)
+        ));
+        const rigidFittingDisconnected = Boolean(drawing.rigidFitting && (["inlet", "outlet"] as const).some((portId) =>
+          drawing.rigidFitting!.ports[portId].connectedTo && deleted.has(drawing.rigidFitting!.ports[portId].connectedTo!.drawingId)
+        ));
+        if (!symbolDisconnected && !returnDisconnected && !fittingDisconnected && !rigidDisconnected && !rigidFittingDisconnected) return drawing;
         return {
           ...drawing,
           symbol: drawing.symbol
@@ -11685,6 +11848,28 @@ function HVACPlanStudioApp() {
           fitting: fittingDisconnected
             ? { ...drawing.fitting!, connectedIds: connectedIds! }
             : drawing.fitting,
+          rigidTopology: rigidDisconnected && rigidTopology
+            ? {
+                ...rigidTopology,
+                ports: Object.fromEntries((["start", "end"] as const).map((portId) => {
+                  const port = rigidTopology.ports[portId];
+                  return [portId, port.connectedTo && deleted.has(port.connectedTo.drawingId)
+                    ? { id: portId, takeoutInches: 0 }
+                    : port];
+                })) as RigidStraightTopologyV1["ports"],
+              }
+            : drawing.rigidTopology,
+          rigidFitting: rigidFittingDisconnected && drawing.rigidFitting
+            ? {
+                ...drawing.rigidFitting,
+                ports: Object.fromEntries((["inlet", "outlet"] as const).map((portId) => {
+                  const port = drawing.rigidFitting!.ports[portId];
+                  return [portId, port.connectedTo && deleted.has(port.connectedTo.drawingId)
+                    ? { ...port, connectedTo: undefined }
+                    : port];
+                })) as RigidElbowMetaV1["ports"],
+              }
+            : drawing.rigidFitting,
         };
       });
   }
@@ -11879,6 +12064,10 @@ function HVACPlanStudioApp() {
       setBranchMessage("Copy & place works for icons, measurements, rigid duct, and connected duct assemblies");
       return null;
     }
+    if (selected.rigid && rigidStraightHasConnection(normalizeRigidStraightTopology(selected.rigidTopology))) {
+      setBranchMessage("Connected rigid assembly copy is not available yet. Copy an open rigid straight without its fitting connection.");
+      return null;
+    }
     const template = buildStandalonePlanCopyTemplate(selected, pdfFingerprint);
     if (!template) {
       setBranchMessage("Open a PDF before using Copy & place");
@@ -12065,6 +12254,98 @@ function HVACPlanStudioApp() {
     setHistory(drawings.map((drawing) => drawing.id === selected.id
       ? { ...drawing, rigid, size: rigidSizeLabel(rigid) }
       : drawing));
+  }
+
+  function addElbowToSelectedRigid() {
+    const selected = drawings.find((drawing) => drawing.id === selectedId && drawing.rigid);
+    if (!selected?.rigid || drawingLocked(selected)) return;
+    const topology = normalizeRigidStraightTopology(selected.rigidTopology);
+    if (topology.ports[rigidElbowPort].connectedTo) {
+      setBranchMessage(`The ${rigidElbowPort} end already has a rigid connection.`);
+      return;
+    }
+    const inboundAngleDegrees = inboundAngleForStraight(selected.points, rigidElbowPort);
+    if (inboundAngleDegrees == null) {
+      setBranchMessage("This straight section needs two distinct endpoints before adding an elbow.");
+      return;
+    }
+    const fittingId = crypto.randomUUID();
+    const rigidFitting = createRigidElbow({
+      straightId: selected.id,
+      straight: selected.rigid,
+      straightPortId: rigidElbowPort,
+      angleDegrees: rigidElbowAngle,
+      turn: rigidElbowTurn,
+      rectangularStyle: rigidElbowStyle,
+      inboundAngleDegrees,
+      inletTakeoutInches: rigidElbowInletTakeout,
+      outletTakeoutInches: rigidElbowOutletTakeout,
+      fittingId,
+    });
+    if (!rigidFitting) {
+      setBranchMessage("Enter valid inlet and outlet takeouts before adding this elbow.");
+      return;
+    }
+    const endpoint = selected.points[rigidElbowPort === "start" ? 0 : 1];
+    const nextStraightTopology: RigidStraightTopologyV1 = {
+      ...topology,
+      ports: {
+        ...topology.ports,
+        [rigidElbowPort]: {
+          ...topology.ports[rigidElbowPort],
+          takeoutInches: rigidElbowInletTakeout,
+          connectedTo: { drawingId: fittingId, portId: "inlet" },
+        },
+      },
+    };
+    const fitting: Drawing = {
+      id: fittingId,
+      type: "rigid-fitting",
+      points: [endpoint],
+      size: `${rigidFitting.angleDegrees}° elbow`,
+      page: selected.page,
+      systemId: selected.systemId,
+      rigidFitting,
+    };
+    setHistory([
+      ...drawings.map((drawing) => drawing.id === selected.id
+        ? { ...drawing, rigidTopology: nextStraightTopology }
+        : drawing),
+      fitting,
+    ]);
+    setSelectedId(fitting.id);
+    setSelectedIds([fitting.id]);
+    setBranchMessage(`${rigidFitting.angleDegrees}° ${rigidFitting.turn} elbow added · takeouts ${rigidElbowInletTakeout} in / ${rigidElbowOutletTakeout} in`);
+  }
+
+  function updateSelectedRigidElbowTakeout(portId: "inlet" | "outlet", takeoutInches: number) {
+    const selected = drawings.find((drawing) => drawing.id === selectedId && drawing.rigidFitting);
+    if (!selected?.rigidFitting || drawingLocked(selected)) return;
+    const rigidFitting = normalizeRigidElbowMeta({
+      ...selected.rigidFitting,
+      ports: {
+        ...selected.rigidFitting.ports,
+        [portId]: { ...selected.rigidFitting.ports[portId], takeoutInches },
+      },
+    });
+    if (!rigidFitting) return;
+    const connected = rigidFitting.ports[portId].connectedTo;
+    setHistory(drawings.map((drawing) => {
+      if (drawing.id === selected.id) return { ...drawing, rigidFitting };
+      if (!connected || drawing.id !== connected.drawingId || !drawing.rigid) return drawing;
+      if (connected.portId !== "start" && connected.portId !== "end") return drawing;
+      const topology = normalizeRigidStraightTopology(drawing.rigidTopology);
+      return {
+        ...drawing,
+        rigidTopology: {
+          ...topology,
+          ports: {
+            ...topology.ports,
+            [connected.portId]: { ...topology.ports[connected.portId], takeoutInches },
+          },
+        },
+      };
+    }));
   }
 
   function orderedRunsForDetail(type?: "supply" | "return") {
@@ -12649,6 +12930,58 @@ function HVACPlanStudioApp() {
     });
   }
 
+  function syncConnectedRigidNetwork(current: Drawing[], straightIds?: string[]) {
+    const included = straightIds ? new Set(straightIds) : null;
+    const elbowsAlignedToInlets = current.map((drawing) => {
+      if (!drawing.rigidFitting) return drawing;
+      const connection = drawing.rigidFitting.ports.inlet.connectedTo;
+      if (!connection || (included && !included.has(connection.drawingId))) return drawing;
+      if (connection.portId !== "start" && connection.portId !== "end") return drawing;
+      const straight = current.find((candidate) => candidate.id === connection.drawingId && candidate.rigid);
+      if (!straight) return drawing;
+      const vertex = straight.points[connection.portId === "start" ? 0 : 1];
+      if (!vertex) return drawing;
+      return { ...drawing, points: [{ ...vertex }] };
+    });
+    return elbowsAlignedToInlets.map((drawing) => {
+      if (!drawing.rigid) return drawing;
+      const topology = normalizeRigidStraightTopology(drawing.rigidTopology);
+      const connectionEntry = (["start", "end"] as const).find((portId) => {
+        const connection = topology.ports[portId].connectedTo;
+        return connection?.portId === "outlet";
+      });
+      if (!connectionEntry) return drawing;
+      const connection = topology.ports[connectionEntry].connectedTo!;
+      const elbow = elbowsAlignedToInlets.find((candidate) =>
+        candidate.id === connection.drawingId &&
+        candidate.rigidFitting?.ports.outlet.connectedTo?.drawingId === drawing.id
+      );
+      if (!elbow?.rigidFitting) return drawing;
+      const connectedIndex = connectionEntry === "start" ? 0 : drawing.points.length - 1;
+      const freeIndex = connectedIndex === 0 ? drawing.points.length - 1 : 0;
+      const vertex = elbow.points[0];
+      const freePoint = drawing.points[freeIndex];
+      const scale = scaleStateForPage(drawing.page);
+      const projection = vertex && freePoint && projectRigidContinuationPoint({
+        vertex,
+        elbow: elbow.rigidFitting,
+        pointer: freePoint,
+        feetPerUnit: scale.feetPerUnit,
+      });
+      if (!projection) return drawing;
+      return {
+        ...drawing,
+        points: drawing.points.map((point, index) =>
+          index === connectedIndex
+            ? { ...vertex }
+            : index === freeIndex
+              ? { ...projection.point }
+              : point
+        ),
+      };
+    });
+  }
+
   function rotateSelectedSymbol(delta: number) {
     const selected = drawings.find((drawing) => drawing.id === selectedId);
     if (!selected?.symbol) return;
@@ -12690,7 +13023,7 @@ function HVACPlanStudioApp() {
         moved = repairFittingsAfterRunEdit(moved, id).drawings;
       }
     });
-    moved = syncConnectedTerminals(moved, movable);
+    moved = syncConnectedRigidNetwork(syncConnectedTerminals(moved, movable), movable);
     setHistory(moved);
     setBranchMessage(`Nudged ${movable.length} object${movable.length === 1 ? "" : "s"} · ${Math.hypot(dx, dy).toFixed(0)} plan units`);
   }
@@ -13115,7 +13448,7 @@ function HVACPlanStudioApp() {
           const moved = current.map((drawing) => drawing.id === drag.drawingId
             ? { ...drawing, points: drawing.points.map((oldPoint, index) => index === drag.pointIndex ? point : oldPoint) }
             : drawing);
-          return syncConnectedTerminals(moved, [drag.drawingId]);
+          return syncConnectedRigidNetwork(syncConnectedTerminals(moved, [drag.drawingId]), [drag.drawingId]);
         });
       } else {
         if (drag.kind === "line") {
@@ -13125,7 +13458,7 @@ function HVACPlanStudioApp() {
             const moved = current.map((drawing) => drawing.id === drag.drawingId
               ? { ...drawing, points: drag.original.map((point) => ({ x: point.x + dx, y: point.y + dy })) }
               : drawing);
-            return syncConnectedTerminals(moved, [drag.drawingId]);
+            return syncConnectedRigidNetwork(syncConnectedTerminals(moved, [drag.drawingId]), [drag.drawingId]);
           });
         } else if (drag.kind === "label") {
           const dx = raw.x - drag.start.x;
@@ -13245,20 +13578,42 @@ function HVACPlanStudioApp() {
               ? { ...drawing, points: original.map((point) => ({ x: point.x + dx, y: point.y + dy })) }
               : drawing;
             });
-            return syncConnectedTerminals(moved, drag.ids);
+            return syncConnectedRigidNetwork(syncConnectedTerminals(moved, drag.ids), drag.ids);
           });
         }
       }
       return;
     }
-    if (activeTool === "rigid") {
-      const gesture = rigidPlacementGestureRef.current;
-      if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const rigidGesture = rigidPlacementGestureRef.current;
+    if (rigidGesture) {
+      if (rigidGesture.pointerId !== event.pointerId) return;
+      if (rigidGesture.sourceElbowId) {
+        const elbow = drawings.find((drawing) =>
+          drawing.id === rigidGesture.sourceElbowId && drawing.rigidFitting
+        );
+        const scale = elbow ? scaleStateForPage(elbow.page) : null;
+        const projection = elbow?.rigidFitting && scale
+          ? projectRigidContinuationPoint({
+              vertex: rigidGesture.start,
+              elbow: elbow.rigidFitting,
+              pointer: raw,
+              feetPerUnit: scale.feetPerUnit,
+            })
+          : null;
+        if (!projection) return;
+        rigidGesture.latestPoint = projection.point;
+        setRigidPreview({ start: rigidGesture.start, end: projection.point, rigid: rigidGesture.rigid });
+        setSnapMarker(projection.outlet);
+        setSnapInfo(null);
+        setAlignmentGuides([]);
+        event.preventDefault();
+        return;
+      }
       const result = snapResult(raw);
       let point = result?.point || raw;
-      if (event.shiftKey) point = constrainToDraftAngle(gesture.start, point);
-      gesture.latestPoint = point;
-      setRigidPreview({ start: gesture.start, end: point });
+      if (event.shiftKey) point = constrainToDraftAngle(rigidGesture.start, point);
+      rigidGesture.latestPoint = point;
+      setRigidPreview({ start: rigidGesture.start, end: point, rigid: rigidGesture.rigid });
       setSnapMarker(result ? point : null);
       setSnapInfo(result);
       setAlignmentGuides(guidesFor(point));
@@ -13760,6 +14115,7 @@ function HVACPlanStudioApp() {
   });
   const selectedFitting = selectedDrawing?.fitting ? selectedDrawing : undefined;
   const selectedRigid = selectedDrawing?.rigid ? selectedDrawing : undefined;
+  const selectedRigidFitting = selectedDrawing?.rigidFitting ? selectedDrawing : undefined;
   const selectedRun = selectedDrawing && !selectedDrawing.fitting && ["supply", "return", "fresh"].includes(selectedDrawing.type) ? selectedDrawing : undefined;
   const selectedRunLabelText = selectedRun
     ? [
@@ -16002,15 +16358,53 @@ function HVACPlanStudioApp() {
                 <label>Inside height, in<input type="number" min="1" max="120" step="0.25" value={selectedRigid.rigid.size.heightInches} onChange={(event) => updateSelectedRigidSize({ heightInches: Number(event.target.value) })} /></label>
               </div> : <label>Inside diameter, in<input type="number" min="1" max="72" step="0.25" value={selectedRigid.rigid.size.diameterInches} onChange={(event) => updateSelectedRigidSize({ diameterInches: Number(event.target.value) })} /></label>}
               <div className="engineering-card">
-                <span>HORIZONTAL LENGTH</span>
+                <span>FINISHED STRAIGHT LENGTH</span>
                 <strong>{(() => {
                   const scale = scaleStateForPage(selectedRigid.page);
-                  const length = rigidHorizontalLengthFeet(selectedRigid.points, scale.feetPerUnit, scale.verified);
-                  return length == null ? "SCALE UNVERIFIED" : `${length.toFixed(1)} FT`;
+                  const centerline = rigidHorizontalLengthFeet(selectedRigid.points, scale.feetPerUnit, scale.verified);
+                  const finished = rigidFinishedStraightLength(centerline, normalizeRigidStraightTopology(selectedRigid.rigidTopology));
+                  if (!finished) return "SCALE UNVERIFIED";
+                  return finished.finishedFeet == null ? "TAKEOUT REQUIRED" : `${finished.finishedFeet.toFixed(1)} FT`;
                 })()}</strong>
-                <small>Centerline geometry · true plan width {rigidPhysicalWidthInches(selectedRigid.rigid)} in</small>
+                <small>{(() => {
+                  const scale = scaleStateForPage(selectedRigid.page);
+                  const centerline = rigidHorizontalLengthFeet(selectedRigid.points, scale.feetPerUnit, scale.verified);
+                  const finished = rigidFinishedStraightLength(centerline, normalizeRigidStraightTopology(selectedRigid.rigidTopology));
+                  if (!finished) return `Scale required · true plan width ${rigidPhysicalWidthInches(selectedRigid.rigid)} in`;
+                  if (finished.takeoutFeet == null) return `Centerline ${finished.centerlineFeet.toFixed(1)} ft · enter connected fitting takeouts`;
+                  return `Centerline ${finished.centerlineFeet.toFixed(1)} ft · takeouts ${finished.takeoutFeet.toFixed(2)} ft · true width ${rigidPhysicalWidthInches(selectedRigid.rigid)} in`;
+                })()}</small>
               </div>
+              <fieldset className="rigid-elbow-editor">
+                <legend>Add an explicit elbow</legend>
+                <div className="rigid-size-grid">
+                  <label>Straight end<select value={rigidElbowPort} onChange={(event) => setRigidElbowPort(event.target.value as RigidStraightPortId)}><option value="start">Start</option><option value="end">End</option></select></label>
+                  <label>Angle<select value={rigidElbowAngle} onChange={(event) => setRigidElbowAngle(Number(event.target.value) as 45 | 90)}><option value="45">45°</option><option value="90">90°</option></select></label>
+                  <label>Turn<select value={rigidElbowTurn} onChange={(event) => setRigidElbowTurn(event.target.value as "left" | "right")}><option value="left">Left</option><option value="right">Right</option></select></label>
+                  {selectedRigid.rigid.construction === "rectangular" && <label>Elbow type<select value={rigidElbowStyle} onChange={(event) => setRigidElbowStyle(event.target.value as "radius" | "square")}><option value="radius">Radius</option><option value="square">Square</option></select></label>}
+                  <label>Inlet takeout, in<input type="number" min="0" max="120" step="0.25" value={rigidElbowInletTakeout} onChange={(event) => setRigidElbowInletTakeout(Number(event.target.value))} /></label>
+                  <label>Outlet takeout, in<input type="number" min="0" max="120" step="0.25" value={rigidElbowOutletTakeout} onChange={(event) => setRigidElbowOutletTakeout(Number(event.target.value))} /></label>
+                </div>
+                <button type="button" className="rigid-draw-action" onClick={addElbowToSelectedRigid}>Add {rigidElbowAngle}° elbow</button>
+                <small>Takeouts are project inputs, not inferred shop values. The selected straight keeps its theoretical centerline span; Materials subtracts only the values entered here.</small>
+              </fieldset>
               <small>Drag the body to move it. Drag either cobalt endpoint to change the straight section. Every change is one Undo step.</small>
+            </div> : selectedRigidFitting?.rigidFitting ? <div className="rigid-properties">
+              <div className="fitting-property-title"><Box size={14} /><span>RIGID ELBOW</span><b>{selectedRigidFitting.rigidFitting.angleDegrees}°</b></div>
+              <strong>{rigidConstructionLabel(selectedRigidFitting.rigidFitting.construction)} · {selectedRigidFitting.rigidFitting.turn} turn</strong>
+              <span>{selectedRigidFitting.rigidFitting.construction === "rectangular" ? `${selectedRigidFitting.rigidFitting.rectangularStyle} elbow` : "metal elbow"}</span>
+              <div className="rigid-size-grid">
+                <label>Inlet takeout, in<input key={`${selectedRigidFitting.id}-inlet-${selectedRigidFitting.rigidFitting.ports.inlet.takeoutInches}`} type="number" min="0" max="120" step="0.25" defaultValue={selectedRigidFitting.rigidFitting.ports.inlet.takeoutInches ?? ""} onBlur={(event) => updateSelectedRigidElbowTakeout("inlet", Number(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
+                <label>Outlet takeout, in<input key={`${selectedRigidFitting.id}-outlet-${selectedRigidFitting.rigidFitting.ports.outlet.takeoutInches}`} type="number" min="0" max="120" step="0.25" defaultValue={selectedRigidFitting.rigidFitting.ports.outlet.takeoutInches ?? ""} onBlur={(event) => updateSelectedRigidElbowTakeout("outlet", Number(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
+              </div>
+              <div className="engineering-card">
+                <span>EXPLICIT TAKEOUTS</span>
+                <strong>{selectedRigidFitting.rigidFitting.ports.inlet.takeoutInches ?? "—"} in / {selectedRigidFitting.rigidFitting.ports.outlet.takeoutInches ?? "—"} in</strong>
+                <small>Inlet connected · outlet {selectedRigidFitting.rigidFitting.ports.outlet.connectedTo ? "connected" : "open"}</small>
+              </div>
+              <small>{selectedRigidFitting.rigidFitting.ports.outlet.connectedTo
+                ? "The outlet connection is explicit and reciprocal. Deleting or undoing its straight reopens this port."
+                : "Drag the red outlet dot to place the next straight. Construction, size, system, and the entered takeout remain matched; no route or size is inferred."}</small>
             </div> : selectedDrawing?.measurement ? <div className="engineering-card">
               <span>MEASURED DISTANCE</span>
               <strong>{drawings.find((drawing) => drawing.id === selectedId)?.measurement?.feet.toFixed(1)} FT</strong>
@@ -16363,10 +16757,10 @@ function HVACPlanStudioApp() {
               </div> : null;
             })()}
             {selectedId && planSelectionActionsVisible && !selectedContextWheelVisible && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
-              <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T BRANCH FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : selectedRigid ? "RIGID DUCT" : "DUCT RUN"}{selectedDrawingLocked ? selectedPort3FittingLocked ? " · FINISH PORT 3 FIRST" : " · LAYER LOCKED" : ""}</strong>
+              <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T BRANCH FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : selectedRigidFitting ? "RIGID ELBOW" : selectedRigid ? "RIGID DUCT" : "DUCT RUN"}{selectedDrawingLocked ? selectedPort3FittingLocked ? " · FINISH PORT 3 FIRST" : " · LAYER LOCKED" : ""}</strong>
               {!selectedDrawingLocked && (selectedDrawing?.symbol || selectedDrawing?.measurement || selectedRigid || selectedRun || selectedFitting) && <button className="copy-primary" title={selectedRun || selectedFitting ? "Copy this connected duct assembly, then click the plan to paste it repeatedly" : "Copy this item, then click the plan to paste it repeatedly"} onClick={duplicateSelected}><Copy size={15} /> Copy &amp; paste</button>}
               {!selectedDrawingLocked && <span className="selection-drag-hint">Drag the highlighted item to move</span>}
-              {!selectedDrawingLocked && selectedIds.length === 1 && !selectedDrawing?.symbol && !selectedDrawing?.measurement && !selectedRigid && <select
+              {!selectedDrawingLocked && selectedIds.length === 1 && !selectedDrawing?.symbol && !selectedDrawing?.measurement && !selectedRigid && !selectedRigidFitting && <select
                 aria-label="Quick duct size"
                 value={selectedDrawing?.fitting?.upstreamSize || selectedDrawing?.size || ductSize}
                 onChange={(event) => updateSelectedSize(event.target.value)}
@@ -16764,6 +17158,67 @@ function HVACPlanStudioApp() {
                           style={isCopyPreview ? { pointerEvents: "none" } : undefined}
                         >{renderSymbol(drawing)}</g>;
                       }
+                      if (drawing.rigidFitting) {
+                        const scale = scaleStateForPage(drawing.page);
+                        const fittingShape: RigidStraightMetaV1 = {
+                          version: 1,
+                          kind: "straight",
+                          networkKind: drawing.rigidFitting.networkKind,
+                          construction: drawing.rigidFitting.construction,
+                          size: drawing.rigidFitting.size,
+                        };
+                        const geometry = rigidElbowGeometry(drawing.points[0], drawing.rigidFitting, scale.feetPerUnit);
+                        const width = rigidPlanWidthUnits(fittingShape, scale.feetPerUnit);
+                        const path = geometry
+                          ? drawing.rigidFitting.rectangularStyle === "square"
+                            ? `M ${geometry.inlet.x} ${geometry.inlet.y} L ${geometry.vertex.x} ${geometry.vertex.y} L ${geometry.outlet.x} ${geometry.outlet.y}`
+                            : `M ${geometry.inlet.x} ${geometry.inlet.y} Q ${geometry.vertex.x} ${geometry.vertex.y} ${geometry.outlet.x} ${geometry.outlet.y}`
+                          : `M ${drawing.points[0].x - 6} ${drawing.points[0].y} L ${drawing.points[0].x + 6} ${drawing.points[0].y}`;
+                        return <g
+                          key={drawing.id}
+                          className={`rigid-elbow rigid-${drawing.rigidFitting.construction} ${isSelected(drawing.id) ? "selected-rigid" : ""}`}
+                          data-plan-edit-control="hvac"
+                          data-plan-drawing-id={drawing.id}
+                          data-rigid-fitting="elbow"
+                          data-rigid-angle={drawing.rigidFitting.angleDegrees}
+                          data-rigid-vertex={`${drawing.points[0].x.toFixed(3)},${drawing.points[0].y.toFixed(3)}`}
+                          data-rigid-inlet-connected={Boolean(drawing.rigidFitting.ports.inlet.connectedTo)}
+                          data-rigid-outlet-connected={Boolean(drawing.rigidFitting.ports.outlet.connectedTo)}
+                          tabIndex={0}
+                          role="button"
+                          aria-label={planDrawingAccessibleLabel(drawing)}
+                          aria-pressed={isSelected(drawing.id)}
+                          aria-disabled={drawingLocked(drawing)}
+                          onFocus={() => selectOnly(drawing.id)}
+                          onKeyDown={(event) => handlePlanDrawingKeyDown(event, drawing)}
+                        >
+                          <title>{`${drawing.rigidFitting.angleDegrees}° ${rigidConstructionLabel(drawing.rigidFitting.construction)} elbow · inlet ${drawing.rigidFitting.ports.inlet.connectedTo ? "connected" : "open"} · outlet ${drawing.rigidFitting.ports.outlet.connectedTo ? "connected" : "open"}`}</title>
+                          <path className="rigid-elbow-body" d={path} stroke={drawingColors[drawing.rigidFitting.networkKind]} style={{ strokeWidth: width }} />
+                          <path className="rigid-elbow-edge" d={path} />
+                          <path className="rigid-elbow-hit" d={path} onPointerDown={(event) => {
+                            if (event.button !== 0 || activeTool !== "select" || drawingLocked(drawing)) return;
+                            event.stopPropagation();
+                            selectOnly(drawing.id);
+                          }} />
+                          {geometry && <g className="rigid-elbow-port-status" aria-hidden="true">
+                            <circle className={drawing.rigidFitting.ports.inlet.connectedTo ? "connected" : "open"} cx={geometry.inlet.x} cy={geometry.inlet.y} r={4 / Math.max(.1, zoom)} />
+                            <circle className={drawing.rigidFitting.ports.outlet.connectedTo ? "connected" : "open"} cx={geometry.outlet.x} cy={geometry.outlet.y} r={4 / Math.max(.1, zoom)} />
+                          </g>}
+                          {geometry && isSelected(drawing.id) && !drawing.rigidFitting.ports.outlet.connectedTo && <g
+                            className="rigid-continuation-control"
+                            data-rigid-continuation-handle="outlet"
+                            role="button"
+                            aria-label="Drag open elbow outlet to continue rigid duct"
+                            onPointerDown={(event) => beginRigidContinuation(
+                              event,
+                              drawing as Drawing & { rigidFitting: RigidElbowMetaV1 },
+                            )}
+                          >
+                            <circle className="rigid-continuation-hit" cx={geometry.outlet.x} cy={geometry.outlet.y} r={22 / Math.max(.1, zoom)} />
+                            <circle className="rigid-continuation-dot" cx={geometry.outlet.x} cy={geometry.outlet.y} r={6 / Math.max(.1, zoom)} pointerEvents="none" />
+                          </g>}
+                        </g>;
+                      }
                       if (drawing.rigid) {
                         const isCopyPreview = drawing.id.startsWith("copy-place-preview-");
                         const scale = scaleStateForPage(drawing.page);
@@ -16775,6 +17230,11 @@ function HVACPlanStudioApp() {
                           ? rigidSpiralSeams(drawing.points, planWidth)
                           : [];
                         const lengthFeet = rigidHorizontalLengthFeet(drawing.points, scale.feetPerUnit, scale.verified);
+                        const rigidTopology = normalizeRigidStraightTopology(drawing.rigidTopology);
+                        const finishedLength = rigidFinishedStraightLength(
+                          lengthFeet,
+                          rigidTopology,
+                        );
                         return <g
                           key={drawing.id}
                           className={`rigid-duct rigid-${drawing.rigid.construction} rigid-${drawing.rigid.networkKind} ${isSelected(drawing.id) ? "selected-rigid" : ""} ${isCopyPreview ? "copy-place-preview" : ""}`}
@@ -16782,8 +17242,14 @@ function HVACPlanStudioApp() {
                           data-plan-drawing-id={isCopyPreview ? undefined : drawing.id}
                           data-rigid-construction={drawing.rigid.construction}
                           data-rigid-size={rigidSizeLabel(drawing.rigid)}
+                          data-rigid-start={`${start.x.toFixed(3)},${start.y.toFixed(3)}`}
+                          data-rigid-end={`${end.x.toFixed(3)},${end.y.toFixed(3)}`}
                           data-rigid-plan-width={planWidth.toFixed(4)}
                           data-rigid-length-feet={lengthFeet?.toFixed(3)}
+                          data-rigid-finished-length-feet={finishedLength?.finishedFeet?.toFixed(3)}
+                          data-rigid-length-status={finishedLength?.status || "scale-required"}
+                          data-rigid-start-connected={Boolean(rigidTopology.ports.start.connectedTo)}
+                          data-rigid-end-connected={Boolean(rigidTopology.ports.end.connectedTo)}
                           tabIndex={isCopyPreview ? undefined : 0}
                           role={isCopyPreview ? undefined : "button"}
                           aria-label={isCopyPreview ? undefined : planDrawingAccessibleLabel(drawing)}
@@ -17137,7 +17603,7 @@ function HVACPlanStudioApp() {
                       </g>)}
                     </g>}
                     {rigidPreview && (() => {
-                      const rigid = normalizeRigidStraightMeta(currentRigidStraightMeta());
+                      const rigid = normalizeRigidStraightMeta(rigidPreview.rigid);
                       if (!rigid) return null;
                       const width = rigidPlanWidthUnits(rigid, scaleStateForPage(pageNumber).feetPerUnit);
                       const path = `M ${rigidPreview.start.x} ${rigidPreview.start.y} L ${rigidPreview.end.x} ${rigidPreview.end.y}`;

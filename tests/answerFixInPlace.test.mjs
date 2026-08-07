@@ -43,7 +43,7 @@ test("v130 answers are source-bound and handled-elsewhere never clears review", 
   assert.match(page, /fixPlanAnswerCompletesReview\(\{/);
   assert.match(page, /status === "handled-elsewhere"/);
   assert.match(page, /remains open in Plan Check/);
-  assert.match(page, /version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9 \| 10;/);
+  assert.match(page, /version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9 \| 10 \| 11;/);
   assert.match(
     page,
     /const buildProjectSnapshot = useCallback\(\(\): SavedProject => \{[\s\S]*?return \{\s*version: CURRENT_PROJECT_SCHEMA_VERSION,/,

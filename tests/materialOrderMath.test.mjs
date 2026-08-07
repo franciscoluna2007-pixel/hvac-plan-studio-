@@ -71,6 +71,32 @@ test("does not infer rigid length or stock quantity from an unverified sheet", (
   assert.match(rows[0].breakdown, /no length or stock quantity inferred/);
 });
 
+test("blocks rigid stock ordering until connected fitting takeouts are explicit", () => {
+  const rows = buildMaterialOrder({
+    runs: [], symbols: [], fittings: [], allowancePercent: 10,
+    rigidRuns: [{ id: "rect-a", networkKind: "supply", construction: "rectangular", size: "24×12", lengthFeet: null, lengthStatus: "takeout-required" }],
+  });
+  assert.equal(rows[0].quantity, "Takeout required");
+  assert.equal(rows[0].orderCount, 0);
+  assert.match(rows[0].breakdown, /finished length blocked/);
+});
+
+test("counts explicit rigid elbows separately by angle, construction, size, and style", () => {
+  const rows = buildMaterialOrder({
+    runs: [], rigidRuns: [], symbols: [], fittings: [], allowancePercent: 10,
+    rigidFittings: [
+      { id: "elbow-a", networkKind: "supply", construction: "rectangular", size: "24×12", angleDegrees: 90, rectangularStyle: "radius" },
+      { id: "elbow-b", networkKind: "return", construction: "rectangular", size: "24×12", angleDegrees: 90, rectangularStyle: "radius" },
+      { id: "elbow-c", networkKind: "supply", construction: "rectangular", size: "24×12", angleDegrees: 90, rectangularStyle: "square" },
+      { id: "elbow-d", networkKind: "supply", construction: "round-metal", size: "10", angleDegrees: 45 },
+    ],
+  });
+  const elbows = rows.filter((row) => row.id.startsWith("rigid-fitting:"));
+  assert.equal(elbows.length, 3);
+  assert.equal(elbows.find((row) => row.item.includes("radius"))?.orderCount, 2);
+  assert.deepEqual([...(elbows.find((row) => row.item.includes("radius"))?.sourceDrawingIds || [])], ["elbow-a", "elbow-b"]);
+});
+
 test("does not double-count symbols that are already cans or boots", () => {
   const rows = buildMaterialOrder({
     runs: [],
