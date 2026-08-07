@@ -39,11 +39,11 @@ This file contains concise, verified product context for future repository work.
 - Flexible-duct chart values currently drive flex sizing suggestions. Round-metal and rectangular tables are preserved for future rigid-duct work. The default long-run threshold is 25 ft; a recommendation may move up one available chart size, but the application does not silently apply it.
 - Network totals, assigned CFM, remaining CFM, connection state, and undersized/disconnected warnings must stay explicit. Duct diameter alone never establishes airflow.
 
-## Approved future 2D rigid-duct phase
+## 2D rigid-duct roadmap
 
 - The reviewed architecture, schema-versioning, migration, phase boundaries, and decision register are in `docs/rigid-duct-architecture-and-migration.md`.
-- Phase 1 is separately approved: saved-project schema v10 with backward migration; true-width horizontal straight rectangular, round-metal, and spiral segments; calibrated lengths; editable sizes; selection/history/copy/persistence; and initial source-linked Materials aggregation.
-- Phase 1 explicitly excludes fittings, elevations/vertical length, automatic CFM distribution or resizing, and fabrication schedules. Keep those for later reviewed phases.
+- Phase 1 is released: saved-project schema v10 with backward migration and invalid-object quarantine; true-width horizontal straight rectangular, round-metal, and spiral segments; calibrated lengths; editable sizes; selection/history/copy/persistence; and initial source-linked Materials aggregation.
+- Phase 1 deliberately excludes rigid fittings, elevations/vertical length, automatic CFM distribution or resizing, and fabrication schedules. Keep those for later independently reviewed phases.
 - Add first-class rectangular sheet-metal duct, round metal pipe, and spiral pipe while keeping existing flex unchanged. Round and spiral may share geometry but remain distinct render and material/order types.
 - Rigid duct renders at true calibrated width while an editable centerline remains the geometry source of truth. The system stays 2D; rises, drops, and elevations are explicit fields.
 - Planned fittings include straight sections, 45/90 elbows, rectangular radius/square elbows, reducers, transitions, rectangular-to-round connections, takeoffs, T/Y fittings, offsets, collars/dampers, and equipment/box/terminal connections.
@@ -60,6 +60,7 @@ This file contains concise, verified product context for future repository work.
 
 ## Current verified state and next step
 
-- Website PR [#64](https://github.com/franciscoluna2007-pixel/hvac-plan-studio-/pull/64) merged as `14fbf4599b6c5d1db039f1f0892b86a630e2db7d`.
-- Sites version 172 was built from that exact merge, privately deployed with one owner and no groups or external visitors, and production-verified. Selected HVAC symbols now use only the subtle Material Cobalt artwork highlight; the viewport-bounded ICON actions and protected drawing behavior remain intact.
-- Next product step: implement and independently verify rigid-duct Phase 1 from the reviewed architecture plan. Do not mix later rigid fittings, elevation, automatic CFM, or fabrication work into it.
+- Rigid-duct Phase 1 PR [#66](https://github.com/franciscoluna2007-pixel/hvac-plan-studio-/pull/66) merged as `37cc9346d057f0ac5a243904f7ac4a5306d59fef` after zero TypeScript/ESLint errors, 485 unit/source tests, 25 loaded-plan browser tests, repository security/quality checks, and an exact merged-SHA production build/package validation.
+- Sites version 173 was built from that exact merge, privately deployed and production-verified with one owner, zero groups, and zero external visitors. A fresh authenticated loaded-plan smoke covered rectangular, round-metal, and spiral placement, sizing, movement Undo, repeated copy, schema v10 save/reload, and separate Materials rows.
+- Existing flex, supply/return/fresh-air, T Branch, symbol, selection/action-control, domain-color, persistence, Materials, and export behaviors remain protected.
+- Next product step: review the independently bounded post-Phase-1 scope before implementing rigid fittings, elevation/vertical length, automatic CFM distribution/resizing, or fabrication schedules. Do not combine those later capabilities into an unreviewed release.
