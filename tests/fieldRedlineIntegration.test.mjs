@@ -111,13 +111,13 @@ test("V133 snapshots restore only against the exact PDF fingerprint and page cou
   );
 });
 
-test("project save version 9 persists valid redlines and preserves quarantined raw data", () => {
+test("project save version 10 persists valid redlines and preserves quarantined raw data", () => {
   const savedProjectType = sourceBlock(
     page,
     "type SavedProject = {",
     "function boundedPlanAnalysisSnapshot",
   );
-  assert.match(savedProjectType, /version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9;/);
+  assert.match(savedProjectType, /version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9 \| 10;/);
   assert.match(savedProjectType, /fieldRedlines\?: RedlineSnapshotV1;/);
   assert.match(savedProjectType, /fieldRedlineQuarantine\?: unknown;/);
 
@@ -126,7 +126,7 @@ test("project save version 9 persists valid redlines and preserves quarantined r
     "const buildProjectSnapshot = useCallback",
     "const saveProject = useCallback",
   );
-  assert.match(projectSnapshot, /version: 9,/);
+  assert.match(projectSnapshot, /version: CURRENT_PROJECT_SCHEMA_VERSION,/);
   assert.match(projectSnapshot, /fieldRedlines: fieldRedline\.snapshot,/);
   assert.match(
     projectSnapshot,
