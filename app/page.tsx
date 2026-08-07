@@ -17,6 +17,11 @@ import { trackProductEvent } from "./productAnalytics";
 import { compactTerminalPlanLabel } from "./terminalPlanLabel";
 import { allocateBranchAirflow } from "./airflowBudget";
 import {
+  cloneDefaultAirflowSizingProfile,
+  normalizeAirflowSizingProfile,
+  type AirflowSizingProfile,
+} from "./airflowSizingProfile";
+import {
   BRANCH_ATTACH_RADIUS_PX,
   BRANCH_AUTO_MATCH_RADIUS_PX,
   BRANCH_PICK_RADIUS_PX,
@@ -314,6 +319,7 @@ const FinishJobStudio = dynamic(() => import("./FinishJobStudio"), { ssr: false,
 const GuidedProjectSetup = dynamic(() => import("./GuidedProjectSetup"), { ssr: false, loading: DeferredStudioLoading });
 const MarkupAssistantStudio = dynamic(() => import("./MarkupAssistantStudio"), { ssr: false, loading: DeferredStudioLoading });
 const SystemBalanceStudio = dynamic(() => import("./SystemBalanceStudio"), { ssr: false, loading: DeferredStudioLoading });
+const AirflowSizingProfileStudio = dynamic(() => import("./AirflowSizingProfileStudio"), { ssr: false, loading: DeferredStudioLoading });
 
 function useDeferredStudioMount(visible: boolean) {
   const [mounted, setMounted] = useState(visible);
@@ -1266,6 +1272,7 @@ type SavedProject = {
   returnVelocityLimit?: number;
   freshVelocityLimit?: number;
   residentialFlexMax?: string;
+  airflowSizingProfile?: AirflowSizingProfile;
   fieldChecklist?: Record<string, boolean>;
   fieldChecklistBySystem?: Record<string, Record<string, boolean>>;
   materialWastePercent?: number;
@@ -1491,6 +1498,7 @@ type SystemReleaseRecord = {
     returnVelocityLimit: number;
     freshVelocityLimit: number;
     residentialFlexMax: string;
+    airflowSizingProfile?: AirflowSizingProfile;
   };
 };
 
@@ -1794,6 +1802,8 @@ function HVACPlanStudioApp() {
   const [returnVelocityLimit, setReturnVelocityLimit] = useState(700);
   const [freshVelocityLimit, setFreshVelocityLimit] = useState(600);
   const [residentialFlexMax, setResidentialFlexMax] = useState("16");
+  const [airflowSizingProfile, setAirflowSizingProfile] = useState<AirflowSizingProfile>(() => cloneDefaultAirflowSizingProfile());
+  const [showAirflowSizingProfile, setShowAirflowSizingProfile] = useState(false);
   const [showProgressionReview, setShowProgressionReview] = useState(true);
   const [showReducerReview, setShowReducerReview] = useState(true);
   const [validationFilter, setValidationFilter] = useState<"all" | "critical" | "warning" | "info">("all");
@@ -1967,6 +1977,7 @@ function HVACPlanStudioApp() {
   const mountGuidedProjectSetup = useDeferredStudioMount(showProjectSetup);
   const mountMarkupAssistantStudio = useDeferredStudioMount(showMarkupAssistant);
   const mountSystemBalanceStudio = useDeferredStudioMount(showSystemBalanceStudio);
+  const mountAirflowSizingProfileStudio = useDeferredStudioMount(showAirflowSizingProfile);
   useEffect(() => {
     if (!planContextMenu) return;
     const frame = window.requestAnimationFrame(() => {
@@ -2759,6 +2770,7 @@ function HVACPlanStudioApp() {
     setReturnVelocityLimit(project.returnVelocityLimit ?? 700);
     setFreshVelocityLimit(project.freshVelocityLimit ?? 600);
     setResidentialFlexMax(project.residentialFlexMax || "16");
+    setAirflowSizingProfile(normalizeAirflowSizingProfile(project.airflowSizingProfile));
     setFieldChecklistBySystem(project.fieldChecklistBySystem || (project.fieldChecklist ? { "system-1": project.fieldChecklist } : {}));
     setMaterialWastePercent(project.materialWastePercent ?? 10);
     setCommissioningBySystem(project.commissioningBySystem || {});
@@ -4310,6 +4322,7 @@ function HVACPlanStudioApp() {
       returnVelocityLimit,
       freshVelocityLimit,
       residentialFlexMax,
+      airflowSizingProfile,
       fieldChecklistBySystem,
       materialWastePercent,
       commissioningBySystem,
@@ -4350,7 +4363,7 @@ function HVACPlanStudioApp() {
         })),
       },
     };
-  }, [activeBuilderSummary, activeFieldPackage, activePlanAnalysis, activeSystem, assistantAutonomyMode, assistantRepairRecords, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fieldRedline.quarantinedSnapshot, fieldRedline.snapshot, fileName, freshVelocityLimit, lockedLayers, materialReviewRecords, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, roomMarkupApplicationRecords, roomMarkupCandidatesBySystem, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
+  }, [activeBuilderSummary, activeFieldPackage, activePlanAnalysis, activeSystem, airflowSizingProfile, assistantAutonomyMode, assistantRepairRecords, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fieldRedline.quarantinedSnapshot, fieldRedline.snapshot, fileName, freshVelocityLimit, lockedLayers, materialReviewRecords, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, roomMarkupApplicationRecords, roomMarkupCandidatesBySystem, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
 
   const saveProject = useCallback(() => {
     if (!pdf) return;
@@ -5962,6 +5975,8 @@ function HVACPlanStudioApp() {
       airflowSource: "terminal-linked",
       velocityLimitFpm: maximumVelocity,
       maxDiameterInches: residentialFlexMax,
+      capacityTable: airflowSizingProfile.flexible,
+      longRunThresholdFeet: airflowSizingProfile.longRunThresholdFeet,
     }).recommendedDiameterInches);
   }
 
@@ -5999,14 +6014,17 @@ function HVACPlanStudioApp() {
         );
         const airflowReviewed = manualGoverns || propagatedReviewed;
         const airflowSource = manualGoverns ? "manual" as const : "terminal-linked" as const;
+        const pressure = runPressure({ ...drawing, cfm });
         const recommendation = recommendFlexibleDuctSize({
           cfm,
           airflowSource,
           velocityLimitFpm: limit,
           maxDiameterInches: residentialFlexMax,
+          capacityTable: airflowSizingProfile.flexible,
+          physicalLengthFeet: pressure.physicalLength,
+          longRunThresholdFeet: airflowSizingProfile.longRunThresholdFeet,
         });
         const recommended = String(recommendation.recommendedDiameterInches);
-        const pressure = runPressure({ ...drawing, cfm });
         return [{
           id: drawing.id,
           type: drawing.type,
@@ -6775,7 +6793,7 @@ function HVACPlanStudioApp() {
       systemName: systemLabel(activeSystem),
       calculationVersion: BALANCE_CALCULATION_VERSION,
       ductSizingVersion: DUCT_SIZING_CALCULATION_VERSION,
-      evidenceFingerprint: stableTextHash(`${systemDrawingSignature(activeSystem)}|${BALANCE_CALCULATION_VERSION}|${DUCT_SIZING_CALCULATION_VERSION}`),
+      evidenceFingerprint: stableTextHash(`${systemDrawingSignature(activeSystem)}|${BALANCE_CALCULATION_VERSION}|${DUCT_SIZING_CALCULATION_VERSION}|${JSON.stringify(airflowSizingProfile)}`),
       designCfm: setup.targetCfm,
       supplyCfm: setup.supplyCfm,
       returnCfm: setup.returnCfm,
@@ -6963,6 +6981,7 @@ function HVACPlanStudioApp() {
         fresh: project.freshVelocityLimit || 0,
         residentialFlexMax: project.residentialFlexMax || "",
       },
+      airflowSizingProfile: normalizeAirflowSizingProfile(project.airflowSizingProfile),
       fieldChecklistBySystem: project.fieldChecklistBySystem || {},
       punchItems: project.punchItems || [],
       rfiItems: project.rfiItems || [],
@@ -7534,6 +7553,7 @@ function HVACPlanStudioApp() {
       ),
       visibleLabels: { showCfmLabels, showLengthLabels, showFittingLabels },
       velocityRules: { supplyVelocityLimit, returnVelocityLimit, freshVelocityLimit, residentialFlexMax },
+      airflowSizingProfile,
     }));
   }
 
@@ -8764,6 +8784,7 @@ function HVACPlanStudioApp() {
         returnVelocityLimit,
         freshVelocityLimit,
         residentialFlexMax,
+        airflowSizingProfile,
       },
     };
     let record = draftRecord;
@@ -14336,6 +14357,7 @@ function HVACPlanStudioApp() {
       returnVelocityLimit,
       freshVelocityLimit,
       residentialFlexMax,
+      airflowSizingProfile,
     },
     sizingCandidates: assistantSizingCandidates.map((candidate) => ({
       id: candidate.id,
@@ -14770,7 +14792,7 @@ function HVACPlanStudioApp() {
   }
 
   const activeFieldRuns = activeFieldPackage.runs;
-  const modalWorkspaceActive = showProjectHome || showProjectSetup || showPlanIntelligence || showFieldPackageComposer || showFinishJobStudio || showSystemBalanceStudio || showDisplaySettings || Boolean(fieldRedline.dialog);
+  const modalWorkspaceActive = showProjectHome || showProjectSetup || showPlanIntelligence || showFieldPackageComposer || showFinishJobStudio || showSystemBalanceStudio || showAirflowSizingProfile || showDisplaySettings || Boolean(fieldRedline.dialog);
   const packagePrintClasses = printPackageSections.map((section) => `package-include-${section}`).join(" ");
   const packagePrintReleased = activeFieldPackage.released &&
     !activeFieldPackage.stale &&
@@ -17365,6 +17387,7 @@ function HVACPlanStudioApp() {
                 <strong>SYSTEM BALANCING WORKSPACE</strong>
                 <small>{systemLabel(activeSystem)} · review first, apply once</small>
               </div>
+              <button type="button" onClick={() => setShowAirflowSizingProfile(true)}>Adjust airflow chart</button>
               <span className={`check-pill ${activeAirflowSetup.supplyBalanced && activeAirflowSetup.returnBalanced ? "clear" : "warning"}`}>
                 {activeAirflowSetup.targetCfm ? activeAirflowSetup.supplyBalanced && activeAirflowSetup.returnBalanced ? "SCHEDULE ALIGNED" : "REVIEW" : "NO UNIT"}
               </span>
@@ -18021,6 +18044,13 @@ function HVACPlanStudioApp() {
                   </select>
                 </label>
               </div>
+              <div className="airflow-profile-summary">
+                <span>
+                  <strong>{airflowSizingProfile.name}</strong>
+                  <small>Flexible duct drives suggestions · 14&quot; = {airflowSizingProfile.flexible.find((row) => row.diameterInches === 14)?.cfm || 0} CFM · routes over {airflowSizingProfile.longRunThresholdFeet} ft move up one chart size</small>
+                </span>
+                <button type="button" onClick={() => setShowAirflowSizingProfile(true)}>Adjust airflow chart</button>
+              </div>
               <button onClick={() => showSizingReview ? setShowSizingReview(false) : openSizingReview()}>
                 {showSizingReview ? "Close review" : `Review ${sizingSuggestions().length} changes`}
               </button>
@@ -18038,7 +18068,7 @@ function HVACPlanStudioApp() {
                     <button onClick={() => { setSelectedId(suggestion.id); activatePlanTool("select"); }}>
                       <span>
                         <strong>{suggestion.type.toUpperCase()} · {suggestion.cfm} CFM · {suggestion.room}</strong>
-                        <small>{suggestion.current}″ existing → {suggestion.recommended}″ recommended · {suggestion.currentVelocity} → {suggestion.velocity} FPM</small>
+                        <small>{suggestion.current}″ existing → {suggestion.recommended}″ recommended · {suggestion.currentVelocity} → {suggestion.velocity} FPM · field chart{suggestion.reasonCodes.includes("LONG_RUN_UPSIZE") ? ` · route over ${airflowSizingProfile.longRunThresholdFeet} ft` : ""}</small>
                       </span>
                       <b>{suggestion.overCapacity ? `OVER ${suggestion.limit}` : `${suggestion.velocity} FPM`}</b>
                     </button>
@@ -18725,6 +18755,17 @@ function HVACPlanStudioApp() {
           setBranchMessage("Approved T Branch preview armed · click the highlighted junction to confirm placement · Undo remains available");
         }}
       />}
+      {mountAirflowSizingProfileStudio && <AirflowSizingProfileStudio
+        open={showAirflowSizingProfile}
+        profile={airflowSizingProfile}
+        onClose={() => setShowAirflowSizingProfile(false)}
+        onSave={(profile) => {
+          setAirflowSizingProfile(normalizeAirflowSizingProfile(profile));
+          setSelectedSizingIds([]);
+          setShowAirflowSizingProfile(false);
+          setBranchMessage("Airflow chart saved · sizing suggestions refreshed · no duct sizes changed");
+        }}
+      />}
       {mountSystemBalanceStudio && <SystemBalanceStudio
         open={showSystemBalanceStudio}
         projectName={fileName}
@@ -18741,6 +18782,10 @@ function HVACPlanStudioApp() {
           window.requestAnimationFrame(() => {
             document.querySelector<HTMLElement>('.balance-view-tabs button[aria-selected="true"]')?.focus();
           });
+        }}
+        onAdjustAirflowChart={() => {
+          setShowSystemBalanceStudio(false);
+          window.requestAnimationFrame(() => setShowAirflowSizingProfile(true));
         }}
         onApplySizes={applySizingSuggestionIds}
         onApplyCfm={applyCfmProposalIds}

@@ -2032,7 +2032,7 @@ test("ships v108 tablet gestures, stylus protection, responsive drawers, and bou
   assert.match(page, /100 \* 1024 \* 1024/);
   assert.match(page, /4K Fixed/);
   assert.match(page, /if \(showDisplaySettings\) \{\s*if \(event\.key === "Escape"\) event\.preventDefault\(\);\s*return;/);
-  assert.match(page, /showSystemBalanceStudio \|\| showDisplaySettings/);
+  assert.match(page, /showSystemBalanceStudio \|\| showAirflowSizingProfile \|\| showDisplaySettings/);
   assert.match(page, /function openInspectorPanel\(\) \{\s*setRightPanelOpen\(true\)/);
   assert.match(page, /workspace-drawer-scrim/);
 

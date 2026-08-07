@@ -30,6 +30,7 @@ type Props = {
   onClose: () => void;
   onFocusDrawing: (drawingId: string) => void;
   onOpenEngineering: (view: "system" | "rooms" | "runs") => void;
+  onAdjustAirflowChart: () => void;
   onApplySizes: (ids: string[]) => void;
   onApplyCfm: (ids: string[]) => void;
   onRecordReview: (reviewer: string, note: string) => void;
@@ -53,6 +54,7 @@ export default function SystemBalanceStudio({
   onClose,
   onFocusDrawing,
   onOpenEngineering,
+  onAdjustAirflowChart,
   onApplySizes,
   onApplyCfm,
   onRecordReview,
@@ -391,6 +393,7 @@ export default function SystemBalanceStudio({
       <footer className="system-balance-footer">
         {notice && <div className="balance-live-notice" role="status" aria-live="polite">{notice}</div>}
         <div className="manual-balance-policy"><SlidersHorizontal size={17} /><span><strong>Manual route shapes stay manual.</strong><small>Guided Repair changes only reviewed diameters and may align listed attached endpoints to resized fitting ports; intermediate route vertices never move. Studio never draws new runs, reroutes paths, balances airflow, or numbers ductwork automatically.</small></span></div>
+        <button onClick={onAdjustAirflowChart}><SlidersHorizontal size={15} /> Airflow chart</button>
         <button onClick={() => onOpenEngineering(view === "overview" || view === "reviews" ? "system" : view)}><Gauge size={15} /> Calculation details</button>
         <button className="primary" onClick={onClose}><ShieldCheck size={15} /> Return to plan</button>
       </footer>

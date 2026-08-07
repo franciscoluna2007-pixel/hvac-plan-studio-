@@ -23336,6 +23336,384 @@ footer {
   background: color-mix(in srgb, var(--material-critical) 8%, var(--material-panel));
 }
 
+.airflow-profile-summary {
+  margin-top: 8px;
+  padding: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #a9bcee;
+  border-radius: 8px;
+  background: #e9efff;
+}
+
+.airflow-profile-summary span,
+.airflow-profile-summary strong,
+.airflow-profile-summary small {
+  min-width: 0;
+  display: block;
+}
+
+.airflow-profile-summary strong {
+  color: #202421;
+  font-size: 10px;
+}
+
+.airflow-profile-summary small {
+  margin-top: 3px;
+  color: #667069;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.airflow-profile-summary button {
+  min-width: 108px;
+  min-height: 32px;
+  padding: 0 10px;
+  color: #002fa7;
+  border: 1px solid #a9bcee;
+  border-radius: 7px;
+  background: #fff;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.airflow-profile-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5800;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  background: rgba(22, 28, 24, .52);
+}
+
+.airflow-profile-studio {
+  width: min(920px, 96vw);
+  max-height: min(880px, 92vh);
+  display: grid;
+  grid-template-rows: auto auto auto minmax(220px, 1fr) auto auto;
+  overflow: hidden;
+  color: #202421;
+  border: 1px solid #aab3ac;
+  border-radius: 16px;
+  background: #fbfcfb;
+  box-shadow: 0 24px 72px rgba(20, 28, 22, .28);
+  font-family: var(--font-geist-sans), "Helvetica Neue", Arial, sans-serif;
+}
+
+.airflow-profile-studio > header {
+  padding: 20px 22px 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid #d7ddd8;
+}
+
+.airflow-profile-studio > header small {
+  color: #002fa7;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .12em;
+}
+
+.airflow-profile-studio > header h2 {
+  margin: 5px 0 4px;
+  color: #202421;
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.airflow-profile-studio > header p {
+  max-width: 660px;
+  margin: 0;
+  color: #667069;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.airflow-profile-close {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: #202421;
+  border: 1px solid #d7ddd8;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.airflow-profile-rulebar {
+  padding: 12px 22px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, .6fr);
+  gap: 12px;
+  border-bottom: 1px solid #d7ddd8;
+  background: #edf0ee;
+}
+
+.airflow-profile-rulebar label > span {
+  display: block;
+  margin-bottom: 5px;
+  color: #667069;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.airflow-profile-rulebar input {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  color: #202421;
+  border: 1px solid #aab3ac;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.airflow-profile-rulebar label > div {
+  display: grid;
+  grid-template-columns: 1fr 38px;
+  align-items: center;
+}
+
+.airflow-profile-rulebar label > div input {
+  border-radius: 7px 0 0 7px;
+}
+
+.airflow-profile-rulebar label > div b {
+  height: 38px;
+  display: grid;
+  place-items: center;
+  color: #667069;
+  border: 1px solid #aab3ac;
+  border-left: 0;
+  border-radius: 0 7px 7px 0;
+  background: #e3e7e4;
+  font-size: 11px;
+}
+
+.airflow-profile-tabs {
+  padding: 10px 22px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  border-bottom: 1px solid #d7ddd8;
+}
+
+.airflow-profile-tabs button {
+  min-height: 52px;
+  padding: 8px 10px;
+  text-align: left;
+  color: #202421;
+  border: 1px solid #d7ddd8;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.airflow-profile-tabs button[aria-selected="true"] {
+  color: #002fa7;
+  border-color: #a9bcee;
+  background: #e9efff;
+  box-shadow: inset 3px 0 0 #002fa7;
+}
+
+.airflow-profile-tabs strong,
+.airflow-profile-tabs small {
+  display: block;
+}
+
+.airflow-profile-tabs strong {
+  font-size: 11px;
+}
+
+.airflow-profile-tabs small {
+  margin-top: 3px;
+  color: #667069;
+  font-size: 9px;
+}
+
+.airflow-profile-table-wrap {
+  min-height: 0;
+  padding: 14px 22px 20px;
+  overflow: auto;
+  background: #fff;
+}
+
+.airflow-profile-table-heading {
+  margin-bottom: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.airflow-profile-table-heading span {
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.airflow-profile-table-heading b {
+  color: #667069;
+  font-family: var(--font-geist-mono), Consolas, monospace;
+  font-size: 10px;
+}
+
+.airflow-profile-table-wrap table {
+  width: min(520px, 100%);
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.airflow-profile-table-wrap :is(th, td) {
+  padding: 7px 9px;
+  color: #202421;
+  border: 1px solid #d7ddd8;
+  text-align: left;
+}
+
+.airflow-profile-table-wrap thead th {
+  background: #edf0ee;
+  font-size: 10px;
+  letter-spacing: .04em;
+}
+
+.airflow-profile-table-wrap tbody th {
+  width: 42%;
+  font-family: var(--font-geist-mono), Consolas, monospace;
+}
+
+.airflow-profile-table-wrap td {
+  display: grid;
+  grid-template-columns: minmax(90px, 150px) 40px;
+  align-items: center;
+  gap: 8px;
+}
+
+.airflow-profile-table-wrap td input,
+.airflow-profile-rect-group input {
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  color: #202421;
+  border: 1px solid #aab3ac;
+  border-radius: 6px;
+  background: #fff;
+  font-family: var(--font-geist-mono), Consolas, monospace;
+}
+
+.airflow-profile-table-wrap td span,
+.airflow-profile-rect-group b {
+  color: #667069;
+  font-size: 9px;
+}
+
+.airflow-profile-rect-group + .airflow-profile-rect-group {
+  margin-top: 18px;
+}
+
+.airflow-profile-rect-group h3 {
+  margin: 0 0 7px;
+  color: #002fa7;
+  font-size: 11px;
+}
+
+.airflow-profile-rect-group > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 7px;
+}
+
+.airflow-profile-rect-group label {
+  min-height: 44px;
+  padding: 6px 8px;
+  display: grid;
+  grid-template-columns: 52px 1fr 30px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d7ddd8;
+  border-radius: 7px;
+  background: #fbfcfb;
+  font-family: var(--font-geist-mono), Consolas, monospace;
+  font-size: 10px;
+}
+
+.airflow-profile-notice {
+  margin: 0 22px;
+  padding: 10px 12px;
+  display: flex;
+  gap: 8px;
+  color: #667069;
+  border: 1px solid #d7ddd8;
+  border-radius: 8px;
+  background: #edf0ee;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.airflow-profile-notice strong {
+  flex: 0 0 auto;
+  color: #202421;
+}
+
+.airflow-profile-studio > footer {
+  padding: 14px 22px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.airflow-profile-studio > footer div {
+  display: flex;
+  gap: 8px;
+}
+
+.airflow-profile-studio > footer button {
+  min-height: 40px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #202421;
+  border: 1px solid #aab3ac;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.airflow-profile-studio > footer .airflow-profile-save {
+  color: #fff;
+  border-color: #002fa7;
+  background: #002fa7;
+}
+
+.airflow-profile-studio :is(button, input):focus-visible {
+  outline: 3px solid #002fa7;
+  outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .airflow-profile-overlay { padding: 0; }
+  .airflow-profile-studio { width: 100vw; max-height: 100dvh; height: 100dvh; border: 0; border-radius: 0; }
+  .airflow-profile-studio > header { padding: 16px; }
+  .airflow-profile-rulebar { padding: 10px 16px; grid-template-columns: 1fr; }
+  .airflow-profile-tabs { padding: 8px 16px; display: flex; overflow-x: auto; }
+  .airflow-profile-tabs button { min-width: 165px; }
+  .airflow-profile-table-wrap { padding: 12px 16px 18px; }
+  .airflow-profile-rect-group > div { grid-template-columns: 1fr; }
+  .airflow-profile-notice { margin: 0 16px; }
+  .airflow-profile-studio > footer { padding: 12px 16px 16px; align-items: stretch; flex-direction: column-reverse; }
+  .airflow-profile-studio > footer div { display: grid; grid-template-columns: 1fr 1fr; }
+  .airflow-profile-reset { width: 100%; }
+  .airflow-profile-summary { align-items: stretch; flex-direction: column; }
+  .airflow-profile-summary button { width: 100%; }
+}
+
 .material-order-header {
   padding: 18px 16px 14px;
   display: flex;

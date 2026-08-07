@@ -1,7 +1,7 @@
 export const DUCT_SIZING_CALCULATION_VERSION = "duct-sizing-v112.0";
 
 export const SUPPORTED_RESIDENTIAL_FLEX_DIAMETERS = [
-  4, 6, 7, 8, 10, 12, 14, 16,
+  4, 5, 6, 7, 8, 9, 10, 12, 14, 16,
 ] as const;
 
 export type DuctSizingClassification =
@@ -25,6 +25,11 @@ export type ParallelFlexAlternative = {
   diameterInches: number;
   airflowPerPathCfm: number;
   velocityPerPathFpm: number;
+};
+
+export type RoundAirflowCapacity = {
+  diameterInches: number;
+  cfm: number;
 };
 
 export type FlexibleDuctRecommendation = {
@@ -239,11 +244,66 @@ export function parallelFlexAlternatives(input: {
   });
 }
 
+export function recommendRoundCapacitySize(input: {
+  cfm: number;
+  capacities: readonly RoundAirflowCapacity[];
+  maxDiameterInches: number;
+  physicalLengthFeet?: number;
+  longRunThresholdFeet?: number;
+}) {
+  const cfm = Math.max(0, Math.round(Number(input.cfm) || 0));
+  const capacities = input.capacities
+    .map((row) => ({
+      diameterInches: Number(row.diameterInches),
+      cfm: Math.max(0, Math.round(Number(row.cfm) || 0)),
+    }))
+    .filter((row) => Number.isFinite(row.diameterInches) && row.diameterInches > 0 && row.cfm > 0)
+    .filter((row) => row.diameterInches <= input.maxDiameterInches)
+    .sort((left, right) => left.diameterInches - right.diameterInches);
+  if (!capacities.length) {
+    return {
+      recommendedDiameterInches: input.maxDiameterInches,
+      baseDiameterInches: input.maxDiameterInches,
+      capacityCfm: 0,
+      overCapacity: true,
+      longRunUpsized: false,
+      reasonCodes: ["FIELD_CAPACITY_CHART", "NO_COMPLIANT_FLEX_SIZE"],
+    };
+  }
+  const baseIndex = capacities.findIndex((row) => row.cfm >= cfm);
+  const resolvedBaseIndex = baseIndex >= 0 ? baseIndex : capacities.length - 1;
+  const longRunThreshold = Number(input.longRunThresholdFeet) > 0
+    ? Number(input.longRunThresholdFeet)
+    : 25;
+  const longRun = Number(input.physicalLengthFeet) > longRunThreshold;
+  const recommendedIndex = Math.min(capacities.length - 1, resolvedBaseIndex + (longRun ? 1 : 0));
+  const recommended = capacities[recommendedIndex];
+  const longRunAtMaximum = longRun
+    && resolvedBaseIndex === capacities.length - 1
+    && recommendedIndex === resolvedBaseIndex;
+  const overCapacity = cfm <= 0 || cfm > capacities.at(-1)!.cfm || longRunAtMaximum;
+  return {
+    recommendedDiameterInches: recommended.diameterInches,
+    baseDiameterInches: capacities[resolvedBaseIndex].diameterInches,
+    capacityCfm: recommended.cfm,
+    overCapacity,
+    longRunUpsized: longRun && recommendedIndex > resolvedBaseIndex,
+    reasonCodes: [
+      "FIELD_CAPACITY_CHART",
+      ...(longRun ? [recommendedIndex > resolvedBaseIndex ? "LONG_RUN_UPSIZE" : "LONG_RUN_AT_MAXIMUM"] : []),
+      ...(overCapacity ? ["NO_COMPLIANT_FLEX_SIZE"] : []),
+    ],
+  };
+}
+
 export function recommendFlexibleDuctSize(input: {
   cfm: number;
   airflowSource: SizingAirflowSource;
   velocityLimitFpm: number;
   maxDiameterInches?: number | string;
+  capacityTable?: readonly RoundAirflowCapacity[];
+  physicalLengthFeet?: number;
+  longRunThresholdFeet?: number;
 }): FlexibleDuctRecommendation {
   const airflow = nonNegative(input.cfm);
   const velocityLimit = nonNegative(input.velocityLimitFpm);
@@ -251,16 +311,30 @@ export function recommendFlexibleDuctSize(input: {
   const maximum = Math.min(16, requestedMaximum);
   const sizes = SUPPORTED_RESIDENTIAL_FLEX_DIAMETERS.filter((diameter) => diameter <= maximum);
   const maximumDiameter = sizes.at(-1) ?? 16;
-  const recommendedDiameter = sizes.find((diameter) =>
+  const chartRecommendation = input.capacityTable?.length
+    ? recommendRoundCapacitySize({
+      cfm: airflow,
+      capacities: input.capacityTable,
+      maxDiameterInches: maximumDiameter,
+      physicalLengthFeet: input.physicalLengthFeet,
+      longRunThresholdFeet: input.longRunThresholdFeet,
+    })
+    : null;
+  const recommendedDiameter = chartRecommendation?.recommendedDiameterInches ?? sizes.find((diameter) =>
     roundDuctVelocityFpm(diameter, airflow) <= velocityLimit
   ) ?? maximumDiameter;
   const recommendedVelocity = roundDuctVelocityFpm(recommendedDiameter, airflow);
-  const overCapacity = !airflow || !velocityLimit || recommendedVelocity > velocityLimit;
+  const overCapacity = chartRecommendation
+    ? chartRecommendation.overCapacity || !airflow || !velocityLimit || recommendedVelocity > velocityLimit
+    : !airflow || !velocityLimit || recommendedVelocity > velocityLimit;
   const airflowApplyEligible = !["missing", "planning-seed"].includes(input.airflowSource);
   const reasonCodes = [
     ...(!airflow ? ["AIRFLOW_MISSING"] : []),
     ...(input.airflowSource === "planning-seed" ? ["AIRFLOW_PLANNING_SEED"] : []),
-    ...(recommendedVelocity > velocityLimit ? ["NO_COMPLIANT_FLEX_SIZE"] : []),
+    ...(chartRecommendation?.reasonCodes || []),
+    ...(recommendedVelocity > velocityLimit && !chartRecommendation?.reasonCodes.includes("NO_COMPLIANT_FLEX_SIZE")
+      ? ["NO_COMPLIANT_FLEX_SIZE"]
+      : []),
     ...(requestedMaximum > 16 ? ["MAX_FLEX_16"] : []),
     "PRESSURE_EVIDENCE_MISSING",
   ];
