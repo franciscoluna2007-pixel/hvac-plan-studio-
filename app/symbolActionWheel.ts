@@ -50,6 +50,7 @@ export type SymbolActionWheelInput = {
 
 export type SymbolActionWheelPosition = {
   hidden: boolean;
+  layout: "wheel" | "strip";
   placement: SymbolActionWheelPlacement;
   /** Wheel center in viewport CSS pixels. */
   center: SymbolActionWheelPoint;
@@ -64,6 +65,8 @@ export const DEFAULT_SYMBOL_ACTION_WHEEL_RADIUS = 96;
 export const DEFAULT_SYMBOL_ACTION_WHEEL_GAP = 12;
 export const DEFAULT_SYMBOL_ACTION_WHEEL_INSET = 12;
 export const DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX = 80;
+export const DEFAULT_SYMBOL_ACTION_STRIP_MAX_WIDTH = 440;
+export const DEFAULT_SYMBOL_ACTION_STRIP_HEIGHT = 124;
 
 const MIN_ZOOM = 0.01;
 const MAX_ZOOM = 64;
@@ -319,8 +322,47 @@ export function positionSymbolActionWheel(
     }
   }
 
+  let layout: SymbolActionWheelPosition["layout"] = "wheel";
+  if (anchorIsVisible && !safePlacementFound) {
+    layout = "strip";
+    const stripWidth = Math.max(
+      1,
+      Math.min(DEFAULT_SYMBOL_ACTION_STRIP_MAX_WIDTH, viewport.width - inset * 2),
+    );
+    const stripHeight = Math.max(
+      1,
+      Math.min(DEFAULT_SYMBOL_ACTION_STRIP_HEIGHT, viewport.height - inset * 2),
+    );
+    const halfWidth = stripWidth / 2;
+    const halfHeight = stripHeight / 2;
+    const stripMinimumX = inset + halfWidth;
+    const stripMaximumX = viewport.width - inset - halfWidth;
+    const stripMinimumY = inset + halfHeight;
+    const stripMaximumY = viewport.height - inset - halfHeight;
+    const preferredBelow = avoidBounds
+      ? avoidBounds.bottom + gap + halfHeight
+      : anchor.y + gap + halfHeight;
+    const preferredAbove = avoidBounds
+      ? avoidBounds.top - gap - halfHeight
+      : anchor.y - gap - halfHeight;
+    const roomBelow = viewport.height - inset - (avoidBounds?.bottom ?? anchor.y);
+    const roomAbove = (avoidBounds?.top ?? anchor.y) - inset;
+    const preferBelow = roomBelow >= roomAbove;
+
+    placement = preferBelow ? "below" : "above";
+    center = {
+      x: stripMinimumX <= stripMaximumX
+        ? clamp(avoidBounds?.center.x ?? anchor.x, stripMinimumX, stripMaximumX)
+        : viewport.width / 2,
+      y: stripMinimumY <= stripMaximumY
+        ? clamp(preferBelow ? preferredBelow : preferredAbove, stripMinimumY, stripMaximumY)
+        : viewport.height / 2,
+    };
+  }
+
   return {
-    hidden: !anchorIsVisible || !viewportCanContainWheel || !safePlacementFound,
+    hidden: !anchorIsVisible,
+    layout,
     placement,
     center,
     offset: {

@@ -1540,7 +1540,7 @@ type PdfOpenContext = {
   requestId: number;
   mode: PdfStartMode;
   source: "local" | "drive";
-  origin: "home" | "workspace" | "drop" | "guided";
+  origin: "home" | "workspace" | "drop" | "guided" | "sample";
   setup: ProjectSetupValues | null;
 };
 
@@ -1832,6 +1832,15 @@ function HVACPlanStudioApp() {
   useEffect(() => {
     setPdfStartMode(loadPdfStartPreference().mode);
   }, []);
+
+  useEffect(() => {
+    if (!pdf || drawings.length === 0) return;
+    void trackProductEvent(
+      "markup_created",
+      { drawing_count: drawings.length },
+      { oncePerSession: true },
+    );
+  }, [pdf, drawings.length]);
 
   useEffect(() => {
     setCloudProjectRisk((current) =>
@@ -3062,10 +3071,11 @@ function HVACPlanStudioApp() {
       setShowProjectHome(false);
       setShowProjectSetup(false);
       void trackProductEvent("pdf_opened", {
-        origin: context.origin === "drop" ? "drop" : "local",
+        origin: context.origin === "drop" ? "drop" : context.origin === "sample" ? "sample" : "local",
         entry_mode: context.mode,
         page_count: document.numPages,
       });
+      return true;
     } catch {
       if (context.requestId === pdfOpenRequestRef.current) {
         setError("This PDF could not be opened. Try another file.");
@@ -5102,6 +5112,10 @@ function HVACPlanStudioApp() {
     return 1 + normalizedRunLineWeight(value) * 20;
   }
 
+  function fittingStrokeWidth(value?: number) {
+    return runStrokeWidth(value) * 1.22;
+  }
+
   function fittingPortVisual(fitting: Drawing, port: 0 | 1 | 2) {
     const connectedId = fitting.fitting?.connectedIds[port];
     const networkKind = fittingBranchNetworkKind(fitting);
@@ -5119,7 +5133,7 @@ function HVACPlanStudioApp() {
     return {
       size: connectedRun?.size || fallbackSize,
       lineWeight: normalizedRunLineWeight(connectedRun?.lineWeight),
-      strokeWidth: runStrokeWidth(connectedRun?.lineWeight),
+      strokeWidth: fittingStrokeWidth(connectedRun?.lineWeight),
     };
   }
 
@@ -12196,7 +12210,7 @@ function HVACPlanStudioApp() {
       return;
     }
     updateSelectedSymbol(changes);
-    setBranchMessage("Compact icon and label sizes applied · drag either handle for fine adjustment");
+    setBranchMessage("Compact icon and label sizes applied · use Selected properties for precise adjustments");
   }
 
   function adjustSelectedSymbolSize(direction: -1 | 1) {
@@ -12471,6 +12485,19 @@ function HVACPlanStudioApp() {
     const selected = drawings.find((drawing) => drawing.id === selectedId);
     if (!selected?.symbol) return;
     updateSelectedSymbol({ rotation: (selected.symbol.rotation + delta + 360) % 360 });
+  }
+
+  function rotateSelectedFitting(deltaDegrees: number) {
+    const selected = drawings.find((drawing) => drawing.id === selectedId);
+    if (!selected?.fitting || drawingLocked(selected)) return;
+    const nextAngle = selected.fitting.angle + deltaDegrees * Math.PI / 180;
+    setHistory(rotateFittingNetwork({
+      drawings,
+      fittingId: selected.id,
+      nextAngle,
+      portsFor: (drawing) => fittingPortPoints(drawing as Drawing),
+    }));
+    setBranchMessage(`T Branch rotated ${Math.abs(deltaDegrees)}° ${deltaDegrees < 0 ? "left" : "right"} · connected routes retained · one Undo restores it`);
   }
 
   function nudgeSelection(dx: number, dy: number) {
@@ -13210,10 +13237,6 @@ function HVACPlanStudioApp() {
     const labelBaselineY = labelPositionY + labelOffset.y;
     const labelCenterY = labelBaselineY - labelBox.height / 2 + 3;
     const labelMoved = Math.hypot(labelOffset.x, labelOffset.y) > 12;
-    const visibleHandleSize = 9 / Math.max(.25, zoom);
-    const resizeHitRadius = 22 / Math.max(.25, zoom);
-    const labelHandleRadius = 6 / Math.max(.25, zoom);
-    const labelHitRadius = 22 / Math.max(.25, zoom);
     const directHitRadius = Math.max(
       interactionRadius * Math.max(scaleX, scaleY),
       22 / Math.max(.25, zoom),
@@ -13238,57 +13261,11 @@ function HVACPlanStudioApp() {
         <g className="symbol-visual" transform={`scale(${scaleX} ${scaleY})`}>
           <circle className="symbol-hit" cx="0" cy="0" r={interactionRadius} />
           <SymbolArtwork kind={kind} variant={variant} width={symbolWidth} height={symbolHeight} />
-          {selected && isPrimaryAirflowEquipment(drawing) && (() => {
-            const ports = equipmentPlenumPorts(drawing).local;
-            return <>
-              <circle className="equipment-plenum-port return-port" cx={ports.return.x} cy={ports.return.y} r="4.2" />
-              <circle className="equipment-plenum-port supply-port" cx={ports.supply.x} cy={ports.supply.y} r="4.2" />
-            </>;
-          })()}
           {["diffuser", "returnGrille"].includes(kind) && <>
             <circle className="can-neck-point" cx="0" cy="0" r="3.5" />
             {drawing.symbol.connectedRunId && <circle className="terminal-link-ring" cx="0" cy="0" r="6" />}
-            {selected && <text className="can-neck-label" x="6" y="4">Ø{drawing.symbol.neckSize || "8"} NECK</text>}
           </>}
-          {selected && <circle className="rotation-ring" cx="0" cy="0" r={interactionRadius} />}
         </g>
-        {selected && !preview && <>
-          <rect
-            className="symbol-resize-outline"
-            x={-resizeBounds.width * scaleX / 2}
-            y={-resizeBounds.height * scaleY / 2}
-            width={resizeBounds.width * scaleX}
-            height={resizeBounds.height * scaleY}
-          />
-          {([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([cornerX, cornerY]) => {
-            const handleX = cornerX * resizeBounds.width * scaleX / 2;
-            const handleY = cornerY * resizeBounds.height * scaleY / 2;
-            const cursorClass = cornerX === cornerY
-              ? "symbol-resize-corner-nwse"
-              : "symbol-resize-corner-nesw";
-            return <g
-              key={`${cornerX}-${cornerY}`}
-              className={cursorClass}
-              data-plan-edit-control="hvac"
-              onPointerDown={(event) => startSymbolResize(event, drawing, cornerX, cornerY)}
-            >
-              <circle
-                className="symbol-resize-hit"
-                cx={handleX}
-                cy={handleY}
-                r={resizeHitRadius}
-              />
-              <rect
-                className={`symbol-resize-handle ${cursorClass}`}
-                x={handleX - visibleHandleSize / 2}
-                y={handleY - visibleHandleSize / 2}
-                width={visibleHandleSize}
-                height={visibleHandleSize}
-                rx={visibleHandleSize * .2}
-              />
-            </g>;
-          })}
-        </>}
       </g>
       {labelMoved && <path
         className="symbol-label-leader"
@@ -13308,14 +13285,6 @@ function HVACPlanStudioApp() {
           height={labelBox.height}
           rx="2"
         />
-        {selected && !preview && <rect
-          className="symbol-label-outline"
-          x={-labelBox.halfWidth}
-          y={-labelBox.height + 3}
-          width={labelBox.width}
-          height={labelBox.height}
-          rx="2"
-        />}
         <text
           className="symbol-label"
           x="0"
@@ -13328,26 +13297,6 @@ function HVACPlanStudioApp() {
         >
           {displayLabel}
         </text>
-        {selected && !preview && <g
-          data-plan-edit-control="hvac"
-          onPointerDown={(event) => startSymbolLabelResize(event, drawing, {
-            x: center.x + labelX,
-            y: center.y + labelCenterY,
-          })}
-        >
-          <circle
-            className="symbol-label-size-hit"
-            cx={labelBox.halfWidth}
-            cy={-labelBox.height / 2 + 3}
-            r={labelHitRadius}
-          />
-          <circle
-            className="symbol-label-size-handle"
-            cx={labelBox.halfWidth}
-            cy={-labelBox.height / 2 + 3}
-            r={labelHandleRadius}
-          />
-        </g>}
       </g>
     </g>;
 
@@ -13752,9 +13701,7 @@ function HVACPlanStudioApp() {
       maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
     })
     : null;
-  const planContextWheelAllowed = zoom <= 3;
   const selectedSymbolWheelVisible = Boolean(
-    planContextWheelAllowed &&
     selectedDrawing?.symbol &&
     selectedSymbolWheel &&
     !selectedSymbolWheel.hidden
@@ -13802,10 +13749,10 @@ function HVACPlanStudioApp() {
     })
     : null;
   const selectedRunWheelVisible = Boolean(
-    planContextWheelAllowed && selectedRunWheel && !selectedRunWheel.hidden
+    selectedRunWheel && !selectedRunWheel.hidden
   );
   const selectedFittingWheelVisible = Boolean(
-    planContextWheelAllowed && selectedFittingWheel && !selectedFittingWheel.hidden
+    selectedFittingWheel && !selectedFittingWheel.hidden
   );
   const selectedContextWheelVisible =
     selectedSymbolWheelVisible ||
@@ -13870,6 +13817,16 @@ function HVACPlanStudioApp() {
   const activeTrace = selectedFitting ? branchTrace : selectedRun ? runTrace : symbolTrace;
   const activeTraceSymbolIds = selectedDrawing?.symbol ? symbolTrace.symbolIds : new Set<string>();
   const activeAirflowSetup = airflowSetupSummary();
+  const activeNetworkBalanceRows = networkBalanceRows();
+  const activeNetworkPortStatus = activeNetworkBalanceRows.reduce((totals, row) => ({
+    detached: totals.detached + row.detachedPorts,
+    missing: totals.missing + row.missingPorts,
+    undersized: totals.undersized + row.overloadedPorts,
+  }), { detached: 0, missing: 0, undersized: 0 });
+  const activeBranchStatusDetail = activeNetworkPortStatus.undersized > 0 &&
+    activeNetworkPortStatus.detached === 0 && activeNetworkPortStatus.missing === 0
+    ? `${activeNetworkPortStatus.undersized} undersized port${activeNetworkPortStatus.undersized === 1 ? " is" : "s are"} red on this system; no detached or missing ports are reported.`
+    : `${activeNetworkPortStatus.detached} detached · ${activeNetworkPortStatus.missing} missing · ${activeNetworkPortStatus.undersized} undersized.`;
   const activeSystemScaleStatus = systemScaleStatus(activeSystem);
   const activeMaterialRows = useMemo(
     () => buildTakeoff(),
@@ -15514,6 +15471,10 @@ function HVACPlanStudioApp() {
 
           <div className="panel-section">
             <div className="section-title"><span>OBJECT PROPERTIES</span><SlidersHorizontal size={15} /></div>
+            {selectedDrawing && <div className="selected-object-status" role="status" aria-live="polite">
+              <span aria-hidden="true">✓</span>
+              <div><strong>Selected on plan</strong><small>{planDrawingAccessibleLabel(selectedDrawing)} · drag the object directly or use these controls</small></div>
+            </div>}
             {selectedDrawing?.symbol ? <>
               <label>Plan label
                 <input
@@ -15612,7 +15573,7 @@ function HVACPlanStudioApp() {
                   className="symbol-sheet-compact"
                   onClick={compactPageTerminalSymbols}
                 >Compact all supply &amp; return symbols on this sheet</button>}
-                <small>Drag a blue corner directly on the icon, or use Smaller for precise steps. Hold Shift to keep the original proportions.</small>
+                <small>Use Smaller or Larger for precise plan-icon sizing without covering the drawing.</small>
               </div>
               <div className="symbol-resize-control symbol-label-control">
                 <div>
@@ -15630,7 +15591,7 @@ function HVACPlanStudioApp() {
                   <button onClick={() => adjustSelectedSymbolLabelSize(-1)}>− Smaller</button>
                   <button onClick={() => adjustSelectedSymbolLabelSize(1)}>Larger +</button>
                 </div>
-                <small>Drag the label beside the icon. Drag its round handle or use Smaller to resize it without moving the icon.</small>
+                <small>Drag the label beside the icon, then use Smaller or Larger here to adjust it without covering the drawing.</small>
               </div>
               {isPrimaryAirflowEquipment(selectedDrawing) && <label>Primary equipment size
                 <select
@@ -15735,6 +15696,17 @@ function HVACPlanStudioApp() {
                   <option value="tee90">90° Tee</option>
                 </select>
               </label>
+              <div className="fitting-rotation-inspector">
+                <div>
+                  <span>FITTING ROTATION</span>
+                  <strong>{Math.round((selectedDrawing.fitting.angle * 180 / Math.PI + 360) % 360)}°</strong>
+                </div>
+                <div role="group" aria-label="Rotate selected T Branch">
+                  <button type="button" onClick={() => rotateSelectedFitting(-15)}>−15°</button>
+                  <button type="button" onClick={() => rotateSelectedFitting(15)}>+15°</button>
+                </div>
+                <small>Rotates the fitting and repairs its connected routes as one Undo step.</small>
+              </div>
               <div className="fitting-actions">
                 <button onClick={() => {
                   const selected = drawings.find((drawing) => drawing.id === selectedId)!;
@@ -15792,12 +15764,18 @@ function HVACPlanStudioApp() {
                   </label>
                 </div>;
               })}
-              <div className="port-status">
+              <div className="port-status" role="status" aria-label="T Branch Status">
+                <strong>T Branch Status</strong>
                 {([0, 1, 2] as const).map((port) => {
                   const fitting = drawings.find((drawing) => drawing.id === selectedId)!;
                   const state = fittingPortState(fitting, port);
+                  const size = fittingPortVisual(fitting, port).size;
                   return <span className={`${state.connected ? "connected" : "disconnected"} ${state.overloaded ? "overloaded" : ""}`} key={port}>
-                    ● Port {port + 1} {state.connected ? "connected" : "disconnected"} · {state.cfm} CFM{state.overloaded ? ` · NEEDS ${state.recommended}"` : ""}
+                    {state.overloaded
+                      ? `Red · Port ${port + 1} undersized · ${size}" at ${state.cfm} CFM · recommended ${state.recommended}"`
+                      : state.connected
+                        ? `Green · Port ${port + 1} connected and properly sized · ${size}" · ${state.cfm} CFM`
+                        : `Red · Port ${port + 1} disconnected · connect the ${size}" ${port === 0 ? "inlet" : port === 1 ? "straight outlet" : "branch outlet"}`}
                   </span>;
                 })}
               </div>
@@ -16153,7 +16131,7 @@ function HVACPlanStudioApp() {
                 ><Copy size={15} /> Copy</button>
               </div> : null;
             })()}
-            {selectedId && planSelectionActionsVisible && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
+            {selectedId && planSelectionActionsVisible && !selectedContextWheelVisible && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
               <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T BRANCH FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : "DUCT RUN"}{selectedDrawingLocked ? selectedPort3FittingLocked ? " · FINISH PORT 3 FIRST" : " · LAYER LOCKED" : ""}</strong>
               {!selectedDrawingLocked && (selectedDrawing?.symbol || selectedDrawing?.measurement || selectedRun || selectedFitting) && <button className="copy-primary" title={selectedRun || selectedFitting ? "Copy this connected duct assembly, then click the plan to paste it repeatedly" : "Copy this item, then click the plan to paste it repeatedly"} onClick={duplicateSelected}><Copy size={15} /> Copy &amp; paste</button>}
               {!selectedDrawingLocked && <span className="selection-drag-hint">Drag the highlighted item to move</span>}
@@ -16189,6 +16167,7 @@ function HVACPlanStudioApp() {
             {selectedDrawing?.symbol && selectedSymbolWheelVisible && selectedSymbolWheel && <SymbolActionWheel
               x={selectedSymbolWheel.center.x}
               y={selectedSymbolWheel.center.y}
+              layout={selectedSymbolWheel.layout}
               label={selectedDrawing.symbol.label || "HVAC icon"}
               onRotateLeft={() => rotateSelectedSymbol(-15)}
               onRotateRight={() => rotateSelectedSymbol(15)}
@@ -16202,6 +16181,7 @@ function HVACPlanStudioApp() {
               variant="run"
               x={selectedRunWheel.center.x}
               y={selectedRunWheel.center.y}
+              layout={selectedRunWheel.layout}
               label={`${selectedRun.size}" ${selectedRun.type} duct`}
               labelAvailable={selectedRunHasLabel}
               splitActive={splitMode}
@@ -16222,6 +16202,7 @@ function HVACPlanStudioApp() {
               variant="fitting"
               x={selectedFittingWheel.center.x}
               y={selectedFittingWheel.center.y}
+              layout={selectedFittingWheel.layout}
               label={`${selectedFitting.fitting?.style === "tee90" ? "Tee" : "Wye"} fitting`}
               onInspectConnections={() => {
                 setRightTab("network");
@@ -16583,10 +16564,6 @@ function HVACPlanStudioApp() {
                           x: center.x + Math.cos(labelAngle) * 18 * fittingChromeScale,
                           y: center.y + Math.sin(labelAngle) * 18 * fittingChromeScale,
                         };
-                        const rotationHandlePoint = {
-                          x: center.x + Math.cos(branchAxis) * 34 * fittingChromeScale,
-                          y: center.y + Math.sin(branchAxis) * 34 * fittingChromeScale,
-                        };
                         return <g
                           key={drawing.id}
                           className={`branch-fitting ${fittingFullyConnected ? "complete-fitting" : "open-fitting"} ${showPortGuides ? "showing-port-guides" : ""} ${activeTrace.fittingIds.has(drawing.id) ? "traced-fitting" : ""} ${isSelected(drawing.id) ? "selected-fitting" : ""} ${branchPlacementResult?.fittingId === drawing.id ? "connection-confirmed" : ""} ${isCopyPreview ? "copy-place-preview" : ""}`}
@@ -16615,9 +16592,9 @@ function HVACPlanStudioApp() {
                             vectorEffect="non-scaling-stroke"
                             style={{ strokeWidth: FITTING_HIT_STROKE_PX }}
                           />
-                          <path className={`fitting-leg ${portStates[0].overloaded ? "overloaded" : ""}`} vectorEffect="non-scaling-stroke" style={{ strokeWidth: portVisuals[0].strokeWidth }} d={`M ${inlet.x} ${inlet.y} L ${center.x} ${center.y}`} />
-                          <path className={`fitting-leg ${portStates[1].overloaded ? "overloaded" : ""}`} vectorEffect="non-scaling-stroke" style={{ strokeWidth: portVisuals[1].strokeWidth }} d={`M ${center.x} ${center.y} L ${outlet.x} ${outlet.y}`} />
-                          <path className={`fitting-leg ${portStates[2].overloaded ? "overloaded" : ""}`} vectorEffect="non-scaling-stroke" style={{ strokeWidth: portVisuals[2].strokeWidth }} d={`M ${shoulderA.x} ${shoulderA.y} Q ${center.x} ${center.y} ${shoulderB.x} ${shoulderB.y} L ${branchPort.x} ${branchPort.y}`} />
+                          <path className={`fitting-leg ${!portStates[0].connected || portStates[0].overloaded ? "warning" : ""} ${portStates[0].overloaded ? "overloaded" : ""}`} vectorEffect="non-scaling-stroke" style={{ strokeWidth: portVisuals[0].strokeWidth }} d={`M ${inlet.x} ${inlet.y} L ${center.x} ${center.y}`} />
+                          <path className={`fitting-leg ${!portStates[1].connected || portStates[1].overloaded ? "warning" : ""} ${portStates[1].overloaded ? "overloaded" : ""}`} vectorEffect="non-scaling-stroke" style={{ strokeWidth: portVisuals[1].strokeWidth }} d={`M ${center.x} ${center.y} L ${outlet.x} ${outlet.y}`} />
+                          <path className={`fitting-leg ${!portStates[2].connected || portStates[2].overloaded ? "warning" : ""} ${portStates[2].overloaded ? "overloaded" : ""}`} vectorEffect="non-scaling-stroke" style={{ strokeWidth: portVisuals[2].strokeWidth }} d={`M ${shoulderA.x} ${shoulderA.y} Q ${center.x} ${center.y} ${shoulderB.x} ${shoulderB.y} L ${branchPort.x} ${branchPort.y}`} />
                           {[outletArrow, branchArrow].map((arrow, index) => <path
                             className="fitting-flow-arrow"
                             vectorEffect="non-scaling-stroke"
@@ -16629,6 +16606,11 @@ function HVACPlanStudioApp() {
                             key={index}
                             transform={`translate(${port.x} ${port.y}) scale(${fittingChromeScale})`}
                           >
+                            <title>{portStates[index].overloaded
+                              ? `Port ${index + 1}: undersized at ${portStates[index].cfm} CFM; increase from ${portSizes[index]} inches to ${portStates[index].recommended} inches`
+                              : portStates[index].connected
+                                ? `Port ${index + 1}: connected and properly sized at ${portSizes[index]} inches`
+                                : `Port ${index + 1}: disconnected; connect a ${portSizes[index]} inch ${index === 0 ? "inlet" : index === 1 ? "straight outlet" : "branch outlet"} run`}</title>
                             <circle className="fitting-port" cx="0" cy="0" r={showPortGuides ? 5 : 3.5} />
                             {showPortGuides && <>
                               <text className="port-number" x="0" y="2.7" textAnchor="middle">{index + 1}</text>
@@ -16637,17 +16619,6 @@ function HVACPlanStudioApp() {
                               <text className="port-role" x="0" y={showCfmLabels ? 23 : 15} textAnchor="middle">{["IN", "OUT", "BRANCH"][index]}</text>
                             </>}
                           </g>)}
-                          {isSelected(drawing.id) && planSelectionActionsVisible && <g className="fitting-rotation-control">
-                            <line x1={branchPort.x} y1={branchPort.y} x2={rotationHandlePoint.x} y2={rotationHandlePoint.y} />
-                            <g
-                              transform={`translate(${rotationHandlePoint.x} ${rotationHandlePoint.y}) scale(${fittingChromeScale})`}
-                              onPointerDown={(event) => startFittingRotation(event, drawing)}
-                            >
-                              <circle className="rotation-handle-hit" cx="0" cy="0" r="13" />
-                              <circle className="rotation-handle" cx="0" cy="0" r="6" />
-                              <title>Drag to rotate this T Branch freely</title>
-                            </g>
-                          </g>}
                           {showFittingLabels && <text
                             className="fitting-label"
                             x="0"
@@ -16692,8 +16663,7 @@ function HVACPlanStudioApp() {
                             ? "markup-preview-run"
                             : "";
                       const runSelected = isSelected(drawing.id);
-                      const selectedRunChromeVisible = runSelected && planSelectionActionsVisible;
-                      const showRunNodeHandles = selectedRunChromeVisible || Boolean(branchCandidateClass);
+                      const showRunNodeHandles = Boolean(branchCandidateClass);
                       const runLabelText = [
                         drawing.runNumber?.trim(),
                         drawing.sizeReviewed === true ? `${drawing.size}"` : "",
@@ -16712,43 +16682,18 @@ function HVACPlanStudioApp() {
                         </path>
                         <path className="duct-line" pointerEvents="none" d={path} stroke={drawingColors[drawing.type as DrawType]} style={{ strokeWidth: runStrokeWidth(drawing.lineWeight) }} />
                         {showRunNodeHandles && drawing.points.map((point, index) => {
-                          const endpoint = index === 0 || index === drawing.points.length - 1;
                           return <g
                             key={index}
                             className="screen-stable-run-node"
                             transform={`translate(${point.x} ${point.y}) scale(${screenStablePlanChromeScale})`}
                           >
-                            {selectedRunChromeVisible && <circle
-                              className="edit-handle-hit"
-                              cx="0"
-                              cy="0"
-                              r="10"
-                              onPointerDown={(event) => startPointDrag(event, drawing.id, index)}
-                            />}
                             <circle
-                              className={selectedRunChromeVisible ? `edit-handle ${endpoint ? "endpoint-grip" : "vertex-grip"}` : "branch-candidate-node"}
+                              className="branch-candidate-node"
                               cx="0"
                               cy="0"
-                              r={selectedRunChromeVisible ? endpoint ? 4 : 3 : 2.5}
+                              r="2.5"
                               fill={drawingColors[drawing.type as DrawType]}
-                              pointerEvents={selectedRunChromeVisible ? "none" : undefined}
-                              onPointerDown={selectedRunChromeVisible ? undefined : (event) => startPointDrag(event, drawing.id, index)}
-                            />
-                          </g>;
-                        })}
-                        {selectedRunChromeVisible && drawing.points.slice(0, -1).map((point, index) => {
-                          const next = drawing.points[index + 1];
-                          return <g
-                            className="screen-stable-run-node"
-                            key={`mid-${index}`}
-                            transform={`translate(${(point.x + next.x) / 2} ${(point.y + next.y) / 2}) scale(${screenStablePlanChromeScale})`}
-                          >
-                            <circle
-                              className="midpoint-grip"
-                              cx="0"
-                              cy="0"
-                              r="4"
-                              onPointerDown={(event) => startMidpointStretch(event, drawing.id, index)}
+                              onPointerDown={(event) => startPointDrag(event, drawing.id, index)}
                             />
                           </g>;
                         })}
@@ -17433,8 +17378,14 @@ function HVACPlanStudioApp() {
                 <span>{activeAirflowSetup.supplyPathCount} supply path{activeAirflowSetup.supplyPathCount === 1 ? "" : "s"} at ≤{supplyVelocityLimit} FPM</span>
                 <span>{activeAirflowSetup.returnPathCount} return path{activeAirflowSetup.returnPathCount === 1 ? "" : "s"} at ≤{returnVelocityLimit} FPM</span>
               </div>
-              {networkBalanceRows().length ? <div className="network-balance-list compact">
-                {networkBalanceRows().map((row) => <div className={`network-balance-card ${row.balanced ? "balanced" : "attention"}`} key={row.unit.id}>
+              <div className="balance-fitting-legend" role="note" aria-label="T Branch fitting status">
+                <strong>T Branch colors</strong>
+                <span><i className="normal" aria-hidden="true" /> Yellow fitting body: normal.</span>
+                <span><i className="review" aria-hidden="true" /> Red port or leg: disconnected or undersized.</span>
+                <p><AlertTriangle size={16} /> {activeBranchStatusDetail}</p>
+              </div>
+              {activeNetworkBalanceRows.length ? <div className="network-balance-list compact">
+                {activeNetworkBalanceRows.map((row) => <div className={`network-balance-card ${row.balanced ? "balanced" : "attention"}`} key={row.unit.id}>
                   <button className="network-unit-heading" onClick={() => { setSelectedId(row.unit.id); activatePlanTool("select"); }}>
                     <span><strong>{row.unit.symbol?.label || "HVAC EQUIPMENT"}</strong><small>{row.rootRunId ? `${row.runCount} runs · ${row.fittingCount} fittings · ${row.terminalCount} connected supplies` : "Supply trunk not connected"}</small></span>
                     <b>{row.balanced ? "SUPPLY OK" : row.rootRunId ? "REVIEW" : "DISCONNECTED"}</b>
@@ -17544,12 +17495,12 @@ function HVACPlanStudioApp() {
           </div> : rightTab === "network" ? <div className="network-balance-panel">
             <div className="checks-heading">
               <div><strong>NETWORK BALANCE</strong><small>{systemLabel(activeSystem)} · connected airflow</small></div>
-              <span className={`check-pill ${networkBalanceRows().every((row) => row.balanced) && networkBalanceRows().length ? "clear" : "warning"}`}>
-                {networkBalanceRows().length ? networkBalanceRows().filter((row) => !row.balanced).length || "OK" : "—"}
+              <span className={`check-pill ${activeNetworkBalanceRows.every((row) => row.balanced) && activeNetworkBalanceRows.length ? "clear" : "warning"}`}>
+                {activeNetworkBalanceRows.length ? activeNetworkBalanceRows.filter((row) => !row.balanced).length || "OK" : "—"}
               </span>
             </div>
-            {networkBalanceRows().length ? <div className="network-balance-list">
-              {networkBalanceRows().map((row) => <div className={`network-balance-card ${row.balanced ? "balanced" : "attention"}`} key={row.unit.id}>
+            {activeNetworkBalanceRows.length ? <div className="network-balance-list">
+              {activeNetworkBalanceRows.map((row) => <div className={`network-balance-card ${row.balanced ? "balanced" : "attention"}`} key={row.unit.id}>
                 <button className="network-unit-heading" onClick={() => { setSelectedId(row.unit.id); activatePlanTool("select"); }}>
                   <span><strong>{row.unit.symbol?.label || "HVAC EQUIPMENT"}</strong><small>{row.rootRunId ? `${row.runCount} runs · ${row.fittingCount} fittings · ${row.terminalCount} diffusers` : "Supply trunk not connected"}</small></span>
                   <b>{row.balanced ? "SCHEDULE ALIGNED" : row.rootRunId ? "REVIEW" : "DISCONNECTED"}</b>

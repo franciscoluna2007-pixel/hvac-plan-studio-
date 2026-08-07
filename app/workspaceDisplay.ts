@@ -19,6 +19,9 @@ export const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
   rightPanelOpen: true,
 };
 
+export const MIN_WORKSPACE_ZOOM = 0.25;
+export const MAX_WORKSPACE_ZOOM = 12;
+
 const QUALITY_LIMITS: Record<RenderQualityMode, { megapixels: number; maxAxis: number; label: string }> = {
   performance: { megapixels: 4, maxAxis: 4096, label: "Performance · 4 MP" },
   auto: { megapixels: 12, maxAxis: 8192, label: "Auto · up to 12 MP" },
@@ -27,7 +30,7 @@ const QUALITY_LIMITS: Record<RenderQualityMode, { megapixels: number; maxAxis: n
 };
 
 export function clampZoom(value: number) {
-  return Math.max(0.25, Math.min(8, Number.isFinite(value) ? value : 1));
+  return Math.max(MIN_WORKSPACE_ZOOM, Math.min(MAX_WORKSPACE_ZOOM, Number.isFinite(value) ? value : 1));
 }
 
 export function midpoint(a: ScreenPoint, b: ScreenPoint): ScreenPoint {

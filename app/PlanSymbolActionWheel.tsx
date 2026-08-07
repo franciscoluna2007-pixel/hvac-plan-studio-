@@ -27,6 +27,7 @@ type CommonActionWheelProps = {
   label: string;
   x: number;
   y: number;
+  layout?: "wheel" | "strip";
   onDelete: () => void;
   onClose: () => void;
 };
@@ -281,10 +282,11 @@ export default function SymbolActionWheel(props: PlanActionWheelProps) {
 
   return (
     <div
-      className="symbol-action-wheel"
+      className={`symbol-action-wheel ${props.layout === "strip" ? "compact-strip" : "radial-wheel"}`}
       role="toolbar"
       aria-label={`${caption} actions for ${props.label}`}
       data-wheel-variant={kind}
+      data-wheel-layout={props.layout ?? "wheel"}
       data-canvas-ui
       onKeyDown={handleKeyDown}
       style={{ left: props.x, top: props.y } as CSSProperties}
@@ -333,7 +335,7 @@ export default function SymbolActionWheel(props: PlanActionWheelProps) {
               tabIndex={safeFocusIndex === index ? 0 : -1}
               onFocus={() => setFocusIndex(index)}
               onClick={run}
-              style={{
+              style={props.layout === "strip" ? undefined : {
                 left: `${position.left}%`,
                 top: `${position.top}%`,
               }}

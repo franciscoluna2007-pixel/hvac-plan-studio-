@@ -281,7 +281,7 @@ test("provides a searchable HVAC catalog and wheel rotation before placement", a
   assert.match(source, /Shift\+wheel 45°/);
 });
 
-test("makes run size primary, supports one-inch size choices, and directly resizes icons", async () => {
+test("makes run size primary and keeps precise icon sizing in Selected properties", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
@@ -293,13 +293,13 @@ test("makes run size primary, supports one-inch size choices, and directly resiz
   assert.match(source, /scaleY\?: number/);
   assert.match(source, /kind: "symbol-resize"/);
   assert.match(source, /function startSymbolResize/);
-  assert.match(source, /className=\{`symbol-resize-handle \$\{cursorClass\}`\}/);
-  assert.match(source, /Hold Shift to keep the original proportions/);
+  assert.doesNotMatch(source, /className=\{`symbol-resize-handle \$\{cursorClass\}`\}/);
+  assert.match(source, /Use Smaller or Larger for precise plan-icon sizing without covering the drawing/);
   assert.match(source, />Compact<\/button>/);
   assert.match(source, /− Smaller/);
   assert.doesNotMatch(source, /className="fitting-core"/);
   assert.match(styles, /\.run-size-default/);
-  assert.match(styles, /\.hvac-symbol \.symbol-resize-handle/);
+  assert.match(styles, /\.selected-object-status/);
 });
 
 test("controls fitting text, connects equipment at plenums, and repositions plan labels", async () => {
@@ -603,8 +603,8 @@ test("keeps completed T Branch fittings readable and reveals numbered ports only
   assert.match(source, /const showPortGuides =[\s\S]*?pendingBranchFittingId === drawing\.id \|\|[\s\S]*?port3BranchDraft\?\.fittingId === drawing\.id/);
   assert.match(source, /\{\[inlet, outlet, branchPort\]\.map/);
   assert.match(source, /showPortGuides \? "detailed-port" : "status-port"/);
-  assert.match(source, /const selectedRunChromeVisible = runSelected && planSelectionActionsVisible/);
-  assert.match(source, /const showRunNodeHandles = selectedRunChromeVisible \|\| Boolean\(branchCandidateClass\)/);
+  assert.doesNotMatch(source, /const selectedRunChromeVisible = runSelected/);
+  assert.match(source, /const showRunNodeHandles = Boolean\(branchCandidateClass\)/);
   assert.match(source, /\{showRunNodeHandles && drawing\.points\.map/);
   assert.match(source, /className={`branch-fitting \$\{fittingFullyConnected \? "complete-fitting" : "open-fitting"\}/);
   assert.match(source, /textAnchor="middle"/);

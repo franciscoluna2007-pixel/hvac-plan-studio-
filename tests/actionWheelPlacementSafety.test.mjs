@@ -8,7 +8,7 @@ const [page, canvas, styles] = await Promise.all([
   readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
 ]);
 
-test("HVAC action wheels and the discoverable toolbar are limited to safe Select mode", () => {
+test("HVAC action controls remain discoverable in safe Select mode at every zoom", () => {
   assert.match(
     page,
     /const planSelectionActionsVisible =\s*activeTool === "select"[\s\S]*?!splitMode[\s\S]*?!calibrating[\s\S]*?!pendingRoomMarkupCandidateId[\s\S]*?!fieldRedline\.open/,
@@ -27,23 +27,24 @@ test("HVAC action wheels and the discoverable toolbar are limited to safe Select
   );
   assert.match(
     page,
-    /\{selectedId && planSelectionActionsVisible && <div className="field-context-toolbar"/,
+    /\{selectedId && planSelectionActionsVisible && !selectedContextWheelVisible && <div className="field-context-toolbar"/,
   );
   assert.match(page, /className="copy-primary"[\s\S]*?Copy &amp; paste/);
   assert.match(page, /Drag the highlighted item to move/);
-  assert.match(page, /const planContextWheelAllowed = zoom <= 3/);
+  assert.doesNotMatch(page, /planContextWheelAllowed|zoom <= 3/);
   assert.match(
     page,
-    /const selectedRunWheelVisible = Boolean\(\s*planContextWheelAllowed && selectedRunWheel/,
+    /const selectedRunWheelVisible = Boolean\(\s*selectedRunWheel && !selectedRunWheel\.hidden/,
   );
   assert.match(
     page,
-    /const selectedFittingWheelVisible = Boolean\(\s*planContextWheelAllowed && selectedFittingWheel/,
+    /const selectedFittingWheelVisible = Boolean\(\s*selectedFittingWheel && !selectedFittingWheel\.hidden/,
   );
   assert.match(
     page,
-    /const selectedSymbolWheelVisible = Boolean\(\s*planContextWheelAllowed &&[\s\S]*?!selectedSymbolWheel\.hidden/,
+    /const selectedSymbolWheelVisible = Boolean\([\s\S]*?selectedDrawing\?\.symbol[\s\S]*?!selectedSymbolWheel\.hidden/,
   );
+  assert.match(page, /layout=\{selectedSymbolWheel\.layout\}/);
 });
 
 test("symbol placement stays armed and does not auto-open selection actions", () => {
@@ -93,29 +94,19 @@ test("missed releases stay safe and raw plan input drives T Branch, icon, and ru
   assert.match(placement, /setDraft\(\(points\) => \[\.\.\.points, point\]\)/);
 });
 
-test("supply-run dots are visually smaller without shrinking their edit target", () => {
+test("ordinary selection omits run edit grips while branch targeting stays screen-sized", () => {
   assert.match(page, /const screenStablePlanChromeScale = fittingOverlayScale\(zoom\)/);
   assert.match(
     page,
-    /const selectedRunChromeVisible = runSelected && planSelectionActionsVisible/,
+    /const showRunNodeHandles = Boolean\(branchCandidateClass\)/,
   );
-  assert.match(
-    page,
-    /const showRunNodeHandles = selectedRunChromeVisible \|\| Boolean\(branchCandidateClass\)/,
-  );
+  assert.doesNotMatch(page, /selectedRunChromeVisible/);
   assert.match(
     page,
     /className="screen-stable-run-node"[\s\S]*?transform=\{`translate\(\$\{point\.x\} \$\{point\.y\}\) scale\(\$\{screenStablePlanChromeScale\}\)`\}/,
   );
-  assert.match(
-    page,
-    /\{selectedRunChromeVisible && <circle[\s\S]*?className="edit-handle-hit"[\s\S]*?cx="0"[\s\S]*?cy="0"[\s\S]*?r="10"/,
-  );
-  assert.match(page, /r=\{selectedRunChromeVisible \? endpoint \? 4 : 3 : 2\.5\}/);
-  assert.match(
-    page,
-    /\{selectedRunChromeVisible && drawing\.points\.slice[\s\S]*?className="screen-stable-run-node"[\s\S]*?transform=\{`translate\([\s\S]*?scale\(\$\{screenStablePlanChromeScale\}\)`\}[\s\S]*?className="midpoint-grip"[\s\S]*?cx="0"[\s\S]*?cy="0"[\s\S]*?r="4"/,
-  );
+  assert.doesNotMatch(page, /className="edit-handle-hit"/);
+  assert.doesNotMatch(page, /className="midpoint-grip"/);
   assert.match(
     page,
     /className="screen-stable-draft-point"[\s\S]*?scale\(\$\{screenStablePlanChromeScale\}\)[\s\S]*?className="draft-point"/,

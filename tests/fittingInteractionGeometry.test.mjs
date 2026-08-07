@@ -29,18 +29,19 @@ test("T Branch interaction chrome stays compact in screen space", () => {
 });
 
 test("T Branch overlay scaling is bounded at extreme zoom levels", () => {
-  assert.equal(fittingOverlayScale(100), 1 / 8);
+  assert.equal(fittingOverlayScale(100), 1 / 12);
   assert.equal(fittingOverlayScale(0.01), 4);
-  for (const zoom of [1, 2, 4, 8]) {
+  for (const zoom of [1, 2, 4, 8, 12]) {
     assert.equal(6 * fittingOverlayScale(zoom) * zoom, 6);
   }
 });
 
-test("T Branch repair chrome and run grips remain screen-sized at 668% zoom", () => {
-  const zoom = 6.68;
-  const scale = fittingOverlayScale(zoom);
-  for (const pixels of [4, 7, 8, 10, 12]) {
-    assert.ok(Math.abs(pixels * scale * zoom - pixels) < 1e-9);
+test("T Branch repair chrome and port status remain screen-sized through maximum zoom", () => {
+  for (const zoom of [6.68, 12]) {
+    const scale = fittingOverlayScale(zoom);
+    for (const pixels of [3.5, 4, 7, 8, 10, 12]) {
+      assert.ok(Math.abs(pixels * scale * zoom - pixels) < 1e-9);
+    }
   }
 });
 
