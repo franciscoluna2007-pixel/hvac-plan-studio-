@@ -51,7 +51,7 @@ The core workflow remains:
 3. Materials
 4. Export
 
-Plan Check remains compact, optional, and advisory. No helper may block Materials or Export.
+Connection Check remains focused and operational. It reports open supply runs, return runs, and T Branch ports without blocking Materials or Export. Reconnection always requires explicit approval and remains undoable.
 
 ## Frozen behavior boundary
 
@@ -155,7 +155,7 @@ Controls must never fall back to browser-default typography. Copy stays direct a
 - Secondary workflow icons remain reachable after the core actions.
 - Tool and inspector drawers use the full viewport width.
 - The source plan stays in bounds and visually dominant when drawers are closed.
-- Materials, Export, and Plan Check remain reachable without helper gating.
+- Materials, Export, and Connection Check remain reachable without helper gating.
 
 ## Component treatments
 
@@ -183,9 +183,9 @@ Materials remain an operational inspector and Finish-the-Job step using real pla
 
 The existing Finish-the-Job flow remains intact. The studio uses a white Material surface, clear step rail, Cobalt progress/primary actions, confirmation green for current review, and established warning/critical colors for holds.
 
-### Plan Check
+### Connection Check
 
-Plan Check remains a compact strip and optional sidecar. It uses the same Material surfaces and Cobalt primary review action. Status counts, warnings, issue markers, and source-backed content retain their established meaning.
+Connection Check uses a compact Material side panel with plain connection status, source-linked issue rows, explicit repair selection, and one-step Undo. It never creates, moves, or reconnects duct without approval. The larger Plan Helper/System Planner interface is not part of the normal workspace.
 
 ### Project Home
 
