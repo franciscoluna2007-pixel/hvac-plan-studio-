@@ -41,7 +41,9 @@ This file contains concise, verified product context for future repository work.
 
 ## Approved future 2D rigid-duct phase
 
-- The next major engine phase is approved for local planning, but implementation has **not started**. Begin with a reviewed architecture, schema-versioning, and migration plan; keep it local until separately reviewed and released.
+- The reviewed architecture, schema-versioning, migration, phase boundaries, and decision register are in `docs/rigid-duct-architecture-and-migration.md`.
+- Phase 1 is separately approved: saved-project schema v10 with backward migration; true-width horizontal straight rectangular, round-metal, and spiral segments; calibrated lengths; editable sizes; selection/history/copy/persistence; and initial source-linked Materials aggregation.
+- Phase 1 explicitly excludes fittings, elevations/vertical length, automatic CFM distribution or resizing, and fabrication schedules. Keep those for later reviewed phases.
 - Add first-class rectangular sheet-metal duct, round metal pipe, and spiral pipe while keeping existing flex unchanged. Round and spiral may share geometry but remain distinct render and material/order types.
 - Rigid duct renders at true calibrated width while an editable centerline remains the geometry source of truth. The system stays 2D; rises, drops, and elevations are explicit fields.
 - Planned fittings include straight sections, 45/90 elbows, rectangular radius/square elbows, reducers, transitions, rectangular-to-round connections, takeoffs, T/Y fittings, offsets, collars/dampers, and equipment/box/terminal connections.
@@ -58,6 +60,6 @@ This file contains concise, verified product context for future repository work.
 
 ## Current verified state and next step
 
-- Website PR [#62](https://github.com/franciscoluna2007-pixel/hvac-plan-studio-/pull/62) merged as `2dfba9372850674365038d08833717f658be97c2`.
-- Sites version 171 was built from that exact merge, privately deployed with one owner and no groups or external visitors, and production-verified. It includes readable two-sided operational panels and System Balancing, unobtrusive normal selection, viewport-bounded action controls through 1200% zoom, and clarified/heavier T Branch status presentation while preserving protected drawing behavior.
-- Next product step: prepare the local-only 2D rigid-duct/fabrication architecture and migration plan for review. Do not begin production implementation or release it without a separate decision.
+- Website PR [#64](https://github.com/franciscoluna2007-pixel/hvac-plan-studio-/pull/64) merged as `14fbf4599b6c5d1db039f1f0892b86a630e2db7d`.
+- Sites version 172 was built from that exact merge, privately deployed with one owner and no groups or external visitors, and production-verified. Selected HVAC symbols now use only the subtle Material Cobalt artwork highlight; the viewport-bounded ICON actions and protected drawing behavior remain intact.
+- Next product step: implement and independently verify rigid-duct Phase 1 from the reviewed architecture plan. Do not mix later rigid fittings, elevation, automatic CFM, or fabrication work into it.
