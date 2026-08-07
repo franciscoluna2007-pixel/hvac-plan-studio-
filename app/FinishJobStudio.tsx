@@ -268,7 +268,7 @@ export default function FinishJobStudio({
         </div>
         <div className="finish-job-header-status" aria-live="polite">
           <button className="finish-plan-check-action" disabled={issuing} onClick={onOpenPlanCheck}>
-            <ShieldCheck size={15} /> Check plan{planCheckCount ? ` · ${planCheckCount}` : ""}
+            <ShieldCheck size={15} /> Check connections{planCheckCount ? ` · ${planCheckCount}` : ""}
           </button>
           <span><b>{model.progress}%</b><small>{model.jobReady ? "READY" : `${5 - model.completedSteps} LEFT`}</small></span>
           <button disabled={issuing} aria-label="Close Finish the Job" onClick={onClose}><X size={19} /></button>

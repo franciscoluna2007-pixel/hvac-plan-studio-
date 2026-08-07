@@ -792,7 +792,7 @@ export default function CloudProjectsPanel({
                 <div className="cloud-dashboard-grid">
                   <article className="cloud-next-action-card">
                     <span>{intelligence.health === "critical" ? <AlertTriangle size={19} /> : <Target size={19} />}</span>
-                    <div><small>CURRENT JOB STEP</small><strong>{currentStepLabel}</strong><p>{currentStepDetail} Plan Helper changes drawing geometry only after you approve selected fixes.</p></div>
+                    <div><small>CURRENT JOB STEP</small><strong>{currentStepLabel}</strong><p>{currentStepDetail} Connection repairs preview the exact endpoint move and require your approval.</p></div>
                     <button onClick={() =>
                       !workingProjectMatchesActive
                         ? setView("revisions")

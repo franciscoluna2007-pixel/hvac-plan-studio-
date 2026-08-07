@@ -142,7 +142,7 @@ test("cobalt brand, primary, hover, active, focus, selected, and disabled states
   expect(disabledOpacity).toBeLessThanOrEqual(0.46);
 });
 
-test("desktop review covers Project Home, Materials, Export, and compact Plan Check", async ({ page }) => {
+test("desktop review covers Project Home, Materials, Export, and focused Connection Check", async ({ page }) => {
   await openLoadedPlan(page);
 
   await page.getByRole("button", { name: "Materials", exact: true }).click();
@@ -153,10 +153,16 @@ test("desktop review covers Project Home, Materials, Export, and compact Plan Ch
 
   await page.getByRole("button", { name: "Export", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Finish the Job" })).toBeVisible();
-  await page.getByRole("button", { name: /Check plan/ }).click();
-  await expect(page.locator(".markup-assistant-studio").getByRole("heading", { name: /items? to review/ })).toBeVisible();
-  await page.screenshot({ path: path.join(reviewDir, "material-desktop-plan-check.png"), fullPage: false });
-  await page.getByRole("button", { name: "Close Plan Check" }).click();
+  await page.getByRole("button", { name: /Check connections/ }).click();
+  await expect(page.getByRole("complementary", { name: "HVAC plan inspector" })).toBeVisible();
+  const inspectorTabs = page.getByRole("complementary", { name: "HVAC plan inspector" }).getByRole("tab");
+  await expect(inspectorTabs).toHaveCount(4);
+  for (const name of ["Connections", "Layers", "Airflow", "Materials"]) {
+    await expect(inspectorTabs.getByText(name, { exact: true })).toBeVisible();
+  }
+  await expect(page.getByLabel("Connection Check").getByText("Connection Check", { exact: true })).toBeVisible();
+  await expect(page.locator(".markup-assistant-studio")).toHaveCount(0);
+  await page.screenshot({ path: path.join(reviewDir, "material-desktop-connection-check.png"), fullPage: false });
 
   await page.getByRole("button", { name: "Export", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Finish the Job" })).toBeVisible();
@@ -167,4 +173,83 @@ test("desktop review covers Project Home, Materials, Export, and compact Plan Ch
   await expect(page.getByRole("dialog", { name: "HVAC Plan Studio jobs" })).toBeVisible();
   await page.waitForTimeout(220);
   await page.screenshot({ path: path.join(reviewDir, "material-desktop-home.png"), fullPage: false });
+});
+
+test("Materials combines same-size supply and return flex and traces both plan sources", async ({ page }) => {
+  await openLoadedPlan(page);
+  const plan = page.locator("svg.drawing-layer");
+  const box = await plan.boundingBox();
+  if (!box) throw new Error("Plan SVG has no bounds");
+  const drawRun = async (buttonName: RegExp, y: number) => {
+    await page.getByRole("complementary", { name: "HVAC plan tools" }).getByRole("button", { name: buttonName }).click();
+    const start = { x: box.x + box.width * .2, y: box.y + box.height * y };
+    const end = { x: box.x + box.width * .8, y: box.y + box.height * y };
+    await page.mouse.click(start.x, start.y);
+    await page.mouse.click(end.x, end.y);
+    await page.mouse.click(end.x, end.y, { button: "right" });
+  };
+  await drawRun(/^Supply run/, .32);
+  await drawRun(/^Return duct/, .62);
+
+  await page.getByRole("button", { name: "Materials", exact: true }).click();
+  const flexibleRows = page.locator(".takeoff-row").filter({ hasText: "Flexible duct" });
+  await expect(flexibleRows).toHaveCount(1);
+  await expect(flexibleRows).toContainText("3 × 25-ft boxes");
+  await page.getByRole("button", { name: "View breakdown" }).click();
+  await expect(flexibleRows).toContainText("supply + return");
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download list" }).click();
+  const download = await downloadPromise;
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  const csv = Buffer.concat(chunks);
+  expect([...csv.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+  expect(csv.toString("utf8")).toContain('"Measured LF","Allowance %","Order LF","Package","Source objects"');
+  expect(csv.toString("utf8")).not.toContain("Breakdown (reference only)");
+  await flexibleRows.getByRole("button", { name: "Show on plan" }).click();
+  await expect(page.locator('g[data-plan-drawing-id][aria-pressed="true"]')).toHaveCount(2);
+
+  await page.getByRole("tab", { name: "Installer checklist" }).click();
+  await expect(page.getByText("PLAN-TO-TRUCK CHECKLIST", { exact: true })).toBeVisible();
+  const packedFlex = page.getByRole("checkbox", { name: /Packed Flexible duct 14/ });
+  await packedFlex.check();
+  await expect(page.getByText("1/2 READY", { exact: true })).toBeVisible();
+  await page.screenshot({ path: path.join(reviewDir, "material-desktop-installer-checklist.png"), fullPage: false });
+  await page.getByRole("tab", { name: "Order list" }).click();
+  await page.getByRole("tab", { name: "Installer checklist" }).click();
+  await expect(packedFlex).toBeChecked();
+});
+
+test("Connection Check names an open T Branch and takes the user to it", async ({ page }) => {
+  await openLoadedPlan(page);
+  const plan = page.locator("svg.drawing-layer");
+  const box = await plan.boundingBox();
+  if (!box) throw new Error("Plan SVG has no bounds");
+  const start = { x: box.x + box.width * .2, y: box.y + box.height * .42 };
+  const end = { x: box.x + box.width * .8, y: box.y + box.height * .42 };
+  await page.getByRole("complementary", { name: "HVAC plan tools" }).getByRole("button", { name: /^Supply run/ }).click();
+  await page.mouse.click(start.x, start.y);
+  await page.mouse.click(end.x, end.y);
+  await page.mouse.click(end.x, end.y, { button: "right" });
+  await page.getByRole("button", { name: "Select", exact: true }).click();
+  const run = page.locator('g[data-plan-drawing-id]:has(> path.hit-line)').first();
+  const runBox = await run.locator("path.hit-line").boundingBox();
+  if (!runBox) throw new Error("Run has no bounds");
+  const target = { x: runBox.x + runBox.width / 2, y: runBox.y + runBox.height / 2 };
+  await page.mouse.click(target.x, target.y);
+  const tools = page.getByRole("complementary", { name: "HVAC plan tools" });
+  await tools.getByRole("button", { name: "Draw", exact: true }).click();
+  await tools.getByRole("button", { name: /^T Branch/ }).click();
+  await page.mouse.move(target.x, target.y);
+  await page.mouse.down();
+  await page.mouse.move(target.x, target.y + 70, { steps: 5 });
+  await page.mouse.up();
+
+  await page.getByRole("tab", { name: "Connections" }).click();
+  const check = page.getByLabel("Connection Check");
+  await expect(check.getByText("T Branch not connected", { exact: true })).toBeVisible();
+  await check.getByRole("button", { name: /T Branch not connected/ }).click();
+  await expect(page.locator("g.branch-fitting[aria-pressed=\"true\"]")).toHaveCount(1);
+  await expect(page.locator(".markup-assistant-studio")).toHaveCount(0);
 });

@@ -20,18 +20,21 @@ test("centers the workspace on the approved four-step workflow", () => {
   assert.match(styles, /\.command-rail-main > button::before/);
 });
 
-test("keeps Plan Check optional inside Export instead of occupying the workspace", () => {
+test("replaces Plan Check with a focused Connection Check", () => {
   assert.match(finish, /finish-plan-check-action/);
-  assert.match(finish, /Check plan\{planCheckCount/);
-  assert.match(page, /planCheckCount=\{planCheckCount\}/);
+  assert.match(finish, /Check connections\{planCheckCount/);
+  assert.match(page, /planCheckCount=\{activeConnectionRepairIssues\.length\}/);
   assert.match(page, /onOpenPlanCheck=\{\(\) => \{/);
+  assert.match(page, /aria-label="Connection Check"/);
+  assert.match(page, /It never creates or moves duct without your approval/);
   assert.doesNotMatch(page, /<PlanCheckStrip/);
 });
 
-test("uses factual Plan Check language and keeps details user-invoked", () => {
+test("keeps the retired rule engine out of the visible workspace", () => {
   assert.match(assistant, /PLAN CHECK/);
   assert.match(assistant, /Checks are advisory/);
   assert.match(assistant, /<details className="assistant-more-tools">/);
+  assert.match(page, /\{false && mountMarkupAssistantStudio && <MarkupAssistantStudio/);
   assert.doesNotMatch(assistant, /PLAN HELPER/);
   assert.doesNotMatch(assistant, /NOTHING CHANGES WITHOUT APPROVAL/);
 });

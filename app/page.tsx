@@ -43,11 +43,15 @@ import {
   type DirectBranchNetworkKind,
 } from "./directBranchPlacement";
 import {
-  buildDedicatedExhaustTakeoffRows,
   dedicatedExhaustSymbolPresets,
   isDedicatedExhaustSymbolKind,
   type DedicatedExhaustSymbolKind,
 } from "./exhaustPlanSymbols";
+import {
+  buildMaterialOrder,
+  buildMaterialOrderCsv,
+  type MaterialOrderRow,
+} from "./materialOrder";
 import {
   branchLeavesTrunkAtClearAngle,
   commitPort3Branch,
@@ -1275,6 +1279,7 @@ type SavedProject = {
   airflowSizingProfile?: AirflowSizingProfile;
   fieldChecklist?: Record<string, boolean>;
   fieldChecklistBySystem?: Record<string, Record<string, boolean>>;
+  materialInstallChecklistBySystem?: Record<string, Record<string, boolean>>;
   materialWastePercent?: number;
   commissioningBySystem?: Record<string, CommissioningRecord>;
   punchItems?: PunchItem[];
@@ -1512,16 +1517,7 @@ type MaterialReviewRecord = {
   wastePercent: number;
 };
 
-type TakeoffRow = {
-  category: string;
-  item: string;
-  size: string;
-  quantity: string;
-  note: string;
-  orderCount: number;
-  orderUnit: "box" | "each" | "lot";
-  breakdown?: string;
-};
+type TakeoffRow = MaterialOrderRow;
 
 type TakeoffPackageRecord = {
   id: string;
@@ -1891,6 +1887,7 @@ function HVACPlanStudioApp() {
   const [reviewDecisionsBySystem, setReviewDecisionsBySystem] = useState<Record<string, Record<string, ReviewDecision>>>({});
   const [fieldView, setFieldView] = useState<"release" | "installer" | "coordination" | "startup">("release");
   const [fieldChecklistBySystem, setFieldChecklistBySystem] = useState<Record<string, Record<string, boolean>>>({});
+  const [materialInstallChecklistBySystem, setMaterialInstallChecklistBySystem] = useState<Record<string, Record<string, boolean>>>({});
   const [releaseRecords, setReleaseRecords] = useState<SystemReleaseRecord[]>([]);
   const [takeoffPackageRecords, setTakeoffPackageRecords] = useState<TakeoffPackageRecord[]>([]);
   const [materialReviewRecords, setMaterialReviewRecords] = useState<MaterialReviewRecord[]>([]);
@@ -2772,6 +2769,7 @@ function HVACPlanStudioApp() {
     setResidentialFlexMax(project.residentialFlexMax || "16");
     setAirflowSizingProfile(normalizeAirflowSizingProfile(project.airflowSizingProfile));
     setFieldChecklistBySystem(project.fieldChecklistBySystem || (project.fieldChecklist ? { "system-1": project.fieldChecklist } : {}));
+    setMaterialInstallChecklistBySystem(project.materialInstallChecklistBySystem || {});
     setMaterialWastePercent(project.materialWastePercent ?? 10);
     setCommissioningBySystem(project.commissioningBySystem || {});
     setPunchItems(project.punchItems || []);
@@ -4324,6 +4322,7 @@ function HVACPlanStudioApp() {
       residentialFlexMax,
       airflowSizingProfile,
       fieldChecklistBySystem,
+      materialInstallChecklistBySystem,
       materialWastePercent,
       commissioningBySystem,
       punchItems,
@@ -4363,7 +4362,7 @@ function HVACPlanStudioApp() {
         })),
       },
     };
-  }, [activeBuilderSummary, activeFieldPackage, activePlanAnalysis, activeSystem, airflowSizingProfile, assistantAutonomyMode, assistantRepairRecords, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fieldRedline.quarantinedSnapshot, fieldRedline.snapshot, fileName, freshVelocityLimit, lockedLayers, materialReviewRecords, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, roomMarkupApplicationRecords, roomMarkupCandidatesBySystem, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
+  }, [activeBuilderSummary, activeFieldPackage, activePlanAnalysis, activeSystem, airflowSizingProfile, assistantAutonomyMode, assistantRepairRecords, backgroundOpacity, balanceReviewRecords, commissioningBySystem, currentCloudReleaseFingerprint, drawings, fieldChecklistBySystem, fieldRedline.quarantinedSnapshot, fieldRedline.snapshot, fileName, freshVelocityLimit, lockedLayers, materialInstallChecklistBySystem, materialReviewRecords, materialWastePercent, pdfFingerprint, projectCommandSnapshot, punchItems, releaseRecords, residentialFlexMax, returnVelocityLimit, reviewDecisionsBySystem, rfiItems, roomAirflowTargetReviewFingerprints, roomAirflowTargets, roomMarkupApplicationRecords, roomMarkupCandidatesBySystem, scaleFeetPerUnit, scaleLabel, scaleVerified, sheetScales, showCfmLabels, showFittingLabels, showGrid, showLengthLabels, snapEnabled, supplyVelocityLimit, systemNames, takeoffPackageRecords, visibleLayers, workingCloudProjectId, workingCloudRevisionId]);
 
   const saveProject = useCallback(() => {
     if (!pdf) return;
@@ -6867,6 +6866,20 @@ function HVACPlanStudioApp() {
     activatePlanTool("select");
   }
 
+  function showMaterialSources(row: TakeoffRow) {
+    const sourceIds = row.sourceDrawingIds.filter((id) => drawings.some((drawing) => drawing.id === id));
+    if (!sourceIds.length) {
+      setBranchMessage(`${row.item} is an allowance item and has no single plan source`);
+      return;
+    }
+    focusDrawingOnPlan(sourceIds[0], { avoidAssistant: true });
+    setSelectedIds(sourceIds);
+    setSelectedId(sourceIds[0]);
+    activatePlanTool("select");
+    if (workspaceLayout !== "desktop") setRightPanelOpen(false);
+    setBranchMessage(`${row.item} · showing ${sourceIds.length} source object${sourceIds.length === 1 ? "" : "s"} on the plan`);
+  }
+
   function exportRoomScheduleCsv() {
     const rows = roomSchedule();
     if (!rows.length) return;
@@ -7193,6 +7206,17 @@ function HVACPlanStudioApp() {
 
   function updateFieldChecklist(id: string, checked: boolean) {
     setFieldChecklistBySystem((current) => ({
+      ...current,
+      [activeSystem]: { ...(current[activeSystem] || {}), [id]: checked },
+    }));
+  }
+
+  function activeMaterialInstallChecklist(systemId = activeSystem) {
+    return materialInstallChecklistBySystem[systemId] || {};
+  }
+
+  function updateMaterialInstallChecklist(id: string, checked: boolean) {
+    setMaterialInstallChecklistBySystem((current) => ({
       ...current,
       [activeSystem]: { ...(current[activeSystem] || {}), [id]: checked },
     }));
@@ -7712,7 +7736,7 @@ function HVACPlanStudioApp() {
             detail: runId ? "Saved T Branch connection" : "Open T Branch port",
             page: drawing.page,
             systemId: drawingSystem(drawing),
-            ductType: "supply",
+            ductType: drawing.type === "return" ? "return" : "supply",
             port,
             targetPoint: ports[port],
             savedRunId: runId || undefined,
@@ -8130,85 +8154,43 @@ function HVACPlanStudioApp() {
   }
 
   function buildTakeoff(systemId = activeSystem) {
-    const ductTotals = new Map<string, { type: string; size: string; length: number }>();
-    for (const drawing of drawings) {
-      if (drawingSystem(drawing) !== systemId || !["supply", "return", "fresh"].includes(drawing.type) || drawing.fitting || drawing.symbol) continue;
-      const key = `${drawing.type}-${drawing.size}`;
-      const current = ductTotals.get(key) || { type: drawing.type, size: drawing.size, length: 0 };
-      current.length += drawingLengthFeet(drawing);
-      ductTotals.set(key, current);
-    }
-    const rows: TakeoffRow[] = [];
-    for (const total of [...ductTotals.values()].sort((a, b) => Number(b.size) - Number(a.size))) {
-      const name = total.type === "supply" ? "Supply flex duct" : total.type === "return" ? "Return flex duct" : "Fresh-air duct";
-      const orderLength = total.length * (1 + materialWastePercent / 100);
-      const rolls = Math.max(1, Math.ceil(orderLength / 25));
-      rows.push({
-        category: "Duct",
-        item: name,
-        size: `${total.size}"`,
-        quantity: `${rolls} × 25-ft ${rolls === 1 ? "box" : "boxes"}`,
-        note: `${total.length.toFixed(1)} LF measured · ${materialWastePercent}% allowance`,
-        orderCount: rolls,
-        orderUnit: "box",
-        breakdown: `${total.length.toFixed(1)} LF measured on the plan; ${(orderLength).toFixed(1)} LF after allowance.`,
-      });
-    }
-    const activeSymbols = drawings.filter((drawing) => drawingSystem(drawing) === systemId && drawing.symbol);
-    const groupedSymbols = new Map<string, { kind: SymbolKind; label: string; size: string; neckSize: string; variant: string; count: number }>();
-    activeSymbols.forEach((drawing) => {
-      const kind = drawing.symbol!.kind;
-      if (["airflow", "note"].includes(kind) || isDedicatedExhaustSymbolKind(kind)) return;
-      const neckSize = drawing.symbol?.neckSize || (kind === "returnGrille" ? "12" : "8");
-      const key = `${kind}-${drawing.size}-${neckSize}-${drawing.symbol?.variant || "standard"}-${drawing.symbol?.label || kind}`;
-      const current = groupedSymbols.get(key) || {
-        kind,
-        label: drawing.symbol?.label || kind,
-        size: drawing.size || "Per plan",
-        neckSize,
-        variant: drawing.symbol?.variant || "standard",
-        count: 0,
-      };
-      current.count += 1;
-      groupedSymbols.set(key, current);
+    const systemDrawings = drawings.filter((drawing) => drawingSystem(drawing) === systemId);
+    return buildMaterialOrder({
+      runs: systemDrawings
+        .filter((drawing): drawing is Drawing & { type: "supply" | "return" | "fresh" } =>
+          ["supply", "return", "fresh"].includes(drawing.type) && !drawing.fitting && !drawing.symbol
+        )
+        .map((drawing) => ({
+          id: drawing.id,
+          type: drawing.type,
+          size: drawing.size,
+          lengthFeet: drawingLengthFeet(drawing),
+        })),
+      symbols: systemDrawings
+        .filter((drawing): drawing is Drawing & { symbol: SymbolMeta } => Boolean(drawing.symbol))
+        .map((drawing) => ({
+          id: drawing.id,
+          kind: drawing.symbol.kind,
+          label: drawing.symbol.label,
+          size: drawing.size || "Per plan",
+          neckSize: drawing.symbol.neckSize,
+          variant: drawing.symbol.variant,
+        })),
+      fittings: systemDrawings
+        .filter((drawing): drawing is Drawing & { fitting: FittingMeta } => Boolean(drawing.fitting))
+        .map((drawing) => ({
+          id: drawing.id,
+          style: drawing.fitting.style,
+          upstreamSize: drawing.fitting.upstreamSize,
+          downstreamSize: drawing.fitting.downstreamSize,
+          branchSize: drawing.fitting.branchSize,
+        })),
+      allowancePercent: materialWastePercent,
     });
-    [...groupedSymbols.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.size.localeCompare(b.size)).forEach((group) => {
-      const category = ["diffuser", "returnGrille"].includes(group.kind) ? "Air devices" : group.kind === "equipment" ? "Equipment" : "Accessories";
-      rows.push({ category, item: group.label, size: group.size, quantity: `${group.count} each`, note: "", orderCount: group.count, orderUnit: "each", breakdown: `${group.variant.replaceAll("-", " ")} style · field label governs` });
-      if (group.kind === "diffuser") rows.push({ category: "Air devices", item: "Supply can / plenum box", size: `Ø${group.neckSize}" neck`, quantity: `${group.count} each`, note: "", orderCount: group.count, orderUnit: "each", breakdown: `${group.size} face · match ${group.label.toLowerCase()}` });
-      if (group.kind === "returnGrille") rows.push({ category: "Air devices", item: "Return can / box", size: `Ø${group.neckSize}" neck`, quantity: `${group.count} each`, note: "", orderCount: group.count, orderUnit: "each", breakdown: `${group.size} face · match ${group.label.toLowerCase()}` });
-    });
-    rows.push(...buildDedicatedExhaustTakeoffRows(activeSymbols).map((row) => ({
-      ...row,
-      quantity: `${Number(row.quantity.match(/^\d+/)?.[0]) || 0} each`,
-      note: "",
-      orderCount: Number(row.quantity.match(/^\d+/)?.[0]) || 0,
-      orderUnit: "each" as const,
-      breakdown: row.note,
-    })));
-    const fittingGroups = new Map<string, number>();
-    drawings.filter((drawing) => drawingSystem(drawing) === systemId && drawing.fitting).forEach((drawing) => {
-      const fitting = drawing.fitting!;
-      const size = `${fitting.upstreamSize}×${fitting.downstreamSize}×${fitting.branchSize}`;
-      const key = `${fitting.style}|${size}`;
-      fittingGroups.set(key, (fittingGroups.get(key) || 0) + 1);
-    });
-    fittingGroups.forEach((count, key) => {
-      const [style, size] = key.split("|");
-      rows.push({ category: "Fittings", item: "T Branch", size: size.split("×").map((value) => `${value}\"`).join(" × "), quantity: `${count} each`, note: "", orderCount: count, orderUnit: "each", breakdown: `${style === "tee90" ? "90° tee" : "45° wye"} · verify orientation before fabrication.` });
-    });
-    if (ductTotals.size) rows.push({ category: "Accessories", item: "Hangers, strap, sealant, mastic & fasteners", size: "As required", quantity: "1 lot", note: "", orderCount: 1, orderUnit: "lot", breakdown: "Field verify structure and support spacing." });
-    const categoryOrder = new Map(["Duct", "Fittings", "Air devices", "Equipment", "Accessories"].map((category, index) => [category, index]));
-    const largestSize = (value: string) => Math.max(0, ...[...value.matchAll(/\d+(?:\.\d+)?/g)].map((match) => Number(match[0])));
-    return rows.sort((a, b) =>
-      (categoryOrder.get(a.category) ?? 99) - (categoryOrder.get(b.category) ?? 99) ||
-      largestSize(b.size) - largestSize(a.size) ||
-      a.item.localeCompare(b.item)
-    );
   }
 
   function materialSummary(systemId = activeSystem, rows = buildTakeoff(systemId)) {
-    const flexBoxes = rows.filter((row) => row.item.includes("flex duct")).reduce((total, row) => total + row.orderCount, 0);
+    const flexBoxes = rows.filter((row) => row.item === "Flexible duct").reduce((total, row) => total + row.orderCount, 0);
     const deviceCount = rows.filter((row) => row.category === "Air devices" && !row.item.includes("can") && !row.item.includes("box")).reduce((total, row) => total + row.orderCount, 0);
     const fittingCount = rows.filter((row) => row.category === "Fittings").reduce((total, row) => total + row.orderCount, 0);
     const holds = systemId === activeSystem
@@ -8382,22 +8364,16 @@ function HVACPlanStudioApp() {
   function exportPurchaseSheetCsv() {
     const rows = buildTakeoff();
     if (!rows.length) return;
-    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
     const activeScaleStatus = systemScaleStatus(activeSystem);
     const packageStatus = activeFieldPackage.released && !activeFieldPackage.stale && activeScaleStatus.verified
       ? activeFieldPackage.status
       : "DRAFT — NOT FOR INSTALLATION";
-    const csv = [
-      ["HVAC MATERIAL ORDER LIST", systemLabel(activeSystem), "", ""],
-      ["Status", packageStatus, "", ""],
-      ["Scale", activeScaleStatus.verified ? activeScaleStatus.detail : `UNVERIFIED — ${activeScaleStatus.detail}`, "", ""],
-      [],
-      ["Category", "Item", "Size", "Order quantity"],
-      ...rows.map((row) => [row.category, row.item, row.size, row.quantity]),
-      [],
-      ["Breakdown (reference only)", "", "", ""],
-      ...rows.filter((row) => row.breakdown).map((row) => [row.category, `${row.item} ${row.size}`, row.breakdown || "", ""]),
-    ].map((row) => row.map(quote).join(",")).join("\n");
+    const csv = buildMaterialOrderCsv(rows, {
+      project: fileName,
+      system: systemLabel(activeSystem),
+      status: packageStatus,
+      scale: activeScaleStatus.verified ? activeScaleStatus.detail : `UNVERIFIED — ${activeScaleStatus.detail}`,
+    });
     const link = document.createElement("a");
     const objectUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     link.href = objectUrl;
@@ -14100,18 +14076,14 @@ function HVACPlanStudioApp() {
     },
     {
       id: "check",
-      label: "Plan Check",
+      label: "Connection Check",
       detail: !pdf
         ? "Available after the plan is opened"
-        : activeBuilderSummary.audit.counts.critical || activeBuilderSummary.audit.counts.warning
-          ? `${activeBuilderSummary.audit.counts.critical + activeBuilderSummary.audit.counts.warning} item${activeBuilderSummary.audit.counts.critical + activeBuilderSummary.audit.counts.warning === 1 ? "" : "s"} need attention`
-          : "Plan checks clear",
-      complete: Boolean(
-        airflowStepComplete &&
-        !activeBuilderSummary.audit.counts.critical &&
-        !activeBuilderSummary.audit.counts.warning
-      ),
-      run: () => openMarkupAssistant("fix-plan"),
+        : activeConnectionRepairIssues.length
+          ? `${activeConnectionRepairIssues.length} connection${activeConnectionRepairIssues.length === 1 ? "" : "s"} need attention`
+          : "All connections clear",
+      complete: Boolean(pdf && !activeConnectionRepairIssues.length),
+      run: () => { setRightTab("builder"); openInspectorPanel(); },
     },
     {
       id: "finish",
@@ -15091,13 +15063,15 @@ function HVACPlanStudioApp() {
       run: () => { finishDrawing(); activatePlanTool("branch"); },
     },
     {
-      id: "markup-assistant",
-      label: "Open Plan Check",
-      detail: `${markupAssistantSummary.open} item${markupAssistantSummary.open === 1 ? "" : "s"} to review · nothing changes until approval`,
+      id: "connection-check",
+      label: "Open Connection Check",
+      detail: activeConnectionRepairIssues.length
+        ? `${activeConnectionRepairIssues.length} open connection${activeConnectionRepairIssues.length === 1 ? "" : "s"}`
+        : "All saved connections are aligned",
       group: "Systems",
       recommended: true,
-      keywords: "fix plan plan helper issue repair routing return branch ty recommendation approval",
-      run: () => openMarkupAssistant("fix-plan"),
+      keywords: "connect connection repair supply return branch t fitting open port",
+      run: () => { setRightTab("builder"); openInspectorPanel(); },
     },
     {
       id: "field-redline",
@@ -15997,7 +15971,7 @@ function HVACPlanStudioApp() {
             {workspaceLayout !== "desktop" && <>
               <button className="tablet-quick-action" onClick={() => void openFromDrive()}><HardDrive size={15} /> Drive</button>
               <button className="tablet-quick-action" disabled={!pdf} onClick={() => openAIPlanReader("setup")}><ScanSearch size={15} /> Plan setup</button>
-              <button className="tablet-quick-action" disabled={!pdf} onClick={() => openMarkupAssistant("fix-plan")}><ShieldCheck size={15} /> Plan Check</button>
+              <button className="tablet-quick-action" disabled={!pdf} onClick={() => { setRightTab("builder"); openInspectorPanel(); }}><ShieldCheck size={15} /> Connections</button>
             </>}
             <div className="canvas-edit-actions" role="group" aria-label="Edit history">
               <button aria-label="Undo" onClick={undo} disabled={!undoStack.length}><Undo2 size={16} /></button>
@@ -17135,14 +17109,54 @@ function HVACPlanStudioApp() {
         <aside id="workspace-inspector-panel" className="right-panel" aria-label="HVAC plan inspector">
           <div className="right-tabs">
             <div className="right-tablist" role="tablist" aria-label="HVAC workspace panels">
-              <button role="tab" aria-selected={rightTab === "builder"} className={rightTab === "builder" ? "active" : ""} onClick={() => setRightTab("builder")}>Current step</button>
+              <button role="tab" aria-selected={rightTab === "builder"} className={rightTab === "builder" ? "active" : ""} onClick={() => setRightTab("builder")}>Connections</button>
               <button role="tab" aria-selected={rightTab === "layers"} className={rightTab === "layers" ? "active" : ""} onClick={() => setRightTab("layers")}>Layers</button>
               <button role="tab" aria-selected={rightTab === "rooms"} className={rightTab === "rooms" ? "active" : ""} onClick={() => openSystemBalanceWorkspace("system")}>Airflow</button>
               <button role="tab" aria-selected={rightTab === "takeoff"} className={rightTab === "takeoff" ? "active" : ""} onClick={() => setRightTab("takeoff")}>Materials</button>
             </div>
             <button className="right-collapse" aria-label="Collapse inspector" aria-controls="workspace-inspector-panel" aria-expanded={rightPanelOpen} onClick={() => setRightPanelOpen(false)}><PanelRightClose size={15} /></button>
           </div>
-          {rightTab === "builder" ? <div className="system-builder-panel">
+          {rightTab === "builder" ? <>
+            <div className="connection-check-panel" aria-label="Connection Check">
+              <header>
+                <span><Route size={20} /><strong>Connection Check</strong></span>
+                <b className={activeConnectionRepairIssues.length ? "attention" : "clear"}>{activeConnectionRepairIssues.length ? `${activeConnectionRepairIssues.length} OPEN` : "CONNECTED"}</b>
+              </header>
+              <p>Finds open supply runs, return runs, and T Branch ports. It never creates or moves duct without your approval.</p>
+              {activeConnectionRepairIssues.length ? <div className="connection-check-list">
+                {activeConnectionRepairIssues.map((item) => {
+                  const plainLabel = item.kind === "fitting"
+                    ? "T Branch not connected"
+                    : item.ductType === "return"
+                      ? "Return not connected"
+                      : "Supply not connected";
+                  return <section className={`connection-check-item ${item.status}`} key={item.id}>
+                    <button type="button" className="connection-check-focus" onClick={() => focusConnectionRepair(item)}>
+                      <span><strong>{plainLabel}</strong><small>{item.detail}</small></span><b>Show</b>
+                    </button>
+                    {item.status === "choice" && <label>Choose the matching run
+                      <select value={connectionCandidateChoices[item.id] || ""} onChange={(event) => chooseConnectionCandidate(item, event.target.value)}>
+                        <option value="" disabled>Select a run</option>
+                        {item.candidates.map((candidate) => <option key={`${item.id}-${candidate.id}`} value={candidate.id}>{candidate.runSize}&quot; run · {candidate.end} end · {connectionRepairDistanceValue(candidate.distance, item.page)}</option>)}
+                      </select>
+                    </label>}
+                    {item.status === "ready" && <label className="connection-check-approve"><input type="checkbox" checked={selectedConnectionRepairIds.includes(item.id)} onChange={() => {
+                      setConnectionReviewOpen(true);
+                      setConnectionReviewFingerprint(activeConnectionRepairPlan.fingerprint);
+                      toggleConnectionRepair(item);
+                      focusConnectionRepair(item);
+                    }} /><span>Approve this reconnection</span></label>}
+                    {item.status === "blocked" && <small className="connection-check-manual">Move the existing run closer, then check again.</small>}
+                  </section>;
+                })}
+              </div> : <div className="connection-check-clear"><CheckCircle2 size={28} /><strong>Everything is connected</strong><span>No open supply run, return run, or T Branch connection was found.</span></div>}
+              <footer>
+                <button type="button" disabled={!activeConnectionRepairPlan.counts.ready} onClick={selectAllReadyConnectionRepairs}>Select all safe repairs</button>
+                <button type="button" className="primary" disabled={!selectedReadyConnectionRepairIds.length || connectionReviewStale} onClick={applySelectedConnectionRepairs}>Reconnect {selectedReadyConnectionRepairIds.length || ""}</button>
+              </footer>
+              <small className="connection-check-undo">One Undo restores every connection in the approved batch.</small>
+            </div>
+            {activeSmartPlanSetup && false && <div className="system-builder-panel">
             <div className="builder-hero">
               <div className="builder-hero-heading">
                 <span><Sparkles size={17} /></span>
@@ -17155,25 +17169,25 @@ function HVACPlanStudioApp() {
             {!planSetupComplete && <div className="smart-plan-preflight">
               <header>
                 <span>
-                  <strong>{activeSmartPlanSetup && scaleVerified && !activeSmartPlanSetup.counts.requiredReviewItems ? "PLAN SETUP READY" : "PLAN SETUP"}</strong>
+                  <strong>{activeSmartPlanSetup && scaleVerified && !activeSmartPlanSetup?.counts.requiredReviewItems ? "PLAN SETUP READY" : "PLAN SETUP"}</strong>
                   <small>{!pdf
                     ? "Open a PDF to find its scale, rooms, ceiling heights, equipment, and systems."
                     : !activeSmartPlanSetup
                       ? "Reading the plan in the background. You can keep working."
-                      : activeSmartPlanSetup.summary.detail}</small>
+                      : activeSmartPlanSetup?.summary.detail}</small>
                 </span>
-                {activeSmartPlanSetup && <b>{activeSmartPlanSetup.counts.reviewItems}</b>}
+                {activeSmartPlanSetup && <b>{activeSmartPlanSetup?.counts.reviewItems}</b>}
               </header>
               <dl>
                 <div><dt>Scale</dt><dd>{scaleVerified ? scaleLabel : activeSmartPlanSetup?.counts.likelyScales || activeSmartPlanSetup?.counts.verifiedScales ? "Found · confirm it" : "Needs review"}</dd></div>
-                <div><dt>Rooms &amp; heights</dt><dd>{activeSmartPlanSetup ? `${activeSmartPlanSetup.counts.rooms} rooms · ${activeSmartPlanSetup.counts.roomHeights} heights` : "Reading…"}</dd></div>
-                <div><dt>Equipment</dt><dd>{activeSmartPlanSetup ? `${activeSmartPlanSetup.counts.equipment} units · ${activeSmartPlanSetup.counts.systems} systems` : "Reading…"}</dd></div>
-                <div><dt>Needs your review</dt><dd>{activeSmartPlanSetup ? `${activeSmartPlanSetup.counts.reviewItems} details` : "Checking…"}</dd></div>
+                <div><dt>Rooms &amp; heights</dt><dd>{activeSmartPlanSetup ? `${activeSmartPlanSetup?.counts.rooms} rooms · ${activeSmartPlanSetup?.counts.roomHeights} heights` : "Reading…"}</dd></div>
+                <div><dt>Equipment</dt><dd>{activeSmartPlanSetup ? `${activeSmartPlanSetup?.counts.equipment} units · ${activeSmartPlanSetup?.counts.systems} systems` : "Reading…"}</dd></div>
+                <div><dt>Needs your review</dt><dd>{activeSmartPlanSetup ? `${activeSmartPlanSetup?.counts.reviewItems} details` : "Checking…"}</dd></div>
               </dl>
               <div className="smart-plan-preflight-actions">
                 <button disabled={!pdf} onClick={() => openAIPlanReader("setup")}>
                   {activeSmartPlanSetup?.counts.reviewItems
-                    ? `Review ${activeSmartPlanSetup.counts.reviewItems} detail${activeSmartPlanSetup.counts.reviewItems === 1 ? "" : "s"}`
+                    ? `Review ${activeSmartPlanSetup?.counts.reviewItems} detail${activeSmartPlanSetup?.counts.reviewItems === 1 ? "" : "s"}`
                     : activeSmartPlanSetup
                       ? "Review plan information"
                       : "Open plan setup"}
@@ -17302,7 +17316,7 @@ function HVACPlanStudioApp() {
               </div>
             </div>
             <div className="builder-safety-note"><ShieldAlert size={13} /><span><strong>You stay in control.</strong> The assistant can prepare reviewed CFM and connected-network size changes, but applies only a selected, fingerprint-bound batch after final confirmation. No silent rerouting, unit moves, cross-zone connections, branch stubs, or balancing dampers.</span></div>
-          </div> : rightTab === "layers" ? <>
+          </div>}</> : rightTab === "layers" ? <>
             <div className="search"><Search size={15} /><input aria-label="Search layers" placeholder="Search layers" /></div>
             <div className="background-control">
               <div><strong>PLAN BACKGROUND</strong><b>{backgroundOpacity}%</b></div>
@@ -17584,6 +17598,10 @@ function HVACPlanStudioApp() {
               </div>
               <b>{buildTakeoff().length} items</b>
             </div>
+            <nav className="material-view-tabs" role="tablist" aria-label="Materials views">
+              <button role="tab" aria-selected={takeoffView === "materials"} className={takeoffView === "materials" ? "active" : ""} onClick={() => setTakeoffView("materials")}>Order list</button>
+              <button role="tab" aria-selected={takeoffView === "installer"} className={takeoffView === "installer" ? "active" : ""} onClick={() => setTakeoffView("installer")}>Installer checklist</button>
+            </nav>
             {takeoffView === "materials" && <>
               <div className="material-controls production-controls">
                 <label>Material allowance
@@ -17593,15 +17611,15 @@ function HVACPlanStudioApp() {
                 </label>
                 <button disabled={!buildTakeoff().length} onClick={exportPurchaseSheetCsv}><Save size={13} /> Download list</button>
               </div>
-              {materialSummary().holds.length > 0 && <button className="material-advisory" onClick={() => openMarkupAssistant("fix-plan")}>
-                <AlertTriangle size={14} /><span><strong>{materialSummary().holds.length} item{materialSummary().holds.length === 1 ? "" : "s"} need review</strong><small>Materials and exports remain available.</small></span>
+              {activeConnectionRepairIssues.length > 0 && <button className="material-advisory" onClick={() => setRightTab("builder")}>
+                <AlertTriangle size={14} /><span><strong>{activeConnectionRepairIssues.length} connection{activeConnectionRepairIssues.length === 1 ? "" : "s"} need attention</strong><small>Materials and exports remain available.</small></span>
               </button>}
               {buildTakeoff().length ? <div className="material-order-list">
                 {[...new Set(buildTakeoff().map((row) => row.category))].map((category) => <section className="material-order-group" key={category}>
                   <h3>{category}</h3>
-                  {buildTakeoff().filter((row) => row.category === category).map((row, index) => <div className="takeoff-row" key={`${row.item}-${row.size}-${index}`}>
+                  {buildTakeoff().filter((row) => row.category === category).map((row) => <div className="takeoff-row" key={row.id}>
                     <div><strong>{row.item}</strong><small>{row.size}</small>{showMaterialBreakdown && row.breakdown && <em>{row.breakdown}</em>}</div>
-                    <b>{row.quantity}</b>
+                    <span className="material-row-actions"><b>{row.quantity}</b><button type="button" disabled={!row.sourceDrawingIds.length} onClick={() => showMaterialSources(row)}>Show on plan</button></span>
                   </div>)}
                 </section>)}
               </div> : <div className="empty-takeoff">Draw ductwork or place HVAC symbols to build the takeoff.</div>}
@@ -17618,8 +17636,11 @@ function HVACPlanStudioApp() {
                 <span><small>Flex rolls</small><b>{materialSummary().flexBoxes}</b></span>
                 <span><small>Devices</small><b>{materialSummary().deviceCount}</b></span>
               </div>
-              <div className="field-section-heading"><strong>FIELD MATERIAL SUMMARY</strong><span>{buildTakeoff().length} ITEMS</span></div>
-              {buildTakeoff().slice(0, 12).map((row, index) => <div className="installer-line" key={`${row.item}-installer-${index}`}><span><b>{row.item}</b><small>{row.size} · {row.note}</small></span><strong>{row.quantity}</strong></div>)}
+              <div className="field-section-heading"><strong>PLAN-TO-TRUCK CHECKLIST</strong><span>{buildTakeoff().filter((row) => activeMaterialInstallChecklist()[row.id]).length}/{buildTakeoff().length} READY</span></div>
+              {buildTakeoff().map((row) => <div className={`installer-line ${activeMaterialInstallChecklist()[row.id] ? "complete" : ""}`} key={`${row.id}-installer`}>
+                <label><input aria-label={`Packed ${row.item} ${row.size}`} type="checkbox" checked={Boolean(activeMaterialInstallChecklist()[row.id])} onChange={(event) => updateMaterialInstallChecklist(row.id, event.target.checked)} /><span><b>{row.item}</b><small>{row.size}{row.note ? ` · ${row.note}` : ""}</small></span></label>
+                <span><strong>{row.quantity}</strong><button type="button" disabled={!row.sourceDrawingIds.length} onClick={() => showMaterialSources(row)}>Show</button></span>
+              </div>)}
               <div className="field-section-heading installer-check-heading"><strong>CREW CHECKS</strong><span>FIELD VERIFY</span></div>
               {["Approved plan revision is on site", "Scale, ceiling heights, and access are verified", "Fitting orientation matches the saved plan", "Flex is supported, straight, and free of kinks", "Equipment instructions and inspector comments govern"].map((label) => <label className="installer-check" key={label}><input type="checkbox" /><span>{label}</span></label>)}
             </div>}
@@ -18215,24 +18236,17 @@ function HVACPlanStudioApp() {
 
       <section className="print-takeoff">
         <div className="print-section-heading package-print-section package-section-materials">
-          <strong>MATERIAL TAKEOFF</strong>
-          <span>Approximate quantities · field verify before ordering</span>
+          <strong>MATERIAL ORDER LIST · {systemLabel(activeSystem)}</strong>
+          <span> · STATUS · {systemScaleStatus(activeSystem).verified ? "Verified scale" : "DRAFT · SCALE NOT VERIFIED"} · {materialWastePercent}% allowance</span>
         </div>
         <table className="package-print-section package-section-materials">
-          <thead><tr><th>Category</th><th>Item</th><th>Size</th><th>Order quantity</th></tr></thead>
+          <thead><tr><th>Category</th><th>Item</th><th>Size</th><th>Order quantity</th><th>How calculated</th></tr></thead>
           <tbody>
             {buildTakeoff().map((row, index) => <tr key={`${row.item}-print-${index}`}>
-              <td>{row.category}</td><td>{row.item}</td><td>{row.size}</td><td>{row.quantity}</td>
+              <td>{row.category}</td><td>{row.item}</td><td>{row.size}</td><td>{row.quantity}</td><td>{row.breakdown || `${row.sourceDrawingIds.length} plan source${row.sourceDrawingIds.length === 1 ? "" : "s"}`}</td>
             </tr>)}
           </tbody>
         </table>
-        <div className="field-notes package-print-section package-section-materials">
-          <strong>FIELD NOTES</strong>
-          <span>Keep flex straight, fully supported, and free of kinks or sags.</span>
-          <span>Verify structure, lighting, plumbing, ceiling height, and access before installation.</span>
-          <span>Elevation labels marked EL VERIFY must be coordinated before duct installation.</span>
-          <span>Final duct sizes, routing, fabricated dimensions, and airflow must be field verified.</span>
-        </div>
         <div className="print-checks package-print-section package-section-review">
           <strong>AIRFLOW & VALIDATION SUMMARY</strong>
           <div>
@@ -18570,7 +18584,7 @@ function HVACPlanStudioApp() {
           }
         }}
       />}
-      {mountMarkupAssistantStudio && <MarkupAssistantStudio
+      {false && mountMarkupAssistantStudio && <MarkupAssistantStudio
         key={`plan-helper:${assistantFocusedRecommendationId || "general"}`}
         open={showMarkupAssistant}
         initialView={assistantInitialView}
@@ -18615,10 +18629,10 @@ function HVACPlanStudioApp() {
         canUndoRoomMarkup={Boolean(activeRoomMarkupRoom?.latestApplication && (
           undoableRoomMarkupRecord(
             undefined,
-            activeRoomMarkupRoom.latestApplication.id,
+            activeRoomMarkupRoom.latestApplication?.id,
           ) ||
           undoableRoomMarkupReviewRecord(
-            activeRoomMarkupRoom.latestApplication.id,
+            activeRoomMarkupRoom.latestApplication?.id,
           )
         ))}
         onClose={() => {
@@ -18810,7 +18824,7 @@ function HVACPlanStudioApp() {
           reviewedAt: activeMaterialReview.reviewedAt,
           current: activeMaterialReviewCurrent,
         } : undefined}
-        planCheckCount={planCheckCount}
+        planCheckCount={activeConnectionRepairIssues.length}
         checklist={fieldChecklistItems.map((item) => ({
           ...item,
           checked: Boolean(activeFieldChecklist()[item.id]),
@@ -18866,7 +18880,8 @@ function HVACPlanStudioApp() {
         onDownloadMaterials={exportPurchaseSheetCsv}
         onOpenPlanCheck={() => {
           setShowFinishJobStudio(false);
-          openMarkupAssistant("fix-plan");
+          setRightTab("builder");
+          openInspectorPanel();
         }}
         onDownloadRuns={exportFieldRunScheduleCsv}
         onDownloadRelease={exportReleaseManifestCsv}

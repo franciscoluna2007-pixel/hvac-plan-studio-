@@ -170,7 +170,7 @@ test("binds approval to the exact reviewed room and shows the exact object list"
 test("scopes room Undo and release fingerprints to immutable application receipts", () => {
   assert.match(
     page,
-    /undoableRoomMarkupRecord\(\s*undefined,\s*activeRoomMarkupRoom\.latestApplication\.id/,
+    /undoableRoomMarkupRecord\(\s*undefined,\s*activeRoomMarkupRoom\.latestApplication\?\.id/,
   );
   assert.match(page, /applicationRecords: roomMarkupApplicationRecords/);
   assert.match(

@@ -38,7 +38,7 @@ export type ConnectionFittingTarget = {
   detail: string;
   page: number;
   systemId: string;
-  ductType: "supply";
+  ductType: ConnectionDuctType;
   port: 0 | 1 | 2;
   targetPoint: ConnectionPoint;
   savedRunId?: string;

@@ -176,7 +176,7 @@ test("leads solo HVAC operators through four job steps and keeps Field Redline s
   assert.match(page, /<strong>Plan setup<\/strong>/);
   assert.match(page, /label: "Draw & Detail"/);
   assert.match(page, /label: "Airflow & Sizes"/);
-  assert.match(page, /label: "Plan Check"/);
+  assert.match(page, /label: "Connection Check"/);
   assert.match(page, /label: "Finish the Job"/);
   const fieldFirstStepsStart = page.indexOf("const fieldFirstSteps = [");
   const fieldFirstStepsEnd = page.indexOf("] as const;", fieldFirstStepsStart);
@@ -194,7 +194,7 @@ test("leads solo HVAC operators through four job steps and keeps Field Redline s
   assert.match(home, /Draw HVAC/);
   assert.match(home, /Materials list/);
   assert.match(home, /Export &amp; share/);
-  assert.match(home, /Plan Check stays advisory/);
+  assert.match(home, /Connection Check finds open runs and fittings/);
   assert.match(home, /className="home-command-preview"/);
   assert.match(home, /Continue current job/);
   assert.match(home, /> Open a plan\s*</);
@@ -214,6 +214,7 @@ test("leads solo HVAC operators through four job steps and keeps Field Redline s
 
 test("keeps the accurate manual takeoff engine while v106 removes field operations from primary navigation", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const materialOrder = await readFile(new URL("../app/materialOrder.ts", import.meta.url), "utf8");
   const cloud = await readFile(new URL("../app/cloudProjects.ts", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   const migration = await readFile(new URL("../supabase/migrations/20260724210000_field_production_takeoff_center.sql", import.meta.url), "utf8");
@@ -223,7 +224,7 @@ test("keeps the accurate manual takeoff engine while v106 removes field operatio
   assert.doesNotMatch(page, />Field<\/button>/);
   assert.doesNotMatch(page, /Field mode<\/button>/);
   assert.match(page, /Every started 25 ft of flex counts as one box/);
-  assert.match(page, /Math\.ceil\(orderLength \/ 25\)/);
+  assert.match(materialOrder, /Math\.ceil\(orderLengthFeet \/ packageLengthFeet\)/);
   assert.match(page, /Materials and exports remain available/);
   assert.match(page, /createTakeoffPackage/);
   assert.match(page, /saveProjectPackageToDrive/);
@@ -380,7 +381,7 @@ test("ships the v100 Project Intelligence Hub with secure coordination and revie
   const migration = await readFile(new URL("../supabase/migrations/20260724140000_project_intelligence_hub.sql", import.meta.url), "utf8");
   const releaseMigration = await readFile(new URL("../supabase/migrations/20260724143000_cloud_field_release_integrity.sql", import.meta.url), "utf8");
 
-  assert.match(page, /Nothing changes without your approval/);
+  assert.match(page, /It never creates or moves duct without your approval/);
   assert.match(page, /ProjectCommandPalette/);
   assert.match(page, /const key = event\.key\.toLowerCase\(\)/);
   assert.match(page, /\(event\.ctrlKey \|\| event\.metaKey\) && key === "k"/);
@@ -388,7 +389,7 @@ test("ships the v100 Project Intelligence Hub with secure coordination and revie
   assert.match(panel, /Plan review items/);
   assert.match(panel, /Revision approvals/);
   assert.match(panel, /PROJECT EVIDENCE/);
-  assert.match(panel, /changes drawing geometry only after you approve selected fixes/);
+  assert.match(panel, /Connection repairs preview the exact endpoint move and require your approval/);
   assert.match(panel, /Project-safe save is locked/);
   assert.match(panel, /mutationLockRef/);
   assert.match(palette, /Type to search every tool/);
@@ -1034,6 +1035,7 @@ test("uses per-system release checklists and fingerprinted field revisions", asy
 
 test("blocks orphan runs and preserves device face and neck sizes in takeoff", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const materialOrder = await readFile(new URL("../app/materialOrder.ts", import.meta.url), "utf8");
 
   assert.match(source, /function buildFieldConnectionModel\(systemId: string\)/);
   assert.match(source, /const physicallyAttached = Math\.hypot\(endpoint\.x - point\.x, endpoint\.y - point\.y\) < 2/);
@@ -1042,9 +1044,9 @@ test("blocks orphan runs and preserves device face and neck sizes in takeoff", a
   assert.match(source, /coveredEndpoints\.has\(endpointKey\(run\.id, "end"\)\)/);
   assert.match(source, /connected: connection\.connected/);
   assert.match(source, /Open or detached T Branch port/);
-  assert.match(source, /const neckSize = drawing\.symbol\?\.neckSize/);
-  assert.match(source, /Supply can \/ plenum box", size: `Ø\$\{group\.neckSize\}" neck`/);
-  assert.match(source, /`\$\{group\.size\} face · match \$\{group\.label\.toLowerCase\(\)\}`/);
+  assert.match(materialOrder, /symbol\.neckSize/);
+  assert.match(materialOrder, /Supply can \/ plenum box/);
+  assert.match(materialOrder, /face · match/);
   assert.match(source, />Review connected sizes</);
   assert.match(source, />Review system balance</);
 });
@@ -2134,11 +2136,11 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
 
   assert.match(page, /label: "Draw & Detail"/);
   assert.match(page, /label: "Airflow & Sizes"/);
-  assert.match(page, /label: "Plan Check"/);
+  assert.match(page, /label: "Connection Check"/);
   assert.match(page, /label: "Finish the Job"/);
   assert.match(page, /const fieldFirstProgress = Math\.round\(/);
   assert.match(page, /const airflowStepComplete = Boolean\(/);
-  assert.match(page, /openMarkupAssistant\("fix-plan"\)/);
+  assert.match(page, /id: "connection-check",\s*label: "Open Connection Check"/);
   assert.match(page, /onUseDetectedScale=\{applyDetectedPlanScale\}/);
   assert.match(page, /onStartCalibration=\{startPlanScaleCalibration\}/);
   assert.match(page, /const planSetupComplete = Boolean\(\s*activePlanAnalysis &&\s*scaleVerified\s*\)/);

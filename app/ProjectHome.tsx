@@ -383,7 +383,7 @@ export default function ProjectHome({
               </ol>
               <footer>
                 <span><i /> One plan-first workflow</span>
-                <strong>Plan Check stays advisory</strong>
+                <strong>Connection Check finds open runs and fittings</strong>
               </footer>
             </aside>
           </section>
