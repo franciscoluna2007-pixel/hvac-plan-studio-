@@ -41,6 +41,36 @@ test("keeps fresh-air duct separate from flexible supply and return", () => {
   assert.equal(rows.filter((row) => row.category === "Duct").length, 2);
 });
 
+test("groups rigid duct by construction and size without merging round metal with spiral", () => {
+  const rows = buildMaterialOrder({
+    runs: [], symbols: [], fittings: [], allowancePercent: 10, rigidStockLengthFeet: 5,
+    rigidRuns: [
+      { id: "rect-a", networkKind: "supply", construction: "rectangular", size: "24×12", lengthFeet: 12 },
+      { id: "rect-b", networkKind: "return", construction: "rectangular", size: "24×12", lengthFeet: 8 },
+      { id: "round-a", networkKind: "supply", construction: "round-metal", size: "10", lengthFeet: 10 },
+      { id: "spiral-a", networkKind: "supply", construction: "spiral", size: "10", lengthFeet: 10 },
+    ],
+  });
+  const rigid = rows.filter((row) => row.id.startsWith("rigid:"));
+  assert.equal(rigid.length, 3);
+  const rectangular = rigid.find((row) => row.item === "Rectangular sheet-metal duct");
+  assert.equal(rectangular.measuredLengthFeet, 20);
+  assert.equal(rectangular.orderCount, 5);
+  assert.deepEqual([...rectangular.sourceDrawingIds], ["rect-a", "rect-b"]);
+  assert.ok(rigid.some((row) => row.item === "Round metal pipe"));
+  assert.ok(rigid.some((row) => row.item === "Spiral pipe"));
+});
+
+test("does not infer rigid length or stock quantity from an unverified sheet", () => {
+  const rows = buildMaterialOrder({
+    runs: [], symbols: [], fittings: [], allowancePercent: 10,
+    rigidRuns: [{ id: "rect-a", networkKind: "supply", construction: "rectangular", size: "24×12", lengthFeet: null }],
+  });
+  assert.equal(rows[0].quantity, "Scale required");
+  assert.equal(rows[0].orderCount, 0);
+  assert.match(rows[0].breakdown, /no length or stock quantity inferred/);
+});
+
 test("does not double-count symbols that are already cans or boots", () => {
   const rows = buildMaterialOrder({
     runs: [],

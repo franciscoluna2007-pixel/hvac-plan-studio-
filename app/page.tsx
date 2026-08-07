@@ -53,6 +53,23 @@ import {
   type MaterialOrderRow,
 } from "./materialOrder";
 import {
+  normalizeRigidStraightMeta,
+  rigidConstructionLabel,
+  rigidEdgeLines,
+  rigidHorizontalLengthFeet,
+  rigidPhysicalWidthInches,
+  rigidPlanWidthUnits,
+  rigidSizeLabel,
+  rigidSpiralSeams,
+  type RigidConstruction,
+  type RigidNetworkKind,
+  type RigidStraightMetaV1,
+} from "./rigidDuct";
+import {
+  CURRENT_PROJECT_SCHEMA_VERSION,
+  migrateSavedProject,
+} from "./projectSchema";
+import {
   branchLeavesTrunkAtClearAngle,
   commitPort3Branch,
   port3UndoDisposition,
@@ -341,6 +358,7 @@ const tools = [
   { id: "branch", label: "T Branch", icon: DraftingCompass, tone: "yellow" },
   { id: "return", label: "Return duct", icon: Wind, tone: "red" },
   { id: "fresh", label: "Fresh air", icon: AirVent, tone: "green" },
+  { id: "rigid", label: "Rigid duct", icon: Box, tone: "blue" },
   { id: "diffuser", label: "Diffuser", icon: Grid3X3 },
   { id: "returnGrille", label: "Return grille", icon: PanelTop, tone: "red" },
   { id: "equipment", label: "Equipment", icon: Box },
@@ -1023,7 +1041,7 @@ type FittingMeta = {
 };
 type Drawing = {
   id: string;
-  type: DrawType | "symbol" | "measurement";
+  type: DrawType | "symbol" | "measurement" | "rigid";
   points: Point[];
   size: string;
   lineWeight?: number;
@@ -1031,6 +1049,7 @@ type Drawing = {
   fitting?: FittingMeta;
   symbol?: SymbolMeta;
   measurement?: MeasurementMeta;
+  rigid?: RigidStraightMetaV1;
   cfm?: number;
   cfmSource?: "planning-seed" | "manual" | "room-target";
   systemId?: string;
@@ -1172,6 +1191,12 @@ type DirectBranchPlacementGesture = {
   sourceFingerprint: string;
 };
 
+type RigidPlacementGesture = {
+  pointerId: number;
+  start: Point;
+  latestPoint: Point;
+};
+
 type ExplicitThreeRunOption = {
   center: Point;
   clickedRunId: string;
@@ -1254,9 +1279,10 @@ type SheetScaleState = {
 };
 
 type SavedProject = {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
   fileName: string;
   drawings: Drawing[];
+  rigidDrawingQuarantine?: unknown[];
   savedAt: string;
   pdfFingerprint?: string;
   scaleFeetPerUnit?: number;
@@ -1691,6 +1717,12 @@ function HVACPlanStudioApp() {
   const [symbolSearch, setSymbolSearch] = useState("");
   const [placementRotation, setPlacementRotation] = useState(0);
   const [ductSize, setDuctSize] = useState("14");
+  const [rigidNetworkKind, setRigidNetworkKind] = useState<RigidNetworkKind>("supply");
+  const [rigidConstruction, setRigidConstruction] = useState<RigidConstruction>("rectangular");
+  const [rigidWidthInches, setRigidWidthInches] = useState(12);
+  const [rigidHeightInches, setRigidHeightInches] = useState(8);
+  const [rigidDiameterInches, setRigidDiameterInches] = useState(8);
+  const [rigidPreview, setRigidPreview] = useState<{ start: Point; end: Point } | null>(null);
   const [runLineWeights, setRunLineWeights] = useState({ supply: 0.1, return: 0.1 });
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [undoStack, setUndoStack] = useState<Drawing[][]>([]);
@@ -2000,6 +2032,7 @@ function HVACPlanStudioApp() {
       calibrating ||
       activeTool === "measure" ||
       activeTool === "branch" ||
+      activeTool === "rigid" ||
       symbolTools.includes(activeTool as SymbolKind) ||
       ["supply", "return", "fresh"].includes(activeTool),
     );
@@ -2143,6 +2176,7 @@ function HVACPlanStudioApp() {
   const touchGestureRef = useRef<TouchGestureState | null>(null);
   const directTouchPointerRef = useRef<DirectTouchPointer | null>(null);
   const directBranchPlacementGestureRef = useRef<DirectBranchPlacementGesture | null>(null);
+  const rigidPlacementGestureRef = useRef<RigidPlacementGesture | null>(null);
   const activeEditPointerIdRef = useRef<number | null>(null);
   const completedEditPointerIdsRef = useRef(new Set<number>());
   const editTransactionRef = useRef<EditTransactionSnapshot | null>(null);
@@ -2490,6 +2524,7 @@ function HVACPlanStudioApp() {
   }
 
   function drawingLayer(drawing: Drawing): LayerId | null {
+    if (drawing.rigid) return drawing.rigid.networkKind;
     if (drawing.type === "supply" || drawing.symbol?.kind === "diffuser") return "supply";
     if (drawing.type === "branch" || ["damper", "reducer"].includes(drawing.symbol?.kind || "")) return "branch";
     if (drawing.type === "return" || drawing.symbol?.kind === "returnGrille") return "return";
@@ -2506,6 +2541,7 @@ function HVACPlanStudioApp() {
   }
 
   function planDrawingAccessibleLabel(drawing: Drawing) {
+    if (drawing.rigid) return `${rigidConstructionLabel(drawing.rigid.construction)}, ${rigidSizeLabel(drawing.rigid)}, ${drawing.rigid.networkKind} rigid duct`;
     if (drawing.fitting) return `T Branch fitting, ${drawing.fitting.upstreamSize} by ${drawing.fitting.downstreamSize} by ${drawing.fitting.branchSize}`;
     if (drawing.symbol) return `${displayedSymbolLabel(drawing) || drawing.symbol.kind} HVAC symbol`;
     if (drawing.measurement) return `${drawing.measurement.feet.toFixed(1)} foot measurement`;
@@ -2515,6 +2551,7 @@ function HVACPlanStudioApp() {
   function planDrawingSupportsCopyMenu(drawing: Drawing) {
     return !drawingLocked(drawing) && Boolean(
       isBranchNetworkKind(drawing.type) ||
+      drawing.rigid ||
       drawing.fitting ||
       drawing.symbol ||
       drawing.measurement
@@ -2624,6 +2661,7 @@ function HVACPlanStudioApp() {
         drawingSystem(drawing) === systemId &&
         (
           ["supply", "return", "fresh"].includes(drawing.type) ||
+          drawing.type === "rigid" ||
           ["diffuser", "returnGrille"].includes(drawing.symbol?.kind || "") ||
           isPrimaryAirflowEquipment(drawing)
         )
@@ -2717,11 +2755,19 @@ function HVACPlanStudioApp() {
   }
 
   function applyProjectSnapshot(
-    project: SavedProject,
+    incomingProject: SavedProject,
     sourceFingerprint?: string,
     sourcePageCount?: number,
     fieldRedlineRestoreMode: "restore" | "quarantine" = "restore",
   ) {
+    const migration = migrateSavedProject(incomingProject);
+    if (!migration.ok) {
+      setError(migration.reason === "unsupported-version"
+        ? "This saved plan was created by an unsupported project version. The current drawing was not replaced."
+        : "This saved plan is incomplete or damaged. The current drawing was not replaced.");
+      return false;
+    }
+    const project = migration.project as unknown as SavedProject;
     const restoredDrawings = Array.isArray(project.drawings) ? project.drawings : [];
     const restoredSheetScales = Object.fromEntries(
       Object.entries(project.sheetScales || {}).filter(([, scale]) =>
@@ -2851,6 +2897,8 @@ function HVACPlanStudioApp() {
     setRedoStack([]);
     setSaveState("saved");
     setLastSavedAt(project.savedAt);
+    if (migration.warnings.length) setBranchMessage(migration.warnings.join(" "));
+    return true;
   }
 
   function resetForNewSource(
@@ -2893,11 +2941,14 @@ function HVACPlanStudioApp() {
         resetForNewSource(sourceFingerprint, sourcePageCount, name);
         return decision.status;
       }
-      applyProjectSnapshot(
+      if (!applyProjectSnapshot(
         decision.project,
         sourceFingerprint,
         sourcePageCount,
-      );
+      )) {
+        resetForNewSource(sourceFingerprint, sourcePageCount, name);
+        return "new";
+      }
       return "restored";
     } catch {
       resetForNewSource(sourceFingerprint, sourcePageCount, name);
@@ -3208,12 +3259,12 @@ function HVACPlanStudioApp() {
         redlineBinding?.pageCount ||
         1;
       setFileName(savedProject.fileName || project.name);
-      applyProjectSnapshot(
+      if (!applyProjectSnapshot(
         savedProject,
         safeRestoreFingerprint,
         safeRestorePageCount,
         fieldRedlinesBlocked ? "quarantine" : "restore",
-      );
+      )) throw new Error("Unsupported or malformed cloud project snapshot");
       if (fieldRedlinesBlocked) {
         setFieldRedlineMessage(
           "Saved field redlines were quarantined because this PDF does not exactly match their source. Open the matching PDF, then restore this revision again.",
@@ -3477,7 +3528,8 @@ function HVACPlanStudioApp() {
     const editIsActive = Boolean(
       dragRef.current ||
       selectionBox ||
-      directBranchPlacementGestureRef.current,
+      directBranchPlacementGestureRef.current ||
+      rigidPlacementGestureRef.current,
     );
     if (touchGestureRef.current || panRef.current || editIsActive) return;
     if (activeEditPointerIdRef.current !== null) {
@@ -3792,6 +3844,9 @@ function HVACPlanStudioApp() {
       if (directBranchPlacementGestureRef.current?.pointerId === pointerId) {
         directBranchPlacementGestureRef.current = null;
       }
+      if (rigidPlacementGestureRef.current?.pointerId === pointerId) {
+        rigidPlacementGestureRef.current = null;
+      }
     }
     dragRef.current = null;
     activeEditPointerIdRef.current = null;
@@ -3804,6 +3859,7 @@ function HVACPlanStudioApp() {
     setBranchPreview(null);
     setExplicitThreeRunOption(null);
     setSymbolPreview(null);
+    setRigidPreview(null);
   }
 
   function completeStalePlanPointerInteraction(
@@ -4308,7 +4364,7 @@ function HVACPlanStudioApp() {
       releaseStale: activeFieldPackage.stale,
     });
     return {
-      version: 9,
+      version: CURRENT_PROJECT_SCHEMA_VERSION,
       fileName,
       drawings,
       savedAt: new Date().toISOString(),
@@ -8180,6 +8236,20 @@ function HVACPlanStudioApp() {
           size: drawing.size,
           lengthFeet: drawingLengthFeet(drawing),
         })),
+      rigidRuns: systemDrawings
+        .filter((drawing): drawing is Drawing & { rigid: RigidStraightMetaV1 } =>
+          drawing.type === "rigid" && Boolean(drawing.rigid)
+        )
+        .map((drawing) => {
+          const scale = scaleStateForPage(drawing.page);
+          return {
+            id: drawing.id,
+            networkKind: drawing.rigid.networkKind,
+            construction: drawing.rigid.construction,
+            size: rigidSizeLabel(drawing.rigid),
+            lengthFeet: rigidHorizontalLengthFeet(drawing.points, scale.feetPerUnit, scale.verified),
+          };
+        }),
       symbols: systemDrawings
         .filter((drawing): drawing is Drawing & { symbol: SymbolMeta } => Boolean(drawing.symbol))
         .map((drawing) => ({
@@ -11217,6 +11287,69 @@ function HVACPlanStudioApp() {
     handleDrawingClick(event);
   }
 
+  function currentRigidStraightMeta(): RigidStraightMetaV1 {
+    return {
+      version: 1,
+      kind: "straight",
+      networkKind: rigidNetworkKind,
+      construction: rigidConstruction,
+      size: rigidConstruction === "rectangular"
+        ? { shape: "rectangular", widthInches: rigidWidthInches, heightInches: rigidHeightInches }
+        : { shape: "round", diameterInches: rigidDiameterInches },
+    };
+  }
+
+  function beginRigidPlacement(event: PointerEvent<SVGSVGElement>, rawPoint: Point) {
+    const sheetScale = scaleStateForPage(pageNumber);
+    if (!sheetScale.verified) {
+      setBranchMessage("Verify this sheet scale before drawing true-width rigid duct");
+      return;
+    }
+    const rigid = normalizeRigidStraightMeta(currentRigidStraightMeta());
+    if (!rigid || !beginEditTransaction(event.pointerId)) return;
+    const start = snapPoint(rawPoint);
+    capturePlanPointer(event.currentTarget, event.pointerId);
+    rigidPlacementGestureRef.current = { pointerId: event.pointerId, start, latestPoint: start };
+    setRigidPreview({ start, end: start });
+    setSnapMarker(start);
+    event.preventDefault();
+  }
+
+  function finishRigidPlacement(event: PointerEvent<SVGSVGElement>, cancelled: boolean) {
+    const gesture = rigidPlacementGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return false;
+    rigidPlacementGestureRef.current = null;
+    setRigidPreview(null);
+    setSnapMarker(null);
+    setSnapInfo(null);
+    setAlignmentGuides([]);
+    if (cancelled || Math.hypot(gesture.latestPoint.x - gesture.start.x, gesture.latestPoint.y - gesture.start.y) < 2) {
+      restoreEditTransaction(event.pointerId);
+      return true;
+    }
+    const rigid = normalizeRigidStraightMeta(currentRigidStraightMeta());
+    if (!rigid) {
+      restoreEditTransaction(event.pointerId);
+      return true;
+    }
+    const drawing: Drawing = {
+      id: crypto.randomUUID(),
+      type: "rigid",
+      points: [gesture.start, gesture.latestPoint],
+      size: rigidSizeLabel(rigid),
+      page: pageNumber,
+      systemId: activeSystem,
+      rigid,
+    };
+    setHistory([...drawings, drawing]);
+    setSelectedId(drawing.id);
+    setSelectedIds([drawing.id]);
+    activeEditPointerIdRef.current = null;
+    editTransactionRef.current = null;
+    setBranchMessage(`${rigidConstructionLabel(rigid.construction)} placed · ${rigidSizeLabel(rigid)} · ${rigidHorizontalLengthFeet(drawing.points, scaleStateForPage(pageNumber).feetPerUnit)?.toFixed(1)} LF`);
+    return true;
+  }
+
   function handleDrawingClick(event: PointerEvent<SVGSVGElement>) {
     if (
       (event.pointerType === "touch" && !planToolAcceptsDirectTouch) ||
@@ -11291,6 +11424,10 @@ function HVACPlanStudioApp() {
         setBranchMessage(`Scale calibrated from ${feet} ft · measurements are ready`);
         if (returnToHelper) window.requestAnimationFrame(() => openMarkupAssistant("setup"));
       }
+      return;
+    }
+    if (activeTool === "rigid") {
+      beginRigidPlacement(event, rawPoint);
       return;
     }
     if (activeTool === "select") {
@@ -11738,8 +11875,8 @@ function HVACPlanStudioApp() {
       setBranchMessage("Unlock this HVAC layer before copying the item");
       return null;
     }
-    if (!selected.symbol && !selected.measurement) {
-      setBranchMessage("Copy & place works for icons, measurements, and connected duct assemblies");
+    if (!selected.symbol && !selected.measurement && !selected.rigid) {
+      setBranchMessage("Copy & place works for icons, measurements, rigid duct, and connected duct assemblies");
       return null;
     }
     const template = buildStandalonePlanCopyTemplate(selected, pdfFingerprint);
@@ -11766,6 +11903,10 @@ function HVACPlanStudioApp() {
       !scaleVerified
     ) {
       setBranchMessage("Confirm this sheet scale before placing a copied measurement here.");
+      return;
+    }
+    if (template.version === 1 && template.source.rigid && !scaleVerified) {
+      setBranchMessage("Verify this destination sheet scale before placing copied true-width rigid duct.");
       return;
     }
     if (copyTemplateDrawings(template).some(drawingLocked)) {
@@ -11897,6 +12038,33 @@ function HVACPlanStudioApp() {
       setHistory(synchronizeFittingSizes(resized, drawings, { snapEndpoints: false }));
     }
     setDuctSize(size);
+  }
+
+  function updateSelectedRigidSize(next: Partial<{ widthInches: number; heightInches: number; diameterInches: number }>) {
+    const selected = drawings.find((drawing) => drawing.id === selectedId && drawing.rigid);
+    if (!selected?.rigid || drawingLocked(selected)) return;
+    const source = selected.rigid;
+    const candidate: RigidStraightMetaV1 = source.size.shape === "rectangular"
+      ? {
+          ...source,
+          size: {
+            shape: "rectangular",
+            widthInches: next.widthInches ?? source.size.widthInches,
+            heightInches: next.heightInches ?? source.size.heightInches,
+          },
+        }
+      : {
+          ...source,
+          size: {
+            shape: "round",
+            diameterInches: next.diameterInches ?? source.size.diameterInches,
+          },
+        };
+    const rigid = normalizeRigidStraightMeta(candidate);
+    if (!rigid) return;
+    setHistory(drawings.map((drawing) => drawing.id === selected.id
+      ? { ...drawing, rigid, size: rigidSizeLabel(rigid) }
+      : drawing));
   }
 
   function orderedRunsForDetail(type?: "supply" | "return") {
@@ -12518,7 +12686,7 @@ function HVACPlanStudioApp() {
       : drawing);
     movable.forEach((id) => {
       const drawing = moved.find((item) => item.id === id);
-      if (drawing && !drawing.fitting && !drawing.symbol && drawing.type !== "measurement") {
+      if (drawing && !drawing.fitting && !drawing.symbol && drawing.type !== "measurement" && drawing.type !== "rigid") {
         moved = repairFittingsAfterRunEdit(moved, id).drawings;
       }
     });
@@ -12913,7 +13081,7 @@ function HVACPlanStudioApp() {
     if (
       panRef.current ||
       touchGestureRef.current ||
-      (event.pointerType === "touch" && !dragRef.current && !directBranchPlacementGestureRef.current)
+      (event.pointerType === "touch" && !dragRef.current && !directBranchPlacementGestureRef.current && !rigidPlacementGestureRef.current)
     ) return;
     const raw = canvasPoint(event);
     const drag = dragRef.current;
@@ -13083,6 +13251,19 @@ function HVACPlanStudioApp() {
       }
       return;
     }
+    if (activeTool === "rigid") {
+      const gesture = rigidPlacementGestureRef.current;
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
+      const result = snapResult(raw);
+      let point = result?.point || raw;
+      if (event.shiftKey) point = constrainToDraftAngle(gesture.start, point);
+      gesture.latestPoint = point;
+      setRigidPreview({ start: gesture.start, end: point });
+      setSnapMarker(result ? point : null);
+      setSnapInfo(result);
+      setAlignmentGuides(guidesFor(point));
+      return;
+    }
     if (activeTool === "branch") {
       const gesture = directBranchPlacementGestureRef.current;
       if (gesture && gesture.pointerId !== event.pointerId) return;
@@ -13111,6 +13292,7 @@ function HVACPlanStudioApp() {
   }
 
   function endDrag(event: PointerEvent<SVGSVGElement>, cancelled = false) {
+    if (finishRigidPlacement(event, cancelled)) return;
     if (finishDirectBranchPlacementGesture(event, cancelled)) {
       activeEditPointerIdRef.current = null;
       if (editTransactionRef.current?.pointerId === event.pointerId) editTransactionRef.current = null;
@@ -13181,6 +13363,8 @@ function HVACPlanStudioApp() {
       setBranchMessage("T Branch rotated - all connected run ends stayed attached");
     } else if (drag.kind === "point" || drag.kind === "line") {
       setDrawings((current) => {
+        const changed = current.find((drawing) => drawing.id === drag.drawingId);
+        if (changed?.rigid) return current;
         const result = repairFittingsAfterRunEdit(current, drag.drawingId);
         if (result.repaired) {
           setBranchMessage(`${result.repaired} nearby fitting${result.repaired === 1 ? "" : "s"} automatically reattached`);
@@ -13575,6 +13759,7 @@ function HVACPlanStudioApp() {
     return Boolean(drawing && !drawingLocked(drawing));
   });
   const selectedFitting = selectedDrawing?.fitting ? selectedDrawing : undefined;
+  const selectedRigid = selectedDrawing?.rigid ? selectedDrawing : undefined;
   const selectedRun = selectedDrawing && !selectedDrawing.fitting && ["supply", "return", "fresh"].includes(selectedDrawing.type) ? selectedDrawing : undefined;
   const selectedRunLabelText = selectedRun
     ? [
@@ -15294,7 +15479,7 @@ function HVACPlanStudioApp() {
             <button className={leftPanelView === "properties" ? "active" : ""} aria-pressed={leftPanelView === "properties"} disabled={!selectedId} onClick={() => setLeftPanelView("properties")}>Selected</button>
           </nav>
           <div className="tool-list">
-            {tools.filter(({ id }) => ["select", "supply", "branch", "return", "fresh"].includes(id)).map(({ id, label, icon: Icon, tone }) => (
+            {tools.filter(({ id }) => ["select", "supply", "branch", "return", "fresh", "rigid"].includes(id)).map(({ id, label, icon: Icon, tone }) => (
               <button className={`tool ${activeTool === id ? "active" : ""}`} key={label} onClick={() => { finishDrawing(); activatePlanTool(id); setSelectedId(null); setPendingBranchFittingId(null); setQueuedBranchRunId(null); setBranchHoverRunId(null); setBranchPreview(null); setSymbolPreview(null); }}>
                 <span className={`tool-icon ${tone || ""}`}><Icon size={19} /></span>
                 <span>{label}</span>
@@ -15315,6 +15500,33 @@ function HVACPlanStudioApp() {
               </select>
               <small>{selectedRun ? "Selected runs update immediately." : "Draw first. New supply and return runs stay unlabeled until you confirm a size."}</small>
             </div>
+            <section className={`rigid-duct-tool ${activeTool === "rigid" ? "active" : ""}`} aria-label="Rigid duct setup">
+              <div className="library-title"><Box size={14} /><span>RIGID DUCT</span><b>{activeTool === "rigid" ? "ACTIVE" : "STRAIGHT"}</b></div>
+              <label>System
+                <select value={rigidNetworkKind} onChange={(event) => setRigidNetworkKind(event.target.value as RigidNetworkKind)}>
+                  <option value="supply">Supply</option>
+                  <option value="return">Return</option>
+                  <option value="fresh">Fresh air</option>
+                </select>
+              </label>
+              <label>Construction
+                <select value={rigidConstruction} onChange={(event) => setRigidConstruction(event.target.value as RigidConstruction)}>
+                  <option value="rectangular">Rectangular sheet metal</option>
+                  <option value="round-metal">Round metal pipe</option>
+                  <option value="spiral">Spiral pipe</option>
+                </select>
+              </label>
+              {rigidConstruction === "rectangular" ? <div className="rigid-size-grid">
+                <label>Width, in<input type="number" min="1" max="120" step="0.25" value={rigidWidthInches} onChange={(event) => setRigidWidthInches(Number(event.target.value))} /></label>
+                <label>Height, in<input type="number" min="1" max="120" step="0.25" value={rigidHeightInches} onChange={(event) => setRigidHeightInches(Number(event.target.value))} /></label>
+              </div> : <label>Diameter, in<input type="number" min="1" max="72" step="0.25" value={rigidDiameterInches} onChange={(event) => setRigidDiameterInches(Number(event.target.value))} /></label>}
+              <button type="button" className="rigid-draw-action" onClick={() => { finishDrawing(); activatePlanTool("rigid"); selectOnly(null); }}>
+                <Route size={15} /> Draw straight rigid duct
+              </button>
+              <small>{scaleStateForPage(pageNumber).verified
+                ? "Press, drag, and release. Width and horizontal length use this sheet's verified scale."
+                : "Verify this sheet scale before true-width placement."}</small>
+            </section>
             <div className={`branch-designer ${activeTool === "branch" ? "active" : ""}`}>
               <div className="library-title"><DraftingCompass size={14} /><span>T BRANCH</span><b>{activeTool === "branch" ? "ACTIVE" : "PLACE"}</b></div>
               {activeTool !== "branch" && <>
@@ -15780,6 +15992,25 @@ function HVACPlanStudioApp() {
                 })}
               </div>
               </fieldset>
+            </div> : selectedRigid?.rigid ? <div className="rigid-properties">
+              <div className="fitting-property-title"><Box size={14} /><span>STRAIGHT RIGID DUCT</span><b>{selectedRigid.rigid.networkKind.toUpperCase()}</b></div>
+              <label>Construction
+                <strong>{rigidConstructionLabel(selectedRigid.rigid.construction)}</strong>
+              </label>
+              {selectedRigid.rigid.size.shape === "rectangular" ? <div className="rigid-size-grid">
+                <label>Inside width, in<input type="number" min="1" max="120" step="0.25" value={selectedRigid.rigid.size.widthInches} onChange={(event) => updateSelectedRigidSize({ widthInches: Number(event.target.value) })} /></label>
+                <label>Inside height, in<input type="number" min="1" max="120" step="0.25" value={selectedRigid.rigid.size.heightInches} onChange={(event) => updateSelectedRigidSize({ heightInches: Number(event.target.value) })} /></label>
+              </div> : <label>Inside diameter, in<input type="number" min="1" max="72" step="0.25" value={selectedRigid.rigid.size.diameterInches} onChange={(event) => updateSelectedRigidSize({ diameterInches: Number(event.target.value) })} /></label>}
+              <div className="engineering-card">
+                <span>HORIZONTAL LENGTH</span>
+                <strong>{(() => {
+                  const scale = scaleStateForPage(selectedRigid.page);
+                  const length = rigidHorizontalLengthFeet(selectedRigid.points, scale.feetPerUnit, scale.verified);
+                  return length == null ? "SCALE UNVERIFIED" : `${length.toFixed(1)} FT`;
+                })()}</strong>
+                <small>Centerline geometry · true plan width {rigidPhysicalWidthInches(selectedRigid.rigid)} in</small>
+              </div>
+              <small>Drag the body to move it. Drag either cobalt endpoint to change the straight section. Every change is one Undo step.</small>
             </div> : selectedDrawing?.measurement ? <div className="engineering-card">
               <span>MEASURED DISTANCE</span>
               <strong>{drawings.find((drawing) => drawing.id === selectedId)?.measurement?.feet.toFixed(1)} FT</strong>
@@ -16132,10 +16363,10 @@ function HVACPlanStudioApp() {
               </div> : null;
             })()}
             {selectedId && planSelectionActionsVisible && !selectedContextWheelVisible && <div className="field-context-toolbar" role="toolbar" aria-label="Selected HVAC object actions" data-canvas-ui>
-              <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T BRANCH FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : "DUCT RUN"}{selectedDrawingLocked ? selectedPort3FittingLocked ? " · FINISH PORT 3 FIRST" : " · LAYER LOCKED" : ""}</strong>
-              {!selectedDrawingLocked && (selectedDrawing?.symbol || selectedDrawing?.measurement || selectedRun || selectedFitting) && <button className="copy-primary" title={selectedRun || selectedFitting ? "Copy this connected duct assembly, then click the plan to paste it repeatedly" : "Copy this item, then click the plan to paste it repeatedly"} onClick={duplicateSelected}><Copy size={15} /> Copy &amp; paste</button>}
+              <strong>{selectedIds.length > 1 ? `${selectedIds.length} OBJECTS` : selectedDrawing?.fitting ? "T BRANCH FITTING" : selectedDrawing?.symbol ? "HVAC SYMBOL" : selectedDrawing?.measurement ? "MEASUREMENT" : selectedRigid ? "RIGID DUCT" : "DUCT RUN"}{selectedDrawingLocked ? selectedPort3FittingLocked ? " · FINISH PORT 3 FIRST" : " · LAYER LOCKED" : ""}</strong>
+              {!selectedDrawingLocked && (selectedDrawing?.symbol || selectedDrawing?.measurement || selectedRigid || selectedRun || selectedFitting) && <button className="copy-primary" title={selectedRun || selectedFitting ? "Copy this connected duct assembly, then click the plan to paste it repeatedly" : "Copy this item, then click the plan to paste it repeatedly"} onClick={duplicateSelected}><Copy size={15} /> Copy &amp; paste</button>}
               {!selectedDrawingLocked && <span className="selection-drag-hint">Drag the highlighted item to move</span>}
-              {!selectedDrawingLocked && selectedIds.length === 1 && !selectedDrawing?.symbol && !selectedDrawing?.measurement && <select
+              {!selectedDrawingLocked && selectedIds.length === 1 && !selectedDrawing?.symbol && !selectedDrawing?.measurement && !selectedRigid && <select
                 aria-label="Quick duct size"
                 value={selectedDrawing?.fitting?.upstreamSize || selectedDrawing?.size || ductSize}
                 onChange={(event) => updateSelectedSize(event.target.value)}
@@ -16533,6 +16764,48 @@ function HVACPlanStudioApp() {
                           style={isCopyPreview ? { pointerEvents: "none" } : undefined}
                         >{renderSymbol(drawing)}</g>;
                       }
+                      if (drawing.rigid) {
+                        const isCopyPreview = drawing.id.startsWith("copy-place-preview-");
+                        const scale = scaleStateForPage(drawing.page);
+                        const planWidth = rigidPlanWidthUnits(drawing.rigid, scale.feetPerUnit);
+                        const [start, end] = drawing.points;
+                        const path = `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+                        const edges = rigidEdgeLines(drawing.points, planWidth);
+                        const seams = drawing.rigid.construction === "spiral"
+                          ? rigidSpiralSeams(drawing.points, planWidth)
+                          : [];
+                        const lengthFeet = rigidHorizontalLengthFeet(drawing.points, scale.feetPerUnit, scale.verified);
+                        return <g
+                          key={drawing.id}
+                          className={`rigid-duct rigid-${drawing.rigid.construction} rigid-${drawing.rigid.networkKind} ${isSelected(drawing.id) ? "selected-rigid" : ""} ${isCopyPreview ? "copy-place-preview" : ""}`}
+                          data-plan-edit-control={isCopyPreview ? undefined : "hvac"}
+                          data-plan-drawing-id={isCopyPreview ? undefined : drawing.id}
+                          data-rigid-construction={drawing.rigid.construction}
+                          data-rigid-size={rigidSizeLabel(drawing.rigid)}
+                          data-rigid-plan-width={planWidth.toFixed(4)}
+                          data-rigid-length-feet={lengthFeet?.toFixed(3)}
+                          tabIndex={isCopyPreview ? undefined : 0}
+                          role={isCopyPreview ? undefined : "button"}
+                          aria-label={isCopyPreview ? undefined : planDrawingAccessibleLabel(drawing)}
+                          aria-pressed={isCopyPreview ? undefined : isSelected(drawing.id)}
+                          aria-disabled={isCopyPreview ? undefined : drawingLocked(drawing)}
+                          aria-hidden={isCopyPreview || undefined}
+                          style={isCopyPreview ? { pointerEvents: "none" } : undefined}
+                          onFocus={isCopyPreview ? undefined : () => selectOnly(drawing.id)}
+                          onKeyDown={isCopyPreview ? undefined : (event) => handlePlanDrawingKeyDown(event, drawing)}
+                        >
+                          <title>{`${rigidConstructionLabel(drawing.rigid.construction)} · ${rigidSizeLabel(drawing.rigid)} · ${lengthFeet == null ? "scale unverified" : `${lengthFeet.toFixed(1)} feet`}`}</title>
+                          <path className="rigid-body" d={path} stroke={drawingColors[drawing.rigid.networkKind]} style={{ strokeWidth: planWidth }} />
+                          {edges.map(([a, b], index) => <path className="rigid-edge" d={`M ${a.x} ${a.y} L ${b.x} ${b.y}`} stroke={drawingColors[drawing.rigid!.networkKind]} key={`edge-${index}`} />)}
+                          {seams.map(([a, b], index) => <path className="rigid-spiral-seam" d={`M ${a.x} ${a.y} L ${b.x} ${b.y}`} key={`seam-${index}`} />)}
+                          <path className="rigid-centerline" d={path} />
+                          <path className="rigid-hit" d={path} onPointerDown={isCopyPreview ? undefined : (event) => startLineDrag(event, drawing)} />
+                          {isSelected(drawing.id) && !isCopyPreview && drawing.points.map((point, index) => <g key={`rigid-end-${index}`}>
+                            <circle className="rigid-endpoint-hit" cx={point.x} cy={point.y} r={12 / Math.max(.1, zoom)} onPointerDown={(event) => startPointDrag(event, drawing.id, index)} />
+                            <circle className="rigid-endpoint" cx={point.x} cy={point.y} r={4 / Math.max(.1, zoom)} pointerEvents="none" />
+                          </g>)}
+                        </g>;
+                      }
                       if (drawing.fitting) {
                         const isCopyPreview = drawing.id.startsWith("copy-place-preview-");
                         const center = drawing.points[0];
@@ -16863,6 +17136,16 @@ function HVACPlanStudioApp() {
                         </g>
                       </g>)}
                     </g>}
+                    {rigidPreview && (() => {
+                      const rigid = normalizeRigidStraightMeta(currentRigidStraightMeta());
+                      if (!rigid) return null;
+                      const width = rigidPlanWidthUnits(rigid, scaleStateForPage(pageNumber).feetPerUnit);
+                      const path = `M ${rigidPreview.start.x} ${rigidPreview.start.y} L ${rigidPreview.end.x} ${rigidPreview.end.y}`;
+                      return <g className={`rigid-duct rigid-preview rigid-${rigid.construction}`} aria-hidden="true">
+                        <path className="rigid-body" d={path} stroke={drawingColors[rigid.networkKind]} style={{ strokeWidth: width }} />
+                        <path className="rigid-centerline" d={path} />
+                      </g>;
+                    })()}
                     {draft.length > 0 && <g className="draft-drawing">
                       <polyline
                         points={[...draft, ...(hoverPoint ? [hoverPoint] : [])].map((point) => `${point.x},${point.y}`).join(" ")}

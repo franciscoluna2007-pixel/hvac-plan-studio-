@@ -112,6 +112,22 @@ test("repeated placements mint independent identities from the same source", () 
   assert.deepEqual(second.points, [{ x: 300, y: 300 }]);
 });
 
+test("rigid straight sections copy repeatedly without mutating size metadata", () => {
+  const source = {
+    id: "rigid-1", type: "rigid", page: 1, size: "24×12",
+    points: [{ x: 0, y: 0 }, { x: 80, y: 0 }],
+    rigid: { version: 1, kind: "straight", networkKind: "supply", construction: "rectangular", size: { shape: "rectangular", widthInches: 24, heightInches: 12 } },
+  };
+  const template = copy.buildStandalonePlanCopyTemplate(source, "pdf-a");
+  const placed = copy.materializeStandalonePlanCopy(template, {
+    sourceFingerprint: "pdf-a", page: 2, point: { x: 200, y: 200 }, id: "rigid-2", systemId: "system-2",
+  });
+  assert.deepEqual(placed.points, [{ x: 160, y: 200 }, { x: 240, y: 200 }]);
+  assert.deepEqual(placed.rigid, source.rigid);
+  assert.notEqual(placed.rigid, source.rigid);
+  assert.equal(placed.id, "rigid-2");
+});
+
 test("copy placement rejects connected routes and cross-PDF payloads", () => {
   assert.equal(copy.buildStandalonePlanCopyTemplate({
     id: "run-1",

@@ -24,6 +24,14 @@ export type MaterialRunInput = {
   lengthFeet: number;
 };
 
+export type MaterialRigidRunInput = {
+  id: string;
+  networkKind: "supply" | "return" | "fresh";
+  construction: "rectangular" | "round-metal" | "spiral";
+  size: string;
+  lengthFeet: number | null;
+};
+
 export type MaterialSymbolInput = {
   id: string;
   kind: string;
@@ -43,10 +51,12 @@ export type MaterialFittingInput = {
 
 type MaterialOrderInput = {
   runs: readonly MaterialRunInput[];
+  rigidRuns?: readonly MaterialRigidRunInput[];
   symbols: readonly MaterialSymbolInput[];
   fittings: readonly MaterialFittingInput[];
   allowancePercent: number;
   packageLengthFeet?: number;
+  rigidStockLengthFeet?: number;
 };
 
 const categoryOrder = new Map<MaterialOrderCategory, number>([
@@ -78,10 +88,12 @@ function alreadyIncludesBox(kind: string, variant: string) {
 
 export function buildMaterialOrder({
   runs,
+  rigidRuns = [],
   symbols,
   fittings,
   allowancePercent,
   packageLengthFeet = 25,
+  rigidStockLengthFeet = 5,
 }: MaterialOrderInput): MaterialOrderRow[] {
   const ductGroups = new Map<string, {
     material: "flex" | "fresh-air";
@@ -127,6 +139,73 @@ export function buildMaterialOrder({
       allowancePercent,
       orderLengthFeet,
       packageLengthFeet,
+    });
+  }
+
+  const rigidGroups = new Map<string, {
+    construction: MaterialRigidRunInput["construction"];
+    size: string;
+    lengthFeet: number;
+    hasUnverifiedLength: boolean;
+    networkKinds: Set<MaterialRigidRunInput["networkKind"]>;
+    sourceDrawingIds: string[];
+  }>();
+  for (const run of rigidRuns) {
+    const key = `${run.construction}|${run.size}`;
+    const current = rigidGroups.get(key) || {
+      construction: run.construction,
+      size: run.size,
+      lengthFeet: 0,
+      hasUnverifiedLength: false,
+      networkKinds: new Set<MaterialRigidRunInput["networkKind"]>(),
+      sourceDrawingIds: [],
+    };
+    if (run.lengthFeet == null) current.hasUnverifiedLength = true;
+    else current.lengthFeet += Math.max(0, run.lengthFeet);
+    current.networkKinds.add(run.networkKind);
+    current.sourceDrawingIds.push(run.id);
+    rigidGroups.set(key, current);
+  }
+  const rigidItemNames: Record<MaterialRigidRunInput["construction"], string> = {
+    rectangular: "Rectangular sheet-metal duct",
+    "round-metal": "Round metal pipe",
+    spiral: "Spiral pipe",
+  };
+  for (const group of rigidGroups.values()) {
+    const sources = sourceLabel(group.networkKinds);
+    const sourceDrawingIds = [...new Set(group.sourceDrawingIds)];
+    if (group.hasUnverifiedLength) {
+      rows.push({
+        id: `rigid:${group.construction}:${group.size}`,
+        category: "Duct",
+        item: rigidItemNames[group.construction],
+        size: group.size,
+        quantity: "Scale required",
+        note: "Verify every source sheet scale before ordering",
+        orderCount: 0,
+        orderUnit: "lot",
+        breakdown: `${sources} · ${sourceDrawingIds.length} source ${sourceDrawingIds.length === 1 ? "segment" : "segments"} · no length or stock quantity inferred`,
+        sourceDrawingIds,
+      });
+      continue;
+    }
+    const orderLengthFeet = group.lengthFeet * (1 + allowancePercent / 100);
+    const pieces = Math.max(1, Math.ceil(orderLengthFeet / rigidStockLengthFeet));
+    rows.push({
+      id: `rigid:${group.construction}:${group.size}`,
+      category: "Duct",
+      item: rigidItemNames[group.construction],
+      size: group.size,
+      quantity: `${pieces} × ${rigidStockLengthFeet}-ft ${pieces === 1 ? "piece" : "pieces"}`,
+      note: `${group.lengthFeet.toFixed(1)} LF measured · ${allowancePercent}% allowance`,
+      orderCount: pieces,
+      orderUnit: "each",
+      breakdown: `${sources} · ${group.lengthFeet.toFixed(1)} LF measured + ${allowancePercent}% = ${orderLengthFeet.toFixed(1)} LF · ${rigidStockLengthFeet}-ft stock = ${pieces}`,
+      sourceDrawingIds,
+      measuredLengthFeet: group.lengthFeet,
+      allowancePercent,
+      orderLengthFeet,
+      packageLengthFeet: rigidStockLengthFeet,
     });
   }
 

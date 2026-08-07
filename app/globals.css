@@ -535,6 +535,48 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .draft-drawing polyline { stroke-width: 4; stroke-dasharray: 8 5; }
 .hit-line { fill: none; stroke: transparent; stroke-width: 22; vector-effect: non-scaling-stroke; cursor: grab; pointer-events: stroke; }
 .hit-line:active { cursor: grabbing; }
+.rigid-duct { cursor: grab; }
+.rigid-duct:active { cursor: grabbing; }
+.rigid-body,
+.rigid-edge,
+.rigid-centerline,
+.rigid-spiral-seam,
+.rigid-hit { fill: none; }
+.rigid-body { stroke-linecap: butt; opacity: .2; }
+.rigid-round-metal .rigid-body { opacity: .11; }
+.rigid-edge {
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+.rigid-round-metal .rigid-edge { stroke-width: 1; }
+.rigid-centerline {
+  stroke: #243143;
+  stroke-width: 1;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
+  opacity: .45;
+  pointer-events: none;
+}
+.rigid-spiral-seam {
+  stroke: #34455b;
+  stroke-width: .8;
+  vector-effect: non-scaling-stroke;
+  opacity: .65;
+  pointer-events: none;
+}
+.rigid-hit {
+  stroke: transparent;
+  stroke-width: 24;
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke;
+}
+.selected-rigid .rigid-edge,
+[data-plan-drawing-id]:focus-visible .rigid-edge {
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 3px #002fa7);
+}
+.rigid-endpoint-hit { fill: transparent; stroke: transparent; cursor: grab; pointer-events: all; }
+.rigid-endpoint { fill: #fff; stroke: #002fa7; stroke-width: 3; vector-effect: non-scaling-stroke; }
+.rigid-preview { pointer-events: none; opacity: .78; }
 .drawing-layer text { fill: #05080d; paint-order: stroke; stroke: white; stroke-width: 4px; stroke-linejoin: round; font: 700 13px var(--font-geist-sans), sans-serif; pointer-events: none; }
 .drawing-layer text.run-label { pointer-events: all; cursor: grab; user-select: none; }
 .drawing-layer text.run-label:hover,
@@ -25304,6 +25346,39 @@ footer {
 
 /* Normal selection is a close-fitting cobalt focus cue. It does not change
    line weight or add bounds, resize handles, rotation rings, or point grips. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.rigid-duct-tool, .rigid-properties) {
+  margin: 10px 0;
+  padding: 14px;
+  display: grid;
+  gap: 11px;
+  color: var(--operational-ink);
+  border: 1px solid var(--material-line);
+  background: #fff;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .rigid-duct-tool.active {
+  border-color: var(--material-blue);
+  box-shadow: inset 3px 0 var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.rigid-duct-tool, .rigid-properties) label {
+  display: grid;
+  gap: 5px;
+  color: var(--operational-muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.rigid-duct-tool, .rigid-properties) :is(input, select, button) {
+  min-height: 44px;
+}
+
+.rigid-size-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.left-panel:not(.view-draw) .rigid-duct-tool { display: none !important; }
+.rigid-draw-action { color: #fff; border-color: #00257f; background: #002fa7; }
+.rigid-duct-tool > small,
+.rigid-properties > small { color: var(--operational-muted); font-size: 14px; line-height: 1.45; }
+
 .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .selected-drawing .duct-line {
   stroke-width: inherit;
   filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 2px var(--material-blue));
@@ -25558,6 +25633,8 @@ footer {
 
 @media print {
   .branch-fitting :is(.status-port, .detailed-port),
+  .rigid-duct :is(.rigid-hit, .rigid-centerline, .rigid-endpoint, .rigid-endpoint-hit),
+  .rigid-preview,
   .selected-object-status,
   .fitting-rotation-inspector {
     display: none !important;
@@ -25568,4 +25645,6 @@ footer {
   .selected-symbol .symbol-visual {
     filter: none !important;
   }
+
+  .selected-rigid .rigid-edge { filter: none !important; }
 }

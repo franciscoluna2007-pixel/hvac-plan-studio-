@@ -21,6 +21,7 @@ export type StandalonePlanCopyDrawing = {
     feet: number;
     [key: string]: unknown;
   };
+  rigid?: unknown;
   fitting?: {
     connectedIds: string[];
     [key: string]: unknown;
@@ -196,7 +197,7 @@ export function isStandalonePlanCopyDrawing(
 ) {
   return Boolean(
     drawing.points.length &&
-    (drawing.symbol || drawing.measurement),
+    (drawing.symbol || drawing.measurement || drawing.rigid),
   );
 }
 

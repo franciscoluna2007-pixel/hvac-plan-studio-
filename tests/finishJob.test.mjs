@@ -151,7 +151,7 @@ test("integrates one visible Finish the Job path and preserves manual issue appr
   assert.match(page, /materialFingerprint: materialReviewFingerprint\(\)/);
   assert.match(
     page,
-    /const buildProjectSnapshot = useCallback\(\(\): SavedProject => \{[\s\S]*?return \{\s*version: 9,/,
+    /const buildProjectSnapshot = useCallback\(\(\): SavedProject => \{[\s\S]*?return \{\s*version: CURRENT_PROJECT_SCHEMA_VERSION,/,
   );
   assert.match(page, /materialReviewRecords,/);
   assert.doesNotMatch(page, /label: "Materials & Print"/);

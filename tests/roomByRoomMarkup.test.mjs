@@ -32,10 +32,10 @@ function sourceBetween(source, start, end) {
   return source.slice(startIndex, endIndex);
 }
 
-test("persists room candidates and application receipts in the version 9 project state", () => {
+test("persists room candidates and application receipts in the version 10 project state", () => {
   assert.match(
     page,
-    /type SavedProject = \{\s*version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9;/,
+    /type SavedProject = \{\s*version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9 \| 10;/,
   );
   assert.match(page, /roomMarkupCandidatesBySystem\?: Record<string, RoomMarkupCandidate\[\]>/);
   assert.match(page, /roomMarkupApplicationRecords\?: RoomMarkupApplicationRecord\[\]/);
@@ -45,7 +45,7 @@ test("persists room candidates and application receipts in the version 9 project
     "const buildProjectSnapshot = useCallback((): SavedProject => {",
     "const saveProject = useCallback(() => {",
   );
-  assert.match(snapshot, /version: 9,/);
+  assert.match(snapshot, /version: CURRENT_PROJECT_SCHEMA_VERSION,/);
   assert.match(snapshot, /roomMarkupCandidatesBySystem,/);
   assert.match(snapshot, /roomMarkupApplicationRecords,/);
   assert.match(page, /setRoomMarkupCandidatesBySystem\(project\.roomMarkupCandidatesBySystem \|\| \{\}\)/);

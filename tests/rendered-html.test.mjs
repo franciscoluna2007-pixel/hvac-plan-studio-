@@ -2155,11 +2155,11 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(page, /runNumber\?: string/);
   assert.match(page, /sizeReviewed\?: boolean/);
   assert.match(page, /type SheetScaleState = \{/);
-  assert.match(page, /version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9;/);
+  assert.match(page, /version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9 \| 10;/);
   assert.match(page, /sheetScales\?: Record<string, SheetScaleState>/);
   assert.match(
     page,
-    /const buildProjectSnapshot = useCallback\(\(\): SavedProject => \{[\s\S]*?return \{\s*version: 9,/,
+    /const buildProjectSnapshot = useCallback\(\(\): SavedProject => \{[\s\S]*?return \{\s*version: CURRENT_PROJECT_SCHEMA_VERSION,/,
   );
   assert.match(page, /restoredSheetScales\["1"\] = legacyScale/);
   assert.doesNotMatch(page, /legacyPages/);
