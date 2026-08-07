@@ -28,6 +28,21 @@ test("ordinary plan selection omits resize and rotation chrome", () => {
   assert.match(page, /FITTING ROTATION/);
 });
 
+test("Material symbol selection uses only an artwork-level cobalt highlight", () => {
+  assert.match(
+    styles,
+    /\[data-presentation="material-cobalt"\] \.selected-symbol \{\s*filter: none;/,
+  );
+  assert.match(
+    styles,
+    /\[data-presentation="material-cobalt"\] \[data-plan-drawing-id\]:focus \{\s*outline: none !important;\s*outline-width: 0 !important;/,
+  );
+  assert.match(
+    styles,
+    /\[data-presentation="material-cobalt"\] \.selected-symbol \.symbol-visual \{[\s\S]*?drop-shadow\(0 0 2px var\(--material-blue\)\)/,
+  );
+});
+
 test("selected actions use a single adaptive, keyboard-accessible control set", () => {
   assert.match(wheel, /layout\?: "wheel" \| "strip"/);
   assert.match(wheel, /data-wheel-layout=\{props\.layout \?\? "wheel"\}/);

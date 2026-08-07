@@ -117,6 +117,25 @@ async function expectControlInsideCanvas(page: Page) {
   }
 }
 
+async function expectSubtleMaterialSelection(symbol: Locator) {
+  const appearance = await symbol.evaluate((element) => {
+    const visual = element.querySelector<SVGGraphicsElement>(".symbol-visual");
+    const groupStyle = getComputedStyle(element);
+    return {
+      outlineStyle: groupStyle.outlineStyle,
+      outlineWidth: groupStyle.outlineWidth,
+      outerFilter: groupStyle.filter,
+      boxShadow: groupStyle.boxShadow,
+      visualFilter: visual ? getComputedStyle(visual).filter : "",
+    };
+  });
+  expect(["none", "auto"]).toContain(appearance.outlineStyle);
+  expect(appearance.outlineWidth).toBe("0px");
+  expect(appearance.outerFilter).toBe("none");
+  expect(appearance.boxShadow).toBe("none");
+  expect(appearance.visualFilter).toContain("rgb(0, 47, 167)");
+}
+
 test("selected symbol actions stay bounded from minimum through the new maximum zoom", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -149,6 +168,7 @@ test("selected symbol actions stay bounded from minimum through the new maximum 
     await wheelTo(page, item.symbol, item.zoom);
     await item.symbol.focus();
     await expect(item.symbol).toHaveAttribute("aria-pressed", "true");
+    await expectSubtleMaterialSelection(item.symbol);
     await expectControlInsideCanvas(page);
     await expect(page.locator(".symbol-action-wheel")).toHaveAttribute("data-wheel-layout", /wheel|strip/);
     await expect(page.locator(".symbol-resize-outline, .symbol-resize-handle, .rotation-ring, .symbol-label-outline, .symbol-label-size-handle")).toHaveCount(0);
@@ -180,6 +200,7 @@ for (const viewport of [
     await hood.focus();
     await wheelTo(page, hood, 1200);
     await hood.focus();
+    await expectSubtleMaterialSelection(hood);
     await expectControlInsideCanvas(page);
     await expect(page.locator(".symbol-action-wheel")).toHaveAttribute(
       "data-wheel-layout",

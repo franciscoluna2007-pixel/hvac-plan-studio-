@@ -25314,6 +25314,17 @@ footer {
   filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 2px var(--material-blue));
 }
 
+/* Keep symbol selection on the artwork itself. SVG group outlines and the
+   legacy whole-symbol glow read as a large rounded frame at some zoom levels. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .selected-symbol {
+  filter: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] [data-plan-drawing-id]:focus {
+  outline: none !important;
+  outline-width: 0 !important;
+}
+
 .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] [data-plan-drawing-id]:focus-visible :is(.duct-line, .fitting-leg, .symbol-visual) {
   filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 3px var(--material-blue));
 }
