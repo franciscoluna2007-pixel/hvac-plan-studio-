@@ -23940,6 +23940,404 @@ footer {
 @media (max-width: 640px) {
   .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-tabs .right-tablist button {
     min-height: 44px;
-    font-size: 11px;
+    font-size: 14px;
+  }
+}
+
+@media print {
+  .print-takeoff .print-section-heading.package-section-materials {
+    gap: 24px;
+  }
+
+  .print-takeoff .print-section-heading.package-section-materials > span {
+    margin-left: auto;
+    text-align: right;
+  }
+
+  .print-takeoff table.package-section-materials th,
+  .print-takeoff table.package-section-materials td {
+    padding: 7px 8px;
+    line-height: 1.35;
+    vertical-align: top;
+  }
+}
+
+/* Plan-to-Truck: readable inspector, traceable materials, and focused connection repair. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-panel {
+  font-size: 16px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-tabs {
+  height: 88px;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  align-items: stretch;
+  overflow: visible;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-tabs .right-tablist {
+  grid-column: 1;
+  grid-row: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-tabs .right-collapse {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-tabs .right-tablist button {
+  min-height: 44px;
+  min-width: 0;
+  padding-inline: 8px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.connection-check-panel {
+  padding: 16px;
+  color: var(--material-ink, #202421);
+}
+
+.connection-check-panel > header,
+.connection-check-panel > header > span,
+.connection-check-panel > footer,
+.connection-check-focus,
+.connection-check-approve,
+.material-row-actions,
+.installer-line > label,
+.installer-line > span {
+  display: flex;
+  align-items: center;
+}
+
+.connection-check-panel > header {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.connection-check-panel > header > span {
+  gap: 9px;
+  color: var(--material-blue, #002fa7);
+  font-size: 20px;
+}
+
+.connection-check-panel > header > b {
+  padding: 5px 8px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.connection-check-panel > header > b.attention {
+  color: var(--material-warning, #a77a28);
+  background: color-mix(in srgb, var(--material-warning, #a77a28) 10%, white);
+}
+
+.connection-check-panel > header > b.clear {
+  color: var(--material-success, #39705d);
+  background: color-mix(in srgb, var(--material-success, #39705d) 10%, white);
+}
+
+.connection-check-panel > p,
+.connection-check-undo,
+.connection-check-item small {
+  color: var(--material-muted, #667069);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.connection-check-panel > p {
+  margin: 12px 0 16px;
+}
+
+.connection-check-list {
+  border-top: 1px solid var(--material-line, #d7ddd8);
+}
+
+.connection-check-item {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--material-line, #d7ddd8);
+}
+
+.connection-check-focus {
+  width: 100%;
+  padding: 0;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+}
+
+.connection-check-focus span,
+.connection-check-focus strong,
+.connection-check-focus small {
+  display: block;
+}
+
+.connection-check-focus strong {
+  font-size: 16px;
+}
+
+.connection-check-focus > b,
+.material-row-actions button,
+.installer-line button {
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--material-blue, #002fa7);
+  border: 1px solid var(--material-blue-line, #a9bcee);
+  border-radius: 7px;
+  background: var(--material-blue-soft, #e9efff);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.connection-check-item > label {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+  font-size: 15px;
+}
+
+.connection-check-item select {
+  min-height: 44px;
+  font-size: 16px;
+}
+
+.connection-check-approve {
+  min-height: 44px;
+  grid-template-columns: auto 1fr !important;
+  gap: 9px !important;
+}
+
+.connection-check-approve input,
+.installer-line input {
+  width: 20px;
+  height: 20px;
+}
+
+.connection-check-clear {
+  min-height: 190px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--material-success, #39705d);
+}
+
+.connection-check-clear span {
+  max-width: 28ch;
+  color: var(--material-muted, #667069);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.connection-check-panel > footer {
+  margin-top: 16px;
+  gap: 8px;
+}
+
+.connection-check-panel > footer button {
+  min-height: 44px;
+  flex: 1;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.connection-check-panel > footer button.primary {
+  color: white;
+  border-color: var(--material-blue, #002fa7);
+  background: var(--material-blue, #002fa7);
+}
+
+.connection-check-panel > footer button:disabled,
+.connection-check-panel > footer button.primary:disabled {
+  opacity: 1;
+  color: #7a837d;
+  border-color: var(--material-line, #d7ddd8);
+  background: #eef1ef;
+}
+
+.connection-check-undo {
+  margin-top: 10px;
+  display: block;
+}
+
+.material-order-group .takeoff-row {
+  min-height: 72px;
+  gap: 12px;
+}
+
+.material-view-tabs {
+  margin: 12px 12px 4px;
+  padding: 3px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  border: 1px solid var(--material-line, #d7ddd8);
+  border-radius: 9px;
+  background: #eef1ef;
+}
+
+.material-view-tabs button {
+  min-height: 42px;
+  padding: 7px 9px;
+  color: var(--material-muted, #667069);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.material-view-tabs button.active {
+  color: var(--material-blue, #002fa7);
+  background: white;
+  box-shadow: 0 1px 3px rgb(32 36 33 / 12%);
+}
+
+.material-order-group .takeoff-row strong,
+.material-order-group .takeoff-row b {
+  font-size: 16px;
+}
+
+.material-order-group .takeoff-row small,
+.material-order-group .takeoff-row em {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.material-row-actions {
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+}
+
+.production-installer-sheet .installer-line {
+  min-height: 68px;
+  padding: 10px 0;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-installer-sheet {
+  margin: 12px;
+  padding: 14px;
+  color: var(--material-ink, #202421);
+  border-color: var(--material-line, #d7ddd8);
+  background: white;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .installer-sheet-title b {
+  color: var(--material-ink, #202421);
+  font-size: 16px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .installer-sheet-title small {
+  color: var(--material-muted, #667069);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .installer-sheet-title button {
+  min-height: 40px;
+  color: var(--material-blue, #002fa7);
+  border-color: var(--material-blue-line, #a9bcee);
+  background: var(--material-blue-soft, #e9efff);
+  font-size: 13px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .installer-sheet-stats span {
+  border-color: var(--material-line, #d7ddd8);
+  background: #f7f8f7;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .installer-sheet-stats small {
+  color: var(--material-muted, #667069);
+  font-size: 13px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .installer-sheet-stats b {
+  color: var(--material-ink, #202421);
+  font-size: 16px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-installer-sheet .field-section-heading {
+  color: var(--material-blue, #002fa7);
+  border-color: var(--material-line, #d7ddd8);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-installer-sheet .field-section-heading :is(strong, span) {
+  color: inherit;
+  font-size: 13px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-installer-sheet .installer-line {
+  border-top-color: var(--material-line, #d7ddd8);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-installer-sheet .installer-check {
+  min-height: 42px;
+  color: var(--material-ink, #202421);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .production-installer-sheet .installer-check input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.production-installer-sheet .installer-line > label {
+  min-width: 0;
+  gap: 10px;
+}
+
+.production-installer-sheet .installer-line > label span,
+.production-installer-sheet .installer-line > span {
+  min-width: 0;
+}
+
+.production-installer-sheet .installer-line b,
+.production-installer-sheet .installer-line strong {
+  color: var(--material-ink, #202421);
+  font-size: 16px;
+}
+
+.production-installer-sheet .installer-line small {
+  color: var(--material-muted, #667069);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.production-installer-sheet .installer-line > span {
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.production-installer-sheet .installer-line.complete {
+  opacity: .64;
+}
+
+@media (max-width: 640px) {
+  .connection-check-panel,
+  .material-order-group .takeoff-row {
+    padding: 16px;
+  }
+
+  .material-order-group .takeoff-row,
+  .production-installer-sheet .installer-line {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .material-row-actions,
+  .production-installer-sheet .installer-line > span {
+    align-items: stretch;
+    flex-direction: row;
+    justify-content: space-between;
   }
 }

@@ -38,6 +38,14 @@ function supplyRun(overrides = {}) {
   };
 }
 
+function returnRun(overrides = {}) {
+  return supplyRun({
+    id: "return-run-1",
+    type: "return",
+    ...overrides,
+  });
+}
+
 function terminalTarget(overrides = {}) {
   return {
     id: "device:supply-1",
@@ -93,6 +101,20 @@ test("unsaved T Branch port prepares a high-confidence existing-endpoint repair"
     to: { x: 0, y: 0 },
   }]);
   assert.deepEqual(runs, originalRuns, "planning a repair must not mutate or create run geometry");
+});
+
+test("return T Branch ports use the same repair path as supply fittings", () => {
+  const plan = buildConnectionRepairPlan({
+    systemId: "system-1",
+    runs: [returnRun()],
+    targets: [fittingTarget({ ductType: "return" })],
+    scale: verifiedScale,
+  });
+
+  assert.equal(plan.counts.ready, 1);
+  assert.equal(plan.items[0].ductType, "return");
+  assert.equal(plan.items[0].candidate.runId, "return-run-1");
+  assert.match(plan.items[0].candidate.explanation, /return run/);
 });
 
 test("saved T Branch port never falls back to another nearby run", () => {

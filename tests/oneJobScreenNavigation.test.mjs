@@ -7,10 +7,13 @@ const [page, assistant] = await Promise.all([
   readFile(new URL("../app/MarkupAssistantStudio.tsx", import.meta.url), "utf8"),
 ]);
 
-test("exposes one consistently named Plan Check route", () => {
-  assert.match(page, /id: "check",\s*label: "Plan Check"/);
-  assert.match(page, /id: "markup-assistant",\s*label: "Open Plan Check"/);
-  assert.match(page, /planCheckCount=\{planCheckCount\}/);
+test("exposes one consistently named Connection Check route", () => {
+  assert.match(page, /id: "check",\s*label: "Connection Check"/);
+  assert.match(page, /id: "connection-check",\s*label: "Open Connection Check"/);
+  assert.match(page, /aria-label="Connection Check"/);
+  assert.match(page, /T Branch not connected/);
+  assert.match(page, /Supply not connected/);
+  assert.match(page, /Return not connected/);
   assert.match(page, /onOpenPlanCheck=\{\(\) => \{/);
   assert.doesNotMatch(page, /label: "Fix Problems"/);
   assert.doesNotMatch(page, />Problems<\/button>/);
@@ -20,9 +23,10 @@ test("exposes one consistently named Plan Check route", () => {
   assert.doesNotMatch(page, /setRightTab\("checks"\)/);
   assert.doesNotMatch(page, /className="builder-current-step-summary"/);
   assert.doesNotMatch(page, /className="markup-assistant-launch"/);
+  assert.doesNotMatch(page, /<PlanCheckStrip/);
 });
 
-test("issue routes retain their exact finding and drawing focus in Plan Check", () => {
+test("legacy analysis remains isolated from the visible Connection Check", () => {
   assert.match(
     page,
     /const recommendation = markupRecommendations\.find\(\(candidate\) =>\s*candidate\.findingId === issue\.id/,
@@ -37,6 +41,7 @@ test("issue routes retain their exact finding and drawing focus in Plan Check", 
   assert.match(page, /key=\{`plan-helper:\$\{assistantFocusedRecommendationId \|\| "general"\}`\}/);
   assert.match(assistant, /focusedRecommendationId\?: string/);
   assert.match(assistant, /setActiveFixId\(focusedFixAction\?\.id \|\| ""\)/);
+  assert.match(page, /\{false && mountMarkupAssistantStudio && <MarkupAssistantStudio/);
 });
 
 test("Show where uses a semantic occluder and one focus path for immediate and cross-page focus", () => {
