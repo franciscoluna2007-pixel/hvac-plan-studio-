@@ -1,6 +1,6 @@
 # Rigid Duct Phase 2B: Direct Outlet Continuation
 
-Status: implemented and verified for the approved Phase 2 GitHub merge. Sites deployment is outside this release scope.
+Status: merged through PR [#68](https://github.com/franciscoluna2007-pixel/hvac-plan-studio-/pull/68) in `57c5d7d9c5fcbc17f361adf8b0de840fc498a742`. No Sites deployment was performed for this GitHub-only release.
 
 ## Interaction contract
 
