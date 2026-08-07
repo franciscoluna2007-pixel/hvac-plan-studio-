@@ -601,7 +601,7 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .branch-fitting:active { cursor: grabbing; }
 .branch-fitting > path { fill: none; stroke: var(--yellow); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; filter: drop-shadow(0 1px 1px #0009); }
 .branch-fitting .fitting-leg { transition: stroke-width .16s ease; }
-.branch-fitting .fitting-leg.overloaded { stroke: #ef4444; filter: drop-shadow(0 0 3px #ef4444); }
+.branch-fitting .fitting-leg.warning { stroke: #ef4444; filter: drop-shadow(0 0 3px #ef4444); }
 .branch-fitting .fitting-flow-arrow { fill: none; stroke: #fff8d1; stroke-width: 1.8; filter: none; }
 .branch-fitting .fitting-hit {
   fill: none;
@@ -24339,5 +24339,1222 @@ footer {
     align-items: stretch;
     flex-direction: row;
     justify-content: space-between;
+  }
+}
+
+/* First-value Project Home improvements. The plan canvas, HVAC paint order,
+   and drawing controls remain unchanged. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .home-sample-button {
+  min-height: 42px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--material-blue);
+  border: 1px solid var(--material-blue-line);
+  border-radius: 8px;
+  background: var(--material-blue-soft);
+  font-size: 12px;
+  font-weight: 720;
+  letter-spacing: -.01em;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .home-sample-button:hover:not(:disabled) {
+  color: #fff;
+  border-color: var(--material-blue);
+  background: var(--material-blue);
+  box-shadow: 0 4px 12px rgb(0 47 167 / 16%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-empty p {
+  max-width: 64ch;
+  color: var(--material-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+@media (max-width: 640px) {
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-primary-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .project-home-primary-actions .home-primary {
+    grid-column: auto;
+  }
+}
+
+/* System Balancing readability. This is presentation-only: airflow math,
+   plan geometry, fitting colors, and saved data remain unchanged. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace {
+  --balance-readable-ink: #f4f7f8;
+  --balance-readable-support: #c7d1d6;
+  --balance-readable-muted: #afbdc4;
+  --balance-readable-line: #43545e;
+  --balance-readable-panel: #15212a;
+  --balance-readable-recessed: #0d171e;
+  color: var(--balance-readable-ink);
+  background: #0a1319;
+  font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace :is(p, li) {
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace :is(small, label, em) {
+  color: var(--balance-readable-support);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace :is(strong, b, dd) {
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace button,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace input:not([type="checkbox"]),
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace select {
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace :is(button, input, select):focus-visible {
+  outline: 3px solid var(--material-blue);
+  outline-offset: 2px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace-header {
+  min-height: 72px;
+  padding: 14px 16px;
+  border-color: var(--balance-readable-line);
+  background: #111e26;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 34%);
+  backdrop-filter: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace-header strong {
+  color: var(--balance-readable-ink);
+  font-size: 16px;
+  letter-spacing: .02em;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace-header small {
+  margin-top: 4px;
+  color: var(--balance-readable-support);
+  font-size: 14px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace-header .check-pill {
+  min-width: 72px;
+  padding: 8px 10px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace-header .check-pill.warning {
+  color: #ffe09a;
+  background: #392b13;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace-header .check-pill.clear {
+  color: #b8edcf;
+  background: #173b2d;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-view-tabs {
+  padding: 10px 12px;
+  gap: 8px;
+  border-color: var(--balance-readable-line);
+  background: #0f1a21;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-view-tabs button {
+  min-height: 44px;
+  color: var(--balance-readable-support);
+  border-color: #4b5e68;
+  background: #17232b;
+  font-size: 15px;
+  text-transform: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-view-tabs button.active {
+  color: #fff;
+  border-color: var(--material-blue);
+  background: var(--material-blue);
+  box-shadow: 0 4px 12px rgb(0 47 167 / 24%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-hero {
+  margin: 12px;
+  padding: 16px;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 12px;
+  border-color: #526872;
+  border-radius: 10px;
+  background: var(--balance-readable-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-hero > span {
+  width: 44px;
+  height: 44px;
+  color: #fff;
+  border-radius: 8px;
+  background: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-hero small {
+  color: var(--balance-readable-support);
+  font-size: 14px;
+  letter-spacing: .04em;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-hero strong {
+  margin-top: 3px;
+  color: #fff;
+  font: 700 24px/1.15 var(--font-geist-mono), monospace;
+  letter-spacing: -.02em;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-hero p {
+  max-width: 65ch;
+  margin-top: 5px;
+  color: var(--balance-readable-support);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-hero button {
+  min-height: 44px;
+  padding: 0 14px;
+  color: #fff;
+  border-color: #66808d;
+  background: #1c2c35;
+  font-size: 14px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-grid {
+  margin: 0 12px 10px;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--balance-readable-line);
+  border-radius: 10px;
+  background: var(--balance-readable-recessed);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-grid > div {
+  min-height: 94px;
+  padding: 14px;
+  border: 0;
+  border-right: 1px solid var(--balance-readable-line);
+  border-bottom: 1px solid var(--balance-readable-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-grid > div:nth-child(2n) {
+  border-right: 0;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-grid > div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-grid > div.good {
+  background: #11231c;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-grid > div.attention {
+  background: #2a2112;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-grid span {
+  color: var(--balance-readable-support);
+  font-size: 14px;
+  line-height: 1.3;
+  text-transform: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-grid strong {
+  margin-top: 7px;
+  color: #fff;
+  font: 700 22px/1.1 var(--font-geist-mono), monospace;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-grid small {
+  margin-top: 6px;
+  color: var(--balance-readable-support);
+  font-size: 14px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-capacity-note {
+  margin: 0 12px 10px;
+  padding: 12px 14px;
+  gap: 8px;
+  border-color: var(--balance-readable-line);
+  border-radius: 8px;
+  background: #111d25;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-capacity-note b,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-capacity-note span {
+  color: var(--balance-readable-support);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-capacity-note b {
+  color: var(--balance-readable-ink);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-fitting-legend {
+  margin: 0 12px 10px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: auto 1fr 1.25fr;
+  align-items: center;
+  gap: 10px 14px;
+  color: var(--balance-readable-support);
+  border: 1px solid var(--balance-readable-line);
+  border-radius: 8px;
+  background: #131d24;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-fitting-legend > strong {
+  color: var(--balance-readable-ink);
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-fitting-legend > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-fitting-legend i {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border: 2px solid #fff;
+  border-radius: 3px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-fitting-legend i.normal {
+  background: #f5c543;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-fitting-legend i.review {
+  background: #ef5350;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-fitting-legend > p {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding-top: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #ffe09a;
+  border-top: 1px solid var(--balance-readable-line);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-fitting-legend > p svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-balance-list {
+  padding: 4px 12px 10px;
+  gap: 10px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-balance-card {
+  padding: 0;
+  overflow: hidden;
+  border-color: #80672d;
+  border-radius: 10px;
+  background: var(--balance-readable-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-balance-card.balanced {
+  border-color: #397459;
+  background: var(--balance-readable-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-unit-heading {
+  min-height: 64px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--balance-readable-line);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-unit-heading strong {
+  color: var(--balance-readable-ink);
+  font-size: 16px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-unit-heading small {
+  margin-top: 5px;
+  color: var(--balance-readable-support);
+  font-size: 14px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-unit-heading b {
+  padding: 7px 9px;
+  color: #ffe09a;
+  background: #3a2c14;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-balance-card.balanced .network-unit-heading b {
+  color: #b8edcf;
+  background: #173b2d;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-airflow-grid {
+  margin-top: 0;
+  gap: 0;
+  border-bottom: 1px solid var(--balance-readable-line);
+  background: var(--balance-readable-recessed);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-airflow-grid div {
+  min-height: 78px;
+  padding: 12px 14px;
+  border: 0;
+  border-right: 1px solid var(--balance-readable-line);
+  border-bottom: 1px solid var(--balance-readable-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-airflow-grid div:nth-child(2n) {
+  border-right: 0;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-airflow-grid div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-airflow-grid div.good {
+  background: #11231c;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-airflow-grid div.attention {
+  background: #2a2112;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-airflow-grid span {
+  color: var(--balance-readable-support);
+  font-size: 14px;
+  letter-spacing: 0;
+  line-height: 1.3;
+  text-transform: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-airflow-grid strong {
+  margin-top: 7px;
+  color: #fff;
+  font: 700 20px/1.1 var(--font-geist-mono), monospace;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-progress {
+  height: 30px;
+  margin: 12px 14px 0;
+  border: 1px solid #4a5c66;
+  border-radius: 6px;
+  background: #071117;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-progress i {
+  background: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-progress span {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-problem-grid {
+  margin: 10px 14px 14px;
+  gap: 8px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-problem-grid span {
+  min-height: 44px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-problem-grid span.clear {
+  color: #b8edcf;
+  border-color: #315f49;
+  background: #142b21;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-problem-grid span.warning {
+  color: #ffe09a;
+  border-color: #80662d;
+  background: #342812;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-problem-action {
+  height: auto;
+  min-height: 44px;
+  margin: 0 14px 14px;
+  color: #ffe09a;
+  border-color: #80662d;
+  background: #342812;
+  font-size: 14px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace-note {
+  margin: 10px 12px 0;
+  padding: 12px 14px;
+  color: var(--balance-readable-support);
+  border-color: var(--balance-readable-line);
+  border-radius: 8px;
+  background: #111b22;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-toolbar {
+  padding: 12px 12px 4px;
+  gap: 8px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-toolbar button,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .cfm-review-actions button,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .progression-summary button {
+  min-height: 44px;
+  color: #fff;
+  border-color: #5b707b;
+  background: #1a2a33;
+  font-size: 14px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .room-summary-grid.balance-summary div {
+  min-height: 80px;
+  padding: 12px;
+  border-color: var(--balance-readable-line);
+  background: var(--balance-readable-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .room-summary-grid.balance-summary span {
+  color: var(--balance-readable-support);
+  font-size: 14px;
+  text-transform: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .room-summary-grid.balance-summary strong {
+  margin-top: 6px;
+  color: #fff;
+  font: 700 20px/1.1 var(--font-geist-mono), monospace;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-card {
+  padding: 14px;
+  border-color: var(--balance-readable-line);
+  border-radius: 10px;
+  background: var(--balance-readable-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-card.needs-return {
+  border-color: #80662d;
+  background: #292113;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-heading strong,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .cfm-review-heading strong,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-run-row strong,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .progression-summary strong {
+  color: var(--balance-readable-ink);
+  font-size: 16px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-heading small,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .cfm-review-heading small,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-run-row small,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .progression-summary small {
+  margin-top: 5px;
+  color: var(--balance-readable-support);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-heading button {
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-current {
+  margin-top: 12px;
+  gap: 8px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-current > span {
+  min-height: 96px;
+  padding: 12px;
+  background: var(--balance-readable-recessed);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-current small,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-current em {
+  font-size: 14px;
+  line-height: 1.4;
+  text-transform: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-current b {
+  margin-top: 6px;
+  color: #fff;
+  font: 700 18px/1.15 var(--font-geist-mono), monospace;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-targets {
+  margin-top: 12px;
+  gap: 8px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-targets label {
+  color: var(--balance-readable-support);
+  font-size: 14px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-targets input,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-targets select {
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0 10px;
+  color: #fff;
+  border-color: #5b6d76;
+  background: #0b151b;
+  font-size: 16px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-card > p {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .cfm-review-tray {
+  padding: 14px;
+  border-color: #536873;
+  background: #101d25;
+  backdrop-filter: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .cfm-review-heading > b {
+  color: #fff;
+  font: 700 18px/1 var(--font-geist-mono), monospace;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .cfm-proposal-list > div {
+  min-height: 64px;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .cfm-proposal-list strong {
+  color: var(--balance-readable-ink);
+  font-size: 16px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .cfm-proposal-list small {
+  margin-top: 5px;
+  color: var(--balance-readable-support);
+  font-size: 14px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .cfm-proposal-list button > b {
+  color: #fff;
+  font: 700 16px/1.2 var(--font-geist-mono), monospace;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .cfm-review-clear {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.apply-cfm-proposals, .balance-apply-sizes) {
+  min-height: 48px;
+  color: #fff;
+  border: 1px solid var(--material-blue);
+  background: var(--material-blue);
+  font-size: 14px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.apply-cfm-proposals, .balance-apply-sizes):disabled {
+  color: #aab8bf;
+  border-color: #455761;
+  background: #1a2931;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .run-review-rules {
+  margin: 10px 12px;
+  gap: 8px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .run-review-rules span {
+  min-height: 72px;
+  padding: 10px;
+  color: var(--balance-readable-support);
+  border-color: var(--balance-readable-line);
+  background: var(--balance-readable-panel);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .run-review-rules b {
+  margin-bottom: 5px;
+  color: #fff;
+  font: 700 18px/1.1 var(--font-geist-mono), monospace;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-run-list {
+  border-color: var(--balance-readable-line);
+  border-radius: 9px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-run-row {
+  min-height: 76px;
+  padding: 10px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 8px;
+  border-color: var(--balance-readable-line);
+  background: var(--balance-readable-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-run-row button > b {
+  color: #fff;
+  font: 700 18px/1.1 var(--font-geist-mono), monospace;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-run-row > p {
+  margin-top: 6px;
+  color: #ffb5b8;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .progression-summary {
+  margin: 10px 12px;
+  padding: 14px;
+  gap: 12px;
+  border-color: #397459;
+  border-radius: 9px;
+  background: #13271e;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .progression-summary.attention {
+  border-color: #80662d;
+  background: #2b2112;
+}
+
+@media (max-width: 700px) {
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-hero {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-hero button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-fitting-legend {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-fitting-legend > strong,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-fitting-legend > p {
+    grid-column: auto;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-targets,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-room-current {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .progression-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 440px) {
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-grid,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-airflow-grid,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .run-review-rules {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-grid > div,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-airflow-grid div {
+    border-right: 0;
+    border-bottom: 1px solid var(--balance-readable-line);
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-grid > div:last-child,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .network-airflow-grid div:last-child {
+    border-bottom: 0;
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .network-balance-list,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-grid,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-system-hero,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-capacity-note,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-fitting-legend,
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace-note {
+    margin-inline: 8px;
+  }
+}
+
+/* Local operational-panel refinement: wider desktop work trays, quiet light
+   reading surfaces, and selection controls that never cover plan geometry. */
+@media (min-width: 1101px) {
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode) > .workspace {
+    grid-template-columns: clamp(300px, 22vw, 328px) minmax(520px, 1fr) clamp(300px, 22vw, 328px);
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode).left-closed > .workspace {
+    grid-template-columns: minmax(560px, 1fr) clamp(300px, 22vw, 328px);
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode).right-closed > .workspace {
+    grid-template-columns: clamp(300px, 22vw, 328px) minmax(560px, 1fr);
+  }
+
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"]:not(.field-mode).wide-inspector > .workspace {
+    grid-template-columns: clamp(300px, 22vw, 320px) minmax(500px, 1fr) clamp(320px, 23vw, 340px);
+  }
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.left-panel, .right-panel) {
+  --operational-ink: #202823;
+  --operational-muted: #4e5952;
+  --operational-line: #cbd1cd;
+  --operational-shell: #edf0ee;
+  --operational-panel: #fff;
+  color: var(--operational-ink);
+  background: var(--operational-shell);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.left-panel, .right-panel) :is(
+  .panel-section,
+  .smart-can-editor,
+  .symbol-resize-control,
+  .fitting-properties,
+  .network-trace-summary,
+  .run-connection-card,
+  .network-system-overview,
+  .system-schedule,
+  .layer-controls,
+  .layer-row,
+  .plan-summary,
+  .status-card,
+  .materials-summary,
+  .takeoff-summary
+) {
+  color: var(--operational-ink);
+  border-color: var(--operational-line);
+  background: var(--operational-panel);
+  background-image: none;
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.left-panel, .right-panel) :is(p, li, label) {
+  color: var(--operational-ink);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.left-panel, .right-panel) :is(small, em, dt, .supporting-copy) {
+  color: var(--operational-muted);
+  font-size: 14px !important;
+  line-height: 1.5;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.left-panel, .right-panel) :is(input, select, textarea) {
+  min-height: 40px;
+  color: var(--operational-ink);
+  border-color: var(--operational-line);
+  background: var(--operational-panel);
+  font-size: 15px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.left-panel, .right-panel) button {
+  color: var(--operational-ink);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-tabs {
+  min-height: 54px;
+  height: auto;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  overflow: hidden;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-tabs .right-tablist button {
+  min-width: 0;
+  min-height: 54px;
+  padding-inline: 4px;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .right-tabs .right-collapse {
+  min-width: 44px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .selected-object-status {
+  margin: 8px 10px 10px;
+  padding: 10px 11px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  color: var(--operational-ink);
+  border: 1px solid var(--material-blue-line);
+  background: var(--material-blue-soft);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .selected-object-status > span {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  border-radius: 50%;
+  background: var(--material-blue);
+  font-weight: 800;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .selected-object-status :is(strong, small) {
+  display: block;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .selected-object-status strong {
+  color: var(--operational-ink);
+  font-size: 15px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fitting-rotation-inspector {
+  margin-top: 9px;
+  padding: 11px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  border: 1px solid var(--operational-line);
+  background: var(--operational-panel);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fitting-rotation-inspector :is(span, strong, small) {
+  display: block;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fitting-rotation-inspector span {
+  color: var(--operational-muted);
+  font-size: 14px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fitting-rotation-inspector strong {
+  margin-top: 3px;
+  color: var(--operational-ink);
+  font: 700 20px/1.2 var(--font-geist-mono), monospace;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fitting-rotation-inspector > div:last-of-type {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fitting-rotation-inspector button {
+  min-width: 54px;
+  min-height: 44px;
+  border: 1px solid var(--material-blue-line);
+  background: var(--material-blue-soft);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .fitting-rotation-inspector small {
+  grid-column: 1 / -1;
+}
+
+/* Normal selection is a close-fitting cobalt focus cue. It does not change
+   line weight or add bounds, resize handles, rotation rings, or point grips. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .selected-drawing .duct-line {
+  stroke-width: inherit;
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 2px var(--material-blue));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .selected-fitting .fitting-leg,
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .selected-symbol .symbol-visual {
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 2px var(--material-blue));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] [data-plan-drawing-id]:focus-visible :is(.duct-line, .fitting-leg, .symbol-visual) {
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 3px var(--material-blue));
+}
+
+/* Port dots sit on the true fitting tips but remain passive until the fitting
+   is hovered, keyboard-focused, or selected. Warning legs remain visible. */
+.branch-fitting .status-port {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.branch-fitting .status-port .fitting-port {
+  transform: scale(.78);
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 120ms ease;
+}
+
+.branch-fitting:is(:hover, :focus-visible, .selected-fitting) .status-port {
+  opacity: 1;
+}
+
+.branch-fitting:is(:hover, :focus-visible, .selected-fitting) .status-port .fitting-port {
+  transform: scale(1);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .selected-fitting .fitting-leg.warning {
+  filter: drop-shadow(0 0 3px #ef4444);
+}
+
+/* The single selected-object control adapts from a radial wheel to a bounded
+   strip when a full wheel cannot clear the object or viewport edge. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .symbol-action-wheel {
+  filter: drop-shadow(0 10px 22px rgb(32 40 35 / 18%));
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .symbol-action-wheel::before {
+  border-color: var(--material-line);
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 4px 14px rgb(32 40 35 / 12%);
+  backdrop-filter: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .symbol-action-wheel-caption {
+  color: var(--material-blue);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .symbol-wheel-action {
+  color: var(--material-ink);
+  border-color: var(--material-line);
+  border-radius: 8px;
+  background: var(--material-panel);
+  box-shadow: 0 2px 7px rgb(32 40 35 / 12%);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .symbol-wheel-action:is(:hover, :focus-visible, .active) {
+  color: #fff;
+  border-color: var(--material-blue);
+  background: var(--material-blue);
+}
+
+.symbol-action-wheel.compact-strip {
+  width: min(440px, calc(100% - 24px));
+  height: auto;
+  min-height: 76px;
+  max-height: 124px;
+  padding: 28px 6px 6px;
+  display: flex;
+  align-content: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  pointer-events: auto;
+  overflow: hidden;
+  border: 1px solid var(--material-line, #cbd1cd);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 97%);
+}
+
+.symbol-action-wheel.compact-strip::before {
+  display: none;
+}
+
+.symbol-action-wheel.compact-strip .symbol-action-wheel-caption {
+  top: 8px;
+}
+
+.symbol-action-wheel.compact-strip .symbol-wheel-action {
+  position: static;
+  flex: 1 1 44px;
+  max-width: 58px;
+  width: auto;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 3px 2px;
+  transform: none;
+}
+
+.symbol-action-wheel.compact-strip .symbol-wheel-action small {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Light Material reading surface for System Balancing. Semantic states retain
+   their warning/connected colors through text, icon, and restrained tint. */
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace {
+  --balance-readable-ink: #202823;
+  --balance-readable-support: #465149;
+  --balance-readable-muted: #59655d;
+  --balance-readable-line: #c7cfca;
+  --balance-readable-panel: #fff;
+  --balance-readable-recessed: #f1f3f2;
+  color: var(--balance-readable-ink);
+  background: var(--material-shell);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace :is(
+  .balance-workspace-header,
+  .balance-view-tabs,
+  .balance-system-hero,
+  .balance-system-grid,
+  .balance-fitting-legend,
+  .network-balance-card,
+  .network-airflow-grid,
+  .balance-workspace-note,
+  .room-summary-grid.balance-summary div,
+  .balance-room-card,
+  .cfm-review-tray,
+  .run-review-rules span,
+  .balance-run-row
+) {
+  color: var(--balance-readable-ink);
+  border-color: var(--balance-readable-line);
+  background: var(--balance-readable-panel);
+  background-image: none;
+  box-shadow: none;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace :is(
+  .balance-system-hero strong,
+  .balance-system-grid strong,
+  .network-airflow-grid strong,
+  .room-summary-grid.balance-summary strong,
+  .balance-room-current b,
+  .run-review-rules b,
+  .balance-run-row button > b,
+  .cfm-review-heading > b
+) {
+  color: var(--balance-readable-ink);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace :is(input, select) {
+  color: var(--balance-readable-ink);
+  border-color: var(--balance-readable-line);
+  background: #fff;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .balance-view-tabs button:not(.active) {
+  color: var(--balance-readable-ink);
+  border-color: var(--balance-readable-line);
+  background: var(--balance-readable-recessed);
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .balance-system-hero button:disabled {
+  opacity: 1;
+  color: #465149;
+  border-color: #aeb8b1;
+  background: #e3e7e4;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .balance-system-grid > div {
+  color: var(--balance-readable-ink);
+  background: #fff;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .balance-system-grid > div.good {
+  color: #1d5a3f;
+  background: #edf7f1;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .balance-system-grid > div.attention {
+  color: #6a4a00;
+  background: #fff8e7;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace .balance-system-grid > div :is(span, small) {
+  color: currentColor;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace :is(
+  .network-airflow-grid div.good,
+  .network-problem-grid span.clear,
+  .balance-room-card.balanced,
+  .progression-summary
+) {
+  color: #1d5a3f;
+  border-color: #75a78e;
+  background: #edf7f1;
+}
+
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .balance-workspace :is(
+  .network-airflow-grid div.attention,
+  .network-problem-grid span.warning,
+  .balance-room-card.needs-return,
+  .progression-summary.attention,
+  .network-problem-action
+) {
+  color: #6a4a00;
+  border-color: #c5a85d;
+  background: #fff8e7;
+}
+
+@media (pointer: coarse) {
+  .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.left-panel, .right-panel) :is(button, input, select, textarea),
+  .symbol-action-wheel.compact-strip .symbol-wheel-action {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .branch-fitting .status-port,
+  .branch-fitting .status-port .fitting-port {
+    transition: none;
+  }
+}
+
+@media print {
+  .branch-fitting :is(.status-port, .detailed-port),
+  .selected-object-status,
+  .fitting-rotation-inspector {
+    display: none !important;
+  }
+
+  .selected-drawing .duct-line,
+  .selected-fitting .fitting-leg,
+  .selected-symbol .symbol-visual {
+    filter: none !important;
   }
 }

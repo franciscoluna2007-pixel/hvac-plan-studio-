@@ -13,17 +13,19 @@ const [page, editing, wheel, styles, layout, analytics, readme, roadmap] = await
   readFile(new URL("../ROADMAP.md", import.meta.url), "utf8"),
 ]);
 
-test("v127 permits genuinely compact icons and labels without changing legacy fallback", () => {
+test("v127 permits compact icons while ordinary selection stays unobstructed", () => {
   assert.match(editing, /MIN_SYMBOL_SCALE = 0\.2/);
   assert.match(editing, /MIN_SYMBOL_LABEL_SCALE = 0\.3/);
   assert.match(editing, /DEFAULT_TERMINAL_SYMBOL_SCALE = 0\.35/);
   assert.match(editing, /DEFAULT_TERMINAL_LABEL_SCALE = 0\.4/);
   assert.match(editing, /finiteNumber\(value, 1\)/);
 
-  assert.match(page, /const visibleHandleSize = 9 \/ Math\.max\(\.25, zoom\)/);
-  assert.match(page, /const resizeHitRadius = 22 \/ Math\.max\(\.25, zoom\)/);
-  assert.match(page, /const labelHitRadius = 22 \/ Math\.max\(\.25, zoom\)/);
+  assert.doesNotMatch(page, /const visibleHandleSize =/);
+  assert.doesNotMatch(page, /const resizeHitRadius =/);
+  assert.doesNotMatch(page, /const labelHitRadius =/);
   assert.match(page, /className="symbol-direct-hit"/);
+  assert.doesNotMatch(page, /className="symbol-resize-outline"/);
+  assert.doesNotMatch(page, /className="symbol-label-outline"/);
   assert.match(styles, /\.symbol-direct-hit \{[^}]*pointer-events: all/);
   assert.match(styles, /paint-order: stroke fill/);
 });

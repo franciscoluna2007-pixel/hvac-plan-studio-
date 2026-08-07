@@ -73,16 +73,34 @@ test("return T Branch press-drag-release splits once, rotates connected, and Und
   await expect(fitting.locator(".disconnected-port")).toHaveCount(1);
   await expect(page.locator('g[aria-label$="supply duct run"]:has(> path.hit-line)')).toHaveCount(0);
 
+  const fittingStroke = Number.parseFloat(await fitting.locator("path.fitting-leg").first().evaluate((leg) => getComputedStyle(leg).strokeWidth));
+  const runStroke = Number.parseFloat(await returnRuns.first().locator("path.duct-line").evaluate((run) => getComputedStyle(run).strokeWidth));
+  expect(fittingStroke).toBeGreaterThanOrEqual(runStroke * 1.2);
+  expect(fittingStroke).toBeLessThanOrEqual(runStroke * 1.25);
+
   await page.keyboard.press("Escape");
   await page.keyboard.press("v");
+  await page.mouse.move(8, 8);
+  const ports = fitting.locator(".status-port");
+  await expect(ports).toHaveCount(3);
+  await expect(ports.first()).toHaveCSS("opacity", "0");
+  await expect(fitting.locator("path.fitting-leg.warning")).toHaveCount(1);
+  await expect(fitting.locator("path.fitting-leg.warning")).toHaveCSS("stroke", "rgb(239, 68, 68)");
+  await fitting.hover();
+  await expect(ports.first()).toHaveCSS("opacity", "1");
+  await page.mouse.move(8, 8);
+  await expect(ports.first()).toHaveCSS("opacity", "0");
+
   await fitting.focus();
+  await expect(ports.first()).toHaveCSS("opacity", "1");
   const legBeforeRotation = await fitting.locator("path.fitting-leg").nth(2).getAttribute("d");
-  const handle = fitting.locator(".rotation-handle-hit");
-  const handleCenter = await centerOf(handle);
-  await page.mouse.move(handleCenter.x, handleCenter.y);
-  await page.mouse.down();
-  await page.mouse.move(handleCenter.x + 55, handleCenter.y - 34, { steps: 6 });
-  await page.mouse.up();
+  await page
+    .getByRole("navigation", { name: "Plan workflow" })
+    .getByRole("button", { name: /^(Selected|Edit the selected object)$/ })
+    .click();
+  const rotation = page.locator(".fitting-rotation-inspector");
+  await expect(rotation).toBeVisible();
+  await rotation.getByRole("button", { name: "+15°" }).click();
   await expect(fitting.locator("path.fitting-leg").nth(2)).not.toHaveAttribute("d", legBeforeRotation || "");
   await expect(fitting.locator(".connected-port")).toHaveCount(2);
 
@@ -90,6 +108,10 @@ test("return T Branch press-drag-release splits once, rotates connected, and Und
   await expect(fitting.locator("path.fitting-leg").nth(2)).toHaveAttribute("d", legBeforeRotation || "");
   await expect(returnRuns).toHaveCount(2);
   await expect(fitting.locator(".connected-port")).toHaveCount(2);
+
+  await page.emulateMedia({ media: "print" });
+  await expect(ports.first()).toBeHidden();
+  await page.emulateMedia({ media: "screen" });
 
   await page.locator(".canvas-edit-actions").getByRole("button", { name: "Undo", exact: true }).click();
   await expect(returnRuns).toHaveCount(1);

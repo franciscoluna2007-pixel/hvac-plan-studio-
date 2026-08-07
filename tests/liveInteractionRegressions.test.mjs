@@ -62,7 +62,7 @@ test("T Branch release commits once in capture phase and exits the pointer trans
 test("Copy and repeated Paste stay visible whenever a movable selection is active", () => {
   assert.match(
     page,
-    /selectedId && planSelectionActionsVisible && <div className="field-context-toolbar"/,
+    /selectedId && planSelectionActionsVisible && !selectedContextWheelVisible && <div className="field-context-toolbar"/,
   );
   assert.match(page, /className="copy-primary"[\s\S]*?Copy &amp; paste/);
   assert.match(page, /Placed · move and click again · Esc or right-click finishes/);

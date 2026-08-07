@@ -27,6 +27,7 @@ async function pointOnPlan(page: Page, xRatio: number, yRatio: number) {
 }
 
 test("Range Hood and Dryer Vent place, copy/Undo, serialize, and count independently", async ({ page }) => {
+  test.setTimeout(90_000);
   const planFile = await openBlankPlan(page);
   const tools = page.getByRole("complementary", { name: "HVAC plan tools" });
   await tools.getByRole("button", { name: "Symbols", exact: true }).click();

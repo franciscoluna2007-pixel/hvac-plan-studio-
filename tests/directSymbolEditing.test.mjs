@@ -10,7 +10,7 @@ const [page, layout, styles, readme, roadmap] = await Promise.all([
   readFile(new URL("../ROADMAP.md", import.meta.url), "utf8"),
 ]);
 
-test("v126 supports direct icon and label editing beside the selected symbol", () => {
+test("v126 editing remains available through direct drag and Selected properties", () => {
   assert.match(page, /labelOffset\?: Point/);
   assert.match(page, /labelScale\?: number/);
   assert.match(page, /\{ kind: "symbol-label";[\s\S]*?originalOffset: Point/);
@@ -26,11 +26,13 @@ test("v126 supports direct icon and label editing beside the selected symbol", (
 
   assert.match(page, /PLAN ICON SIZE/);
   assert.match(page, /LABEL POSITION &amp; SIZE/);
-  assert.match(page, /Drag a blue corner directly on the icon/);
+  assert.match(page, /Use Smaller or Larger for precise plan-icon sizing without covering the drawing/);
   assert.match(page, /Drag the label beside the icon/);
   assert.match(page, /import SymbolActionWheel from "\.\/PlanSymbolActionWheel"/);
   assert.match(page, /positionSymbolActionWheel\(\{/);
   assert.match(page, /<SymbolActionWheel[\s\S]*?x=\{selectedSymbolWheel\.center\.x\}[\s\S]*?y=\{selectedSymbolWheel\.center\.y\}/);
+  assert.doesNotMatch(page, /className=\{`symbol-resize-handle/);
+  assert.doesNotMatch(page, /className="rotation-ring"/);
   assert.match(styles, /\.symbol-action-wheel\s*\{/);
   assert.match(styles, /\.symbol-wheel-action/);
 });

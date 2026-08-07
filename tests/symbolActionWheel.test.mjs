@@ -189,7 +189,7 @@ test("preserves rectangle clearance when the perpendicular axis is clamped", () 
   assertClearsBounds(position, avoidBounds);
 });
 
-test("hides when no cardinal placement can clear the selected visual bounds", () => {
+test("uses a bounded compact strip when no radial placement can clear the selected visual bounds", () => {
   const position = positionSymbolActionWheel(input({
     anchor: { x: 300, y: 200 },
     avoidBounds: {
@@ -201,28 +201,32 @@ test("hides when no cardinal placement can clear the selected visual bounds", ()
     viewport: { width: 600, height: 400 },
   }));
 
-  assert.equal(position.hidden, true);
+  assert.equal(position.hidden, false);
+  assert.equal(position.layout, "strip");
+  assert.ok(position.center.x >= position.inset);
+  assert.ok(position.center.y >= position.inset);
   assertFinite(position);
 });
 
-test("rejects malformed visual bounds without returning invalid coordinates", () => {
+test("falls back to a finite compact strip for malformed visual bounds", () => {
   for (const avoidBounds of [
     { left: Number.NaN, top: 20, width: 40, height: 40 },
     { left: 20, top: 20, width: -1, height: 40 },
     { left: 20, top: Number.POSITIVE_INFINITY, width: 40, height: 40 },
   ]) {
     const position = positionSymbolActionWheel(input({ avoidBounds }));
-    assert.equal(position.hidden, true);
+    assert.equal(position.hidden, false);
+    assert.equal(position.layout, "strip");
     assertFinite(position);
   }
 });
 
-test("keeps the wheel nearby and visible for a symbol at maximum workspace zoom", () => {
+test("keeps controls nearby and visible for a symbol at the twelve-times workspace zoom", () => {
   const anchor = { x: 500, y: 350 };
   const position = positionSymbolActionWheel(input({
     anchor,
     objectRadius: 100,
-    zoom: 8,
+    zoom: 12,
     maxObjectRadiusPx: DEFAULT_SYMBOL_ACTION_WHEEL_OBJECT_RADIUS_CAP_PX,
   }));
 
@@ -242,7 +246,7 @@ test("clamps a near-corner wheel to the twelve-pixel safe inset", () => {
   assertDoesNotOverlap(position, anchor);
 });
 
-test("hides for offscreen anchors or when no non-overlapping wheel can fit", () => {
+test("hides only for offscreen anchors and uses a strip in constrained viewports", () => {
   const offscreen = positionSymbolActionWheel(input({
     anchor: { x: -1, y: 350 },
   }));
@@ -253,13 +257,15 @@ test("hides for offscreen anchors or when no non-overlapping wheel can fit", () 
     anchor: { x: 90, y: 90 },
     viewport: { width: 180, height: 180 },
   }));
-  assert.equal(tooSmall.hidden, true);
+  assert.equal(tooSmall.hidden, false);
+  assert.equal(tooSmall.layout, "strip");
   assertFinite(tooSmall);
 
   const objectFillsViewport = positionSymbolActionWheel(input({
     objectRadius: 10_000,
   }));
-  assert.equal(objectFillsViewport.hidden, true);
+  assert.equal(objectFillsViewport.hidden, false);
+  assert.equal(objectFillsViewport.layout, "strip");
   assertFinite(objectFillsViewport);
 });
 
