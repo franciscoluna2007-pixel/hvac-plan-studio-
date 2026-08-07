@@ -32,10 +32,10 @@ function sourceBetween(source, start, end) {
   return source.slice(startIndex, endIndex);
 }
 
-test("persists room candidates and application receipts in the version 10 project state", () => {
+test("persists room candidates and application receipts in the version 11 project state", () => {
   assert.match(
     page,
-    /type SavedProject = \{\s*version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9 \| 10;/,
+    /type SavedProject = \{\s*version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9 \| 10 \| 11;/,
   );
   assert.match(page, /roomMarkupCandidatesBySystem\?: Record<string, RoomMarkupCandidate\[\]>/);
   assert.match(page, /roomMarkupApplicationRecords\?: RoomMarkupApplicationRecord\[\]/);
@@ -102,13 +102,13 @@ test("renders and applies the candidate's moved review point", () => {
   assert.match(overlay, /const y = candidate\.reviewPoint\.y \* renderSize\.height;/);
   assert.match(overlay, /transform=\{`translate\(\$\{x\} \$\{y\}\)/);
 
-  const apply = sourceBetween(page, "function applyRoomMarkup(", "function handleDrawingClick(");
+  const apply = sourceBetween(page, "function applyRoomMarkup(", "function currentRigidStraightMeta(");
   assert.match(apply, /x: candidate\.reviewPoint\.x \* renderSize\.width/);
   assert.match(apply, /y: candidate\.reviewPoint\.y \* renderSize\.height/);
 });
 
 test("room apply creates only reviewed supply or dedicated-return terminal symbols", () => {
-  const apply = sourceBetween(page, "function applyRoomMarkup(", "function handleDrawingClick(");
+  const apply = sourceBetween(page, "function applyRoomMarkup(", "function currentRigidStraightMeta(");
   assert.match(apply, /scaleStateForPage\(currentRoom\.page\)\.verified/);
   assert.match(apply, /currentRoom\.systemId !== activeSystem/);
   assert.match(apply, /!roomMarkupEvidenceIsCurrent\(candidate, binding\)/);

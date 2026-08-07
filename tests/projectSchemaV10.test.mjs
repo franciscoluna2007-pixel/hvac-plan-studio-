@@ -28,7 +28,7 @@ test("migrates representative legacy saves without changing their drawings", () 
   }
 });
 
-test("round-trips every Phase 1 rigid construction canonically", () => {
+test("migrates Phase 1 straight duct into canonical v11 topology", () => {
   const drawings = [
     {
       id: "rect-1", type: "rigid", page: 1, points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], size: "wrong",
@@ -42,6 +42,28 @@ test("round-trips every Phase 1 rigid construction canonically", () => {
   const first = migrateSavedProject({ version: 10, fileName: "fixture.pdf", savedAt: "now", drawings });
   assert.equal(first.ok, true);
   assert.deepEqual(first.project.drawings.map((drawing) => drawing.size), ["24×12", "10", "10"]);
+  assert.ok(first.project.drawings.every((drawing) => drawing.rigidTopology?.ports.start.takeoutInches === 0));
+  const second = migrateSavedProject(first.project);
+  assert.equal(second.ok, true);
+  assert.deepEqual(second.project, first.project);
+});
+
+test("round-trips explicit v11 elbow topology and takeouts", () => {
+  const fitting = {
+    id: "elbow-1", type: "rigid-fitting", page: 1, points: [{ x: 100, y: 100 }],
+    rigidFitting: {
+      version: 1, kind: "elbow", networkKind: "supply", construction: "rectangular",
+      size: { shape: "rectangular", widthInches: 24, heightInches: 12 },
+      angleDegrees: 90, turn: "right", rectangularStyle: "radius", inboundAngleDegrees: 0,
+      ports: {
+        inlet: { id: "inlet", takeoutInches: 12, connectedTo: { drawingId: "rect-1", portId: "end" } },
+        outlet: { id: "outlet", takeoutInches: 18 },
+      },
+    },
+  };
+  const first = migrateSavedProject({ version: 11, drawings: [fitting] });
+  assert.equal(first.ok, true);
+  assert.deepEqual(first.project.drawings, [fitting]);
   const second = migrateSavedProject(first.project);
   assert.equal(second.ok, true);
   assert.deepEqual(second.project, first.project);
