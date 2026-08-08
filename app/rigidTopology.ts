@@ -215,6 +215,47 @@ export function rigidFinishedStraightLength(
   };
 }
 
+/**
+ * Returns the fabrication-visible straight span after explicit connected
+ * fitting takeouts. Stored centerline endpoints remain untouched so topology,
+ * Undo/Redo, and finished-length calculations continue to use the same data.
+ */
+export function rigidTakeoutTrimmedStraightPoints(
+  points: readonly RigidPoint[],
+  topologyInput: RigidStraightTopologyV1,
+  feetPerUnit: number,
+): [RigidPoint, RigidPoint] | null {
+  if (
+    points.length !== 2 ||
+    !points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)) ||
+    !Number.isFinite(feetPerUnit) ||
+    feetPerUnit <= 0
+  ) return null;
+  const [start, end] = points;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (!length) return [{ ...start }, { ...end }];
+  const topology = normalizeRigidStraightTopology(topologyInput);
+  const takeoutUnits = (portId: RigidStraightPortId) => {
+    const port = topology.ports[portId];
+    if (!port.connectedTo || port.takeoutInches == null) return 0;
+    return Math.max(0, port.takeoutInches / 12 / feetPerUnit);
+  };
+  const rawStartTrim = takeoutUnits("start");
+  const rawEndTrim = takeoutUnits("end");
+  const rawTotal = rawStartTrim + rawEndTrim;
+  const trimScale = rawTotal > length && rawTotal > 0 ? length / rawTotal : 1;
+  const startTrim = rawStartTrim * trimScale;
+  const endTrim = rawEndTrim * trimScale;
+  const ux = dx / length;
+  const uy = dy / length;
+  return [
+    { x: start.x + ux * startTrim, y: start.y + uy * startTrim },
+    { x: end.x - ux * endTrim, y: end.y - uy * endTrim },
+  ];
+}
+
 function direction(angleDegrees: number) {
   const radians = angleDegrees * Math.PI / 180;
   return { x: Math.cos(radians), y: Math.sin(radians) };

@@ -54,12 +54,13 @@ import {
 } from "./materialOrder";
 import {
   normalizeRigidStraightMeta,
-  rigidCompactPlanWidthUnits,
+  rigidCompactScreenPlanWidthUnits,
   rigidConstructionLabel,
   rigidEdgeLines,
   rigidHorizontalLengthFeet,
   rigidPhysicalWidthInches,
   rigidPlanWidthUnits,
+  rigidRoundBands,
   rigidSizeLabel,
   rigidSpiralSeams,
   type RigidConstruction,
@@ -81,6 +82,7 @@ import {
   projectRigidContinuationPoint,
   rigidElbowGeometry,
   rigidFinishedStraightLength,
+  rigidTakeoutTrimmedStraightPoints,
   rigidStraightHasConnection,
   type RigidElbowMetaV1,
   type RigidExistingConnectionPlan,
@@ -17454,7 +17456,7 @@ function HVACPlanStudioApp() {
                         const geometry = rigidElbowGeometry(drawing.points[0], drawing.rigidFitting, scale.feetPerUnit);
                         const trueWidth = rigidPlanWidthUnits(fittingShape, scale.feetPerUnit);
                         const displayWidth = rigidDisplayMode === "compact"
-                          ? rigidCompactPlanWidthUnits(fittingShape, scale.feetPerUnit)
+                          ? rigidCompactScreenPlanWidthUnits(zoom)
                           : trueWidth;
                         const path = geometry
                           ? drawing.rigidFitting.rectangularStyle === "square"
@@ -17471,8 +17473,11 @@ function HVACPlanStudioApp() {
                           data-rigid-size={rigidSizeLabel(fittingShape)}
                           data-rigid-plan-width={trueWidth.toFixed(4)}
                           data-rigid-display-plan-width={displayWidth.toFixed(4)}
+                          data-rigid-display-screen-width={(displayWidth * zoom).toFixed(3)}
                           data-rigid-display-mode={rigidDisplayMode}
                           data-rigid-vertex={`${drawing.points[0].x.toFixed(3)},${drawing.points[0].y.toFixed(3)}`}
+                          data-rigid-inlet={geometry ? `${geometry.inlet.x.toFixed(3)},${geometry.inlet.y.toFixed(3)}` : undefined}
+                          data-rigid-outlet={geometry ? `${geometry.outlet.x.toFixed(3)},${geometry.outlet.y.toFixed(3)}` : undefined}
                           data-rigid-inlet-connected={Boolean(drawing.rigidFitting.ports.inlet.connectedTo)}
                           data-rigid-outlet-connected={Boolean(drawing.rigidFitting.ports.outlet.connectedTo)}
                           data-rigid-inlet-connection={drawing.rigidFitting.ports.inlet.connectedTo ? `${drawing.rigidFitting.ports.inlet.connectedTo.drawingId}:${drawing.rigidFitting.ports.inlet.connectedTo.portId}` : undefined}
@@ -17517,16 +17522,25 @@ function HVACPlanStudioApp() {
                         const scale = scaleStateForPage(drawing.page);
                         const planWidth = rigidPlanWidthUnits(drawing.rigid, scale.feetPerUnit);
                         const displayPlanWidth = rigidDisplayMode === "compact"
-                          ? rigidCompactPlanWidthUnits(drawing.rigid, scale.feetPerUnit)
+                          ? rigidCompactScreenPlanWidthUnits(zoom)
                           : planWidth;
                         const [start, end] = drawing.points;
-                        const path = `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
-                        const edges = rigidEdgeLines(drawing.points, displayPlanWidth);
+                        const rigidTopology = normalizeRigidStraightTopology(drawing.rigidTopology);
+                        const displayPoints = rigidTakeoutTrimmedStraightPoints(
+                          drawing.points,
+                          rigidTopology,
+                          scale.feetPerUnit,
+                        ) || [start, end];
+                        const [displayStart, displayEnd] = displayPoints;
+                        const path = `M ${displayStart.x} ${displayStart.y} L ${displayEnd.x} ${displayEnd.y}`;
+                        const edges = rigidEdgeLines(displayPoints, displayPlanWidth);
                         const seams = drawing.rigid.construction === "spiral"
-                          ? rigidSpiralSeams(drawing.points, displayPlanWidth)
+                          ? rigidSpiralSeams(displayPoints, displayPlanWidth)
+                          : [];
+                        const roundBands = drawing.rigid.construction === "round-metal"
+                          ? rigidRoundBands(displayPoints, displayPlanWidth)
                           : [];
                         const lengthFeet = rigidHorizontalLengthFeet(drawing.points, scale.feetPerUnit, scale.verified);
-                        const rigidTopology = normalizeRigidStraightTopology(drawing.rigidTopology);
                         const finishedLength = rigidFinishedStraightLength(
                           lengthFeet,
                           rigidTopology,
@@ -17540,8 +17554,11 @@ function HVACPlanStudioApp() {
                           data-rigid-size={rigidSizeLabel(drawing.rigid)}
                           data-rigid-start={`${start.x.toFixed(3)},${start.y.toFixed(3)}`}
                           data-rigid-end={`${end.x.toFixed(3)},${end.y.toFixed(3)}`}
+                          data-rigid-render-start={`${displayStart.x.toFixed(3)},${displayStart.y.toFixed(3)}`}
+                          data-rigid-render-end={`${displayEnd.x.toFixed(3)},${displayEnd.y.toFixed(3)}`}
                           data-rigid-plan-width={planWidth.toFixed(4)}
                           data-rigid-display-plan-width={displayPlanWidth.toFixed(4)}
+                          data-rigid-display-screen-width={(displayPlanWidth * zoom).toFixed(3)}
                           data-rigid-display-mode={rigidDisplayMode}
                           data-rigid-length-feet={lengthFeet?.toFixed(3)}
                           data-rigid-finished-length-feet={finishedLength?.finishedFeet?.toFixed(3)}
@@ -17564,6 +17581,7 @@ function HVACPlanStudioApp() {
                           <path className="rigid-body" d={path} stroke={drawingColors[drawing.rigid.networkKind]} style={{ strokeWidth: displayPlanWidth }} />
                           {edges.map(([a, b], index) => <path className="rigid-edge" d={`M ${a.x} ${a.y} L ${b.x} ${b.y}`} stroke={drawingColors[drawing.rigid!.networkKind]} key={`edge-${index}`} />)}
                           {seams.map(([a, b], index) => <path className="rigid-spiral-seam" d={`M ${a.x} ${a.y} L ${b.x} ${b.y}`} key={`seam-${index}`} />)}
+                          {roundBands.map(([a, b], index) => <path className="rigid-round-band" d={`M ${a.x} ${a.y} L ${b.x} ${b.y}`} key={`round-band-${index}`} />)}
                           <path className="rigid-centerline" d={path} />
                           <path className="rigid-hit" d={path} onPointerDown={isCopyPreview ? undefined : (event) => startLineDrag(event, drawing)} />
                           {drawing.id === selectedId && !isCopyPreview && drawing.points.map((point, index) => <g key={`rigid-end-${index}`}>
@@ -17927,7 +17945,7 @@ function HVACPlanStudioApp() {
                       if (!rigid) return null;
                       const sheetFeetPerUnit = scaleStateForPage(pageNumber).feetPerUnit;
                       const width = rigidDisplayMode === "compact"
-                        ? rigidCompactPlanWidthUnits(rigid, sheetFeetPerUnit)
+                        ? rigidCompactScreenPlanWidthUnits(zoom)
                         : rigidPlanWidthUnits(rigid, sheetFeetPerUnit);
                       const path = `M ${rigidPreview.start.x} ${rigidPreview.start.y} L ${rigidPreview.end.x} ${rigidPreview.end.y}`;
                       return <g className={`rigid-duct rigid-preview rigid-${rigid.construction}`} aria-hidden="true">

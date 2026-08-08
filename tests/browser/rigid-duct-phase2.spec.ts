@@ -71,6 +71,11 @@ test("explicit rigid elbow continues by press-drag-release with reciprocal topol
   await expect(elbow.locator(".rigid-elbow-port-status .open")).toHaveCount(1);
   await expect(straight).toHaveAttribute("data-rigid-length-status", "ready");
   expect(Number(await straight.getAttribute("data-rigid-finished-length-feet"))).toBeCloseTo(centerlineFeet - 1, 2);
+  const storedStraightEnd = await straight.getAttribute("data-rigid-end");
+  const renderedStraightEnd = await straight.getAttribute("data-rigid-render-end");
+  const elbowInlet = await elbow.getAttribute("data-rigid-inlet");
+  expect(renderedStraightEnd).toBe(elbowInlet);
+  expect(renderedStraightEnd).not.toBe(storedStraightEnd);
 
   const originalVertex = await elbow.getAttribute("data-rigid-vertex");
   await page.getByRole("button", { name: "Draw HVAC", exact: true }).click();
@@ -91,8 +96,10 @@ test("explicit rigid elbow continues by press-drag-release with reciprocal topol
   await fittingProperties.getByLabel("Fitting inlet takeout, in").fill("24");
   await fittingProperties.getByLabel("Fitting inlet takeout, in").press("Enter");
   expect(Number(await straight.getAttribute("data-rigid-finished-length-feet"))).toBeCloseTo(centerlineFeet - 2, 2);
+  expect(await straight.getAttribute("data-rigid-render-end")).toBe(await elbow.getAttribute("data-rigid-inlet"));
   await page.locator(".canvas-edit-actions").getByRole("button", { name: "Undo", exact: true }).click();
   expect(Number(await straight.getAttribute("data-rigid-finished-length-feet"))).toBeCloseTo(centerlineFeet - 1, 2);
+  expect(await straight.getAttribute("data-rigid-render-end")).toBe(renderedStraightEnd);
 
   await elbow.focus();
   const continuationHandle = elbow.locator('[data-rigid-continuation-handle="outlet"]');

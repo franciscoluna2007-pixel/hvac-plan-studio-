@@ -541,6 +541,7 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .rigid-edge,
 .rigid-centerline,
 .rigid-spiral-seam,
+.rigid-round-band,
 .rigid-hit { fill: none; }
 .rigid-body { stroke-linecap: butt; opacity: .2; }
 .rigid-round-metal .rigid-body { opacity: .11; }
@@ -564,6 +565,15 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
   opacity: .65;
   pointer-events: none;
 }
+.rigid-round-band {
+  stroke: #243143;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  opacity: .48;
+  pointer-events: none;
+}
+.rigid-round-metal .rigid-centerline { stroke-dasharray: 1 4; opacity: .38; }
+.rigid-round-metal :is(.rigid-body, .rigid-elbow-body) { stroke-linecap: round; }
 .rigid-hit {
   stroke: transparent;
   stroke-width: 24;

@@ -36,13 +36,27 @@ async function planPoint(page: Page, xRatio: number, yRatio: number) {
   return { x: box.x + box.width * xRatio, y: box.y + box.height * yRatio };
 }
 
-async function drawRigid(page: Page, yRatio: number) {
+async function drawRigid(
+  page: Page,
+  yRatio: number,
+  options: {
+    construction?: "rectangular" | "round-metal" | "spiral";
+    width?: string;
+    height?: string;
+    diameter?: string;
+  } = {},
+) {
   const tools = page.getByRole("complementary", { name: "HVAC plan tools" });
   const rigidTool = tools.locator(".rigid-duct-tool");
   await page.getByRole("button", { name: "Draw HVAC", exact: true }).click();
-  await rigidTool.getByLabel("Construction").selectOption("rectangular");
-  await rigidTool.getByLabel("Width, in").fill("40");
-  await rigidTool.getByLabel("Height, in").fill("10");
+  const construction = options.construction || "rectangular";
+  await rigidTool.getByLabel("Construction").selectOption(construction);
+  if (construction === "rectangular") {
+    await rigidTool.getByLabel("Width, in").fill(options.width || "40");
+    await rigidTool.getByLabel("Height, in").fill(options.height || "10");
+  } else {
+    await rigidTool.getByLabel("Diameter, in").fill(options.diameter || "14");
+  }
   await rigidTool.getByRole("button", { name: "Draw straight rigid duct" }).click();
   const start = await planPoint(page, .24, yRatio);
   const end = await planPoint(page, .70, yRatio);
@@ -76,9 +90,16 @@ test("compact drafting keeps actual 40x10 data and Materials while connected sel
   await expect(first).toHaveAttribute("data-rigid-display-mode", "compact");
   const actualWidth = await numericAttribute(first, "data-rigid-plan-width");
   const compactWidth = await numericAttribute(first, "data-rigid-display-plan-width");
+  expect(await numericAttribute(first, "data-rigid-display-screen-width")).toBeCloseTo(8, 2);
   const exactLength = await first.getAttribute("data-rigid-finished-length-feet");
   expect(compactWidth).toBeLessThan(actualWidth * .55);
   await expect(page.getByRole("button", { name: "Rigid: Compact", exact: true })).toBeVisible();
+
+  for (let index = 0; index < 20; index += 1) {
+    await page.getByRole("button", { name: "Zoom in" }).click();
+  }
+  await expect(page.locator(".canvas-toolbar > strong")).toHaveText("1200%");
+  expect(await numericAttribute(first, "data-rigid-display-screen-width")).toBeCloseTo(8, 2);
 
   await page.getByRole("button", { name: "Rigid: Compact", exact: true }).click();
   await expect(page.getByRole("button", { name: "Rigid: True width", exact: true })).toBeVisible();
@@ -125,6 +146,31 @@ test("compact drafting keeps actual 40x10 data and Materials while connected sel
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
   expect(errors).toEqual([]);
+});
+
+test("rectangular, round metal, and spiral stay compact but retain distinct truthful symbols", async ({ page }) => {
+  await openPlan(page);
+  const rectangular = await drawRigid(page, .28, { width: "40", height: "10" });
+  const round = await drawRigid(page, .50, { construction: "round-metal", diameter: "18" });
+  const spiral = await drawRigid(page, .72, { construction: "spiral", diameter: "18" });
+
+  for (const drawing of [rectangular, round, spiral]) {
+    await expect(drawing).toHaveAttribute("data-rigid-display-mode", "compact");
+    expect(await numericAttribute(drawing, "data-rigid-display-screen-width")).toBeCloseTo(8, 2);
+  }
+  await expect(rectangular).toHaveAttribute("data-rigid-size", "40×10");
+  await expect(round).toHaveAttribute("data-rigid-size", "18");
+  await expect(spiral).toHaveAttribute("data-rigid-size", "18");
+  await expect(rectangular.locator(".rigid-round-band, .rigid-spiral-seam")).toHaveCount(0);
+  expect(await round.locator(".rigid-round-band").count()).toBeGreaterThan(0);
+  await expect(round.locator(".rigid-spiral-seam")).toHaveCount(0);
+  expect(await spiral.locator(".rigid-spiral-seam").count()).toBeGreaterThan(0);
+  await expect(spiral.locator(".rigid-round-band")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Materials", exact: true }).click();
+  await expect(page.locator(".takeoff-row").filter({ hasText: "Rectangular sheet-metal duct" })).toContainText("40×10");
+  await expect(page.locator(".takeoff-row").filter({ hasText: "Round metal pipe" })).toContainText("18");
+  await expect(page.locator(".takeoff-row").filter({ hasText: "Spiral pipe" })).toContainText("18");
 });
 
 test("45 degree elbow click keeps its outlet cue and keyboard continuation is one Undo", async ({ page }) => {
