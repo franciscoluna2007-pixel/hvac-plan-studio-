@@ -94,6 +94,7 @@ import {
   createRigidTransitionContinuation,
   normalizeRigidTerminalConnection,
   normalizeRigidTransitionMeta,
+  rigidTerminalNetworkKind,
   rigidTransitionGeometry,
   rigidTransitionPolygon,
   type RigidTerminalConnectionV1,
@@ -1151,6 +1152,18 @@ function terminalLinkedRunId(drawing: Drawing) {
     : undefined;
 }
 
+function rigidTerminalKindForDrawing(
+  drawing?: Drawing,
+): RigidTerminalConnectionV1["kind"] | null {
+  if (drawing?.symbol?.kind === "diffuser" && ["supply-can", "boot"].includes(drawing.symbol.variant || "")) {
+    return "supply-can-collar";
+  }
+  if (drawing?.symbol?.kind === "returnGrille" && drawing.symbol.variant === "return-can") {
+    return "return-can-collar";
+  }
+  return null;
+}
+
 function equipmentTypeName(variant = "") {
   const names: Record<string, string> = {
     "air-handler": "AHU",
@@ -1333,7 +1346,7 @@ type SheetScaleState = {
 };
 
 type SavedProject = {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
   fileName: string;
   drawings: Drawing[];
   rigidDrawingQuarantine?: unknown[];
@@ -2460,15 +2473,25 @@ function HVACPlanStudioApp() {
         if (!drawing.rigidTransition.ports.inlet.connectedTo) issues.push({ id: `${drawing.id}:inlet`, drawingId: drawing.id, label: "Rigid transition inlet open", detail: "Reconnect or delete this transition before ordering." });
         if (!drawing.rigidTransition.ports.outlet.connectedTo) issues.push({ id: `${drawing.id}:outlet`, drawingId: drawing.id, label: "Rigid transition outlet open", detail: "Continue with the reduced straight size or leave it intentionally capped." });
       }
-      if (drawing.symbol?.kind === "diffuser" && ["supply-can", "boot"].includes(drawing.symbol.variant || "") && drawing.symbol.rigidTerminal) {
+      if (drawing.symbol?.rigidTerminal) {
         const connection = drawing.symbol.rigidTerminal.connectedTo;
         const straight = drawings.find((candidate) => candidate.id === connection.drawingId && candidate.rigid);
         const topology = straight ? normalizeRigidStraightTopology(straight.rigidTopology) : null;
         const reciprocal = topology && (connection.portId === "start" || connection.portId === "end")
           ? topology.ports[connection.portId].connectedTo
           : undefined;
-        if (!straight || reciprocal?.drawingId !== drawing.id || reciprocal.portId !== "neck") {
-          issues.push({ id: `${drawing.id}:neck`, drawingId: drawing.id, label: "Supply-can rigid collar needs repair", detail: "The saved collar connection is no longer reciprocal." });
+        const expectedKind = rigidTerminalKindForDrawing(drawing);
+        const identityMatches = Boolean(
+          straight?.rigid &&
+          expectedKind === drawing.symbol.rigidTerminal.kind &&
+          straight.rigid.networkKind === rigidTerminalNetworkKind(drawing.symbol.rigidTerminal) &&
+          straight.rigid.construction === drawing.symbol.rigidTerminal.construction &&
+          straight.rigid.size.shape === "round" &&
+          straight.rigid.size.diameterInches === drawing.symbol.rigidTerminal.diameterInches,
+        );
+        if (!identityMatches || reciprocal?.drawingId !== drawing.id || reciprocal.portId !== "neck") {
+          const device = drawing.symbol.rigidTerminal.kind === "return-can-collar" ? "Return-can" : "Supply-can";
+          issues.push({ id: `${drawing.id}:neck`, drawingId: drawing.id, label: `${device} rigid collar needs repair`, detail: "The saved collar connection is no longer reciprocal." });
         }
       }
     });
@@ -8397,6 +8420,7 @@ function HVACPlanStudioApp() {
         .filter((drawing): drawing is Drawing & { symbol: SymbolMeta & { rigidTerminal: RigidTerminalConnectionV1 } } => Boolean(drawing.symbol?.rigidTerminal))
         .map((drawing) => ({
           id: drawing.id,
+          kind: drawing.symbol.rigidTerminal.kind,
           construction: drawing.symbol.rigidTerminal.construction,
           diameterInches: drawing.symbol.rigidTerminal.diameterInches,
         })),
@@ -12356,6 +12380,10 @@ function HVACPlanStudioApp() {
       setBranchMessage("Connected rigid assembly copy is not available yet. Copy an open rigid straight without its fitting connection.");
       return null;
     }
+    if (selected.symbol?.rigidTerminal) {
+      setBranchMessage("Detach the rigid collar before copying this can. The saved duct connection stays protected.");
+      return null;
+    }
     const template = buildStandalonePlanCopyTemplate(selected, pdfFingerprint);
     if (!template) {
       setBranchMessage("Open a PDF before using Copy & place");
@@ -12654,12 +12682,13 @@ function HVACPlanStudioApp() {
   }
 
   function nearestRigidTerminalCandidate(symbolDrawing: Drawing) {
+    const terminalKind = rigidTerminalKindForDrawing(symbolDrawing);
     if (
       !symbolDrawing.symbol ||
-      symbolDrawing.symbol.kind !== "diffuser" ||
-      !["supply-can", "boot"].includes(symbolDrawing.symbol.variant || "") ||
+      !terminalKind ||
       symbolDrawing.symbol.rigidTerminal
     ) return null;
+    const networkKind = rigidTerminalNetworkKind({ kind: terminalKind });
     const diameter = Number(symbolDrawing.symbol.neckSize || 8);
     if (!Number.isFinite(diameter)) return null;
     const anchor = symbolDrawing.points[0];
@@ -12669,7 +12698,7 @@ function HVACPlanStudioApp() {
         !drawing.rigid ||
         drawing.page !== symbolDrawing.page ||
         drawingSystem(drawing) !== drawingSystem(symbolDrawing) ||
-        drawing.rigid.networkKind !== "supply" ||
+        drawing.rigid.networkKind !== networkKind ||
         !["round-metal", "spiral"].includes(drawing.rigid.construction) ||
         drawing.rigid.size.shape !== "round" ||
         drawing.rigid.size.diameterInches !== diameter ||
@@ -12692,13 +12721,15 @@ function HVACPlanStudioApp() {
     const selected = drawings.find((drawing) => drawing.id === selectedId && drawing.symbol);
     if (!selected?.symbol || drawingLocked(selected)) return;
     const candidate = nearestRigidTerminalCandidate(selected);
-    if (!candidate || candidate.drawing.rigid.size.shape !== "round") {
-      setBranchMessage("Move a matching open round-metal or spiral endpoint near this supply can, then try again.");
+    const terminalKind = rigidTerminalKindForDrawing(selected);
+    const deviceName = terminalKind === "return-can-collar" ? "return can" : "supply can";
+    if (!terminalKind || !candidate || candidate.drawing.rigid.size.shape !== "round") {
+      setBranchMessage(`Move a matching open round-metal or spiral endpoint near this ${deviceName}, then try again.`);
       return;
     }
     const rigidTerminal = normalizeRigidTerminalConnection({
       version: 1,
-      kind: "supply-can-collar",
+      kind: terminalKind,
       construction: candidate.drawing.rigid.construction,
       diameterInches: candidate.drawing.rigid.size.diameterInches,
       collarType: "straight-collar",
@@ -12724,7 +12755,7 @@ function HVACPlanStudioApp() {
       };
       return drawing;
     }));
-    setBranchMessage(`Supply can connected with Ø${rigidTerminal.diameterInches} in ${rigidTerminal.construction === "spiral" ? "spiral" : "round-metal"} collar · one Undo restores both objects`);
+    setBranchMessage(`${terminalKind === "return-can-collar" ? "Return" : "Supply"} can connected with Ø${rigidTerminal.diameterInches} in ${rigidTerminal.construction === "spiral" ? "spiral" : "round-metal"} collar · one Undo restores both objects`);
   }
 
   function detachSelectedCanFromRigid() {
@@ -12736,6 +12767,8 @@ function HVACPlanStudioApp() {
       if (drawing.id !== connection.drawingId || !drawing.rigid) return drawing;
       const topology = normalizeRigidStraightTopology(drawing.rigidTopology);
       const portId = connection.portId as RigidStraightPortId;
+      const reciprocal = topology.ports[portId]?.connectedTo;
+      if (reciprocal?.drawingId !== selected.id || reciprocal.portId !== "neck") return drawing;
       return {
         ...drawing,
         rigidTopology: {
@@ -12747,7 +12780,7 @@ function HVACPlanStudioApp() {
         },
       };
     }));
-    setBranchMessage("Rigid supply-can collar detached · duct and can stayed in place · one Undo reconnects them");
+    setBranchMessage(`Rigid ${selected.symbol.rigidTerminal?.kind === "return-can-collar" ? "return-can" : "supply-can"} collar detached · duct and can stayed in place · one Undo reconnects them`);
   }
 
   function addElbowToSelectedRigid() {
@@ -16654,9 +16687,9 @@ function HVACPlanStudioApp() {
                   </div>;
                 })()}
                 <small>Attachment is manual. Once linked, moving either object keeps the duct endpoint and can together; Detach releases both in place.</small>
-                {["supply-can", "boot"].includes(selectedDrawing?.symbol?.variant || "") && <div className={`can-connection rigid-terminal-connection ${selectedDrawing?.symbol?.rigidTerminal ? "connected" : ""}`}>
+                {rigidTerminalKindForDrawing(selectedDrawing) && <div className={`can-connection rigid-terminal-connection ${selectedDrawing?.symbol?.rigidTerminal ? "connected" : ""}`}>
                   <div>
-                    <span>RIGID SUPPLY-CAN COLLAR</span>
+                    <span>RIGID {rigidTerminalKindForDrawing(selectedDrawing) === "return-can-collar" ? "RETURN-CAN" : "SUPPLY-CAN"} COLLAR</span>
                     <strong>{selectedDrawing?.symbol?.rigidTerminal
                       ? `Linked · Ø${selectedDrawing.symbol.rigidTerminal.diameterInches}\" ${selectedDrawing.symbol.rigidTerminal.construction === "spiral" ? "spiral" : "round metal"}`
                       : selectedRigidTerminalCandidate
@@ -16667,7 +16700,7 @@ function HVACPlanStudioApp() {
                     ? <button onClick={detachSelectedCanFromRigid}>Detach rigid</button>
                     : <button disabled={!selectedRigidTerminalCandidate} onClick={attachSelectedCanToRigid}>Attach rigid</button>}
                 </div>}
-                {["supply-can", "boot"].includes(selectedDrawing?.symbol?.variant || "") && <small>The rigid connection is explicit and only accepts a matching supply-side round-metal or spiral diameter. A collar is added separately to Materials.</small>}
+                {rigidTerminalKindForDrawing(selectedDrawing) && <small>The rigid connection is explicit and only accepts a matching {rigidTerminalKindForDrawing(selectedDrawing) === "return-can-collar" ? "return" : "supply"}-side round-metal or spiral diameter. A collar is added separately to Materials.</small>}
               </div>}
               <label>Rotation
                 <div className="rotation-controls">
@@ -18566,7 +18599,7 @@ function HVACPlanStudioApp() {
                 <span><Route size={20} /><strong>Connection Check</strong></span>
                 <b className={activeConnectionRepairIssues.length || rigidConnectionIssues.length ? "attention" : "clear"}>{activeConnectionRepairIssues.length || rigidConnectionIssues.length ? `${activeConnectionRepairIssues.length + rigidConnectionIssues.length} OPEN` : "CONNECTED"}</b>
               </header>
-              <p>Finds open supply runs, return runs, T Branch ports, rigid transitions, and supply-can collars. It never creates or moves duct without your approval.</p>
+              <p>Finds open supply runs, return runs, T Branch ports, rigid transitions, and terminal collars. It never creates or moves duct without your approval.</p>
               {activeConnectionRepairIssues.length || rigidConnectionIssues.length ? <div className="connection-check-list">
                 {activeConnectionRepairIssues.map((item) => {
                   const plainLabel = item.kind === "fitting"
@@ -18599,7 +18632,7 @@ function HVACPlanStudioApp() {
                   </button>
                   <small className="connection-check-manual">Select the fitting or can to review its explicit rigid connection.</small>
                 </section>)}
-              </div> : <div className="connection-check-clear"><CheckCircle2 size={28} /><strong>Everything is connected</strong><span>No open flex, T Branch, rigid transition, or supply-can collar connection was found.</span></div>}
+              </div> : <div className="connection-check-clear"><CheckCircle2 size={28} /><strong>Everything is connected</strong><span>No open flex, T Branch, rigid transition, or terminal-collar connection was found.</span></div>}
               <footer>
                 <button type="button" disabled={!activeConnectionRepairPlan.counts.ready} onClick={selectAllReadyConnectionRepairs}>Select all safe repairs</button>
                 <button type="button" className="primary" disabled={!selectedReadyConnectionRepairIds.length || connectionReviewStale} onClick={applySelectedConnectionRepairs}>Reconnect {selectedReadyConnectionRepairIds.length || ""}</button>

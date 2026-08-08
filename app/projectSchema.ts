@@ -12,8 +12,8 @@ import {
   rigidTransitionIsReduction,
 } from "./rigidTransitions";
 
-export const CURRENT_PROJECT_SCHEMA_VERSION = 12 as const;
-export const SUPPORTED_LEGACY_PROJECT_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
+export const CURRENT_PROJECT_SCHEMA_VERSION = 13 as const;
+export const SUPPORTED_LEGACY_PROJECT_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
 
 type ProjectEnvelope = {
   version: number;

@@ -69,7 +69,7 @@ test("round-trips explicit v11 elbow topology and takeouts", () => {
   assert.deepEqual(second.project, first.project);
 });
 
-test("migrates v11 transitions and rigid supply-can collars into schema v12", () => {
+test("migrates v11 transitions and rigid supply-can collars into the current schema", () => {
   const drawings = [
     {
       id: "transition-1", type: "rigid-fitting", page: 1, points: [{ x: 10, y: 10 }],
@@ -97,8 +97,26 @@ test("migrates v11 transitions and rigid supply-can collars into schema v12", ()
   ];
   const result = migrateSavedProject({ version: 11, drawings });
   assert.equal(result.ok, true);
-  assert.equal(result.project.version, 12);
+  assert.equal(result.project.version, CURRENT_PROJECT_SCHEMA_VERSION);
   assert.deepEqual(result.project.drawings, drawings);
+  assert.deepEqual(migrateSavedProject(result.project).project, result.project);
+});
+
+test("migrates schema v12 return-can collars into canonical schema v13", () => {
+  const returnCan = {
+    id: "return-can-1", type: "symbol", page: 1, points: [{ x: 20, y: 10 }], size: "20×12",
+    symbol: {
+      kind: "returnGrille", label: "Return can", rotation: 0, variant: "return-can", neckSize: "12",
+      rigidTerminal: {
+        version: 1, kind: "return-can-collar", construction: "round-metal", diameterInches: 12,
+        collarType: "straight-collar", connectedTo: { drawingId: "return-straight", portId: "start" },
+      },
+    },
+  };
+  const result = migrateSavedProject({ version: 12, drawings: [returnCan] });
+  assert.equal(result.ok, true);
+  assert.equal(result.project.version, 13);
+  assert.deepEqual(result.project.drawings, [returnCan]);
   assert.deepEqual(migrateSavedProject(result.project).project, result.project);
 });
 

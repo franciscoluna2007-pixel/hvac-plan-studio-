@@ -54,6 +54,7 @@ export type MaterialRigidTransitionInput = {
 
 export type MaterialRigidCollarInput = {
   id: string;
+  kind: "supply-can-collar" | "return-can-collar";
   construction: "round-metal" | "spiral";
   diameterInches: number;
 };
@@ -304,21 +305,21 @@ export function buildMaterialOrder({
 
   const collarGroups = new Map<string, MaterialRigidCollarInput[]>();
   for (const collar of rigidCollars) {
-    const key = `${collar.construction}|${collar.diameterInches}`;
+    const key = `${collar.kind}|${collar.construction}|${collar.diameterInches}`;
     collarGroups.set(key, [...(collarGroups.get(key) || []), collar]);
   }
   for (const group of collarGroups.values()) {
     const first = group[0];
     rows.push({
-      id: `rigid-collar:${first.construction}:${first.diameterInches}`,
+      id: `rigid-collar:${first.kind}:${first.construction}:${first.diameterInches}`,
       category: "Fittings",
-      item: "Supply-can straight collar",
+      item: first.kind === "return-can-collar" ? "Return-can straight collar" : "Supply-can straight collar",
       size: `Ø${first.diameterInches}\" · ${first.construction === "spiral" ? "spiral" : "round metal"}`,
       quantity: `${group.length} each`,
       note: "Explicit rigid terminal connections",
       orderCount: group.length,
       orderUnit: "each",
-      breakdown: `${group.length} connected supply ${group.length === 1 ? "can" : "cans"} · field verify fastening and seal`,
+      breakdown: `${group.length} connected ${first.kind === "return-can-collar" ? "return" : "supply"} ${group.length === 1 ? "can" : "cans"} · field verify fastening and seal`,
       sourceDrawingIds: group.map((item) => item.id),
     });
   }

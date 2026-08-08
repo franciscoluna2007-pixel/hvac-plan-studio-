@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { jsPDF } from "jspdf";
 
-test.setTimeout(90_000);
+test.setTimeout(120_000);
 
 const planBytes = (() => {
   const pdf = new jsPDF({ unit: "pt", format: [792, 612], orientation: "landscape" });
@@ -32,11 +32,19 @@ async function planPoint(page: Page, xRatio: number, yRatio: number) {
   return { x: box.x + box.width * xRatio, y: box.y + box.height * yRatio };
 }
 
-async function placeRigid(page: Page, construction: "rectangular" | "spiral", yRatio: number) {
+async function placeRigid(
+  page: Page,
+  construction: "rectangular" | "spiral",
+  yRatio: number,
+  network: "supply" | "return" = "supply",
+  diameterInches = 8,
+) {
   await page.getByRole("button", { name: "Draw HVAC", exact: true }).click();
   const tools = page.getByRole("complementary", { name: "HVAC plan tools" });
   const rigidTool = tools.locator(".rigid-duct-tool");
+  await rigidTool.getByLabel("System").selectOption(network);
   await rigidTool.getByLabel("Construction").selectOption(construction);
+  if (construction === "spiral") await rigidTool.getByLabel("Diameter, in").fill(String(diameterInches));
   await rigidTool.getByRole("button", { name: "Draw straight rigid duct" }).click();
   const start = await planPoint(page, .22, yRatio);
   const end = await planPoint(page, .60, yRatio);
@@ -49,7 +57,7 @@ async function placeRigid(page: Page, construction: "rectangular" | "spiral", yR
   return page.locator('g.rigid-duct[data-plan-drawing-id]').nth(before);
 }
 
-test("loaded plan creates explicit reducers and a reciprocal supply-can collar", async ({ page }) => {
+test("loaded plan creates reducers plus reciprocal supply- and return-can collars", async ({ page }) => {
   const errors: Error[] = [];
   page.on("pageerror", (error) => errors.push(error));
   await openPlan(page);
@@ -103,6 +111,7 @@ test("loaded plan creates explicit reducers and a reciprocal supply-can collar",
   await page.mouse.click(spiralEnd.x, spiralEnd.y - 16);
   await expect(supplyCans).toHaveCount(symbolCount + 1);
   await page.keyboard.press("Escape");
+  await page.locator(".canvas-toolbar").getByRole("button", { name: "Diffuser", exact: true }).click();
   await supplyCans.last().click();
   await page.getByRole("navigation", { name: "Plan workflow" }).getByRole("button", { name: "Selected", exact: true }).click();
   const collarPanel = page.locator(".rigid-terminal-connection");
@@ -112,17 +121,53 @@ test("loaded plan creates explicit reducers and a reciprocal supply-can collar",
   await expect(connectedCan).toHaveCount(1);
   await expect(connectedCan).toHaveAttribute("data-rigid-terminal-connection", /:end$/);
 
+  const returnSpiral = await placeRigid(page, "spiral", .80, "return", 12);
+  await expect(returnSpiral).toHaveClass(/rigid-return/);
+  await tools.getByRole("button", { name: "Symbols", exact: true }).click();
+  await tools.getByLabel("Category").selectOption("Return air", { timeout: 8_000 });
+  await tools.locator('.symbol-catalog-card[aria-label*="RECTANGULAR RETURN CAN"]').click({ timeout: 8_000 });
+  const returnEnd = await planPoint(page, .60, .78);
+  const returnCans = page.locator('g[data-plan-drawing-id].variant-return-can');
+  const returnCanCount = await returnCans.count();
+  await page.mouse.click(returnEnd.x, returnEnd.y - 16);
+  await expect(returnCans).toHaveCount(returnCanCount + 1);
+  await page.keyboard.press("Escape");
+  await page.locator(".canvas-toolbar").getByRole("button", { name: "Return grille", exact: true }).click();
+  await returnCans.last().click();
+  await page.getByRole("navigation", { name: "Plan workflow" }).getByRole("button", { name: "Selected", exact: true }).click();
+  await expect(collarPanel).toContainText("RIGID RETURN-CAN COLLAR");
+  await expect(collarPanel).toContainText("Matching Ø12\"");
+  await collarPanel.getByRole("button", { name: "Attach rigid" }).click();
+  const connectedReturnCan = page.locator('g[data-rigid-terminal="return-can-collar"]');
+  await expect(connectedReturnCan).toHaveCount(1);
+  await expect(connectedReturnCan).toHaveAttribute("data-rigid-terminal-connection", /:end$/);
+  await expect(returnSpiral).toHaveAttribute("data-rigid-end-connected", "true");
+
+  await page.locator(".canvas-edit-actions").getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(connectedReturnCan).toHaveCount(0);
+  await expect(returnSpiral).toHaveAttribute("data-rigid-end-connected", "false");
+  await page.locator(".canvas-edit-actions").getByRole("button", { name: "Redo", exact: true }).click();
+  await expect(connectedReturnCan).toHaveCount(1);
+  await expect(returnSpiral).toHaveAttribute("data-rigid-end-connected", "true");
+  await expect(returnCans).toHaveCount(returnCanCount + 1);
+
   await page.getByRole("button", { name: "Save", exact: true }).click();
   const stored = await page.evaluate(() => {
     const key = Object.keys(localStorage).find((item) => item.startsWith("hvac-plan-studio:rigid-transitions-fixture"));
     return key ? JSON.parse(localStorage.getItem(key) || "{}") : null;
   });
-  expect(stored?.version).toBe(12);
+  expect(stored?.version).toBe(13);
   expect(stored?.drawings.some((drawing: { rigidTransition?: unknown }) => drawing.rigidTransition)).toBe(true);
   expect(stored?.drawings.some((drawing: { symbol?: { rigidTerminal?: unknown } }) => drawing.symbol?.rigidTerminal)).toBe(true);
+
+  await openPlan(page);
+  await expect(page.locator('g[data-rigid-terminal="supply-can-collar"]')).toHaveCount(1);
+  await expect(page.locator('g[data-rigid-terminal="return-can-collar"]')).toHaveCount(1);
+  await expect(page.locator('g.rigid-duct.rigid-return[data-rigid-end-connected="true"]')).toHaveCount(1);
 
   await page.getByRole("button", { name: "Materials", exact: true }).click();
   await expect(page.locator(".takeoff-row").filter({ hasText: "Rectangular transition" })).toHaveCount(1);
   await expect(page.locator(".takeoff-row").filter({ hasText: "Supply-can straight collar" })).toHaveCount(1);
+  await expect(page.locator(".takeoff-row").filter({ hasText: "Return-can straight collar" })).toHaveCount(1);
   expect(errors).toEqual([]);
 });

@@ -11,6 +11,7 @@ const {
   rigidTransitionGeometry,
   rigidTransitionIsReduction,
   rigidTransitionPolygon,
+  rigidTerminalNetworkKind,
 } = await loadTypescriptModule(new URL("../app/rigidTransitions.ts", import.meta.url));
 
 const rectangular = {
@@ -83,7 +84,7 @@ test("creates centered round reducer geometry and reduced-size continuation", ()
   assert.deepEqual(continuation.transition.ports.outlet.connectedTo, { drawingId: "straight-2", portId: "start" });
 });
 
-test("normalizes terminal collars and rejects rectangular terminal construction", () => {
+test("normalizes supply and return terminal collars and rejects rectangular terminal construction", () => {
   const collar = normalizeRigidTerminalConnection({
     version: 1,
     kind: "supply-can-collar",
@@ -94,6 +95,11 @@ test("normalizes terminal collars and rejects rectangular terminal construction"
   });
   assert.ok(collar);
   assert.equal(collar.diameterInches, 8);
+  assert.equal(rigidTerminalNetworkKind(collar), "supply");
+  const returnCollar = normalizeRigidTerminalConnection({ ...collar, kind: "return-can-collar" });
+  assert.ok(returnCollar);
+  assert.equal(rigidTerminalNetworkKind(returnCollar), "return");
   assert.equal(normalizeRigidTerminalConnection({ ...collar, construction: "rectangular" }), null);
+  assert.equal(normalizeRigidTerminalConnection({ ...collar, kind: "equipment-collar" }), null);
   assert.equal(normalizeRigidTransitionMeta({}), null);
 });

@@ -141,16 +141,20 @@ test("lists rigid transitions, reducers, and terminal collars as separate order 
       { id: "r-1", networkKind: "supply", construction: "spiral", inletSize: "18", outletSize: "16", lengthInches: 12, alignment: "centered" },
     ],
     rigidCollars: [
-      { id: "can-1", construction: "spiral", diameterInches: 8 },
-      { id: "can-2", construction: "spiral", diameterInches: 8 },
+      { id: "can-1", kind: "supply-can-collar", construction: "spiral", diameterInches: 8 },
+      { id: "can-2", kind: "supply-can-collar", construction: "spiral", diameterInches: 8 },
+      { id: "return-can-1", kind: "return-can-collar", construction: "spiral", diameterInches: 8 },
     ],
   });
   const transition = rows.find((row) => row.item === "Rectangular transition");
   const reducer = rows.find((row) => row.item === "Spiral reducer");
   const collar = rows.find((row) => row.item === "Supply-can straight collar");
+  const returnCollar = rows.find((row) => row.item === "Return-can straight collar");
   assert.equal(transition.size, "30×10 → 25×10");
   assert.match(transition.note, /18 in long/);
   assert.equal(reducer.size, "18 → 16");
   assert.equal(collar.quantity, "2 each");
   assert.equal(collar.size, "Ø8\" · spiral");
+  assert.equal(returnCollar.quantity, "1 each");
+  assert.deepEqual([...returnCollar.sourceDrawingIds], ["return-can-1"]);
 });
