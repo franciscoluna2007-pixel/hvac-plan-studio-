@@ -85,6 +85,9 @@ test("loaded plan creates reducers plus reciprocal supply- and return-can collar
   await expect(transition).toHaveAttribute("data-rigid-alignment", "top-flat");
   await expect(transition).toHaveAttribute("data-rigid-inlet-connected", "true");
   await expect(transition).toHaveAttribute("data-rigid-outlet-connected", "false");
+  expect(Number(await transition.getAttribute("data-rigid-display-screen-width"))).toBeCloseTo(10.4, 2);
+  expect(Number(await transition.getAttribute("data-rigid-display-inlet-screen-width"))).toBeCloseTo(10.4, 2);
+  expect(Number(await transition.getAttribute("data-rigid-display-outlet-screen-width"))).toBeCloseTo(10.4 * 25 / 30, 2);
 
   const transitionProperties = page.locator(".rigid-properties");
   await transitionProperties.getByLabel("Finished straight, ft").fill("12");

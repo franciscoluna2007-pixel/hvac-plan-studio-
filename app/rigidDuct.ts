@@ -120,7 +120,11 @@ export function rigidCompactPlanWidthUnits(meta: RigidStraightMetaV1, feetPerUni
   return rigidCompactPhysicalWidthInches(meta) / 12 / feetPerUnit;
 }
 
-export const RIGID_COMPACT_SCREEN_WIDTH_PX = 8;
+// A 10.4 px drafting footprint is 30% more legible than the previous 8 px
+// footprint while remaining far slimmer than true-width duct at close zoom.
+// This is presentation-only: stored sizes, calibrated length, takeouts,
+// Materials, and every engineering value continue to use physical dimensions.
+export const RIGID_COMPACT_SCREEN_WIDTH_PX = 10.4;
 
 /**
  * Compact mode is a drafting aid, not an engineering scale. Keep its visible

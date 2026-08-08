@@ -64,6 +64,7 @@ test("explicit rigid elbow continues by press-drag-release with reciprocal topol
 
   const elbow = page.locator('g.rigid-elbow[data-rigid-fitting="elbow"]');
   await expect(elbow).toHaveCount(1);
+  expect(Number(await elbow.getAttribute("data-rigid-display-screen-width"))).toBeCloseTo(10.4, 2);
   await expect(elbow).toHaveAttribute("data-rigid-angle", "90");
   await expect(elbow).toHaveAttribute("data-rigid-inlet-connected", "true");
   await expect(elbow).toHaveAttribute("data-rigid-outlet-connected", "false");
@@ -123,6 +124,10 @@ test("explicit rigid elbow continues by press-drag-release with reciprocal topol
   await page.mouse.move(continuationStart.x, continuationStart.y);
   await page.mouse.down();
   await page.mouse.move(continuationStart.x, continuationStart.y + 160, { steps: 10 });
+  await expect(page.locator("g.rigid-preview")).toHaveAttribute(
+    "data-rigid-display-screen-width",
+    "10.400",
+  );
   await page.mouse.up();
 
   await expect(rigidStraights).toHaveCount(2);
