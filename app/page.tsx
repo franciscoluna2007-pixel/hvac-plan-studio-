@@ -15,6 +15,12 @@ import RedlineCanvasLayer from "./RedlineCanvasLayer";
 import { redlineSelectionVisualBounds } from "./redlineVisualBounds";
 import { trackProductEvent } from "./productAnalytics";
 import { compactTerminalPlanLabel } from "./terminalPlanLabel";
+import {
+  resolveSnapIntersections,
+  snapSegmentIntersection,
+  type SnapIndexSegment,
+} from "./snapIndex";
+import { createFlatbushSnapPairCandidateAdapter } from "./snapIndexFlatbush";
 import { allocateBranchAirflow } from "./airflowBudget";
 import {
   cloneDefaultAirflowSizingProfile,
@@ -1179,6 +1185,9 @@ function equipmentTypeName(variant = "") {
   };
   return names[variant] || "";
 }
+
+const flatbushSnapPairCandidate = createFlatbushSnapPairCandidateAdapter();
+const forceLegacySnapIntersectionIndex = process.env.NEXT_PUBLIC_SNAP_INTERSECTION_INDEX === "legacy";
 
 export default function Home() {
   return <WorkspaceErrorBoundary>
@@ -10636,13 +10645,7 @@ function HVACPlanStudioApp() {
   }
 
   function segmentIntersection(a: Point, b: Point, c: Point, d: Point) {
-    const denominator = (a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x);
-    if (Math.abs(denominator) < .001) return null;
-    const t = ((a.x - c.x) * (c.y - d.y) - (a.y - c.y) * (c.x - d.x)) / denominator;
-    const u = -((a.x - b.x) * (a.y - c.y) - (a.y - b.y) * (a.x - c.x)) / denominator;
-    return t >= 0 && t <= 1 && u >= 0 && u <= 1
-      ? { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) }
-      : null;
+    return snapSegmentIntersection(a, b, c, d);
   }
 
   function snapResult(point: Point, ignoredId?: string): SnapInfo | null {
@@ -10670,15 +10673,24 @@ function HVACPlanStudioApp() {
         add({ x: (vertex.x + next.x) / 2, y: (vertex.y + next.y) / 2 }, "midpoint", "MIDPOINT", 4);
       });
     });
-    const runSegments = pageDrawings.filter((drawing) => !drawing.fitting && !drawing.symbol && drawing.points.length > 1)
-      .flatMap((drawing) => drawing.points.slice(0, -1).map((a, index) => ({ drawingId: drawing.id, a, b: drawing.points[index + 1] })));
-    for (let first = 0; first < runSegments.length; first++) {
-      for (let second = first + 1; second < runSegments.length; second++) {
-        if (runSegments[first].drawingId === runSegments[second].drawingId) continue;
-        const crossing = segmentIntersection(runSegments[first].a, runSegments[first].b, runSegments[second].a, runSegments[second].b);
-        if (crossing) add(crossing, "intersection", "INTERSECTION", 3);
-      }
-    }
+    const runSegments: SnapIndexSegment[] = pageDrawings
+      .filter((drawing) => !drawing.fitting && !drawing.symbol && drawing.points.length > 1)
+      .flatMap((drawing) => drawing.points.slice(0, -1).map((a, segmentIndex) => ({
+        drawingId: drawing.id,
+        segmentIndex,
+        a,
+        b: drawing.points[segmentIndex + 1],
+      })))
+      .map((segment, sourceOrdinal) => ({ ...segment, sourceOrdinal }));
+    const { intersections: referenceIntersections } = resolveSnapIntersections(
+      runSegments,
+      flatbushSnapPairCandidate,
+      {
+        forceLegacy: forceLegacySnapIntersectionIndex,
+        intersect: segmentIntersection,
+      },
+    );
+    referenceIntersections.forEach((crossing) => add(crossing.point, "intersection", "INTERSECTION", 3));
     const nearest = nearestSegment(point, ignoredId);
     if (nearest) add(nearest.point, "nearest", "NEAREST", 5);
     const gridPoint = { x: Math.round(point.x / 10) * 10, y: Math.round(point.y / 10) * 10 };

@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, extname, resolve } from "node:path";
 
@@ -50,6 +51,22 @@ async function compileTypescriptModuleUrl(sourceUrl) {
       const dependencyDataUrl = await compileTypescriptModuleUrl(dependencyUrl);
       compiled = compiled.replaceAll(`"${specifier}"`, `"${dependencyDataUrl}"`);
       compiled = compiled.replaceAll(`'${specifier}'`, `'${dependencyDataUrl}'`);
+    }
+
+    const packageSpecifiers = [
+      ...compiled.matchAll(/\bfrom\s+(["'])([^."'\/][^"']*)\1/g),
+      ...compiled.matchAll(/\bimport\s+(["'])([^."'\/][^"']*)\1/g),
+    ].map((match) => match[2]).filter((specifier) => (
+      !specifier.startsWith("node:")
+      && !specifier.startsWith("data:")
+      && !specifier.startsWith("file:")
+    ));
+
+    for (const specifier of [...new Set(packageSpecifiers)]) {
+      const dependencyPath = createRequire(sourceUrl).resolve(specifier);
+      const dependencyUrl = pathToFileURL(dependencyPath).href;
+      compiled = compiled.replaceAll(`"${specifier}"`, `"${dependencyUrl}"`);
+      compiled = compiled.replaceAll(`'${specifier}'`, `'${dependencyUrl}'`);
     }
 
     return `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`;
