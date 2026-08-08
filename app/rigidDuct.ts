@@ -120,6 +120,22 @@ export function rigidCompactPlanWidthUnits(meta: RigidStraightMetaV1, feetPerUni
   return rigidCompactPhysicalWidthInches(meta) / 12 / feetPerUnit;
 }
 
+export const RIGID_COMPACT_SCREEN_WIDTH_PX = 8;
+
+/**
+ * Compact mode is a drafting aid, not an engineering scale. Keep its visible
+ * footprint stable while the user zooms so a large duct never hides the plan.
+ * True-width mode continues to use rigidPlanWidthUnits and the calibrated PDF.
+ */
+export function rigidCompactScreenPlanWidthUnits(
+  zoom: number,
+  screenWidthPixels = RIGID_COMPACT_SCREEN_WIDTH_PX,
+) {
+  if (!Number.isFinite(zoom) || zoom <= 0) return 0;
+  if (!Number.isFinite(screenWidthPixels) || screenWidthPixels <= 0) return 0;
+  return screenWidthPixels / zoom;
+}
+
 export function rigidHorizontalLengthFeet(
   points: readonly RigidPoint[],
   feetPerUnit: number,
@@ -176,6 +192,40 @@ export function rigidSpiralSeams(
     return [
       { x: cx + nx * half - ux * skew, y: cy + ny * half - uy * skew },
       { x: cx - nx * half + ux * skew, y: cy - ny * half + uy * skew },
+    ] as const;
+  });
+}
+
+/**
+ * Presentation-only bands distinguish smooth round metal from rectangular
+ * duct and diagonal-seam spiral. They do not represent counted fittings.
+ */
+export function rigidRoundBands(
+  points: readonly RigidPoint[],
+  planWidthUnits: number,
+  maximumBands = 24,
+) {
+  if (points.length !== 2 || !Number.isFinite(planWidthUnits) || planWidthUnits <= 0) return [];
+  const [start, end] = points;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (!length) return [];
+  const ux = dx / length;
+  const uy = dy / length;
+  const nx = -uy;
+  const ny = ux;
+  const safeMaximum = Math.max(0, Math.floor(maximumBands));
+  const spacing = Math.max(planWidthUnits * 5, length / Math.max(1, safeMaximum + 1));
+  const count = Math.min(safeMaximum, Math.max(0, Math.floor(length / spacing) - 1));
+  const half = planWidthUnits * .43;
+  return Array.from({ length: count }, (_, index) => {
+    const station = (index + 1) * length / (count + 1);
+    const cx = start.x + ux * station;
+    const cy = start.y + uy * station;
+    return [
+      { x: cx + nx * half, y: cy + ny * half },
+      { x: cx - nx * half, y: cy - ny * half },
     ] as const;
   });
 }

@@ -5,9 +5,11 @@ import {
   normalizeRigidStraightMeta,
   rigidCompactPhysicalWidthInches,
   rigidCompactPlanWidthUnits,
+  rigidCompactScreenPlanWidthUnits,
   rigidEdgeLines,
   rigidHorizontalLengthFeet,
   rigidPlanWidthUnits,
+  rigidRoundBands,
   rigidSizeLabel,
   rigidSpiralSeams,
 } from "../app/rigidDuct.ts";
@@ -63,6 +65,15 @@ test("compresses only drafting width while exact dimensions and calibrated geome
   assert.equal(rigidHorizontalLengthFeet([{ x: 0, y: 0 }, { x: 240, y: 0 }], 1 / 24), 10);
 });
 
+test("keeps the compact drafting footprint stable in screen space at every zoom", () => {
+  for (const zoom of [.25, 1, 4.08, 12]) {
+    const planWidth = rigidCompactScreenPlanWidthUnits(zoom);
+    assert.equal(planWidth * zoom, 8);
+  }
+  assert.equal(rigidCompactScreenPlanWidthUnits(0), 0);
+  assert.equal(rigidCompactScreenPlanWidthUnits(4, 10), 2.5);
+});
+
 test("builds stable physical edges and bounded spiral seam geometry", () => {
   const points = [{ x: 0, y: 0 }, { x: 100, y: 0 }];
   assert.deepEqual(rigidEdgeLines(points, 20), [
@@ -72,4 +83,7 @@ test("builds stable physical edges and bounded spiral seam geometry", () => {
   const seams = rigidSpiralSeams(points, 10, 5);
   assert.ok(seams.length > 0 && seams.length <= 5);
   assert.ok(seams.every(([start, end]) => start.y > 0 && end.y < 0));
+  const bands = rigidRoundBands(points, 10, 5);
+  assert.ok(bands.length > 0 && bands.length <= 5);
+  assert.ok(bands.every(([start, end]) => start.x === end.x && start.y > 0 && end.y < 0));
 });

@@ -14,6 +14,7 @@ const {
   projectRigidContinuationPoint,
   rigidElbowGeometry,
   rigidFinishedStraightLength,
+  rigidTakeoutTrimmedStraightPoints,
   rigidStraightHasConnection,
 } = await loadTypescriptModule(new URL("../app/rigidTopology.ts", import.meta.url));
 
@@ -62,6 +63,30 @@ test("finished straight length subtracts explicit takeouts and blocks missing co
     takeoutFeet: null,
     status: "takeout-required",
   });
+});
+
+test("trims only connected fitting takeouts from the visible straight span", () => {
+  const topology = emptyRigidStraightTopology();
+  topology.ports.start = {
+    id: "start",
+    takeoutInches: 6,
+    connectedTo: { drawingId: "elbow-start", portId: "outlet" },
+  };
+  topology.ports.end = {
+    id: "end",
+    takeoutInches: 12,
+    connectedTo: { drawingId: "elbow-end", portId: "inlet" },
+  };
+  assert.deepEqual(
+    rigidTakeoutTrimmedStraightPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }], topology, 1 / 12),
+    [{ x: 6, y: 0 }, { x: 88, y: 0 }],
+  );
+  const open = emptyRigidStraightTopology();
+  open.ports.start.takeoutInches = 12;
+  assert.deepEqual(
+    rigidTakeoutTrimmedStraightPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }], open, 1 / 12),
+    [{ x: 0, y: 0 }, { x: 100, y: 0 }],
+  );
 });
 
 test("creates explicit 45 and 90 elbows without inferred takeout", () => {

@@ -80,7 +80,10 @@ test("workspace zoom reaches twelve-times while preserving truthful shared clamp
 
 test("rigid drafting defaults to a compact footprint without changing actual engineering values", () => {
   assert.match(page, /useState<"compact" \| "true-width">\("compact"\)/);
-  assert.match(page, /rigidCompactPlanWidthUnits\(drawing\.rigid, scale\.feetPerUnit\)/);
+  assert.match(page, /rigidCompactScreenPlanWidthUnits\(zoom\)/);
+  assert.match(page, /data-rigid-display-screen-width=\{\(displayPlanWidth \* zoom\)\.toFixed\(3\)\}/);
+  assert.match(page, /rigidTakeoutTrimmedStraightPoints/);
+  assert.match(page, /className="rigid-round-band"/);
   assert.match(page, /data-rigid-plan-width=\{planWidth\.toFixed\(4\)\}/);
   assert.match(page, /data-rigid-display-plan-width=\{displayPlanWidth\.toFixed\(4\)\}/);
   assert.match(page, /data-rigid-display-mode=\{rigidDisplayMode\}/);
