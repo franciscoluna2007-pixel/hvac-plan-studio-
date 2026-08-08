@@ -10,6 +10,7 @@ const {
   inboundAngleForStraight,
   normalizeRigidElbowMeta,
   normalizeRigidStraightTopology,
+  planRigidExistingConnection,
   projectRigidContinuationPoint,
   rigidElbowGeometry,
   rigidFinishedStraightLength,
@@ -205,4 +206,158 @@ test("continuation is network-kind agnostic across 45 and 90 degree metal elbows
     assert.deepEqual(continuation?.straight.size, source.size);
     assert.equal(continuation?.topology.ports.start.takeoutInches, 14);
   }
+});
+
+test("plans an explicit existing-straight connection with deterministic elbow ownership", () => {
+  const elbow = createRigidElbow({
+    straightId: "upstream", straight, straightPortId: "end", angleDegrees: 90,
+    turn: "right", rectangularStyle: "radius", inboundAngleDegrees: 0,
+    inletTakeoutInches: 12, outletTakeoutInches: 18, fittingId: "elbow-1",
+  });
+  const plan = planRigidExistingConnection({
+    elbowId: "elbow-1",
+    elbow,
+    elbowVertex: { x: 100, y: 100 },
+    straightId: "existing-downstream",
+    straight,
+    straightTopology: emptyRigidStraightTopology(),
+    straightPoints: [{ x: 100, y: 118 }, { x: 100, y: 240 }],
+    straightPortId: "start",
+    feetPerUnit: 1 / 12,
+    maxEndpointMoveUnits: 60,
+    axisToleranceUnits: 1,
+    minimumBeyondOutletUnits: 2,
+  });
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.deepEqual(plan.points, [{ x: 100, y: 100 }, { x: 100, y: 240 }]);
+  assert.equal(plan.endpointMoveUnits, 18);
+  assert.equal(plan.farEndpointCorrectionUnits, 0);
+  assert.deepEqual(plan.elbow.ports.outlet.connectedTo, {
+    drawingId: "existing-downstream",
+    portId: "start",
+  });
+  assert.deepEqual(plan.topology.ports.start, {
+    id: "start",
+    takeoutInches: 18,
+    connectedTo: { drawingId: "elbow-1", portId: "outlet" },
+  });
+  assert.deepEqual(plan.topology.ports.end, { id: "end", takeoutInches: 0 });
+
+  const reverse = planRigidExistingConnection({
+    elbowId: "elbow-1",
+    elbow,
+    elbowVertex: { x: 100, y: 100 },
+    straightId: "reverse-downstream",
+    straight,
+    straightTopology: emptyRigidStraightTopology(),
+    straightPoints: [{ x: 100, y: 240 }, { x: 100, y: 118 }],
+    straightPortId: "end",
+    feetPerUnit: 1 / 12,
+    maxEndpointMoveUnits: 60,
+    axisToleranceUnits: 1,
+  });
+  assert.equal(reverse.ok, true);
+  if (reverse.ok) {
+    assert.deepEqual(reverse.points, [{ x: 100, y: 240 }, { x: 100, y: 100 }]);
+    assert.deepEqual(reverse.topology.ports.end.connectedTo, {
+      drawingId: "elbow-1",
+      portId: "outlet",
+    });
+  }
+});
+
+test("uses the same Connect existing planner for supply, return, and fresh rigid networks", () => {
+  const cases = [
+    ["supply", "rectangular", { shape: "rectangular", widthInches: 24, heightInches: 12 }],
+    ["return", "round-metal", { shape: "round", diameterInches: 16 }],
+    ["fresh", "spiral", { shape: "round", diameterInches: 10 }],
+  ];
+  for (const [networkKind, construction, size] of cases) {
+    const compatibleStraight = {
+      version: 1,
+      kind: "straight",
+      networkKind,
+      construction,
+      size,
+    };
+    const elbow = createRigidElbow({
+      straightId: `${networkKind}-upstream`,
+      straight: compatibleStraight,
+      straightPortId: "end",
+      angleDegrees: 90,
+      turn: "right",
+      rectangularStyle: "radius",
+      inboundAngleDegrees: 0,
+      inletTakeoutInches: 12,
+      outletTakeoutInches: 18,
+      fittingId: `${networkKind}-elbow`,
+    });
+    const plan = planRigidExistingConnection({
+      elbowId: `${networkKind}-elbow`,
+      elbow,
+      elbowVertex: { x: 100, y: 100 },
+      straightId: `${networkKind}-existing`,
+      straight: compatibleStraight,
+      straightTopology: emptyRigidStraightTopology(),
+      straightPoints: [{ x: 100, y: 118 }, { x: 100, y: 240 }],
+      straightPortId: "start",
+      feetPerUnit: 1 / 12,
+      maxEndpointMoveUnits: 60,
+      axisToleranceUnits: 1,
+    });
+    assert.equal(plan.ok, true, `${networkKind} should share the explicit planner`);
+    if (!plan.ok) continue;
+    assert.equal(plan.elbow.networkKind, networkKind);
+    assert.equal(plan.elbow.construction, construction);
+    assert.deepEqual(plan.elbow.size, size);
+  }
+});
+
+test("rejects uncertain, incompatible, occupied, and connection-breaking existing straights", () => {
+  const elbow = createRigidElbow({
+    straightId: "upstream", straight, straightPortId: "end", angleDegrees: 90,
+    turn: "right", rectangularStyle: "radius", inboundAngleDegrees: 0,
+    inletTakeoutInches: 12, outletTakeoutInches: 18, fittingId: "elbow-1",
+  });
+  const base = {
+    elbowId: "elbow-1",
+    elbow,
+    elbowVertex: { x: 100, y: 100 },
+    straightId: "existing-downstream",
+    straight,
+    straightTopology: emptyRigidStraightTopology(),
+    straightPoints: [{ x: 100, y: 118 }, { x: 100, y: 240 }],
+    straightPortId: "start",
+    feetPerUnit: 1 / 12,
+    maxEndpointMoveUnits: 60,
+    axisToleranceUnits: 1,
+  };
+  assert.deepEqual(planRigidExistingConnection({
+    ...base,
+    straight: { ...straight, construction: "spiral", size: { shape: "round", diameterInches: 12 } },
+  }), { ok: false, reason: "incompatible-rigid" });
+  assert.deepEqual(planRigidExistingConnection({
+    ...base,
+    straightPoints: [{ x: 100, y: 190 }, { x: 100, y: 300 }],
+  }), { ok: false, reason: "endpoint-too-far" });
+  assert.deepEqual(planRigidExistingConnection({
+    ...base,
+    straightPoints: [{ x: 100, y: 118 }, { x: 110, y: 240 }],
+  }), { ok: false, reason: "axis-misaligned" });
+
+  const occupied = emptyRigidStraightTopology();
+  occupied.ports.start.connectedTo = { drawingId: "other-elbow", portId: "outlet" };
+  assert.deepEqual(planRigidExistingConnection({ ...base, straightTopology: occupied }), {
+    ok: false,
+    reason: "straight-port-connected",
+  });
+
+  const farConnected = emptyRigidStraightTopology();
+  farConnected.ports.end.connectedTo = { drawingId: "other-elbow", portId: "outlet" };
+  assert.deepEqual(planRigidExistingConnection({
+    ...base,
+    straightTopology: farConnected,
+    straightPoints: [{ x: 100, y: 118 }, { x: 100.5, y: 240 }],
+  }), { ok: false, reason: "connected-far-end-would-move" });
 });

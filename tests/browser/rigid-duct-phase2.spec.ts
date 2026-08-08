@@ -88,8 +88,8 @@ test("explicit rigid elbow continues by press-drag-release with reciprocal topol
   await elbow.focus();
   await page.getByRole("navigation", { name: "Plan workflow" }).getByRole("button", { name: "Selected", exact: true }).click();
   const fittingProperties = page.getByRole("complementary", { name: "HVAC plan tools" }).locator(".rigid-properties");
-  await fittingProperties.getByLabel("Inlet takeout, in").fill("24");
-  await fittingProperties.getByLabel("Inlet takeout, in").press("Enter");
+  await fittingProperties.getByLabel("Fitting inlet takeout, in").fill("24");
+  await fittingProperties.getByLabel("Fitting inlet takeout, in").press("Enter");
   expect(Number(await straight.getAttribute("data-rigid-finished-length-feet"))).toBeCloseTo(centerlineFeet - 2, 2);
   await page.locator(".canvas-edit-actions").getByRole("button", { name: "Undo", exact: true }).click();
   expect(Number(await straight.getAttribute("data-rigid-finished-length-feet"))).toBeCloseTo(centerlineFeet - 1, 2);
@@ -103,12 +103,21 @@ test("explicit rigid elbow continues by press-drag-release with reciprocal topol
     x: continuationBox.x + continuationBox.width / 2,
     y: continuationBox.y + continuationBox.height / 2,
   };
+  const rigidStraights = page.locator('g.rigid-duct[data-plan-drawing-id]');
+  expect(continuationBox.width).toBeGreaterThanOrEqual(55);
+  expect(continuationBox.height).toBeGreaterThanOrEqual(55);
+  await page.mouse.click(continuationStart.x, continuationStart.y);
+  await expect(rigidStraights).toHaveCount(1);
+  await expect(elbow).toHaveAttribute("aria-pressed", "true");
+  await expect(elbow.locator('[data-rigid-continuation-handle="outlet"]')).toBeVisible();
+  await page.getByRole("navigation", { name: "Plan workflow" }).getByRole("button", { name: "Selected", exact: true }).click();
+  await expect(page.getByRole("complementary", { name: "HVAC plan tools" }).locator(".rigid-properties")).toContainText("A click keeps the elbow selected and changes nothing");
+  await page.getByRole("button", { name: "Draw HVAC", exact: true }).click();
   await page.mouse.move(continuationStart.x, continuationStart.y);
   await page.mouse.down();
   await page.mouse.move(continuationStart.x, continuationStart.y + 160, { steps: 10 });
   await page.mouse.up();
 
-  const rigidStraights = page.locator('g.rigid-duct[data-plan-drawing-id]');
   await expect(rigidStraights).toHaveCount(2);
   await expect(elbow).toHaveAttribute("data-rigid-outlet-connected", "true");
   const continuation = rigidStraights.last();
