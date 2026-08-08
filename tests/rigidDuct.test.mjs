@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   normalizeRigidStraightMeta,
+  rigidCompactPhysicalWidthInches,
+  rigidCompactPlanWidthUnits,
   rigidEdgeLines,
   rigidHorizontalLengthFeet,
   rigidPlanWidthUnits,
@@ -40,6 +42,25 @@ test("derives true plan width and calibrated horizontal length independently", (
   assert.equal(rigidPlanWidthUnits(meta, 1 / 24), 48);
   assert.equal(rigidHorizontalLengthFeet([{ x: 10, y: 20 }, { x: 250, y: 20 }], 1 / 24), 10);
   assert.equal(rigidHorizontalLengthFeet([{ x: 10, y: 20 }, { x: 250, y: 20 }], 1 / 24, false), null);
+});
+
+test("compresses only drafting width while exact dimensions and calibrated geometry stay truthful", () => {
+  const sizes = [12, 30, 40, 72].map((widthInches) => normalizeRigidStraightMeta({
+    ...rectangular,
+    size: { shape: "rectangular", widthInches, heightInches: 10 },
+  }));
+  assert.ok(sizes.every(Boolean));
+  const [twelve, thirty, forty, seventyTwo] = sizes;
+  assert.equal(rigidCompactPhysicalWidthInches(twelve), 12);
+  assert.ok(rigidCompactPhysicalWidthInches(thirty) < 19);
+  assert.ok(rigidCompactPhysicalWidthInches(forty) < 20);
+  assert.ok(rigidCompactPhysicalWidthInches(forty) > rigidCompactPhysicalWidthInches(thirty));
+  assert.ok(rigidCompactPhysicalWidthInches(seventyTwo) > rigidCompactPhysicalWidthInches(forty));
+  assert.ok(rigidCompactPhysicalWidthInches(seventyTwo) < 22);
+  assert.ok(Math.abs(rigidPlanWidthUnits(forty, 1 / 24) - 80) < 1e-9);
+  assert.ok(rigidCompactPlanWidthUnits(forty, 1 / 24) < 40);
+  assert.equal(rigidSizeLabel(forty), "40×10");
+  assert.equal(rigidHorizontalLengthFeet([{ x: 0, y: 0 }, { x: 240, y: 0 }], 1 / 24), 10);
 });
 
 test("builds stable physical edges and bounded spiral seam geometry", () => {

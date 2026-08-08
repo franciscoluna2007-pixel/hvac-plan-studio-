@@ -54,6 +54,7 @@ import {
 } from "./materialOrder";
 import {
   normalizeRigidStraightMeta,
+  rigidCompactPlanWidthUnits,
   rigidConstructionLabel,
   rigidEdgeLines,
   rigidHorizontalLengthFeet,
@@ -76,11 +77,13 @@ import {
   inboundAngleForStraight,
   normalizeRigidElbowMeta,
   normalizeRigidStraightTopology,
+  planRigidExistingConnection,
   projectRigidContinuationPoint,
   rigidElbowGeometry,
   rigidFinishedStraightLength,
   rigidStraightHasConnection,
   type RigidElbowMetaV1,
+  type RigidExistingConnectionPlan,
   type RigidStraightPortId,
   type RigidStraightTopologyV1,
 } from "./rigidTopology";
@@ -1218,6 +1221,21 @@ type RigidPlacementGesture = {
   commitThresholdUnits?: number;
 };
 
+type RigidConnectCandidate = {
+  key: string;
+  drawingId: string;
+  portId: RigidStraightPortId;
+  label: string;
+  fingerprint: string;
+  plan: RigidExistingConnectionPlan;
+};
+
+type RigidConnectReview = {
+  elbowId: string;
+  candidateKey: string;
+  sourceFingerprint: string;
+};
+
 type ExplicitThreeRunOption = {
   center: Point;
   clickedRunId: string;
@@ -1743,6 +1761,7 @@ function HVACPlanStudioApp() {
   const [rigidWidthInches, setRigidWidthInches] = useState(12);
   const [rigidHeightInches, setRigidHeightInches] = useState(8);
   const [rigidDiameterInches, setRigidDiameterInches] = useState(8);
+  const [rigidDisplayMode, setRigidDisplayMode] = useState<"compact" | "true-width">("compact");
   const [rigidPreview, setRigidPreview] = useState<{
     start: Point;
     end: Point;
@@ -1754,6 +1773,8 @@ function HVACPlanStudioApp() {
   const [rigidElbowStyle, setRigidElbowStyle] = useState<"radius" | "square">("radius");
   const [rigidElbowInletTakeout, setRigidElbowInletTakeout] = useState(12);
   const [rigidElbowOutletTakeout, setRigidElbowOutletTakeout] = useState(12);
+  const [rigidContinuationFinishedFeet, setRigidContinuationFinishedFeet] = useState(5);
+  const [rigidConnectReview, setRigidConnectReview] = useState<RigidConnectReview | null>(null);
   const [runLineWeights, setRunLineWeights] = useState({ supply: 0.1, return: 0.1 });
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [undoStack, setUndoStack] = useState<Drawing[][]>([]);
@@ -2515,6 +2536,13 @@ function HVACPlanStudioApp() {
 
   function isSelected(id: string) {
     return selectedIds.includes(id);
+  }
+
+  function selectionPresentationClass(id: string) {
+    if (!isSelected(id)) return "";
+    return id === selectedId || selectedIds.length === 1
+      ? "active-plan-selection"
+      : "assembly-plan-selection";
   }
 
   function connectedSelection(seedIds: string[]) {
@@ -11353,6 +11381,144 @@ function HVACPlanStudioApp() {
     };
   }
 
+  function rigidConnectCandidatesFor(
+    fitting: Drawing & { rigidFitting: RigidElbowMetaV1 },
+  ): RigidConnectCandidate[] {
+    if (fitting.rigidFitting.ports.outlet.connectedTo || drawingLocked(fitting)) return [];
+    const vertex = fitting.points[0];
+    const scale = scaleStateForPage(fitting.page);
+    const geometry = vertex && rigidElbowGeometry(vertex, fitting.rigidFitting, scale.feetPerUnit);
+    if (!vertex || !scale.verified || !geometry) return [];
+    const outletDistanceUnits = Math.hypot(
+      geometry.outlet.x - vertex.x,
+      geometry.outlet.y - vertex.y,
+    );
+    const inletDrawingId = fitting.rigidFitting.ports.inlet.connectedTo?.drawingId;
+    const candidates: RigidConnectCandidate[] = [];
+    drawings.forEach((drawing) => {
+      if (
+        !drawing.rigid ||
+        drawing.id === inletDrawingId ||
+        drawing.id === fitting.id ||
+        drawing.page !== fitting.page ||
+        drawingSystem(drawing) !== drawingSystem(fitting) ||
+        drawingLocked(drawing)
+      ) return;
+      const rigid = drawing.rigid;
+      const topology = normalizeRigidStraightTopology(drawing.rigidTopology);
+      (["start", "end"] as const).forEach((portId) => {
+        if (topology.ports[portId].connectedTo) return;
+        const plan = planRigidExistingConnection({
+          elbowId: fitting.id,
+          elbow: fitting.rigidFitting,
+          elbowVertex: vertex,
+          straightId: drawing.id,
+          straight: rigid,
+          straightTopology: topology,
+          straightPoints: drawing.points,
+          straightPortId: portId,
+          feetPerUnit: scale.feetPerUnit,
+          maxEndpointMoveUnits: outletDistanceUnits + 36 / Math.max(.1, zoomRef.current),
+          axisToleranceUnits: 4 / Math.max(.1, zoomRef.current),
+          minimumBeyondOutletUnits: 8 / Math.max(.1, zoomRef.current),
+        });
+        if (!plan.ok) return;
+        const fingerprint = stableTextHash(JSON.stringify({
+          elbowId: fitting.id,
+          elbow: fitting.rigidFitting,
+          vertex,
+          straightId: drawing.id,
+          straight: rigid,
+          topology,
+          points: drawing.points,
+          portId,
+        }));
+        const endpointMoveFeet = plan.endpointMoveUnits * scale.feetPerUnit;
+        const correctionFeet = plan.farEndpointCorrectionUnits * scale.feetPerUnit;
+        candidates.push({
+          key: `${drawing.id}:${portId}`,
+          drawingId: drawing.id,
+          portId,
+          fingerprint,
+          plan,
+          label: `${rigidSizeLabel(rigid)} ${rigidConstructionLabel(rigid.construction)} · ${portId} end · ${endpointMoveFeet.toFixed(1)} ft move${correctionFeet > .01 ? ` · ${correctionFeet.toFixed(1)} ft axis correction` : ""}`,
+        });
+      });
+    });
+    return candidates.sort((left, right) =>
+      left.plan.endpointMoveUnits - right.plan.endpointMoveUnits ||
+      left.plan.farEndpointCorrectionUnits - right.plan.farEndpointCorrectionUnits ||
+      left.key.localeCompare(right.key)
+    );
+  }
+
+  function beginRigidConnectReview() {
+    const fitting = drawings.find((drawing) => drawing.id === selectedId && drawing.rigidFitting) as
+      | (Drawing & { rigidFitting: RigidElbowMetaV1 })
+      | undefined;
+    if (!fitting?.rigidFitting || fitting.rigidFitting.ports.outlet.connectedTo) return;
+    const candidates = rigidConnectCandidatesFor(fitting);
+    const candidate = candidates[0];
+    if (!candidate) {
+      setBranchMessage("No safe matching endpoint is ready. Place an open straight endpoint on this outlet axis, then review again.");
+      return;
+    }
+    setRigidConnectReview({
+      elbowId: fitting.id,
+      candidateKey: candidate.key,
+      sourceFingerprint: candidate.fingerprint,
+    });
+    setBranchMessage("Review the existing endpoint move before connecting. The elbow and its outlet direction stay fixed.");
+  }
+
+  function chooseRigidConnectCandidate(candidateKey: string) {
+    const fitting = drawings.find((drawing) =>
+      drawing.id === rigidConnectReview?.elbowId && drawing.rigidFitting
+    ) as (Drawing & { rigidFitting: RigidElbowMetaV1 }) | undefined;
+    const candidate = fitting && rigidConnectCandidatesFor(fitting).find((item) => item.key === candidateKey);
+    if (!fitting || !candidate) return;
+    setRigidConnectReview({
+      elbowId: fitting.id,
+      candidateKey: candidate.key,
+      sourceFingerprint: candidate.fingerprint,
+    });
+  }
+
+  function cancelRigidConnectReview(message = "Connect existing cancelled · no geometry or topology changed") {
+    setRigidConnectReview(null);
+    setBranchMessage(message);
+  }
+
+  function applyRigidConnectReview() {
+    const review = rigidConnectReview;
+    const fitting = drawings.find((drawing) =>
+      drawing.id === review?.elbowId && drawing.rigidFitting
+    ) as (Drawing & { rigidFitting: RigidElbowMetaV1 }) | undefined;
+    const candidate = fitting && rigidConnectCandidatesFor(fitting).find((item) => item.key === review?.candidateKey);
+    if (!review || !fitting || !candidate || candidate.fingerprint !== review.sourceFingerprint) {
+      setBranchMessage("The elbow or straight changed during review. Nothing connected · review the current endpoint again.");
+      setRigidConnectReview(null);
+      return;
+    }
+    setHistory(drawings.map((drawing) => {
+      if (drawing.id === fitting.id) return { ...drawing, rigidFitting: candidate.plan.elbow };
+      if (drawing.id === candidate.drawingId) {
+        return {
+          ...drawing,
+          points: candidate.plan.points.map((point) => ({ ...point })),
+          rigidTopology: candidate.plan.topology,
+        };
+      }
+      return drawing;
+    }));
+    setRigidConnectReview(null);
+    selectOnly(fitting.id);
+    const scale = scaleStateForPage(fitting.page);
+    const movedFeet = candidate.plan.endpointMoveUnits * scale.feetPerUnit;
+    const correctionFeet = candidate.plan.farEndpointCorrectionUnits * scale.feetPerUnit;
+    setBranchMessage(`Existing ${candidate.portId} endpoint connected · moved ${movedFeet.toFixed(1)} ft${correctionFeet > .01 ? ` · far end aligned ${correctionFeet.toFixed(1)} ft` : ""} · one Undo restores both objects`);
+  }
+
   function beginRigidPlacement(event: PointerEvent<SVGSVGElement>, rawPoint: Point) {
     const sheetScale = scaleStateForPage(pageNumber);
     if (!sheetScale.verified) {
@@ -11367,6 +11533,72 @@ function HVACPlanStudioApp() {
     setRigidPreview({ start, end: start, rigid });
     setSnapMarker(start);
     event.preventDefault();
+  }
+
+  function commitRigidContinuation(
+    elbow: Drawing & { rigidFitting: RigidElbowMetaV1 },
+    endpoint: Point,
+  ) {
+    const straightId = crypto.randomUUID();
+    const continuation = createRigidContinuation({
+      elbowId: elbow.id,
+      elbow: elbow.rigidFitting,
+      straightId,
+    });
+    if (!continuation) {
+      setBranchMessage("The elbow outlet changed before the continuation was placed. Try again.");
+      return false;
+    }
+    const drawing: Drawing = {
+      id: straightId,
+      type: "rigid",
+      points: [{ ...elbow.points[0] }, { ...endpoint }],
+      size: rigidSizeLabel(continuation.straight),
+      page: elbow.page,
+      systemId: elbow.systemId,
+      rigid: continuation.straight,
+      rigidTopology: continuation.topology,
+    };
+    setHistory([
+      ...drawings.map((candidate) => candidate.id === elbow.id
+        ? { ...candidate, rigidFitting: continuation.elbow }
+        : candidate),
+      drawing,
+    ]);
+    setSelectedId(drawing.id);
+    setSelectedIds([drawing.id]);
+    activeEditPointerIdRef.current = null;
+    editTransactionRef.current = null;
+    const finished = rigidFinishedStraightLength(
+      rigidHorizontalLengthFeet(drawing.points, scaleStateForPage(elbow.page).feetPerUnit),
+      continuation.topology,
+    );
+    setBranchMessage(`${rigidConstructionLabel(continuation.straight.construction)} continuation placed · ${finished?.finishedFeet?.toFixed(1) || "0.0"} finished LF · one Undo removes it`);
+    return true;
+  }
+
+  function addRigidContinuationByLength() {
+    const elbow = drawings.find((drawing) => drawing.id === selectedId && drawing.rigidFitting) as
+      | (Drawing & { rigidFitting: RigidElbowMetaV1 })
+      | undefined;
+    if (!elbow?.rigidFitting || elbow.rigidFitting.ports.outlet.connectedTo) return;
+    const scale = scaleStateForPage(elbow.page);
+    const geometry = rigidElbowGeometry(elbow.points[0], elbow.rigidFitting, scale.feetPerUnit);
+    if (!scale.verified || !geometry) {
+      setBranchMessage("Verify this sheet scale and fitting takeouts before adding a rigid continuation.");
+      return;
+    }
+    const finishedFeet = Number(rigidContinuationFinishedFeet);
+    if (!Number.isFinite(finishedFeet) || finishedFeet < .5 || finishedFeet > 200) {
+      setBranchMessage("Enter a finished straight length from 0.5 to 200 feet.");
+      return;
+    }
+    const centerlineFeet = finishedFeet + (elbow.rigidFitting.ports.outlet.takeoutInches || 0) / 12;
+    const distanceUnits = centerlineFeet / scale.feetPerUnit;
+    commitRigidContinuation(elbow, {
+      x: elbow.points[0].x + geometry.outbound.x * distanceUnits,
+      y: elbow.points[0].y + geometry.outbound.y * distanceUnits,
+    });
   }
 
   function beginRigidContinuation(
@@ -11432,6 +11664,10 @@ function HVACPlanStudioApp() {
       : 2;
     if (cancelled || lengthUnits < requiredLength) {
       restoreEditTransaction(event.pointerId);
+      if (gesture.sourceElbowId && !cancelled) {
+        selectOnly(gesture.sourceElbowId);
+        setBranchMessage("Hold and drag from the red outlet, then release beyond the fitting to place the next straight. A click changes nothing.");
+      }
       return true;
     }
     const rigid = normalizeRigidStraightMeta(gesture.rigid);
@@ -11442,47 +11678,12 @@ function HVACPlanStudioApp() {
     if (gesture.sourceElbowId) {
       const elbow = drawings.find((drawing) =>
         drawing.id === gesture.sourceElbowId && drawing.rigidFitting
-      );
+      ) as (Drawing & { rigidFitting: RigidElbowMetaV1 }) | undefined;
       if (!elbow?.rigidFitting) {
         restoreEditTransaction(event.pointerId);
         return true;
       }
-      const straightId = crypto.randomUUID();
-      const continuation = createRigidContinuation({
-        elbowId: elbow.id,
-        elbow: elbow.rigidFitting,
-        straightId,
-      });
-      if (!continuation) {
-        restoreEditTransaction(event.pointerId);
-        setBranchMessage("The elbow outlet changed before the continuation was placed. Try again.");
-        return true;
-      }
-      const drawing: Drawing = {
-        id: straightId,
-        type: "rigid",
-        points: [gesture.start, gesture.latestPoint],
-        size: rigidSizeLabel(continuation.straight),
-        page: elbow.page,
-        systemId: elbow.systemId,
-        rigid: continuation.straight,
-        rigidTopology: continuation.topology,
-      };
-      setHistory([
-        ...drawings.map((candidate) => candidate.id === elbow.id
-          ? { ...candidate, rigidFitting: continuation.elbow }
-          : candidate),
-        drawing,
-      ]);
-      setSelectedId(drawing.id);
-      setSelectedIds([drawing.id]);
-      activeEditPointerIdRef.current = null;
-      editTransactionRef.current = null;
-      const finished = rigidFinishedStraightLength(
-        rigidHorizontalLengthFeet(drawing.points, scaleStateForPage(elbow.page).feetPerUnit),
-        continuation.topology,
-      );
-      setBranchMessage(`${rigidConstructionLabel(rigid.construction)} continuation placed · ${finished?.finishedFeet?.toFixed(1) || "0.0"} finished LF · one Undo removes it`);
+      commitRigidContinuation(elbow, gesture.latestPoint);
       return true;
     }
     const drawing: Drawing = {
@@ -13760,8 +13961,10 @@ function HVACPlanStudioApp() {
     const { kind, rotation, variant } = drawing.symbol;
     const displayLabel = displayedSymbolLabel(drawing);
     const selected = isSelected(drawing.id);
+    const activeSelected = selected && (selectedIds.length === 1 || drawing.id === selectedId);
+    const traced = selectedIds.length <= 1 && activeTraceSymbolIds.has(drawing.id);
     const { width: symbolWidth, height: symbolHeight } = symbolDimensions(drawing.size);
-    const artworkClass = `hvac-symbol symbol-${kind} variant-${variant || "standard"} ${drawing.symbol.connectedRunId ? "terminal-linked" : ""} ${activeTraceSymbolIds.has(drawing.id) ? "traced-symbol" : ""} ${preview ? "symbol-preview" : ""} ${selected ? "selected-symbol" : ""}`;
+    const artworkClass = `hvac-symbol symbol-${kind} variant-${variant || "standard"} ${drawing.symbol.connectedRunId ? "terminal-linked" : ""} ${traced ? "traced-symbol" : ""} ${preview ? "symbol-preview" : ""} ${activeSelected ? "selected-symbol" : ""} ${selectionPresentationClass(drawing.id)}`;
     const verticalEquipment = kind === "equipment" && ["vertical-air-handler", "vertical-furnace"].includes(variant || "");
     const labelY = symbolLabelBaseY(drawing);
     const interactionRadius = kind === "equipment" ? verticalEquipment ? 47 : 43 : kind === "fan" ? 31 : 25;
@@ -13902,6 +14105,11 @@ function HVACPlanStudioApp() {
       if ((event.ctrlKey || event.metaKey) && key === "k") {
         event.preventDefault();
         setShowCommandPalette((visible) => !visible);
+        return;
+      }
+      if (rigidConnectReview && event.key === "Escape") {
+        event.preventDefault();
+        cancelRigidConnectReview();
         return;
       }
       if (target?.closest("input, select, textarea, button, [data-canvas-ui]")) return;
@@ -14116,6 +14324,23 @@ function HVACPlanStudioApp() {
   const selectedFitting = selectedDrawing?.fitting ? selectedDrawing : undefined;
   const selectedRigid = selectedDrawing?.rigid ? selectedDrawing : undefined;
   const selectedRigidFitting = selectedDrawing?.rigidFitting ? selectedDrawing : undefined;
+  const selectedRigidConnectCandidates = selectedRigidFitting?.rigidFitting
+    ? rigidConnectCandidatesFor(selectedRigidFitting as Drawing & { rigidFitting: RigidElbowMetaV1 })
+    : [];
+  const activeRigidConnectCandidate = rigidConnectReview?.elbowId === selectedRigidFitting?.id
+    ? selectedRigidConnectCandidates.find((candidate) => candidate.key === rigidConnectReview?.candidateKey)
+    : undefined;
+  const activeRigidConnectDrawing = activeRigidConnectCandidate
+    ? drawings.find((drawing) => drawing.id === activeRigidConnectCandidate.drawingId && drawing.rigid)
+    : undefined;
+  const activeRigidConnectCurrentEndpoint = activeRigidConnectCandidate && activeRigidConnectDrawing
+    ? activeRigidConnectDrawing.points[activeRigidConnectCandidate.portId === "start" ? 0 : 1]
+    : undefined;
+  useEffect(() => {
+    if (rigidConnectReview && rigidConnectReview.elbowId !== selectedId) {
+      setRigidConnectReview(null);
+    }
+  }, [rigidConnectReview, selectedId]);
   const selectedRun = selectedDrawing && !selectedDrawing.fitting && ["supply", "return", "fresh"].includes(selectedDrawing.type) ? selectedDrawing : undefined;
   const selectedRunLabelText = selectedRun
     ? [
@@ -16353,6 +16578,10 @@ function HVACPlanStudioApp() {
               <label>Construction
                 <strong>{rigidConstructionLabel(selectedRigid.rigid.construction)}</strong>
               </label>
+              <div className="rigid-display-fact" role="status">
+                <strong>{rigidSizeLabel(selectedRigid.rigid)} in actual duct size</strong>
+                <span>{rigidDisplayMode === "compact" ? "Compact drafting footprint is on. Dimensions and calculations remain actual." : "True width verification footprint is on."}</span>
+              </div>
               {selectedRigid.rigid.size.shape === "rectangular" ? <div className="rigid-size-grid">
                 <label>Inside width, in<input type="number" min="1" max="120" step="0.25" value={selectedRigid.rigid.size.widthInches} onChange={(event) => updateSelectedRigidSize({ widthInches: Number(event.target.value) })} /></label>
                 <label>Inside height, in<input type="number" min="1" max="120" step="0.25" value={selectedRigid.rigid.size.heightInches} onChange={(event) => updateSelectedRigidSize({ heightInches: Number(event.target.value) })} /></label>
@@ -16391,12 +16620,16 @@ function HVACPlanStudioApp() {
               <small>Drag the body to move it. Drag either cobalt endpoint to change the straight section. Every change is one Undo step.</small>
             </div> : selectedRigidFitting?.rigidFitting ? <div className="rigid-properties">
               <div className="fitting-property-title"><Box size={14} /><span>RIGID ELBOW</span><b>{selectedRigidFitting.rigidFitting.angleDegrees}°</b></div>
-              <strong>{rigidConstructionLabel(selectedRigidFitting.rigidFitting.construction)} · {selectedRigidFitting.rigidFitting.turn} turn</strong>
+              <strong>{rigidConstructionLabel(selectedRigidFitting.rigidFitting.construction)} · {rigidSizeLabel({ version: 1, kind: "straight", networkKind: selectedRigidFitting.rigidFitting.networkKind, construction: selectedRigidFitting.rigidFitting.construction, size: selectedRigidFitting.rigidFitting.size })} in actual · {selectedRigidFitting.rigidFitting.turn} turn</strong>
               <span>{selectedRigidFitting.rigidFitting.construction === "rectangular" ? `${selectedRigidFitting.rigidFitting.rectangularStyle} elbow` : "metal elbow"}</span>
-              <div className="rigid-size-grid">
-                <label>Inlet takeout, in<input key={`${selectedRigidFitting.id}-inlet-${selectedRigidFitting.rigidFitting.ports.inlet.takeoutInches}`} type="number" min="0" max="120" step="0.25" defaultValue={selectedRigidFitting.rigidFitting.ports.inlet.takeoutInches ?? ""} onBlur={(event) => updateSelectedRigidElbowTakeout("inlet", Number(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
-                <label>Outlet takeout, in<input key={`${selectedRigidFitting.id}-outlet-${selectedRigidFitting.rigidFitting.ports.outlet.takeoutInches}`} type="number" min="0" max="120" step="0.25" defaultValue={selectedRigidFitting.rigidFitting.ports.outlet.takeoutInches ?? ""} onBlur={(event) => updateSelectedRigidElbowTakeout("outlet", Number(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
-              </div>
+              <fieldset className="rigid-fitting-takeouts" aria-describedby={`rigid-takeout-help-${selectedRigidFitting.id}`}>
+                <legend>Fitting takeouts</legend>
+                <div className="rigid-size-grid">
+                  <label>Fitting inlet takeout, in<input key={`${selectedRigidFitting.id}-inlet-${selectedRigidFitting.rigidFitting.ports.inlet.takeoutInches}`} type="number" min="0" max="120" step="0.25" defaultValue={selectedRigidFitting.rigidFitting.ports.inlet.takeoutInches ?? ""} onBlur={(event) => updateSelectedRigidElbowTakeout("inlet", Number(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
+                  <label>Fitting outlet takeout, in<input key={`${selectedRigidFitting.id}-outlet-${selectedRigidFitting.rigidFitting.ports.outlet.takeoutInches}`} type="number" min="0" max="120" step="0.25" defaultValue={selectedRigidFitting.rigidFitting.ports.outlet.takeoutInches ?? ""} onBlur={(event) => updateSelectedRigidElbowTakeout("outlet", Number(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
+                </div>
+                <small id={`rigid-takeout-help-${selectedRigidFitting.id}`}>These are fitting centerline takeouts. They are not rectangular duct width or height.</small>
+              </fieldset>
               <div className="engineering-card">
                 <span>EXPLICIT TAKEOUTS</span>
                 <strong>{selectedRigidFitting.rigidFitting.ports.inlet.takeoutInches ?? "—"} in / {selectedRigidFitting.rigidFitting.ports.outlet.takeoutInches ?? "—"} in</strong>
@@ -16404,7 +16637,47 @@ function HVACPlanStudioApp() {
               </div>
               <small>{selectedRigidFitting.rigidFitting.ports.outlet.connectedTo
                 ? "The outlet connection is explicit and reciprocal. Deleting or undoing its straight reopens this port."
-                : "Drag the red outlet dot to place the next straight. Construction, size, system, and the entered takeout remain matched; no route or size is inferred."}</small>
+                : "Hold and drag from the red outlet, then release to place a new straight. A click keeps the elbow selected and changes nothing. Mouse, pen, and touch use the same gesture; or review an aligned existing endpoint below."}</small>
+              {!selectedRigidFitting.rigidFitting.ports.outlet.connectedTo && <section className="rigid-continuation-alternative" aria-label="Keyboard rigid continuation">
+                <div>
+                  <strong>Keyboard or touch alternative</strong>
+                  <span>Enter the finished straight length after the fitting takeout.</span>
+                </div>
+                <label>Finished straight, ft<input type="number" min="0.5" max="200" step="0.5" value={rigidContinuationFinishedFeet} onChange={(event) => setRigidContinuationFinishedFeet(Number(event.target.value))} /></label>
+                <button type="button" className="rigid-draw-action" onClick={addRigidContinuationByLength}>Add straight from outlet</button>
+              </section>}
+              {!selectedRigidFitting.rigidFitting.ports.outlet.connectedTo && <section className="rigid-connect-existing" aria-label="Connect an existing rigid straight">
+                <div className="rigid-connect-heading">
+                  <span>CONNECT EXISTING</span>
+                  <b>{selectedRigidConnectCandidates.length} SAFE {selectedRigidConnectCandidates.length === 1 ? "ENDPOINT" : "ENDPOINTS"}</b>
+                </div>
+                {rigidConnectReview?.elbowId === selectedRigidFitting.id && activeRigidConnectCandidate ? <>
+                  {selectedRigidConnectCandidates.length > 1 && <label>Open endpoint
+                    <select value={activeRigidConnectCandidate.key} onChange={(event) => chooseRigidConnectCandidate(event.target.value)}>
+                      {selectedRigidConnectCandidates.map((candidate) => <option value={candidate.key} key={candidate.key}>{candidate.label}</option>)}
+                    </select>
+                  </label>}
+                  <div className="rigid-connect-review" role="status" aria-live="polite">
+                    <span>OWNERSHIP</span>
+                    <strong>Elbow vertex and outlet axis stay fixed</strong>
+                    <small>The selected straight&apos;s {activeRigidConnectCandidate.portId} endpoint moves to the elbow vertex. Its construction, size, system, opposite connection, and explicit outlet takeout remain unchanged.</small>
+                    <dl>
+                      <div><dt>Endpoint move</dt><dd>{(activeRigidConnectCandidate.plan.endpointMoveUnits * scaleStateForPage(selectedRigidFitting.page).feetPerUnit).toFixed(1)} ft</dd></div>
+                      <div><dt>Far-end alignment</dt><dd>{(activeRigidConnectCandidate.plan.farEndpointCorrectionUnits * scaleStateForPage(selectedRigidFitting.page).feetPerUnit).toFixed(1)} ft</dd></div>
+                    </dl>
+                  </div>
+                  <div className="rigid-connect-actions">
+                    <button type="button" className="primary" onClick={applyRigidConnectReview}>Connect existing</button>
+                    <button type="button" onClick={() => cancelRigidConnectReview()}>Cancel</button>
+                  </div>
+                  <small>One Undo restores both objects. Escape cancels this review without changing the plan.</small>
+                </> : <>
+                  <button type="button" className="rigid-connect-launch" disabled={!selectedRigidConnectCandidates.length} onClick={beginRigidConnectReview}>Review existing straight</button>
+                  <small>{selectedRigidConnectCandidates.length
+                    ? "Only matching open endpoints on this sheet, system, size, construction, and outlet axis are offered."
+                    : "No safe match yet. Place a matching open straight endpoint on this outlet axis; uncertain geometry stays disconnected."}</small>
+                </>}
+              </section>}
             </div> : selectedDrawing?.measurement ? <div className="engineering-card">
               <span>MEASURED DISTANCE</span>
               <strong>{drawings.find((drawing) => drawing.id === selectedId)?.measurement?.feet.toFixed(1)} FT</strong>
@@ -16640,6 +16913,17 @@ function HVACPlanStudioApp() {
               aria-pressed={showFittingLabels}
             >
               <DraftingCompass size={14} /> T Branch Text
+            </button>
+            <button
+              className={`display-toggle rigid-display-toggle ${rigidDisplayMode === "true-width" ? "active" : ""}`}
+              disabled={!pdf}
+              onClick={() => setRigidDisplayMode((mode) => mode === "compact" ? "true-width" : "compact")}
+              title={rigidDisplayMode === "compact"
+                ? "Rigid duct uses a slimmer drafting footprint. Stored dimensions and calculations remain actual."
+                : "Rigid duct is shown at its actual calibrated footprint."}
+              aria-pressed={rigidDisplayMode === "true-width"}
+            >
+              <Box size={14} /> Rigid: {rigidDisplayMode === "compact" ? "Compact" : "True width"}
             </button>
             <button
               className={`sheets-button ${showSheetNavigator ? "active" : ""}`}
@@ -16954,7 +17238,7 @@ function HVACPlanStudioApp() {
                     ref={planOverlayRef}
                     tabIndex={redlineOwnsCanvas ? 0 : -1}
                     aria-label="Plan drawing canvas"
-                    className={`drawing-layer tool-${activeTool} ${copyPlacement ? "copy-place-active" : ""} ${redlineOwnsCanvas ? `field-redline-active redline-tool-${fieldRedline.activeTool}` : ""}`}
+                    className={`drawing-layer tool-${activeTool} rigid-display-${rigidDisplayMode} ${selectedIds.length > 1 ? "connected-assembly-selection" : ""} ${copyPlacement ? "copy-place-active" : ""} ${redlineOwnsCanvas ? `field-redline-active redline-tool-${fieldRedline.activeTool}` : ""}`}
                     viewBox={`0 0 ${renderSize.width || 1} ${renderSize.height || 1}`}
                     onPointerDownCapture={(event) => {
                       latchCanvasPointerOwner(
@@ -17125,7 +17409,7 @@ function HVACPlanStudioApp() {
                         const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
                         return <g
                           key={drawing.id}
-                          className={`measurement ${isSelected(drawing.id) ? "selected-measurement" : ""} ${isCopyPreview ? "copy-place-preview" : ""}`}
+                          className={`measurement ${drawing.id === selectedId ? "selected-measurement" : ""} ${selectionPresentationClass(drawing.id)} ${isCopyPreview ? "copy-place-preview" : ""}`}
                           data-plan-edit-control={isCopyPreview ? undefined : "hvac"}
                           data-plan-drawing-id={isCopyPreview ? undefined : drawing.id}
                           tabIndex={isCopyPreview ? undefined : 0}
@@ -17168,7 +17452,10 @@ function HVACPlanStudioApp() {
                           size: drawing.rigidFitting.size,
                         };
                         const geometry = rigidElbowGeometry(drawing.points[0], drawing.rigidFitting, scale.feetPerUnit);
-                        const width = rigidPlanWidthUnits(fittingShape, scale.feetPerUnit);
+                        const trueWidth = rigidPlanWidthUnits(fittingShape, scale.feetPerUnit);
+                        const displayWidth = rigidDisplayMode === "compact"
+                          ? rigidCompactPlanWidthUnits(fittingShape, scale.feetPerUnit)
+                          : trueWidth;
                         const path = geometry
                           ? drawing.rigidFitting.rectangularStyle === "square"
                             ? `M ${geometry.inlet.x} ${geometry.inlet.y} L ${geometry.vertex.x} ${geometry.vertex.y} L ${geometry.outlet.x} ${geometry.outlet.y}`
@@ -17176,14 +17463,20 @@ function HVACPlanStudioApp() {
                           : `M ${drawing.points[0].x - 6} ${drawing.points[0].y} L ${drawing.points[0].x + 6} ${drawing.points[0].y}`;
                         return <g
                           key={drawing.id}
-                          className={`rigid-elbow rigid-${drawing.rigidFitting.construction} ${isSelected(drawing.id) ? "selected-rigid" : ""}`}
+                          className={`rigid-elbow rigid-${drawing.rigidFitting.construction} ${drawing.id === selectedId ? "selected-rigid" : ""} ${selectionPresentationClass(drawing.id)}`}
                           data-plan-edit-control="hvac"
                           data-plan-drawing-id={drawing.id}
                           data-rigid-fitting="elbow"
                           data-rigid-angle={drawing.rigidFitting.angleDegrees}
+                          data-rigid-size={rigidSizeLabel(fittingShape)}
+                          data-rigid-plan-width={trueWidth.toFixed(4)}
+                          data-rigid-display-plan-width={displayWidth.toFixed(4)}
+                          data-rigid-display-mode={rigidDisplayMode}
                           data-rigid-vertex={`${drawing.points[0].x.toFixed(3)},${drawing.points[0].y.toFixed(3)}`}
                           data-rigid-inlet-connected={Boolean(drawing.rigidFitting.ports.inlet.connectedTo)}
                           data-rigid-outlet-connected={Boolean(drawing.rigidFitting.ports.outlet.connectedTo)}
+                          data-rigid-inlet-connection={drawing.rigidFitting.ports.inlet.connectedTo ? `${drawing.rigidFitting.ports.inlet.connectedTo.drawingId}:${drawing.rigidFitting.ports.inlet.connectedTo.portId}` : undefined}
+                          data-rigid-outlet-connection={drawing.rigidFitting.ports.outlet.connectedTo ? `${drawing.rigidFitting.ports.outlet.connectedTo.drawingId}:${drawing.rigidFitting.ports.outlet.connectedTo.portId}` : undefined}
                           tabIndex={0}
                           role="button"
                           aria-label={planDrawingAccessibleLabel(drawing)}
@@ -17192,8 +17485,8 @@ function HVACPlanStudioApp() {
                           onFocus={() => selectOnly(drawing.id)}
                           onKeyDown={(event) => handlePlanDrawingKeyDown(event, drawing)}
                         >
-                          <title>{`${drawing.rigidFitting.angleDegrees}° ${rigidConstructionLabel(drawing.rigidFitting.construction)} elbow · inlet ${drawing.rigidFitting.ports.inlet.connectedTo ? "connected" : "open"} · outlet ${drawing.rigidFitting.ports.outlet.connectedTo ? "connected" : "open"}`}</title>
-                          <path className="rigid-elbow-body" d={path} stroke={drawingColors[drawing.rigidFitting.networkKind]} style={{ strokeWidth: width }} />
+                          <title>{`${drawing.rigidFitting.angleDegrees}° ${rigidConstructionLabel(drawing.rigidFitting.construction)} elbow · actual size ${rigidSizeLabel(fittingShape)} · ${rigidDisplayMode === "compact" ? "compact drafting footprint" : "true-width footprint"} · inlet ${drawing.rigidFitting.ports.inlet.connectedTo ? "connected" : "open"} · outlet ${drawing.rigidFitting.ports.outlet.connectedTo ? "connected" : "open"}`}</title>
+                          <path className="rigid-elbow-body" d={path} stroke={drawingColors[drawing.rigidFitting.networkKind]} style={{ strokeWidth: displayWidth }} />
                           <path className="rigid-elbow-edge" d={path} />
                           <path className="rigid-elbow-hit" d={path} onPointerDown={(event) => {
                             if (event.button !== 0 || activeTool !== "select" || drawingLocked(drawing)) return;
@@ -17204,17 +17497,17 @@ function HVACPlanStudioApp() {
                             <circle className={drawing.rigidFitting.ports.inlet.connectedTo ? "connected" : "open"} cx={geometry.inlet.x} cy={geometry.inlet.y} r={4 / Math.max(.1, zoom)} />
                             <circle className={drawing.rigidFitting.ports.outlet.connectedTo ? "connected" : "open"} cx={geometry.outlet.x} cy={geometry.outlet.y} r={4 / Math.max(.1, zoom)} />
                           </g>}
-                          {geometry && isSelected(drawing.id) && !drawing.rigidFitting.ports.outlet.connectedTo && <g
+                          {geometry && !drawing.rigidFitting.ports.outlet.connectedTo && <g
                             className="rigid-continuation-control"
                             data-rigid-continuation-handle="outlet"
-                            role="button"
-                            aria-label="Drag open elbow outlet to continue rigid duct"
+                            aria-hidden="true"
                             onPointerDown={(event) => beginRigidContinuation(
                               event,
                               drawing as Drawing & { rigidFitting: RigidElbowMetaV1 },
                             )}
                           >
-                            <circle className="rigid-continuation-hit" cx={geometry.outlet.x} cy={geometry.outlet.y} r={22 / Math.max(.1, zoom)} />
+                            <title>Hold and drag from red outlet, then release to place</title>
+                            <circle className="rigid-continuation-hit" cx={geometry.outlet.x} cy={geometry.outlet.y} r={30 / Math.max(.1, zoom)} />
                             <circle className="rigid-continuation-dot" cx={geometry.outlet.x} cy={geometry.outlet.y} r={6 / Math.max(.1, zoom)} pointerEvents="none" />
                           </g>}
                         </g>;
@@ -17223,11 +17516,14 @@ function HVACPlanStudioApp() {
                         const isCopyPreview = drawing.id.startsWith("copy-place-preview-");
                         const scale = scaleStateForPage(drawing.page);
                         const planWidth = rigidPlanWidthUnits(drawing.rigid, scale.feetPerUnit);
+                        const displayPlanWidth = rigidDisplayMode === "compact"
+                          ? rigidCompactPlanWidthUnits(drawing.rigid, scale.feetPerUnit)
+                          : planWidth;
                         const [start, end] = drawing.points;
                         const path = `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
-                        const edges = rigidEdgeLines(drawing.points, planWidth);
+                        const edges = rigidEdgeLines(drawing.points, displayPlanWidth);
                         const seams = drawing.rigid.construction === "spiral"
-                          ? rigidSpiralSeams(drawing.points, planWidth)
+                          ? rigidSpiralSeams(drawing.points, displayPlanWidth)
                           : [];
                         const lengthFeet = rigidHorizontalLengthFeet(drawing.points, scale.feetPerUnit, scale.verified);
                         const rigidTopology = normalizeRigidStraightTopology(drawing.rigidTopology);
@@ -17237,7 +17533,7 @@ function HVACPlanStudioApp() {
                         );
                         return <g
                           key={drawing.id}
-                          className={`rigid-duct rigid-${drawing.rigid.construction} rigid-${drawing.rigid.networkKind} ${isSelected(drawing.id) ? "selected-rigid" : ""} ${isCopyPreview ? "copy-place-preview" : ""}`}
+                          className={`rigid-duct rigid-${drawing.rigid.construction} rigid-${drawing.rigid.networkKind} ${drawing.id === selectedId ? "selected-rigid" : ""} ${selectionPresentationClass(drawing.id)} ${activeRigidConnectCandidate?.drawingId === drawing.id ? "rigid-connect-candidate" : ""} ${isCopyPreview ? "copy-place-preview" : ""}`}
                           data-plan-edit-control={isCopyPreview ? undefined : "hvac"}
                           data-plan-drawing-id={isCopyPreview ? undefined : drawing.id}
                           data-rigid-construction={drawing.rigid.construction}
@@ -17245,11 +17541,15 @@ function HVACPlanStudioApp() {
                           data-rigid-start={`${start.x.toFixed(3)},${start.y.toFixed(3)}`}
                           data-rigid-end={`${end.x.toFixed(3)},${end.y.toFixed(3)}`}
                           data-rigid-plan-width={planWidth.toFixed(4)}
+                          data-rigid-display-plan-width={displayPlanWidth.toFixed(4)}
+                          data-rigid-display-mode={rigidDisplayMode}
                           data-rigid-length-feet={lengthFeet?.toFixed(3)}
                           data-rigid-finished-length-feet={finishedLength?.finishedFeet?.toFixed(3)}
                           data-rigid-length-status={finishedLength?.status || "scale-required"}
                           data-rigid-start-connected={Boolean(rigidTopology.ports.start.connectedTo)}
                           data-rigid-end-connected={Boolean(rigidTopology.ports.end.connectedTo)}
+                          data-rigid-start-connection={rigidTopology.ports.start.connectedTo ? `${rigidTopology.ports.start.connectedTo.drawingId}:${rigidTopology.ports.start.connectedTo.portId}` : undefined}
+                          data-rigid-end-connection={rigidTopology.ports.end.connectedTo ? `${rigidTopology.ports.end.connectedTo.drawingId}:${rigidTopology.ports.end.connectedTo.portId}` : undefined}
                           tabIndex={isCopyPreview ? undefined : 0}
                           role={isCopyPreview ? undefined : "button"}
                           aria-label={isCopyPreview ? undefined : planDrawingAccessibleLabel(drawing)}
@@ -17260,13 +17560,13 @@ function HVACPlanStudioApp() {
                           onFocus={isCopyPreview ? undefined : () => selectOnly(drawing.id)}
                           onKeyDown={isCopyPreview ? undefined : (event) => handlePlanDrawingKeyDown(event, drawing)}
                         >
-                          <title>{`${rigidConstructionLabel(drawing.rigid.construction)} · ${rigidSizeLabel(drawing.rigid)} · ${lengthFeet == null ? "scale unverified" : `${lengthFeet.toFixed(1)} feet`}`}</title>
-                          <path className="rigid-body" d={path} stroke={drawingColors[drawing.rigid.networkKind]} style={{ strokeWidth: planWidth }} />
+                          <title>{`${rigidConstructionLabel(drawing.rigid.construction)} · actual size ${rigidSizeLabel(drawing.rigid)} · ${rigidDisplayMode === "compact" ? "compact drafting footprint" : "true-width footprint"} · ${lengthFeet == null ? "scale unverified" : `${lengthFeet.toFixed(1)} feet`}`}</title>
+                          <path className="rigid-body" d={path} stroke={drawingColors[drawing.rigid.networkKind]} style={{ strokeWidth: displayPlanWidth }} />
                           {edges.map(([a, b], index) => <path className="rigid-edge" d={`M ${a.x} ${a.y} L ${b.x} ${b.y}`} stroke={drawingColors[drawing.rigid!.networkKind]} key={`edge-${index}`} />)}
                           {seams.map(([a, b], index) => <path className="rigid-spiral-seam" d={`M ${a.x} ${a.y} L ${b.x} ${b.y}`} key={`seam-${index}`} />)}
                           <path className="rigid-centerline" d={path} />
                           <path className="rigid-hit" d={path} onPointerDown={isCopyPreview ? undefined : (event) => startLineDrag(event, drawing)} />
-                          {isSelected(drawing.id) && !isCopyPreview && drawing.points.map((point, index) => <g key={`rigid-end-${index}`}>
+                          {drawing.id === selectedId && !isCopyPreview && drawing.points.map((point, index) => <g key={`rigid-end-${index}`}>
                             <circle className="rigid-endpoint-hit" cx={point.x} cy={point.y} r={12 / Math.max(.1, zoom)} onPointerDown={(event) => startPointDrag(event, drawing.id, index)} />
                             <circle className="rigid-endpoint" cx={point.x} cy={point.y} r={4 / Math.max(.1, zoom)} pointerEvents="none" />
                           </g>)}
@@ -17305,7 +17605,7 @@ function HVACPlanStudioApp() {
                         };
                         return <g
                           key={drawing.id}
-                          className={`branch-fitting ${fittingFullyConnected ? "complete-fitting" : "open-fitting"} ${showPortGuides ? "showing-port-guides" : ""} ${activeTrace.fittingIds.has(drawing.id) ? "traced-fitting" : ""} ${isSelected(drawing.id) ? "selected-fitting" : ""} ${branchPlacementResult?.fittingId === drawing.id ? "connection-confirmed" : ""} ${isCopyPreview ? "copy-place-preview" : ""}`}
+                          className={`branch-fitting ${fittingFullyConnected ? "complete-fitting" : "open-fitting"} ${showPortGuides ? "showing-port-guides" : ""} ${selectedIds.length <= 1 && activeTrace.fittingIds.has(drawing.id) ? "traced-fitting" : ""} ${drawing.id === selectedId ? "selected-fitting" : ""} ${selectionPresentationClass(drawing.id)} ${branchPlacementResult?.fittingId === drawing.id ? "connection-confirmed" : ""} ${isCopyPreview ? "copy-place-preview" : ""}`}
                           data-plan-edit-control={isCopyPreview ? undefined : "hvac"}
                           data-plan-drawing-id={isCopyPreview ? undefined : drawing.id}
                           tabIndex={isCopyPreview ? undefined : 0}
@@ -17411,7 +17711,7 @@ function HVACPlanStudioApp() {
                         drawing.elevation ? `EL ${drawing.elevation}` : "",
                       ].filter(Boolean).join(" · ");
                       const runLabelScale = normalizedDuctLabelScale(drawing.labelScale);
-                      return <g key={drawing.id} data-plan-edit-control={isCopyPreview ? undefined : "hvac"} data-plan-drawing-id={isCopyPreview ? undefined : drawing.id} tabIndex={isCopyPreview ? undefined : 0} role={isCopyPreview ? undefined : "button"} aria-label={isCopyPreview ? undefined : planDrawingAccessibleLabel(drawing)} aria-pressed={isCopyPreview ? undefined : runSelected} aria-disabled={isCopyPreview ? undefined : drawingLocked(drawing)} aria-hidden={isCopyPreview || undefined} style={isCopyPreview ? { pointerEvents: "none" } : undefined} className={`${activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${runSelected ? "selected-drawing" : ""} ${branchCandidateClass} ${assistantPreviewClass} ${isCopyPreview ? "copy-place-preview" : ""}`.trim()} onFocus={isCopyPreview ? undefined : () => selectOnly(drawing.id)} onKeyDown={isCopyPreview ? undefined : (event) => handlePlanDrawingKeyDown(event, drawing)} onPointerDown={isCopyPreview ? undefined : (event) => {
+                      return <g key={drawing.id} data-plan-edit-control={isCopyPreview ? undefined : "hvac"} data-plan-drawing-id={isCopyPreview ? undefined : drawing.id} tabIndex={isCopyPreview ? undefined : 0} role={isCopyPreview ? undefined : "button"} aria-label={isCopyPreview ? undefined : planDrawingAccessibleLabel(drawing)} aria-pressed={isCopyPreview ? undefined : runSelected} aria-disabled={isCopyPreview ? undefined : drawingLocked(drawing)} aria-hidden={isCopyPreview || undefined} style={isCopyPreview ? { pointerEvents: "none" } : undefined} className={`${selectedIds.length <= 1 && activeTrace.runIds.has(drawing.id) ? "traced-run" : ""} ${drawing.id === selectedId ? "selected-drawing" : ""} ${selectionPresentationClass(drawing.id)} ${branchCandidateClass} ${assistantPreviewClass} ${isCopyPreview ? "copy-place-preview" : ""}`.trim()} onFocus={isCopyPreview ? undefined : () => selectOnly(drawing.id)} onKeyDown={isCopyPreview ? undefined : (event) => handlePlanDrawingKeyDown(event, drawing)} onPointerDown={isCopyPreview ? undefined : (event) => {
                         if (event.button !== 0 || panRef.current || activeTool !== "select" || drawingLocked(drawing)) return;
                         event.stopPropagation();
                         event.shiftKey ? toggleSelection(drawing.id) : selectOnly(drawing.id);
@@ -17452,6 +17752,26 @@ function HVACPlanStudioApp() {
                         </text>}
                       </g>;
                     })}
+                    {activeRigidConnectCandidate && activeRigidConnectCurrentEndpoint && selectedRigidFitting?.points[0] && <g
+                      className="rigid-connect-review-guide"
+                      data-rigid-connect-preview="true"
+                      aria-hidden="true"
+                    >
+                      <path
+                        className="rigid-connect-final-axis"
+                        d={`M ${activeRigidConnectCandidate.plan.points[0].x} ${activeRigidConnectCandidate.plan.points[0].y} L ${activeRigidConnectCandidate.plan.points[1].x} ${activeRigidConnectCandidate.plan.points[1].y}`}
+                      />
+                      <path
+                        className="rigid-connect-endpoint-move"
+                        d={`M ${activeRigidConnectCurrentEndpoint.x} ${activeRigidConnectCurrentEndpoint.y} L ${selectedRigidFitting.points[0].x} ${selectedRigidFitting.points[0].y}`}
+                      />
+                      <circle
+                        className="rigid-connect-owned-vertex"
+                        cx={selectedRigidFitting.points[0].x}
+                        cy={selectedRigidFitting.points[0].y}
+                        r={5 / Math.max(.1, zoom)}
+                      />
+                    </g>}
                     {showAssistantSuggestionLayer && roomMarkupPlan.overlayCandidates.length > 0 && <g
                       id="assistant-suggestion-layer"
                       className="assistant-suggestion-layer"
@@ -17605,7 +17925,10 @@ function HVACPlanStudioApp() {
                     {rigidPreview && (() => {
                       const rigid = normalizeRigidStraightMeta(rigidPreview.rigid);
                       if (!rigid) return null;
-                      const width = rigidPlanWidthUnits(rigid, scaleStateForPage(pageNumber).feetPerUnit);
+                      const sheetFeetPerUnit = scaleStateForPage(pageNumber).feetPerUnit;
+                      const width = rigidDisplayMode === "compact"
+                        ? rigidCompactPlanWidthUnits(rigid, sheetFeetPerUnit)
+                        : rigidPlanWidthUnits(rigid, sheetFeetPerUnit);
                       const path = `M ${rigidPreview.start.x} ${rigidPreview.start.y} L ${rigidPreview.end.x} ${rigidPreview.end.y}`;
                       return <g className={`rigid-duct rigid-preview rigid-${rigid.construction}`} aria-hidden="true">
                         <path className="rigid-body" d={path} stroke={drawingColors[rigid.networkKind]} style={{ strokeWidth: width }} />
@@ -19158,6 +19481,27 @@ function HVACPlanStudioApp() {
                 <button type="button" className={workspaceDensity === "comfortable" ? "selected" : ""} aria-pressed={workspaceDensity === "comfortable"} onClick={() => setWorkspaceDensity("comfortable")}>Comfortable</button>
                 <button type="button" className={workspaceDensity === "compact" ? "selected" : ""} aria-pressed={workspaceDensity === "compact"} onClick={() => setWorkspaceDensity("compact")}>Compact</button>
               </div>
+            </fieldset>
+            <fieldset className="rigid-display-options">
+              <legend>Rigid duct footprint</legend>
+              <button
+                type="button"
+                className={rigidDisplayMode === "compact" ? "selected" : ""}
+                aria-pressed={rigidDisplayMode === "compact"}
+                onClick={() => setRigidDisplayMode("compact")}
+              >
+                <span><strong>Compact drafting</strong><small>Normal view. Large duct stays slim over the plan while actual dimensions, lengths, takeouts, airflow, and Materials remain unchanged.</small></span>
+                <i aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className={rigidDisplayMode === "true-width" ? "selected" : ""}
+                aria-pressed={rigidDisplayMode === "true-width"}
+                onClick={() => setRigidDisplayMode("true-width")}
+              >
+                <span><strong>True width</strong><small>Verification view. Shows the actual calibrated footprint without changing the stored duct.</small></span>
+                <i aria-hidden="true" />
+              </button>
             </fieldset>
             <div className="tablet-input-note">
               <strong>Tablet controls are active</strong>

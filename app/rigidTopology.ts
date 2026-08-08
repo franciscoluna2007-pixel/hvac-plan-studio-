@@ -67,6 +67,35 @@ export type RigidContinuation = {
   topology: RigidStraightTopologyV1;
 };
 
+export type RigidExistingConnectionFailure =
+  | "invalid-elbow"
+  | "invalid-straight"
+  | "outlet-connected"
+  | "outlet-takeout-required"
+  | "straight-port-connected"
+  | "incompatible-rigid"
+  | "invalid-geometry"
+  | "endpoint-too-far"
+  | "axis-misaligned"
+  | "connected-far-end-would-move"
+  | "straight-too-short";
+
+export type RigidExistingConnectionPlan = {
+  ok: true;
+  elbow: RigidElbowMetaV1;
+  topology: RigidStraightTopologyV1;
+  points: [RigidPoint, RigidPoint];
+  straightPortId: RigidStraightPortId;
+  endpointMoveUnits: number;
+  farEndpointCorrectionUnits: number;
+  outletDistanceUnits: number;
+};
+
+export type RigidExistingConnectionRejection = {
+  ok: false;
+  reason: RigidExistingConnectionFailure;
+};
+
 const MAX_TAKEOUT_INCHES = 120;
 
 function finiteTakeout(value: unknown) {
@@ -303,6 +332,153 @@ export function createRigidContinuation(input: {
         end: { id: "end", takeoutInches: 0 },
       },
     },
+  };
+}
+
+function rigidIdentityMatches(
+  elbow: RigidElbowMetaV1,
+  straight: RigidStraightMetaV1,
+) {
+  if (
+    elbow.networkKind !== straight.networkKind ||
+    elbow.construction !== straight.construction ||
+    elbow.size.shape !== straight.size.shape
+  ) return false;
+  if (elbow.size.shape === "rectangular" && straight.size.shape === "rectangular") {
+    return elbow.size.widthInches === straight.size.widthInches &&
+      elbow.size.heightInches === straight.size.heightInches;
+  }
+  return elbow.size.shape === "round" && straight.size.shape === "round" &&
+    elbow.size.diameterInches === straight.size.diameterInches;
+}
+
+/**
+ * Plans an explicit elbow-outlet connection to an already drawn straight.
+ * The elbow owns the connection vertex and outbound axis. The reviewed straight
+ * endpoint moves to that vertex; its far endpoint is projected only by the
+ * supplied alignment tolerance so the connection cannot invent another bend.
+ */
+export function planRigidExistingConnection(input: {
+  elbowId: string;
+  elbow: RigidElbowMetaV1;
+  elbowVertex: RigidPoint;
+  straightId: string;
+  straight: RigidStraightMetaV1;
+  straightTopology: RigidStraightTopologyV1;
+  straightPoints: readonly RigidPoint[];
+  straightPortId: RigidStraightPortId;
+  feetPerUnit: number;
+  maxEndpointMoveUnits: number;
+  axisToleranceUnits: number;
+  minimumBeyondOutletUnits?: number;
+}): RigidExistingConnectionPlan | RigidExistingConnectionRejection {
+  const elbow = normalizeRigidElbowMeta(input.elbow);
+  if (!elbow || !input.elbowId.trim() || input.elbowId === input.straightId) {
+    return { ok: false, reason: "invalid-elbow" };
+  }
+  const straight = normalizeRigidStraightMeta(input.straight);
+  if (!straight || !input.straightId.trim()) {
+    return { ok: false, reason: "invalid-straight" };
+  }
+  if (elbow.ports.outlet.connectedTo) return { ok: false, reason: "outlet-connected" };
+  if (elbow.ports.outlet.takeoutInches == null) {
+    return { ok: false, reason: "outlet-takeout-required" };
+  }
+  if (!rigidIdentityMatches(elbow, straight)) {
+    return { ok: false, reason: "incompatible-rigid" };
+  }
+  const topology = normalizeRigidStraightTopology(input.straightTopology);
+  const selectedPort = topology.ports[input.straightPortId];
+  if (selectedPort.connectedTo) return { ok: false, reason: "straight-port-connected" };
+  if (
+    input.straightPoints.length !== 2 ||
+    ![
+      input.elbowVertex.x,
+      input.elbowVertex.y,
+      ...input.straightPoints.flatMap((point) => [point.x, point.y]),
+      input.maxEndpointMoveUnits,
+      input.axisToleranceUnits,
+    ].every(Number.isFinite) ||
+    input.maxEndpointMoveUnits < 0 ||
+    input.axisToleranceUnits < 0
+  ) return { ok: false, reason: "invalid-geometry" };
+  const geometry = rigidElbowGeometry(input.elbowVertex, elbow, input.feetPerUnit);
+  if (!geometry) return { ok: false, reason: "invalid-geometry" };
+
+  const selectedIndex = input.straightPortId === "start" ? 0 : 1;
+  const farIndex = selectedIndex === 0 ? 1 : 0;
+  const endpoint = input.straightPoints[selectedIndex];
+  const farEndpoint = input.straightPoints[farIndex];
+  const endpointMoveUnits = Math.hypot(
+    endpoint.x - input.elbowVertex.x,
+    endpoint.y - input.elbowVertex.y,
+  );
+  if (endpointMoveUnits > input.maxEndpointMoveUnits) {
+    return { ok: false, reason: "endpoint-too-far" };
+  }
+
+  const farDelta = {
+    x: farEndpoint.x - input.elbowVertex.x,
+    y: farEndpoint.y - input.elbowVertex.y,
+  };
+  const outletDistanceUnits = Math.hypot(
+    geometry.outlet.x - input.elbowVertex.x,
+    geometry.outlet.y - input.elbowVertex.y,
+  );
+  const farAlong = farDelta.x * geometry.outbound.x + farDelta.y * geometry.outbound.y;
+  const farCross = farDelta.x * geometry.outbound.y - farDelta.y * geometry.outbound.x;
+  const rawFarEndpointCorrectionUnits = Math.abs(farCross);
+  const farEndpointCorrectionUnits = rawFarEndpointCorrectionUnits <= 1e-9
+    ? 0
+    : rawFarEndpointCorrectionUnits;
+  if (farEndpointCorrectionUnits > input.axisToleranceUnits) {
+    return { ok: false, reason: "axis-misaligned" };
+  }
+  const farPortId: RigidStraightPortId = input.straightPortId === "start" ? "end" : "start";
+  if (topology.ports[farPortId].connectedTo && farEndpointCorrectionUnits > 1e-6) {
+    return { ok: false, reason: "connected-far-end-would-move" };
+  }
+  if (farAlong <= outletDistanceUnits + Math.max(0, input.minimumBeyondOutletUnits || 0)) {
+    return { ok: false, reason: "straight-too-short" };
+  }
+
+  const adjustedFarEndpoint = farEndpointCorrectionUnits <= 1e-9
+    ? { ...farEndpoint }
+    : {
+        x: input.elbowVertex.x + geometry.outbound.x * farAlong,
+        y: input.elbowVertex.y + geometry.outbound.y * farAlong,
+      };
+  const points = input.straightPoints.map((point) => ({ ...point })) as [RigidPoint, RigidPoint];
+  points[selectedIndex] = { ...input.elbowVertex };
+  points[farIndex] = adjustedFarEndpoint;
+  return {
+    ok: true,
+    elbow: {
+      ...elbow,
+      ports: {
+        ...elbow.ports,
+        outlet: {
+          ...elbow.ports.outlet,
+          connectedTo: { drawingId: input.straightId, portId: input.straightPortId },
+        },
+      },
+    },
+    topology: {
+      ...topology,
+      ports: {
+        ...topology.ports,
+        [input.straightPortId]: {
+          ...selectedPort,
+          takeoutInches: elbow.ports.outlet.takeoutInches,
+          connectedTo: { drawingId: input.elbowId, portId: "outlet" },
+        },
+      },
+    },
+    points,
+    straightPortId: input.straightPortId,
+    endpointMoveUnits,
+    farEndpointCorrectionUnits,
+    outletDistanceUnits,
   };
 }
 

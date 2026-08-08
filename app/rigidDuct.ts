@@ -103,6 +103,23 @@ export function rigidPlanWidthUnits(meta: RigidStraightMetaV1, feetPerUnit: numb
   return rigidPhysicalWidthInches(meta) / 12 / feetPerUnit;
 }
 
+/**
+ * Drafting-only width compression. Stored dimensions and every engineering
+ * calculation continue to use rigidPhysicalWidthInches/rigidPlanWidthUnits.
+ * The curve leaves common 12-inch-and-smaller duct exact, preserves relative
+ * size cues above that point, and approaches a quiet 22-inch display ceiling.
+ */
+export function rigidCompactPhysicalWidthInches(meta: RigidStraightMetaV1) {
+  const actual = rigidPhysicalWidthInches(meta);
+  if (actual <= 12) return actual;
+  return 12 + 10 * (1 - Math.exp(-(actual - 12) / 20));
+}
+
+export function rigidCompactPlanWidthUnits(meta: RigidStraightMetaV1, feetPerUnit: number) {
+  if (!Number.isFinite(feetPerUnit) || feetPerUnit <= 0) return 0;
+  return rigidCompactPhysicalWidthInches(meta) / 12 / feetPerUnit;
+}
+
 export function rigidHorizontalLengthFeet(
   points: readonly RigidPoint[],
   feetPerUnit: number,

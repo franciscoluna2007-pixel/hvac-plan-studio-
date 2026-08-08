@@ -78,6 +78,39 @@ test("workspace zoom reaches twelve-times while preserving truthful shared clamp
   assert.match(page, /wheelZoomFactor/);
 });
 
+test("rigid drafting defaults to a compact footprint without changing actual engineering values", () => {
+  assert.match(page, /useState<"compact" \| "true-width">\("compact"\)/);
+  assert.match(page, /rigidCompactPlanWidthUnits\(drawing\.rigid, scale\.feetPerUnit\)/);
+  assert.match(page, /data-rigid-plan-width=\{planWidth\.toFixed\(4\)\}/);
+  assert.match(page, /data-rigid-display-plan-width=\{displayPlanWidth\.toFixed\(4\)\}/);
+  assert.match(page, /data-rigid-display-mode=\{rigidDisplayMode\}/);
+  assert.match(page, /Compact drafting footprint is on\. Dimensions and calculations remain actual\./);
+  assert.match(page, /Rigid: \{rigidDisplayMode === "compact" \? "Compact" : "True width"\}/);
+  assert.match(page, /True width verification footprint is on\./);
+});
+
+test("connected rigid selections emphasize only the active object", () => {
+  assert.match(page, /function selectionPresentationClass\(id: string\)/);
+  assert.match(page, /\? "active-plan-selection"\s*: "assembly-plan-selection"/);
+  assert.match(styles, /\.connected-assembly-selection \.assembly-plan-selection \.rigid-body \{ opacity: \.035; \}/);
+  assert.match(styles, /\.connected-assembly-selection \.assembly-plan-selection :is\([\s\S]*?filter: drop-shadow\(0 0 1px rgba\(0, 47, 167, \.55\)\)/);
+  assert.match(styles, /\.connected-assembly-selection \.active-plan-selection \{ opacity: 1; \}/);
+});
+
+test("elbow continuation keeps the outlet discoverable and explains fitting takeouts", () => {
+  assert.match(page, /Fitting inlet takeout, in/);
+  assert.match(page, /Fitting outlet takeout, in/);
+  assert.match(page, /These are fitting centerline takeouts\. They are not rectangular duct width or height\./);
+  assert.match(page, /Hold and drag from the red outlet, then release to place a new straight\./);
+  assert.match(page, /A click keeps the elbow selected and changes nothing\./);
+  assert.match(page, /aria-label="Keyboard rigid continuation"/);
+  assert.match(page, /Add straight from outlet/);
+  assert.match(page, /className="rigid-continuation-hit"[\s\S]*?r=\{30 \/ Math\.max\(\.1, zoom\)\}/);
+  assert.match(page, /selectOnly\(gesture\.sourceElbowId\)/);
+  assert.match(page, /A click changes nothing\./);
+  assert.match(styles, /\.rigid-elbow:hover \.rigid-continuation-control,[\s\S]*?\.rigid-elbow:focus-visible \.rigid-continuation-control,[\s\S]*?\.rigid-elbow\.selected-rigid \.rigid-continuation-control/);
+});
+
 test("T Branch status keeps semantic legs visible and reveals exact tip status on interaction", () => {
   assert.match(page, /function fittingStrokeWidth/);
   assert.match(page, /return runStrokeWidth\(value\) \* 1\.22/);

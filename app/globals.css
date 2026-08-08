@@ -586,7 +586,18 @@ select { width: 100%; height: 31px; margin-top: 6px; padding: 0 8px; color: #c8d
 .rigid-elbow-port-status circle { vector-effect: non-scaling-stroke; stroke: #fff; stroke-width: 2; }
 .rigid-elbow-port-status .connected { fill: #16835b; }
 .rigid-elbow-port-status .open { fill: #c62828; }
-.rigid-continuation-control { cursor: crosshair; }
+.rigid-continuation-control {
+  cursor: crosshair;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.rigid-elbow:hover .rigid-continuation-control,
+.rigid-elbow:focus-visible .rigid-continuation-control,
+.rigid-elbow.selected-rigid .rigid-continuation-control {
+  opacity: 1;
+  pointer-events: all;
+}
 .rigid-continuation-hit { fill: transparent; stroke: transparent; pointer-events: all; }
 .rigid-continuation-dot {
   fill: #c62828;
@@ -25395,12 +25406,147 @@ footer {
 
 .rigid-size-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .left-panel:not(.view-draw) .rigid-duct-tool { display: none !important; }
-.rigid-draw-action { color: #fff; border-color: #00257f; background: #002fa7; }
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] :is(.rigid-duct-tool, .rigid-properties) .rigid-draw-action {
+  color: #fff;
+  border-color: #00257f;
+  background: #002fa7;
+}
 .rigid-duct-tool > small,
 .rigid-properties > small { color: var(--operational-muted); font-size: 14px; line-height: 1.45; }
 .rigid-elbow-editor { margin: 0; padding: 12px; display: grid; gap: 10px; border: 1px solid var(--material-line); }
 .rigid-elbow-editor legend { padding: 0 5px; color: var(--operational-ink); font-size: 15px; font-weight: 800; }
 .rigid-elbow-editor > small { color: var(--operational-muted); font-size: 14px; line-height: 1.45; }
+
+.rigid-display-fact {
+  display: grid;
+  gap: 3px;
+  padding: 10px 0;
+  border-top: 1px solid var(--material-line);
+  border-bottom: 1px solid var(--material-line);
+}
+.rigid-display-fact strong { color: var(--operational-ink); font-size: 15px; }
+.rigid-display-fact span { color: var(--operational-muted); font-size: 14px; line-height: 1.4; }
+
+.rigid-fitting-takeouts {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--material-line);
+}
+.rigid-fitting-takeouts legend { padding: 0 5px; color: var(--operational-ink); font-size: 15px; font-weight: 800; }
+.rigid-fitting-takeouts > small { display: block; margin-top: 8px; color: var(--operational-muted); font-size: 14px; line-height: 1.4; }
+
+.rigid-continuation-alternative {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 10px;
+  align-items: end;
+  padding-top: 12px;
+  border-top: 1px solid var(--material-line);
+}
+.rigid-continuation-alternative > div { align-self: center; }
+.rigid-continuation-alternative > div strong,
+.rigid-continuation-alternative > div span { display: block; }
+.rigid-continuation-alternative > div strong { color: var(--operational-ink); font-size: 15px; }
+.rigid-continuation-alternative > div span { margin-top: 3px; color: var(--operational-muted); font-size: 14px; line-height: 1.4; }
+.rigid-continuation-alternative .rigid-draw-action { grid-column: 1 / -1; min-height: 44px; }
+
+.connected-assembly-selection .assembly-plan-selection { opacity: .78; }
+.connected-assembly-selection .assembly-plan-selection .rigid-body { opacity: .035; }
+.connected-assembly-selection .assembly-plan-selection :is(.rigid-edge, .rigid-elbow-edge, .duct-line, .fitting-leg, .symbol-visual, .measurement-hit) {
+  filter: drop-shadow(0 0 1px rgba(0, 47, 167, .55));
+}
+.connected-assembly-selection .assembly-plan-selection :is(.duct-line, .fitting-leg) { stroke-width: inherit; }
+.connected-assembly-selection .active-plan-selection { opacity: 1; }
+
+.rigid-connect-existing {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--material-blue-line);
+  background: var(--material-blue-soft);
+}
+
+.rigid-connect-heading,
+.rigid-connect-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rigid-connect-heading span {
+  color: var(--operational-ink);
+  font-size: 14px;
+  font-weight: 850;
+  letter-spacing: .04em;
+}
+
+.rigid-connect-heading b {
+  color: #00257f;
+  font-size: 12px;
+  letter-spacing: .04em;
+}
+
+.rigid-connect-existing > small,
+.rigid-connect-review small {
+  color: var(--operational-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.rigid-connect-launch,
+.rigid-connect-actions button { min-height: 44px; }
+.rigid-connect-actions button { flex: 1; }
+.app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .rigid-connect-actions .primary {
+  color: #fff;
+  border-color: #00257f;
+  background: #002fa7;
+}
+
+.rigid-connect-review {
+  display: grid;
+  gap: 5px;
+  padding-top: 10px;
+  border-top: 1px solid var(--material-blue-line);
+}
+
+.rigid-connect-review > span {
+  color: #00257f;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: .06em;
+}
+
+.rigid-connect-review > strong {
+  color: var(--operational-ink);
+  font-size: 15px;
+}
+
+.rigid-connect-review dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  margin: 4px 0 0;
+  border: 1px solid var(--material-line);
+  background: var(--material-line);
+}
+
+.rigid-connect-review dl div { padding: 8px; background: #fff; }
+.rigid-connect-review dt { color: var(--operational-muted); font-size: 12px; font-weight: 700; }
+.rigid-connect-review dd { margin: 3px 0 0; color: var(--operational-ink); font-size: 15px; font-weight: 850; }
+
+.rigid-connect-candidate .rigid-edge {
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 3px #002fa7);
+}
+
+.rigid-connect-review-guide { pointer-events: none; }
+.rigid-connect-review-guide path { fill: none; vector-effect: non-scaling-stroke; }
+.rigid-connect-final-axis { stroke: #002fa7; stroke-width: 2; stroke-dasharray: 7 5; }
+.rigid-connect-endpoint-move { stroke: #52657d; stroke-width: 1.5; stroke-dasharray: 2 4; }
+.rigid-connect-owned-vertex { fill: #fff; stroke: #002fa7; stroke-width: 3; vector-effect: non-scaling-stroke; }
+
+.rigid-display-toggle { min-width: 116px; }
+.rigid-display-options { margin-top: 14px !important; }
 
 .app-shell.swiss-plan-workspace[data-presentation="material-cobalt"] .selected-drawing .duct-line {
   stroke-width: inherit;
@@ -25649,7 +25795,8 @@ footer {
 
 @media (prefers-reduced-motion: reduce) {
   .branch-fitting .status-port,
-  .branch-fitting .status-port .fitting-port {
+  .branch-fitting .status-port .fitting-port,
+  .rigid-continuation-control {
     transition: none;
   }
 }
@@ -25658,6 +25805,7 @@ footer {
   .branch-fitting :is(.status-port, .detailed-port),
   .rigid-duct :is(.rigid-hit, .rigid-centerline, .rigid-endpoint, .rigid-endpoint-hit),
   .rigid-elbow :is(.rigid-elbow-hit, .rigid-elbow-port-status, .rigid-continuation-control),
+  .rigid-connect-review-guide,
   .rigid-preview,
   .selected-object-status,
   .fitting-rotation-inspector {
@@ -25671,4 +25819,6 @@ footer {
   }
 
   .selected-rigid .rigid-edge { filter: none !important; }
+  .rigid-connect-candidate .rigid-edge { filter: none !important; }
+  .connected-assembly-selection .assembly-plan-selection :is(.rigid-edge, .rigid-elbow-edge, .duct-line, .fitting-leg, .symbol-visual, .measurement-hit) { filter: none !important; }
 }
