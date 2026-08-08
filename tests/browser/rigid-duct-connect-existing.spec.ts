@@ -142,7 +142,7 @@ test("Connect existing reviews endpoint ownership, cancels safely, persists reci
     const key = Object.keys(localStorage).find((item) => item.startsWith("hvac-plan-studio:rigid-connect-existing"));
     return key ? JSON.parse(localStorage.getItem(key) || "{}").version : null;
   });
-  expect(savedVersion).toBe(12);
+  expect(savedVersion).toBe(13);
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => {

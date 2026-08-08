@@ -176,7 +176,7 @@ test("explicit rigid elbow continues by press-drag-release with reciprocal topol
     const key = Object.keys(localStorage).find((item) => item.startsWith("hvac-plan-studio:rigid-phase2-topology"));
     return key ? JSON.parse(localStorage.getItem(key) || "{}").version : null;
   });
-  expect(storedVersion).toBe(12);
+  expect(storedVersion).toBe(13);
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => {

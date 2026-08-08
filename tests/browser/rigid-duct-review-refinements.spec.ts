@@ -127,7 +127,7 @@ test("compact drafting keeps actual 40x10 data and Materials while connected sel
     const value = key ? JSON.parse(localStorage.getItem(key) || "{}") : null;
     return value ? { version: value.version, rigidCount: value.drawings?.filter((drawing: { rigid?: unknown }) => drawing.rigid).length } : null;
   });
-  expect(saved).toEqual({ version: 12, rigidCount: 2 });
+  expect(saved).toEqual({ version: 13, rigidCount: 2 });
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await uploadPlan(page);

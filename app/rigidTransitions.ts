@@ -44,7 +44,7 @@ export type RigidTransitionMetaV1 = {
 
 export type RigidTerminalConnectionV1 = {
   version: 1;
-  kind: "supply-can-collar";
+  kind: "supply-can-collar" | "return-can-collar";
   construction: "round-metal" | "spiral";
   diameterInches: number;
   collarType: "straight-collar";
@@ -133,7 +133,7 @@ export function normalizeRigidTerminalConnection(input: unknown): RigidTerminalC
   const connectedTo = normalizedConnection(candidate.connectedTo);
   if (
     candidate.version !== 1 ||
-    candidate.kind !== "supply-can-collar" ||
+    !["supply-can-collar", "return-can-collar"].includes(String(candidate.kind)) ||
     !["round-metal", "spiral"].includes(String(candidate.construction)) ||
     candidate.collarType !== "straight-collar" ||
     !diameterInches ||
@@ -142,12 +142,18 @@ export function normalizeRigidTerminalConnection(input: unknown): RigidTerminalC
   ) return null;
   return {
     version: 1,
-    kind: "supply-can-collar",
+    kind: candidate.kind as RigidTerminalConnectionV1["kind"],
     construction: candidate.construction as "round-metal" | "spiral",
     diameterInches,
     collarType: "straight-collar",
     connectedTo,
   };
+}
+
+export function rigidTerminalNetworkKind(
+  connection: Pick<RigidTerminalConnectionV1, "kind">,
+): Extract<RigidNetworkKind, "supply" | "return"> {
+  return connection.kind === "return-can-collar" ? "return" : "supply";
 }
 
 export function rigidSizeMatches(left: RigidSize, right: RigidSize) {
