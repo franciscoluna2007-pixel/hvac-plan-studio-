@@ -42,6 +42,22 @@ export type MaterialRigidFittingInput = {
   rectangularStyle?: "radius" | "square";
 };
 
+export type MaterialRigidTransitionInput = {
+  id: string;
+  networkKind: "supply" | "return" | "fresh";
+  construction: "rectangular" | "round-metal" | "spiral";
+  inletSize: string;
+  outletSize: string;
+  lengthInches: number;
+  alignment: "centered" | "top-flat" | "bottom-flat" | "left-flat" | "right-flat";
+};
+
+export type MaterialRigidCollarInput = {
+  id: string;
+  construction: "round-metal" | "spiral";
+  diameterInches: number;
+};
+
 export type MaterialSymbolInput = {
   id: string;
   kind: string;
@@ -63,6 +79,8 @@ type MaterialOrderInput = {
   runs: readonly MaterialRunInput[];
   rigidRuns?: readonly MaterialRigidRunInput[];
   rigidFittings?: readonly MaterialRigidFittingInput[];
+  rigidTransitions?: readonly MaterialRigidTransitionInput[];
+  rigidCollars?: readonly MaterialRigidCollarInput[];
   symbols: readonly MaterialSymbolInput[];
   fittings: readonly MaterialFittingInput[];
   allowancePercent: number;
@@ -101,6 +119,8 @@ export function buildMaterialOrder({
   runs,
   rigidRuns = [],
   rigidFittings = [],
+  rigidTransitions = [],
+  rigidCollars = [],
   symbols,
   fittings,
   allowancePercent,
@@ -249,6 +269,57 @@ export function buildMaterialOrder({
       orderUnit: "each",
       breakdown: `${sourceLabel(new Set(group.map((fitting) => fitting.networkKind)))} · ${group.length} plan ${group.length === 1 ? "fitting" : "fittings"}`,
       sourceDrawingIds: group.map((fitting) => fitting.id),
+    });
+  }
+
+  const transitionGroups = new Map<string, MaterialRigidTransitionInput[]>();
+  for (const transition of rigidTransitions) {
+    const key = [
+      transition.construction,
+      transition.inletSize,
+      transition.outletSize,
+      transition.lengthInches,
+      transition.alignment,
+    ].join("|");
+    transitionGroups.set(key, [...(transitionGroups.get(key) || []), transition]);
+  }
+  for (const group of transitionGroups.values()) {
+    const first = group[0];
+    const round = first.construction !== "rectangular";
+    rows.push({
+      id: `rigid-transition:${first.construction}:${first.inletSize}:${first.outletSize}:${first.lengthInches}:${first.alignment}`,
+      category: "Fittings",
+      item: round
+        ? `${first.construction === "spiral" ? "Spiral" : "Round metal"} reducer`
+        : "Rectangular transition",
+      size: `${first.inletSize} → ${first.outletSize}`,
+      quantity: `${group.length} each`,
+      note: `${first.lengthInches} in long · ${first.alignment.replace("-", " ")}`,
+      orderCount: group.length,
+      orderUnit: "each",
+      breakdown: `${sourceLabel(new Set(group.map((item) => item.networkKind)))} · explicit plan fitting · verify orientation before fabrication`,
+      sourceDrawingIds: group.map((item) => item.id),
+    });
+  }
+
+  const collarGroups = new Map<string, MaterialRigidCollarInput[]>();
+  for (const collar of rigidCollars) {
+    const key = `${collar.construction}|${collar.diameterInches}`;
+    collarGroups.set(key, [...(collarGroups.get(key) || []), collar]);
+  }
+  for (const group of collarGroups.values()) {
+    const first = group[0];
+    rows.push({
+      id: `rigid-collar:${first.construction}:${first.diameterInches}`,
+      category: "Fittings",
+      item: "Supply-can straight collar",
+      size: `Ø${first.diameterInches}\" · ${first.construction === "spiral" ? "spiral" : "round metal"}`,
+      quantity: `${group.length} each`,
+      note: "Explicit rigid terminal connections",
+      orderCount: group.length,
+      orderUnit: "each",
+      breakdown: `${group.length} connected supply ${group.length === 1 ? "can" : "cans"} · field verify fastening and seal`,
+      sourceDrawingIds: group.map((item) => item.id),
     });
   }
 

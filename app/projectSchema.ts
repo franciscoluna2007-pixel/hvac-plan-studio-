@@ -6,9 +6,14 @@ import {
   normalizeRigidElbowMeta,
   normalizeRigidStraightTopology,
 } from "./rigidTopology";
+import {
+  normalizeRigidTerminalConnection,
+  normalizeRigidTransitionMeta,
+  rigidTransitionIsReduction,
+} from "./rigidTransitions";
 
-export const CURRENT_PROJECT_SCHEMA_VERSION = 11 as const;
-export const SUPPORTED_LEGACY_PROJECT_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+export const CURRENT_PROJECT_SCHEMA_VERSION = 12 as const;
+export const SUPPORTED_LEGACY_PROJECT_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
 
 type ProjectEnvelope = {
   version: number;
@@ -61,6 +66,19 @@ export function migrateSavedProject(input: unknown): ProjectMigrationResult {
     }
     const drawing = raw as Record<string, unknown>;
     if (drawing.type === "rigid-fitting") {
+      const rigidTransition = normalizeRigidTransitionMeta(drawing.rigidTransition);
+      if (rigidTransition && rigidTransitionIsReduction(rigidTransition)) {
+        const points = Array.isArray(drawing.points) ? drawing.points : [];
+        if (points.length !== 1 || !points.every(finitePoint)) {
+          rejectedRigid += 1;
+          if (quarantined.length < 50) quarantined.push(raw);
+          continue;
+        }
+        const transitionDrawing = { ...drawing };
+        delete transitionDrawing.rigidFitting;
+        drawings.push({ ...transitionDrawing, type: "rigid-fitting", rigidTransition });
+        continue;
+      }
       const rigidFitting = normalizeRigidElbowMeta(drawing.rigidFitting);
       const points = Array.isArray(drawing.points) ? drawing.points : [];
       if (!rigidFitting || points.length !== 1 || !points.every(finitePoint)) {
@@ -72,7 +90,19 @@ export function migrateSavedProject(input: unknown): ProjectMigrationResult {
       continue;
     }
     if (drawing.type !== "rigid") {
-      drawings.push(raw);
+      if (drawing.symbol && typeof drawing.symbol === "object") {
+        const symbol = drawing.symbol as Record<string, unknown>;
+        const rigidTerminal = normalizeRigidTerminalConnection(symbol.rigidTerminal);
+        const migratedSymbol = { ...symbol };
+        delete migratedSymbol.rigidTerminal;
+        drawings.push({
+          ...drawing,
+          symbol: {
+            ...migratedSymbol,
+            ...(rigidTerminal ? { rigidTerminal } : {}),
+          },
+        });
+      } else drawings.push(raw);
       continue;
     }
     const rigid = normalizeRigidStraightMeta(drawing.rigid);

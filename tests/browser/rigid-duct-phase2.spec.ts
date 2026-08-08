@@ -53,7 +53,7 @@ test("explicit rigid elbow continues by press-drag-release with reciprocal topol
   const centerlineFeet = Number(await straight.getAttribute("data-rigid-length-feet"));
 
   await page.getByRole("navigation", { name: "Plan workflow" }).getByRole("button", { name: "Selected", exact: true }).click();
-  const editor = page.getByRole("complementary", { name: "HVAC plan tools" }).locator(".rigid-elbow-editor");
+  const editor = page.getByRole("complementary", { name: "HVAC plan tools" }).getByRole("group", { name: "Add an explicit elbow" });
   await editor.getByLabel("Straight end").selectOption("end");
   await editor.getByLabel("Angle").selectOption("90");
   await editor.getByLabel("Turn").selectOption("right");
@@ -176,7 +176,7 @@ test("explicit rigid elbow continues by press-drag-release with reciprocal topol
     const key = Object.keys(localStorage).find((item) => item.startsWith("hvac-plan-studio:rigid-phase2-topology"));
     return key ? JSON.parse(localStorage.getItem(key) || "{}").version : null;
   });
-  expect(storedVersion).toBe(11);
+  expect(storedVersion).toBe(12);
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => {

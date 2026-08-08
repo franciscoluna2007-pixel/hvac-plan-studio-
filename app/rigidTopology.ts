@@ -9,7 +9,8 @@ import {
 
 export type RigidStraightPortId = "start" | "end";
 export type RigidElbowPortId = "inlet" | "outlet";
-export type RigidPortId = RigidStraightPortId | RigidElbowPortId;
+export type RigidTerminalPortId = "neck";
+export type RigidPortId = RigidStraightPortId | RigidElbowPortId | RigidTerminalPortId;
 
 export type RigidConnectionRef = {
   drawingId: string;
@@ -109,7 +110,7 @@ function connectionRef(value: unknown): RigidConnectionRef | undefined {
   if (!value || typeof value !== "object") return undefined;
   const ref = value as Partial<RigidConnectionRef>;
   if (typeof ref.drawingId !== "string" || !ref.drawingId.trim()) return undefined;
-  if (!["start", "end", "inlet", "outlet"].includes(String(ref.portId))) return undefined;
+  if (!["start", "end", "inlet", "outlet", "neck"].includes(String(ref.portId))) return undefined;
   return { drawingId: ref.drawingId, portId: ref.portId as RigidPortId };
 }
 
