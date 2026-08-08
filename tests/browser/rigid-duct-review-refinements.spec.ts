@@ -64,6 +64,7 @@ async function drawRigid(
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.mouse.move(end.x, end.y, { steps: 8 });
+  await expect(page.locator("g.rigid-preview")).toHaveAttribute("data-rigid-display-screen-width", "10.400");
   await page.mouse.up();
   const straights = page.locator('g.rigid-duct[data-plan-drawing-id]');
   await expect(straights).toHaveCount(before + 1);
@@ -74,6 +75,34 @@ async function numericAttribute(locator: Locator, name: string) {
   const value = Number(await locator.getAttribute(name));
   expect(Number.isFinite(value)).toBe(true);
   return value;
+}
+
+async function setWheelZoom(page: Page, target: 0.25 | 1 | 4.08 | 12) {
+  await page.getByRole("button", { name: "100%", exact: true }).click();
+  if (target === 1) return;
+  const canvas = page.locator(".canvas.has-plan");
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("Canvas has no browser bounds for wheel zoom");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  if (target === 0.25) {
+    for (let index = 0; index < 4; index += 1) await page.mouse.wheel(0, 360);
+  } else if (target === 12) {
+    for (let index = 0; index < 4; index += 1) await page.mouse.wheel(0, -360);
+  } else {
+    await page.mouse.wheel(0, -360);
+    await page.mouse.wheel(0, -360);
+    const currentText = await page.locator(".canvas-toolbar > strong").textContent();
+    const current = Number.parseFloat(currentText || "0") / 100;
+    const finalDelta = -Math.log(target / current) / .0018;
+    await page.mouse.wheel(0, finalDelta);
+  }
+  const targetPercent = Math.round(target * 100);
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const displayed = Number.parseInt(await page.locator(".canvas-toolbar > strong").innerText(), 10);
+    if (displayed === targetPercent) break;
+    await page.mouse.wheel(0, displayed < targetPercent ? -1 : 1);
+  }
+  await expect(page.locator(".canvas-toolbar > strong")).toHaveText(`${targetPercent}%`);
 }
 
 test("compact drafting keeps actual 40x10 data and Materials while connected selection stays quiet", async ({ page }) => {
@@ -90,7 +119,7 @@ test("compact drafting keeps actual 40x10 data and Materials while connected sel
   await expect(first).toHaveAttribute("data-rigid-display-mode", "compact");
   const actualWidth = await numericAttribute(first, "data-rigid-plan-width");
   const compactWidth = await numericAttribute(first, "data-rigid-display-plan-width");
-  expect(await numericAttribute(first, "data-rigid-display-screen-width")).toBeCloseTo(8, 2);
+  expect(await numericAttribute(first, "data-rigid-display-screen-width")).toBeCloseTo(10.4, 2);
   const exactLength = await first.getAttribute("data-rigid-finished-length-feet");
   expect(compactWidth).toBeLessThan(actualWidth * .55);
   await expect(page.getByRole("button", { name: "Rigid: Compact", exact: true })).toBeVisible();
@@ -99,7 +128,7 @@ test("compact drafting keeps actual 40x10 data and Materials while connected sel
     await page.getByRole("button", { name: "Zoom in" }).click();
   }
   await expect(page.locator(".canvas-toolbar > strong")).toHaveText("1200%");
-  expect(await numericAttribute(first, "data-rigid-display-screen-width")).toBeCloseTo(8, 2);
+  expect(await numericAttribute(first, "data-rigid-display-screen-width")).toBeCloseTo(10.4, 2);
 
   await page.getByRole("button", { name: "Rigid: Compact", exact: true }).click();
   await expect(page.getByRole("button", { name: "Rigid: True width", exact: true })).toBeVisible();
@@ -156,8 +185,15 @@ test("rectangular, round metal, and spiral stay compact but retain distinct trut
 
   for (const drawing of [rectangular, round, spiral]) {
     await expect(drawing).toHaveAttribute("data-rigid-display-mode", "compact");
-    expect(await numericAttribute(drawing, "data-rigid-display-screen-width")).toBeCloseTo(8, 2);
+    expect(await numericAttribute(drawing, "data-rigid-display-screen-width")).toBeCloseTo(10.4, 2);
   }
+  for (const target of [0.25, 1, 4.08, 12] as const) {
+    await setWheelZoom(page, target);
+    for (const drawing of [rectangular, round, spiral]) {
+      expect(await numericAttribute(drawing, "data-rigid-display-screen-width")).toBeCloseTo(10.4, 2);
+    }
+  }
+  await setWheelZoom(page, 1);
   await expect(rectangular).toHaveAttribute("data-rigid-size", "40×10");
   await expect(round).toHaveAttribute("data-rigid-size", "18");
   await expect(spiral).toHaveAttribute("data-rigid-size", "18");
@@ -188,6 +224,11 @@ test("45 degree elbow click keeps its outlet cue and keyboard continuation is on
 
   const elbow = page.locator('g.rigid-elbow[data-rigid-angle="45"]');
   await expect(elbow).toHaveCount(1);
+  for (const target of [0.25, 1, 4.08, 12] as const) {
+    await setWheelZoom(page, target);
+    expect(await numericAttribute(elbow, "data-rigid-display-screen-width")).toBeCloseTo(10.4, 2);
+  }
+  await setWheelZoom(page, 1);
   await elbow.focus();
   const handle = elbow.locator('[data-rigid-continuation-handle="outlet"]');
   await expect(handle).toBeVisible();

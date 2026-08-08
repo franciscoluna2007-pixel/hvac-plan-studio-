@@ -17875,6 +17875,10 @@ function HVACPlanStudioApp() {
                           data-rigid-outlet-size={outletLabel}
                           data-rigid-length-inches={drawing.rigidTransition.lengthInches}
                           data-rigid-alignment={drawing.rigidTransition.alignment}
+                          data-rigid-display-mode={rigidDisplayMode}
+                          data-rigid-display-screen-width={(Math.max(inletDisplayWidth, outletDisplayWidth) * zoom).toFixed(3)}
+                          data-rigid-display-inlet-screen-width={(inletDisplayWidth * zoom).toFixed(3)}
+                          data-rigid-display-outlet-screen-width={(outletDisplayWidth * zoom).toFixed(3)}
                           data-rigid-inlet-connected={Boolean(drawing.rigidTransition.ports.inlet.connectedTo)}
                           data-rigid-outlet-connected={Boolean(drawing.rigidTransition.ports.outlet.connectedTo)}
                           tabIndex={0}
@@ -18402,7 +18406,12 @@ function HVACPlanStudioApp() {
                         ? rigidCompactScreenPlanWidthUnits(zoom)
                         : rigidPlanWidthUnits(rigid, sheetFeetPerUnit);
                       const path = `M ${rigidPreview.start.x} ${rigidPreview.start.y} L ${rigidPreview.end.x} ${rigidPreview.end.y}`;
-                      return <g className={`rigid-duct rigid-preview rigid-${rigid.construction}`} aria-hidden="true">
+                      return <g
+                        className={`rigid-duct rigid-preview rigid-${rigid.construction}`}
+                        data-rigid-display-mode={rigidDisplayMode}
+                        data-rigid-display-screen-width={(width * zoom).toFixed(3)}
+                        aria-hidden="true"
+                      >
                         <path className="rigid-body" d={path} stroke={drawingColors[rigid.networkKind]} style={{ strokeWidth: width }} />
                         <path className="rigid-centerline" d={path} />
                       </g>;

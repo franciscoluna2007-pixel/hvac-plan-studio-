@@ -43,6 +43,7 @@ async function placeRigid(page: Page, construction: "rectangular" | "round-metal
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.mouse.move(end.x, end.y, { steps: 8 });
+  await expect(page.locator("g.rigid-preview")).toHaveAttribute("data-rigid-display-screen-width", "10.400");
   await page.mouse.up();
   await expect(page.locator('g.rigid-duct[data-plan-drawing-id]')).toHaveCount(before + 1);
   return page.locator('g.rigid-duct[data-plan-drawing-id]').nth(before);
@@ -84,6 +85,8 @@ test("loaded plan supports true-width rigid placement, edit, one Undo, copy, sch
   await page.getByRole("toolbar", { name: "Selected HVAC object actions" }).getByRole("button", { name: "Copy & paste" }).click();
   const copyA = await planPoint(page, .35, .46);
   const copyB = await planPoint(page, .62, .46);
+  await page.mouse.move(copyA.x, copyA.y);
+  await expect(page.locator("g.rigid-duct.copy-place-preview")).toHaveAttribute("data-rigid-display-screen-width", "10.400");
   await page.mouse.click(copyA.x, copyA.y);
   await page.mouse.click(copyB.x, copyB.y);
   await page.keyboard.press("Escape");

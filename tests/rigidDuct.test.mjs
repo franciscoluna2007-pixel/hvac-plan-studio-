@@ -68,7 +68,7 @@ test("compresses only drafting width while exact dimensions and calibrated geome
 test("keeps the compact drafting footprint stable in screen space at every zoom", () => {
   for (const zoom of [.25, 1, 4.08, 12]) {
     const planWidth = rigidCompactScreenPlanWidthUnits(zoom);
-    assert.equal(planWidth * zoom, 8);
+    assert.ok(Math.abs(planWidth * zoom - 10.4) < 1e-9);
   }
   assert.equal(rigidCompactScreenPlanWidthUnits(0), 0);
   assert.equal(rigidCompactScreenPlanWidthUnits(4, 10), 2.5);
