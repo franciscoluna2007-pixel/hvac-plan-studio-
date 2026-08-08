@@ -32,10 +32,10 @@ function sourceBetween(source, start, end) {
   return source.slice(startIndex, endIndex);
 }
 
-test("persists room candidates and application receipts in the version 11 project state", () => {
+test("persists room candidates and application receipts in the version 12 project state", () => {
   assert.match(
     page,
-    /type SavedProject = \{\s*version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9 \| 10 \| 11;/,
+    /type SavedProject = \{\s*version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9 \| 10 \| 11 \| 12;/,
   );
   assert.match(page, /roomMarkupCandidatesBySystem\?: Record<string, RoomMarkupCandidate\[\]>/);
   assert.match(page, /roomMarkupApplicationRecords\?: RoomMarkupApplicationRecord\[\]/);

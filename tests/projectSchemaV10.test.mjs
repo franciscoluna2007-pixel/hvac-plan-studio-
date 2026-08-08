@@ -69,6 +69,39 @@ test("round-trips explicit v11 elbow topology and takeouts", () => {
   assert.deepEqual(second.project, first.project);
 });
 
+test("migrates v11 transitions and rigid supply-can collars into schema v12", () => {
+  const drawings = [
+    {
+      id: "transition-1", type: "rigid-fitting", page: 1, points: [{ x: 10, y: 10 }],
+      rigidTransition: {
+        version: 1, kind: "transition", networkKind: "supply", construction: "rectangular",
+        inletSize: { shape: "rectangular", widthInches: 30, heightInches: 10 },
+        outletSize: { shape: "rectangular", widthInches: 25, heightInches: 10 },
+        lengthInches: 18, alignment: "centered", inboundAngleDegrees: 0,
+        ports: {
+          inlet: { id: "inlet", takeoutInches: 0, connectedTo: { drawingId: "straight-1", portId: "end" } },
+          outlet: { id: "outlet", takeoutInches: 0 },
+        },
+      },
+    },
+    {
+      id: "can-1", type: "symbol", page: 1, points: [{ x: 20, y: 10 }], size: "12×12",
+      symbol: {
+        kind: "diffuser", label: "Supply can", rotation: 0, variant: "supply-can", neckSize: "8",
+        rigidTerminal: {
+          version: 1, kind: "supply-can-collar", construction: "spiral", diameterInches: 8,
+          collarType: "straight-collar", connectedTo: { drawingId: "straight-2", portId: "end" },
+        },
+      },
+    },
+  ];
+  const result = migrateSavedProject({ version: 11, drawings });
+  assert.equal(result.ok, true);
+  assert.equal(result.project.version, 12);
+  assert.deepEqual(result.project.drawings, drawings);
+  assert.deepEqual(migrateSavedProject(result.project).project, result.project);
+});
+
 test("quarantines only invalid rigid objects and rejects unsafe envelopes", () => {
   const invalidRigid = {
     id: "bad-rigid", type: "rigid", page: 1, points: [{ x: 0, y: 0 }], size: "8",
@@ -81,4 +114,32 @@ test("quarantines only invalid rigid objects and rejects unsafe envelopes", () =
   assert.match(result.warnings[0], /1 invalid rigid drawing was quarantined/);
   assert.deepEqual(migrateSavedProject({ version: 99, drawings: [] }), { ok: false, reason: "unsupported-version" });
   assert.deepEqual(migrateSavedProject({ version: 9, drawings: "nope" }), { ok: false, reason: "malformed-project" });
+});
+
+test("quarantines unsafe transition geometry and strips malformed terminal metadata", () => {
+  const unsafeTransition = {
+    id: "bad-transition", type: "rigid-fitting", page: 1, points: [{ x: 10, y: 10 }],
+    rigidTransition: {
+      version: 1, kind: "transition", networkKind: "supply", construction: "round-metal",
+      inletSize: { shape: "round", diameterInches: 12 },
+      outletSize: { shape: "round", diameterInches: 16 },
+      lengthInches: 12, alignment: "centered", inboundAngleDegrees: 0,
+      ports: {
+        inlet: { id: "inlet", takeoutInches: 0 },
+        outlet: { id: "outlet", takeoutInches: 0 },
+      },
+    },
+  };
+  const malformedTerminal = {
+    id: "can-unsafe", type: "symbol", page: 1, points: [{ x: 20, y: 10 }],
+    symbol: {
+      kind: "diffuser", label: "Supply can", rotation: 0, variant: "supply-can", neckSize: "8",
+      rigidTerminal: { version: 1, kind: "wrong-kind", connectedTo: { drawingId: "missing", portId: "end" } },
+    },
+  };
+  const result = migrateSavedProject({ version: 11, drawings: [unsafeTransition, malformedTerminal] });
+  assert.equal(result.ok, true);
+  assert.equal(result.project.rigidDrawingQuarantine.length, 1);
+  assert.equal(result.project.drawings.length, 1);
+  assert.equal("rigidTerminal" in result.project.drawings[0].symbol, false);
 });

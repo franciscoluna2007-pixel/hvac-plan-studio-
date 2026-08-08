@@ -53,7 +53,7 @@ test("Connect existing reviews endpoint ownership, cancels safely, persists reci
   await expect(straights).toHaveCount(1);
   const upstream = straights.first();
   await page.getByRole("navigation", { name: "Plan workflow" }).getByRole("button", { name: "Selected", exact: true }).click();
-  const elbowEditor = tools.locator(".rigid-elbow-editor");
+  const elbowEditor = tools.getByRole("group", { name: "Add an explicit elbow" });
   await elbowEditor.getByLabel("Straight end").selectOption("end");
   await elbowEditor.getByLabel("Angle").selectOption("90");
   await elbowEditor.getByLabel("Turn").selectOption("right");
@@ -142,7 +142,7 @@ test("Connect existing reviews endpoint ownership, cancels safely, persists reci
     const key = Object.keys(localStorage).find((item) => item.startsWith("hvac-plan-studio:rigid-connect-existing"));
     return key ? JSON.parse(localStorage.getItem(key) || "{}").version : null;
   });
-  expect(savedVersion).toBe(11);
+  expect(savedVersion).toBe(12);
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => {

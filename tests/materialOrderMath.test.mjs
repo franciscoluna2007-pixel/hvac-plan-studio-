@@ -132,3 +132,25 @@ test("emits one Excel-friendly UTF-8 CSV table", () => {
   assert.match(csv, /"Measured LF","Allowance %","Order LF","Package","Source objects"/);
   assert.doesNotMatch(csv, /Breakdown \(reference only\)/);
 });
+
+test("lists rigid transitions, reducers, and terminal collars as separate order fittings", () => {
+  const rows = buildMaterialOrder({
+    runs: [], symbols: [], fittings: [], allowancePercent: 10,
+    rigidTransitions: [
+      { id: "t-1", networkKind: "supply", construction: "rectangular", inletSize: "30×10", outletSize: "25×10", lengthInches: 18, alignment: "top-flat" },
+      { id: "r-1", networkKind: "supply", construction: "spiral", inletSize: "18", outletSize: "16", lengthInches: 12, alignment: "centered" },
+    ],
+    rigidCollars: [
+      { id: "can-1", construction: "spiral", diameterInches: 8 },
+      { id: "can-2", construction: "spiral", diameterInches: 8 },
+    ],
+  });
+  const transition = rows.find((row) => row.item === "Rectangular transition");
+  const reducer = rows.find((row) => row.item === "Spiral reducer");
+  const collar = rows.find((row) => row.item === "Supply-can straight collar");
+  assert.equal(transition.size, "30×10 → 25×10");
+  assert.match(transition.note, /18 in long/);
+  assert.equal(reducer.size, "18 → 16");
+  assert.equal(collar.quantity, "2 each");
+  assert.equal(collar.size, "Ø8\" · spiral");
+});

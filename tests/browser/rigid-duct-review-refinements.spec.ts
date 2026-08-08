@@ -127,7 +127,7 @@ test("compact drafting keeps actual 40x10 data and Materials while connected sel
     const value = key ? JSON.parse(localStorage.getItem(key) || "{}") : null;
     return value ? { version: value.version, rigidCount: value.drawings?.filter((drawing: { rigid?: unknown }) => drawing.rigid).length } : null;
   });
-  expect(saved).toEqual({ version: 11, rigidCount: 2 });
+  expect(saved).toEqual({ version: 12, rigidCount: 2 });
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await uploadPlan(page);
@@ -178,7 +178,7 @@ test("45 degree elbow click keeps its outlet cue and keyboard continuation is on
   const straight = await drawRigid(page, .46);
   await page.getByRole("navigation", { name: "Plan workflow" }).getByRole("button", { name: "Selected", exact: true }).click();
   const tools = page.getByRole("complementary", { name: "HVAC plan tools" });
-  const editor = tools.locator(".rigid-elbow-editor");
+  const editor = tools.getByRole("group", { name: "Add an explicit elbow" });
   await editor.getByLabel("Straight end").selectOption("end");
   await editor.getByLabel("Angle").selectOption("45");
   await editor.getByLabel("Turn").selectOption("right");

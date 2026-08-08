@@ -2155,7 +2155,7 @@ test("v122 adds a draw-first detail workflow and stable scale setup without weak
   assert.match(page, /runNumber\?: string/);
   assert.match(page, /sizeReviewed\?: boolean/);
   assert.match(page, /type SheetScaleState = \{/);
-  assert.match(page, /version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9 \| 10 \| 11;/);
+  assert.match(page, /version: 1 \| 2 \| 3 \| 4 \| 5 \| 6 \| 7 \| 8 \| 9 \| 10 \| 11 \| 12;/);
   assert.match(page, /sheetScales\?: Record<string, SheetScaleState>/);
   assert.match(
     page,
